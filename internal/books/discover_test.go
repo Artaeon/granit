@@ -39,6 +39,17 @@ func TestSwapAuthorOrder(t *testing.T) {
 		{"", ""},
 		{"Plato", "Plato"},
 		{",", ","},
+		// Historical figures with titles trip the naive surname-first
+		// flip — Gutendex stores them as "FullName, Title" rather than
+		// the archival "Surname, Given" shape, so we must NOT flip
+		// (otherwise "Marcus Aurelius, Emperor of Rome" becomes the
+		// nonsensical "Emperor of Rome Marcus Aurelius"). Single-word
+		// surname is the heuristic that distinguishes the two shapes.
+		{"Marcus Aurelius, Emperor of Rome", "Marcus Aurelius, Emperor of Rome"},
+		{"Saint Augustine, Bishop of Hippo", "Saint Augustine, Bishop of Hippo"},
+		// Edge: empty given half — leave the original alone rather
+		// than producing a stray-comma string.
+		{"Dickens,", "Dickens,"},
 	}
 	for _, c := range cases {
 		got := swapAuthorOrder(c.in)
@@ -211,6 +222,45 @@ func TestImportStreamsFileToVaultBooks(t *testing.T) {
 	all2, _ := Scan(vault)
 	if len(all2) != 2 {
 		t.Errorf("expected 2 books after duplicate Import, got %d", len(all2))
+	}
+
+	// No stray temp files lingering after import. Belongs in this
+	// test because the .import-*.tmp temp pattern is a sibling of
+	// the final file; a regression that swapped it back to .epub
+	// would silently leak unparseable garbage into Books/ on every
+	// crashed import.
+	entries, _ := os.ReadDir(filepath.Join(vault, BooksDirName))
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".import-") {
+			t.Errorf("Import left a stale temp file in Books/: %s", e.Name())
+		}
+	}
+}
+
+func TestScanIgnoresImportTempFiles(t *testing.T) {
+	// A crashed import (server killed mid-stream) leaves a stale
+	// .import-*.tmp file behind. Scan must skip it so it neither
+	// appears on the shelf nor wastes a zip-parse attempt every
+	// list call.
+	vault := t.TempDir()
+	booksDir := filepath.Join(vault, BooksDirName)
+	if err := os.MkdirAll(booksDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Real EPUB so any future regression that tried to scan the
+	// temp file would actually succeed and surface it (rather than
+	// silently failing to parse and hiding the bug).
+	tmp := filepath.Join(booksDir, ".import-leftover.tmp")
+	body, _ := os.ReadFile(buildMinimalEPUB(t))
+	if err := os.WriteFile(tmp, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	all, err := Scan(vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 0 {
+		t.Errorf("Scan should ignore .tmp files; got %d entries: %+v", len(all), all)
 	}
 }
 

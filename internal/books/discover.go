@@ -325,15 +325,37 @@ func pickGutenbergCover(formats map[string]string) string {
 
 // swapAuthorOrder turns "Austen, Jane" into "Jane Austen" so the
 // result cards read like book covers.
+//
+// Only swap when the surname half is a single word — Gutenberg
+// metadata follows two distinct shapes:
+//
+//   - "Surname, Given" — the archival default we want to flip
+//     ("Dill, Samuel" → "Samuel Dill").
+//   - "FullName, Title" — historical figures with honorifics
+//     ("Marcus Aurelius, Emperor of Rome", "Plato, Apuleius of
+//     Madaura"). Flipping these mangles the author into nonsense
+//     ("Emperor of Rome Marcus Aurelius"), so we leave them alone.
+//
+// A single-word first half cleanly identifies the archival form;
+// multi-word first halves are almost always the FullName-prefix
+// shape (or compound surnames like "van der Berg" where the swap
+// would also be wrong).
 func swapAuthorOrder(name string) string {
-	if i := strings.Index(name, ","); i > 0 {
-		surname := strings.TrimSpace(name[:i])
-		given := strings.TrimSpace(name[i+1:])
-		if given != "" {
-			return given + " " + surname
-		}
+	i := strings.Index(name, ",")
+	if i <= 0 {
+		return name
 	}
-	return name
+	surname := strings.TrimSpace(name[:i])
+	given := strings.TrimSpace(name[i+1:])
+	if surname == "" || given == "" {
+		return name
+	}
+	if strings.ContainsAny(surname, " \t") {
+		// Multi-word "surname" — almost certainly a full name with
+		// a trailing title or honorific. Leave the original order.
+		return name
+	}
+	return given + " " + surname
 }
 
 // stripTags pulls human-readable text out of an OPDS / HTML summary.
@@ -427,7 +449,13 @@ func Import(ctx context.Context, vaultRoot string, source Source, downloadURL, s
 	// Stream into a sibling temp file. We can't reuse atomicio.WriteWithPerm
 	// here because it takes []byte (we'd lose the streaming win), so we
 	// inline the same temp+rename shape with explicit bounded copy.
-	tmp, err := os.CreateTemp(dir, ".import-*.epub")
+	//
+	// Suffix is .tmp (not .epub) so Scan()'s extension filter skips
+	// the in-flight file naturally — otherwise a parallel GET /books
+	// during an import window would try to parse the half-written
+	// zip and a server crash mid-import would leave a permanent
+	// unparseable .epub cluttering the shelf.
+	tmp, err := os.CreateTemp(dir, ".import-*.tmp")
 	if err != nil {
 		return Summary{}, fmt.Errorf("books: create temp: %w", err)
 	}
