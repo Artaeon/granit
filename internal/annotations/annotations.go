@@ -45,11 +45,27 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/artaeon/granit/internal/atomicio"
 	"github.com/oklog/ulid/v2"
 )
+
+// storeMu serialises every read-modify-write against the
+// annotations store. The store is single-file by design (see top
+// comment); two concurrent Add() / Patch() / Delete() calls would
+// otherwise both LoadAll → modify → SaveAll, with the second
+// writer's pre-modify read missing the first writer's commit.
+// The "AI accept-all" flow can fire 5 POSTs in rapid succession,
+// the WS broadcast can trigger a reload mid-write across tabs,
+// and the user can rename a note while another tab is creating
+// an annotation — all real scenarios this guard covers.
+//
+// Read-only operations (LoadAll, ListForNote) don't need the
+// lock — the atomicio rename is OS-atomic, so a reader either
+// sees the pre- or post-write state, never a torn one.
+var storeMu sync.Mutex
 
 // AnchorPreviewLen is the cap on how much of the original line we
 // snapshot on create. Used by re-anchoring when the line numbers
@@ -173,6 +189,8 @@ func Add(vaultRoot string, a Annotation) (Annotation, error) {
 	if strings.TrimSpace(a.Text) == "" {
 		return Annotation{}, errors.New("annotations: empty annotation text")
 	}
+	storeMu.Lock()
+	defer storeMu.Unlock()
 	s, err := LoadAll(vaultRoot)
 	if err != nil {
 		return Annotation{}, err
@@ -198,6 +216,8 @@ func Add(vaultRoot string, a Annotation) (Annotation, error) {
 // LineNum / AnchorText without rebuilding the struct. Returns
 // ErrNotFound if the id doesn't resolve.
 func Patch(vaultRoot, id string, mutate func(*Annotation)) (Annotation, error) {
+	storeMu.Lock()
+	defer storeMu.Unlock()
 	s, err := LoadAll(vaultRoot)
 	if err != nil {
 		return Annotation{}, err
@@ -220,6 +240,8 @@ func Patch(vaultRoot, id string, mutate func(*Annotation)) (Annotation, error) {
 // error if the id doesn't exist (the user's intent of "this should
 // not be here" is satisfied either way).
 func Delete(vaultRoot, id string) error {
+	storeMu.Lock()
+	defer storeMu.Unlock()
 	s, err := LoadAll(vaultRoot)
 	if err != nil {
 		return err
@@ -239,6 +261,8 @@ func Delete(vaultRoot, id string) error {
 // so annotations don't dangle. No-op if no annotations match
 // oldPath. Returns the number of rewrites.
 func RewriteNotePath(vaultRoot, oldPath, newPath string) (int, error) {
+	storeMu.Lock()
+	defer storeMu.Unlock()
 	s, err := LoadAll(vaultRoot)
 	if err != nil {
 		return 0, err

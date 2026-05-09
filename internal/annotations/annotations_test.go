@@ -1,7 +1,9 @@
 package annotations
 
 import (
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -121,6 +123,40 @@ func TestAnchorClipping(t *testing.T) {
 	}
 	if len(a.AnchorText) > AnchorPreviewLen {
 		t.Errorf("anchor not clipped: len=%d", len(a.AnchorText))
+	}
+}
+
+func TestConcurrentAddsAllPersist(t *testing.T) {
+	// Real-world scenario: the AI accept-all flow can fire 5 POSTs
+	// in quick succession; two browser tabs may also each fire an
+	// Add at once. Without storeMu the read-modify-write race
+	// would silently lose entries (the second writer's pre-modify
+	// read missed the first writer's commit). This regression test
+	// runs 50 parallel adds and asserts every one survived.
+	dir := t.TempDir()
+	const N = 50
+	var wg sync.WaitGroup
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			_, err := Add(dir, Annotation{
+				NotePath: "concurrent.md",
+				LineNum:  1,
+				Text:     fmt.Sprintf("note-%d", idx),
+			})
+			if err != nil {
+				t.Errorf("concurrent Add %d failed: %v", idx, err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	got, err := ListForNote(dir, "concurrent.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != N {
+		t.Errorf("expected %d annotations to persist; got %d (lost writes due to race)", N, len(got))
 	}
 }
 
