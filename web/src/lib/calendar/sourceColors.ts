@@ -10,7 +10,8 @@
 // For now per-device is enough — the same user usually has the
 // same colour preferences across machines anyway.
 
-import { writable, get } from 'svelte/store';
+import { get } from 'svelte/store';
+import { persistedWritable } from '$lib/util/persistedWritable';
 
 const KEY = 'granit.calendar.source-colors';
 
@@ -27,24 +28,20 @@ export type CalendarTone =
   | 'cyan'
   | 'pink';
 
-function load(): Record<string, CalendarTone> {
-  if (typeof localStorage === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return {};
-    return JSON.parse(raw) as Record<string, CalendarTone>;
-  } catch {
-    return {};
+const TONES = new Set<CalendarTone>(['', 'red', 'yellow', 'orange', 'green', 'blue', 'purple', 'cyan', 'pink']);
+
+export const sourceColors = persistedWritable<Record<string, CalendarTone>>(KEY, {}, {
+  validate: (raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const out: Record<string, CalendarTone> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (typeof v === 'string' && TONES.has(v as CalendarTone)) {
+        out[k] = v as CalendarTone;
+      }
+    }
+    return out;
   }
-}
-
-function persist(map: Record<string, CalendarTone>) {
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(KEY, JSON.stringify(map)); } catch {}
-}
-
-export const sourceColors = writable<Record<string, CalendarTone>>(load());
-sourceColors.subscribe((m) => persist(m));
+});
 
 export function setSourceColor(source: string, tone: CalendarTone) {
   sourceColors.update((m) => {

@@ -9,30 +9,17 @@
 // — the pin list usually stays small enough that order doesn't
 // matter, and a drag handle would clutter the rail.
 
-import { writable, get } from 'svelte/store';
+import { get } from 'svelte/store';
+import { persistedWritable } from '$lib/util/persistedWritable';
 
 const KEY = 'granit.sidebar.pinned';
 
-function load(): string[] {
-  if (typeof localStorage === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((s): s is string => typeof s === 'string');
-  } catch {
-    return [];
+export const sidebarPins = persistedWritable<string[]>(KEY, [], {
+  validate: (raw) => {
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((s): s is string => typeof s === 'string');
   }
-}
-
-function persist(hrefs: string[]) {
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(KEY, JSON.stringify(hrefs)); } catch {}
-}
-
-export const sidebarPins = writable<string[]>(load());
-sidebarPins.subscribe((p) => persist(p));
+});
 
 export function togglePin(href: string) {
   sidebarPins.update((cur) => {

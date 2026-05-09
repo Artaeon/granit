@@ -7,35 +7,22 @@
 // derived from daily-note checkboxes, and the target is purely a
 // display preference. Cross-device drift is fine.
 
-import { writable, get } from 'svelte/store';
+import { get } from 'svelte/store';
+import { persistedWritable } from '$lib/util/persistedWritable';
 
 const KEY = 'granit.habits.targets';
 
-function load(): Record<string, number> {
-  if (typeof localStorage === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return {};
+export const habitTargets = persistedWritable<Record<string, number>>(KEY, {}, {
+  validate: (raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
     const out: Record<string, number> = {};
-    for (const [k, v] of Object.entries(parsed)) {
+    for (const [k, v] of Object.entries(raw)) {
       const n = Number(v);
       if (Number.isFinite(n) && n >= 1 && n <= 7) out[k] = Math.round(n);
     }
     return out;
-  } catch {
-    return {};
   }
-}
-
-function persist(map: Record<string, number>) {
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(KEY, JSON.stringify(map)); } catch {}
-}
-
-export const habitTargets = writable<Record<string, number>>(load());
-habitTargets.subscribe((m) => persist(m));
+});
 
 export function setHabitTarget(name: string, target: number | null) {
   habitTargets.update((m) => {
