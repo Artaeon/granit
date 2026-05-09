@@ -1597,7 +1597,34 @@
   function onInputChange() {
     detectSlashTrigger();
     detectMentionTrigger();
+    autosizeInput();
   }
+  // Composer auto-grow. textarea[rows=2] is the resting height; as the
+  // user types newlines (or pastes a multi-line prompt) we expand the
+  // element up to ~50% of the panel's height before falling back to
+  // internal scrolling. Without this the textarea stays fixed at 2
+  // rows and longer prompts hide their own bottom — frustrating on
+  // both mobile and desktop. Implementation: reset to height:auto so
+  // scrollHeight reads the natural content height, then clamp + write
+  // back. Cheap (one layout read per keystroke).
+  function autosizeInput() {
+    if (!inputEl) return;
+    const ta = inputEl;
+    const panel = panelEl?.getBoundingClientRect().height ?? window.innerHeight;
+    const cap = Math.max(120, Math.floor(panel * 0.5));
+    ta.style.height = 'auto';
+    const next = Math.min(cap, ta.scrollHeight);
+    ta.style.height = next + 'px';
+    ta.style.overflowY = ta.scrollHeight > cap ? 'auto' : 'hidden';
+  }
+  // Re-run autosize on every input mutation (typing, voice, slash
+  // pick, mention pick). $effect tracks `input` as a dep so any
+  // programmatic write — voice transcript, mention insert, /help —
+  // also triggers a resize without relying on individual call sites.
+  $effect(() => {
+    void input;
+    tick().then(() => autosizeInput());
+  });
   function onInputClick() {
     // Caret moved without typing — re-evaluate mention/slash context.
     detectSlashTrigger();
@@ -2196,7 +2223,8 @@
           rows="2"
           placeholder={$sabbath ? 'Sabbath active — AI paused' : recording ? 'Listening… speak freely' : 'Ask anything, /help for commands, @ to reference an item'}
           disabled={busy || $sabbath}
-          class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-none disabled:opacity-60 {recording ? 'border-error' : ''}"
+          class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-none disabled:opacity-60 transition-colors {recording ? 'border-error' : ''}"
+          style="min-height: 2.5rem;"
         ></textarea>
         {#if slashPickerOpen}
           <!-- Slash-command picker. Triggers when input starts with
