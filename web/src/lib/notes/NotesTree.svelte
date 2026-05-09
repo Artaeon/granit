@@ -4,7 +4,8 @@
   import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { createCoalescedReload } from '$lib/util/coalesce';
-  import { buildTree, filterTree, ancestorFolders, type TreeNode } from './treeUtils';
+  import { buildTree, filterTree, ancestorFolders, type TreeNode, type TreeSort } from './treeUtils';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import TreeNodeView from './TreeNode.svelte';
   import { pinnedNotes, unpinPath, ensurePinnedLoaded } from './pinnedNotes';
 
@@ -22,6 +23,15 @@
   let loading = $state(false);
   let q = $state('');
   let expanded = $state<Record<string, boolean>>({});
+
+  // Sort order persisted per-device. 'alpha' is the default (file-
+  // manager rhythm); 'recent' surfaces today's working set without
+  // forcing the user to expand every folder. Stored as a raw string
+  // because the value IS a string and the JSON quoting would just
+  // be visual clutter in devtools.
+  const SORT_KEY = 'granit.notes.tree.sort';
+  let sort = $state<TreeSort>(loadStoredString(SORT_KEY, 'alpha') as TreeSort);
+  $effect(() => saveStoredString(SORT_KEY, sort));
 
   async function load() {
     if (!$auth) return;
@@ -71,7 +81,7 @@
     });
   });
 
-  let tree = $derived.by(() => buildTree(notes));
+  let tree = $derived.by(() => buildTree(notes, sort));
   let filtered = $derived.by(() => (q.trim() ? filterTree(tree, q.trim()) : tree));
 
   // Pinned notes — surfaced in their own section above the tree.
@@ -149,7 +159,21 @@
     />
     <div class="flex items-center justify-between text-xs">
       <span class="text-dim">{notes.length} notes</span>
-      <span class="space-x-2">
+      <span class="flex items-center gap-2">
+        <!-- Sort toggle. Two clear words rather than a dropdown so
+             a single click flips the user back; the underline-on-
+             active makes the current state obvious without an extra
+             chevron. -->
+        <button
+          onclick={() => (sort = sort === 'alpha' ? 'recent' : 'alpha')}
+          class="text-dim hover:text-text"
+          title={sort === 'alpha'
+            ? 'Sorted A→Z. Click for most-recent first.'
+            : 'Sorted by recent activity. Click for A→Z.'}
+        >
+          {sort === 'alpha' ? 'A–Z' : 'recent'}
+        </button>
+        <span class="text-surface2">·</span>
         <button onclick={expandAll} class="text-dim hover:text-text">expand</button>
         <button onclick={collapseAll} class="text-dim hover:text-text">collapse</button>
       </span>

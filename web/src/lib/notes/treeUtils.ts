@@ -10,7 +10,15 @@ export interface TreeNode {
   count?: number;
 }
 
-export function buildTree(notes: Note[]): TreeNode {
+/** Tree sort orders. 'alpha' is the classic file-manager rhythm —
+ *  folders first, then names A→Z. 'recent' surfaces the user's
+ *  active work by sorting notes most-recently-modified first; a
+ *  folder's position is driven by its newest descendant, so the
+ *  folder containing today's daily-note floats to the top of its
+ *  parent without the user having to expand it. */
+export type TreeSort = 'alpha' | 'recent';
+
+export function buildTree(notes: Note[], sort: TreeSort = 'alpha'): TreeNode {
   const root: TreeNode = { name: '', path: '', isFolder: true, children: [] };
   for (const n of notes) {
     const parts = n.path.split('/').filter(Boolean);
@@ -31,20 +39,50 @@ export function buildTree(notes: Note[]): TreeNode {
       note: n
     });
   }
-  countAndSort(root);
+  countAndSort(root, sort);
   return root;
 }
 
-function countAndSort(node: TreeNode): number {
-  if (!node.children) return node.isFolder ? 0 : 1;
+function nodeModMs(n: TreeNode): number {
+  const t = n.note?.modTime;
+  if (!t) return -Infinity;
+  const ms = Date.parse(t);
+  return Number.isFinite(ms) ? ms : -Infinity;
+}
+
+// Recursive count + sort. Returns { count, newestMs } so a folder's
+// sort key under 'recent' can use its deepest descendant's modTime.
+// Tracking newest at every level (rather than re-walking on each
+// compare) keeps the sort O(N) overall.
+function countAndSort(node: TreeNode, sort: TreeSort): { count: number; newestMs: number } {
+  if (!node.children) {
+    return { count: node.isFolder ? 0 : 1, newestMs: nodeModMs(node) };
+  }
   let total = 0;
-  for (const c of node.children) total += countAndSort(c);
+  let newest = -Infinity;
+  const stats = new Map<TreeNode, { count: number; newestMs: number }>();
+  for (const c of node.children) {
+    const s = countAndSort(c, sort);
+    stats.set(c, s);
+    total += s.count;
+    if (s.newestMs > newest) newest = s.newestMs;
+  }
   node.count = total;
   node.children.sort((a, b) => {
+    // Folders always sort above files within the same level so
+    // the "directories on top" mental model holds across both
+    // sort keys.
     if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
+    if (sort === 'recent') {
+      const am = stats.get(a)!.newestMs;
+      const bm = stats.get(b)!.newestMs;
+      // Newer first; -Infinity sinks (no parseable modTime).
+      // Tie-break alphabetically so equal-mtime rows don't shuffle.
+      if (am !== bm) return bm - am;
+    }
     return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
   });
-  return total;
+  return { count: total, newestMs: newest };
 }
 
 /** Filter the tree by query — keep folders that contain matching notes. */
