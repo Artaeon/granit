@@ -37,6 +37,7 @@
     isRagIndexLoaded,
     type RagHit
   } from '$lib/chat/rag';
+  import SlashCommandPicker from '$lib/components/SlashCommandPicker.svelte';
 
   // AIOverlay — global AI panel. Slides in from the right on
   // desktop, becomes a bottom sheet on mobile. Triggered with
@@ -766,118 +767,13 @@
 
   Press <kbd>Mod+J</kbd> to toggle this panel anywhere in granit.`;
 
-  // Slash-command picker. Triggers when the input starts with "/"
-  // and the caret is in the first token. Same nav UX as the mention
-  // picker: ↑/↓ select, Enter/Tab pick, Esc dismiss.
-  interface SlashSpec {
-    cmd: string;
-    desc: string;
-    /** When true, the picker keeps the picker open after typing the
-     *  command so the user can supply an argument. */
-    hasArg?: boolean;
-  }
-  const SLASH_COMMANDS: SlashSpec[] = [
-    { cmd: '/help', desc: 'Show all slash commands + AI surfaces' },
-    { cmd: '/clear', desc: 'Reset the current conversation (saves to history first)' },
-    { cmd: '/new', desc: 'Start a new thread (current one is saved)' },
-    { cmd: '/save', desc: 'Save the current thread as a markdown note' },
-    { cmd: '/briefing', desc: 'Daily briefing — today\'s events + tasks' },
-    { cmd: '/synopsis', desc: 'Weekly synopsis — Wins / Setbacks / Learned / Next' },
-    { cmd: '/triage', desc: 'Run inbox triage on untriaged tasks' },
-    { cmd: '/deadlines', desc: 'Detect deadlines in untimed tasks' },
-    { cmd: '/mode', desc: 'Switch agent mode (general, research, writer, coach, analyst, architect)', hasArg: true },
-    { cmd: '/persona', desc: 'Switch persona (lewis, aurelius, socrates, chrysostom, founder, magister, examen)', hasArg: true },
-    { cmd: '/rag', desc: 'Toggle RAG retrieval for the next turn' },
-    { cmd: '/forget', desc: 'Drop snapshot/note attachment + queued mentions' },
-    { cmd: '/detach', desc: 'Drop the snapshot/note attachment (legacy alias of /forget)' }
-  ];
+  // Slash-command picker — extracted to $lib/components/SlashCommandPicker.svelte.
+  // Owns the dropdown UI, filter logic, and keyboard navigation. The
+  // parent keeps the open flag so Esc-from-anywhere can dismiss it
+  // (see onKey below) and so onInputKey can chain mention → slash →
+  // fall-through-send in the right order.
   let slashPickerOpen = $state(false);
-  let slashFiltered = $state<SlashSpec[]>([]);
-  let slashSelectedIdx = $state(0);
-
-  function detectSlashTrigger() {
-    if (!inputEl) return;
-    const v = input;
-    // Only trigger when the input starts with "/" and the caret is
-    // somewhere in the first whitespace-free token. Subsequent
-    // tokens (the argument to /mode / /persona) close the picker.
-    if (!v.startsWith('/')) {
-      slashPickerOpen = false;
-      return;
-    }
-    const caret = inputEl.selectionStart ?? v.length;
-    const firstSpace = v.indexOf(' ');
-    if (firstSpace !== -1 && caret > firstSpace) {
-      slashPickerOpen = false;
-      return;
-    }
-    const token = firstSpace === -1 ? v : v.slice(0, firstSpace);
-    const tl = token.toLowerCase();
-    slashFiltered = SLASH_COMMANDS.filter((s) => s.cmd.startsWith(tl));
-    if (slashFiltered.length === 0) {
-      slashPickerOpen = false;
-      return;
-    }
-    slashPickerOpen = true;
-    slashSelectedIdx = Math.min(slashSelectedIdx, slashFiltered.length - 1);
-  }
-
-  function pickSlash(s: SlashSpec) {
-    input = s.cmd + (s.hasArg ? ' ' : '');
-    slashPickerOpen = false;
-    if (!s.hasArg) {
-      // Fire immediately for argless commands so the picker doubles
-      // as a "type slash, click command" power-tool.
-      tick().then(() => { void send(); });
-    } else {
-      // Leave the picker dismissed; let the user type the arg.
-      tick().then(() => {
-        if (inputEl) {
-          inputEl.focus();
-          const pos = input.length;
-          inputEl.setSelectionRange(pos, pos);
-        }
-      });
-    }
-  }
-
-  function onSlashKey(e: KeyboardEvent): boolean {
-    if (!slashPickerOpen || slashFiltered.length === 0) return false;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      slashSelectedIdx = (slashSelectedIdx + 1) % slashFiltered.length;
-      return true;
-    }
-    if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      slashSelectedIdx = (slashSelectedIdx - 1 + slashFiltered.length) % slashFiltered.length;
-      return true;
-    }
-    if (e.key === 'Tab') {
-      const s = slashFiltered[slashSelectedIdx];
-      if (s) {
-        e.preventDefault();
-        // Tab autocompletes the command WITHOUT firing — useful for
-        // /mode and /persona where the user still needs an arg.
-        input = s.cmd + (s.hasArg ? ' ' : '');
-        slashPickerOpen = false;
-        tick().then(() => {
-          if (inputEl) {
-            inputEl.focus();
-            const pos = input.length;
-            inputEl.setSelectionRange(pos, pos);
-          }
-        });
-        return true;
-      }
-    }
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      slashPickerOpen = false;
-      return true;
-    }
-    return false;
-  }
+  let slashPickerRef: SlashCommandPicker | undefined = $state();
 
   // aria-live announcements for screen readers + power-user feedback.
   // Slash commands like /rag and /forget have no visual reply (they
@@ -1582,37 +1478,18 @@
   function onInputKey(e: KeyboardEvent) {
     // Mention + slash pickers swallow arrow/enter/tab while open so
     // the user navigates the popup before falling through to
-    // send-on-enter.
+    // send-on-enter. handleKey returns true when the picker swallows
+    // the event; the slash picker also returns false on the
+    // exact-match-Enter case so this fall-through still calls send().
     if (onMentionKey(e)) return;
-    if (slashPickerOpen) {
-      // For Enter on a fully-typed (no-arg) command, fire it via
-      // pickSlash so the picker resolves; for arg-bearing commands
-      // we let Enter fall through to send() which then routes to
-      // handleSlashCommand.
-      if (e.key === 'Enter' && !e.shiftKey) {
-        const sel = slashFiltered[slashSelectedIdx];
-        if (sel && sel.cmd === input.trim().split(/\s+/)[0].toLowerCase()) {
-          // Exact match — let send() handle it (preserves arg flow).
-          slashPickerOpen = false;
-        } else {
-          // Picker pick — autocomplete & maybe fire.
-          if (sel) {
-            e.preventDefault();
-            pickSlash(sel);
-            return;
-          }
-        }
-      } else if (onSlashKey(e)) {
-        return;
-      }
-    }
+    if (slashPickerRef?.handleKey(e)) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void send();
     }
   }
   function onInputChange() {
-    detectSlashTrigger();
+    slashPickerRef?.detectTrigger();
     detectMentionTrigger();
     autosizeInput();
   }
@@ -1644,7 +1521,7 @@
   });
   function onInputClick() {
     // Caret moved without typing — re-evaluate mention/slash context.
-    detectSlashTrigger();
+    slashPickerRef?.detectTrigger();
     detectMentionTrigger();
   }
 
@@ -2323,34 +2200,19 @@
           class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-none disabled:opacity-60 transition-colors {recording ? 'border-error' : ''}"
           style="min-height: 2.5rem;"
         ></textarea>
-        {#if slashPickerOpen}
-          <!-- Slash-command picker. Triggers when input starts with
-               "/" and the caret is in the first token. Same nav UX
-               as the mention picker. Picker is mutually exclusive
-               with the mention picker (slash always wins because
-               the input must start with /). -->
-          <div
-            role="listbox"
-            class="absolute left-0 right-0 bottom-full mb-1 bg-mantle border border-surface1 rounded-lg shadow-xl z-30 max-h-64 overflow-y-auto"
-          >
-            {#each slashFiltered as s, i (s.cmd)}
-              <button
-                type="button"
-                role="option"
-                aria-selected={i === slashSelectedIdx}
-                onmousedown={(e) => { e.preventDefault(); pickSlash(s); }}
-                onmouseenter={() => (slashSelectedIdx = i)}
-                class="w-full flex items-baseline gap-2 px-3 py-1.5 text-left hover:bg-surface0 {i === slashSelectedIdx ? 'bg-surface0' : ''}"
-              >
-                <span class="text-xs font-mono text-primary flex-shrink-0">{s.cmd}</span>
-                {#if s.hasArg}
-                  <span class="text-[10px] text-secondary">+arg</span>
-                {/if}
-                <span class="text-[11px] text-dim truncate flex-1">{s.desc}</span>
-              </button>
-            {/each}
-          </div>
-        {:else if mentionPickerOpen}
+        <!-- Slash-command picker. Mutually exclusive with the mention
+             picker (slash always wins because the input must start
+             with /). The picker hides itself when its open flag is
+             false; the mention picker is wrapped in {:else if} below
+             so they can never both render at once. -->
+        <SlashCommandPicker
+          bind:this={slashPickerRef}
+          bind:value={input}
+          bind:open={slashPickerOpen}
+          {inputEl}
+          onSubmit={() => { void send(); }}
+        />
+        {#if !slashPickerOpen && mentionPickerOpen}
           <!-- @-mention picker. Floats above the composer; arrow
                keys navigate, Enter / Tab picks, Esc dismisses.
                Candidates pulled from a cached entity index loaded
