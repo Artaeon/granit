@@ -1666,12 +1666,12 @@
           onclick={() => (modePickerOpen = !modePickerOpen)}
           aria-haspopup="listbox"
           aria-expanded={modePickerOpen}
-          class="inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-surface0 text-text"
+          class="tap-target inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-surface0 active:bg-surface1 text-text transition-colors"
           title={`Mode: ${mode.label} — ${mode.tagline}`}
         >
           <span class="text-base leading-none">{mode.glyph}</span>
-          <span class="text-sm font-semibold">{mode.label}</span>
-          <svg viewBox="0 0 24 24" class="w-3 h-3 opacity-60" fill="none" stroke="currentColor" stroke-width="2">
+          <span class="text-sm font-semibold truncate max-w-[8rem] sm:max-w-none">{mode.label}</span>
+          <svg viewBox="0 0 24 24" class="w-3 h-3 opacity-60 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="6 9 12 15 18 9" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
@@ -1763,7 +1763,7 @@
         aria-pressed={historyOpen}
         aria-label="Chat history"
         title="Chat history (saved threads + pinned messages)"
-        class="px-1.5 py-1 text-dim hover:text-text {historyOpen ? 'text-primary' : ''}"
+        class="tap-target inline-flex items-center justify-center px-1.5 py-1 rounded text-dim hover:text-text hover:bg-surface0 active:bg-surface1 transition-colors {historyOpen ? 'text-primary bg-primary/10' : ''}"
       >
         <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="9"/>
@@ -1775,7 +1775,7 @@
         onclick={startNewThread}
         aria-label="New thread"
         title="Start a new conversation (current one is saved)"
-        class="px-1.5 py-1 text-dim hover:text-text"
+        class="tap-target inline-flex items-center justify-center px-1.5 py-1 rounded text-dim hover:text-text hover:bg-surface0 active:bg-surface1 transition-colors"
       >
         <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 4v16M4 12h16" stroke-linecap="round"/>
@@ -1784,7 +1784,7 @@
       <button
         onclick={close}
         aria-label="close"
-        class="text-dim hover:text-text px-2 py-1 text-lg leading-none"
+        class="tap-target inline-flex items-center justify-center text-dim hover:text-text hover:bg-surface0 active:bg-surface1 rounded px-2 py-1 text-lg leading-none transition-colors"
       >×</button>
     </header>
 
@@ -1981,14 +1981,14 @@
               <div class="text-[10px] uppercase tracking-wider {m.role === 'user' ? 'text-secondary' : 'text-primary'} mb-0.5 flex items-center gap-2">
                 <span>{m.role === 'user' ? 'you' : 'assistant'}</span>
                 {#if m.role === 'assistant' && m.content && !busy}
-                  <span class="ml-auto inline-flex items-center gap-2">
+                  <span class="ml-auto inline-flex items-center gap-1">
                     <!-- Branch — fork the conversation up to and
                          including this message into a new thread.
                          Original stays in history. -->
                     <button
                       type="button"
                       onclick={() => branchFromMessage(i)}
-                      class="text-dim hover:text-secondary leading-none"
+                      class="tap-target inline-flex items-center justify-center w-7 h-7 rounded text-dim hover:text-secondary hover:bg-surface0 active:bg-surface1 leading-none transition-colors"
                       aria-label="Branch from here"
                       title="Fork the thread from this message into a new conversation"
                     >
@@ -2006,7 +2006,7 @@
                     <button
                       type="button"
                       onclick={() => pinAssistantMessage(i)}
-                      class="text-base leading-none {pinnedIndex[i] ? 'text-warning' : 'text-dim hover:text-warning'} transition-colors"
+                      class="tap-target inline-flex items-center justify-center w-7 h-7 rounded text-base leading-none hover:bg-surface0 active:bg-surface1 transition-colors {pinnedIndex[i] ? 'text-warning' : 'text-dim hover:text-warning'}"
                       aria-pressed={!!pinnedIndex[i]}
                       title={pinnedIndex[i] ? 'Unpin this reply' : 'Pin this reply (find it under History → Pinned)'}
                     >
@@ -2266,7 +2266,7 @@
           onclick={toggleVoice}
           disabled={busy || $sabbath}
           aria-pressed={recording}
-          class="px-3 py-2 text-sm rounded font-medium disabled:opacity-40 inline-flex items-center justify-center transition-colors {recording ? 'bg-error text-white animate-pulse' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary'}"
+          class="tap-target px-3 py-2 text-sm rounded font-medium disabled:opacity-40 inline-flex items-center justify-center transition-colors {recording ? 'bg-error text-white animate-pulse' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary'}"
           title={recording ? 'Stop dictating' : 'Dictate (browser speech-to-text)'}
           aria-label={recording ? 'Stop dictating' : 'Dictate'}
         >
@@ -2279,7 +2279,7 @@
       <button
         type="submit"
         disabled={busy || !input.trim() || $sabbath}
-        class="px-3 py-2 text-sm bg-primary text-on-primary rounded font-medium disabled:opacity-40"
+        class="tap-target px-3 py-2 text-sm bg-primary text-on-primary rounded font-medium disabled:opacity-40 hover:bg-primary/90 active:bg-primary/80 transition-colors"
       >Send</button>
     </form>
   </div>
