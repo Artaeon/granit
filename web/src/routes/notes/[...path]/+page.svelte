@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto, beforeNavigate } from '$app/navigation';
   import { page } from '$app/stores';
-  import { api, type Note } from '$lib/api';
+  import { api, type Note , todayISO } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import Editor from '$lib/editor/Editor.svelte';
   import NotesTree from '$lib/notes/NotesTree.svelte';
@@ -825,7 +825,7 @@
     const body = `${extractRequest.text.trim()}
 
 ---
-*Extracted from [[${sourceTitle}]] on ${new Date().toISOString().slice(0, 10)}*
+*Extracted from [[${sourceTitle}]] on ${todayISO()}*
 `;
     // Frontmatter: title + extraction provenance + optional tags.
     // Tags are written only when present so a no-tag extract doesn't

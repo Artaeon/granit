@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { auth } from '$lib/stores/auth';
-  import { api, type Goal, type Project, type Task } from '$lib/api';
+  import { api, type Goal, type Project, type Task , todayISO } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
@@ -672,7 +672,7 @@
   // Visible only entries (not dismissed) make it in — that's the
   // user's curation step before persistence.
   function checkinAsMarkdown(entries: CheckinEntry[]): string {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     const lines: string[] = [`\n\n## Weekly goal check-in — ${today}\n`];
     for (const e of entries) {
       const verdictTag = e.verdict === 'on-track' ? 'ON-TRACK'

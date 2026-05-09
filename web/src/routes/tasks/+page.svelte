@@ -3,7 +3,7 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
-  import { api, type Task, type Project, type Goal, type Deadline } from '$lib/api';
+  import { api, todayISO, fmtDateISO, type Task, type Project, type Goal, type Deadline } from '$lib/api';
   import { parseTaskInput, smartDate } from '$lib/util/taskParse';
   import { toast } from '$lib/components/toast';
   import { onWsEvent } from '$lib/ws';
@@ -242,7 +242,7 @@
     // to pick from the slice we feed it, not to read the whole
     // graph. Today's date threads in so "due tomorrow" lines up.
     const open = tasks.filter((t) => !t.done).slice(0, 30);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     const focusMinutes = Math.max(30, Math.round(aiFocusHours * 60));
     const lines = open.map((t) => {
       const bits: string[] = [`id:${t.id} — ${t.text}`];
@@ -344,7 +344,7 @@
     if (remainder !== 0) start.setMinutes(m + (15 - remainder), 0, 0);
     else start.setSeconds(0, 0);
     start.setMinutes(start.getMinutes() + earlier);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     try {
       await api.patchTask(p.taskId, {
         scheduledStart: start.toISOString(),
@@ -452,7 +452,7 @@
       toast.info('No stale tasks to evaluate.');
       return;
     }
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     const lines = candidates.map((t) => {
       const ageRef = t.updatedAt ?? t.createdAt ?? '';
       const ageDays = ageRef
@@ -634,13 +634,13 @@
       const today = new Date();
       switch (p.schedule) {
         case 'today': {
-          patch.dueDate = today.toISOString().slice(0, 10);
+          patch.dueDate = fmtDateISO(today);
           break;
         }
         case 'tomorrow': {
           const t = new Date(today);
           t.setDate(t.getDate() + 1);
-          patch.dueDate = t.toISOString().slice(0, 10);
+          patch.dueDate = fmtDateISO(t);
           break;
         }
         case 'this_week': {
@@ -649,13 +649,13 @@
           const dow = t.getDay();
           const daysToSun = (7 - dow) % 7;
           t.setDate(t.getDate() + daysToSun);
-          patch.dueDate = t.toISOString().slice(0, 10);
+          patch.dueDate = fmtDateISO(t);
           break;
         }
         case 'next_week': {
           const t = new Date(today);
           t.setDate(t.getDate() + 7);
-          patch.dueDate = t.toISOString().slice(0, 10);
+          patch.dueDate = fmtDateISO(t);
           break;
         }
         // 'no_date' or anything else → leave dueDate alone.
@@ -1044,7 +1044,7 @@
       // (anything past-due needs to be addressed today by default).
       // Snoozed tasks excluded — if you snoozed a task to tomorrow,
       // it shouldn't crowd today's list.
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayISO();
       out = out.filter((t) => {
         if (t.done || isSnoozed(t)) return false;
         const due = t.dueDate ?? '';
@@ -1210,7 +1210,7 @@
   }
 
   let stats = $derived.by(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     let open = 0, overdue = 0, todayCount = 0, doneToday = 0, snoozed = 0;
     for (const t of tasks) {
       const sn = isSnoozed(t);
@@ -1262,13 +1262,13 @@
       //   later          — beyond 7 days
       // Each group only renders when non-empty.
       const now = new Date();
-      const today = now.toISOString().slice(0, 10);
+      const today = fmtDateISO(now);
       const tmw = new Date(now);
       tmw.setDate(tmw.getDate() + 1);
-      const tomorrow = tmw.toISOString().slice(0, 10);
+      const tomorrow = fmtDateISO(tmw);
       const wk = new Date(now);
       wk.setDate(wk.getDate() + 7);
-      const weekEnd = wk.toISOString().slice(0, 10);
+      const weekEnd = fmtDateISO(wk);
       const b: Record<string, Task[]> = {
         overdue: [], today: [], tomorrow: [], this_week: [], later: [], no_date: []
       };

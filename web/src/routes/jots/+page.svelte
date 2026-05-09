@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
-  import { api, type Jot, type Note } from '$lib/api';
+  import { api, fmtDateISO, type Jot, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
@@ -226,7 +226,7 @@
   function nextDateISO(d: string): string {
     const dt = new Date(d + 'T00:00:00');
     dt.setUTCDate(dt.getUTCDate() + 1);
-    return dt.toISOString().slice(0, 10);
+    return fmtDateISO(dt);
   }
 
   // ── header date formatting ────────────────────────────────────────

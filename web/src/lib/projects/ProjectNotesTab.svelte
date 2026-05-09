@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type Note, type Project } from '$lib/api';
+  import { api, type Note, type Project , todayISO } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import NoteLinkDialog from './NoteLinkDialog.svelte';
 
@@ -165,7 +165,7 @@
     if (creating) return;
     creating = true;
     try {
-      const ts = new Date().toISOString().slice(0, 10);
+      const ts = todayISO();
       const slug = project.name
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { api, type CalendarEvent, type CalendarSource, type Project } from '$lib/api';
+  import { api, type CalendarEvent, type CalendarSource, type Project , todayISO } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { onMount } from 'svelte';
   import { eventStartDate, eventEndDate, fmtTime, eventTypeColor } from './utils';
@@ -453,7 +453,7 @@
 
       // Append a backlink to today's daily — best-effort.
       try {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = todayISO();
         if (date === today) {
           const daily = await api.daily('today');
           const dailyBody = (daily.body ?? '') + `\n- [[${path}|${event.title}]] (meeting)\n`;

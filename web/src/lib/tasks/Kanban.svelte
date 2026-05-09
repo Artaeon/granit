@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, type Task, type AppConfig } from '$lib/api';
+  import { api, todayISO, fmtDateISO, type Task, type AppConfig } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import TaskCard from './TaskCard.svelte';
 
@@ -181,7 +181,7 @@
       ];
     }
     if (mode === 'due') {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayISO();
       const buckets: Record<string, Task[]> = { overdue: [], today: [], upcoming: [], no_date: [], done: [] };
       for (const t of tasks) {
         if (t.done) buckets.done.push(t);
@@ -386,16 +386,16 @@
     if (mode === 'due') {
       if (col.key === 'done') return { done: true };
       if (col.key === 'no_date') return { dueDate: '', done: false };
-      if (col.key === 'today') return { dueDate: new Date().toISOString().slice(0, 10), done: false };
+      if (col.key === 'today') return { dueDate: todayISO(), done: false };
       if (col.key === 'overdue') {
         const d = new Date();
         d.setDate(d.getDate() - 1);
-        return { dueDate: d.toISOString().slice(0, 10), done: false };
+        return { dueDate: fmtDateISO(d), done: false };
       }
       if (col.key === 'upcoming') {
         const d = new Date();
         d.setDate(d.getDate() + 7);
-        return { dueDate: d.toISOString().slice(0, 10), done: false };
+        return { dueDate: fmtDateISO(d), done: false };
       }
       return null;
     }

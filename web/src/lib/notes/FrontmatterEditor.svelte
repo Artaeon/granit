@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { todayISO } from '$lib/api';
+
   let {
     frontmatter,
     onChange
@@ -31,7 +33,7 @@
     { key: 'project', label: 'project', kind: 'string', defaultValue: '' },
     { key: 'venture', label: 'venture', kind: 'string', defaultValue: '' },
     { key: 'goal_id', label: 'goal_id', kind: 'string', defaultValue: '' },
-    { key: 'date', label: 'date', kind: 'date', defaultValue: new Date().toISOString().slice(0, 10) },
+    { key: 'date', label: 'date', kind: 'date', defaultValue: todayISO() },
     { key: 'pinned', label: 'pinned', kind: 'bool', defaultValue: 'true' }
   ];
 

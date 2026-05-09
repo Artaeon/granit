@@ -3,6 +3,7 @@
   import { auth } from '$lib/stores/auth';
   import {
     api,
+    todayISO,
     type FinAccount,
     type FinSubscription,
     type FinIncomeStream,
@@ -194,7 +195,7 @@
     const cents = Math.round(v * 100);
     if (cents === a.balance_cents) return;
     try {
-      await api.finPatchAccount(a.id, { balance_cents: cents, as_of: new Date().toISOString().slice(0, 10) });
+      await api.finPatchAccount(a.id, { balance_cents: cents, as_of: todayISO() });
       await loadAll();
     } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
@@ -335,7 +336,7 @@
         // they haven't already — saves them re-typing the date.
         started_at: incomeForm.status === 'active'
           ? (streams.find((x) => x.id === editingIncomeId)?.started_at
-             || new Date().toISOString().slice(0, 10))
+             || todayISO())
           : undefined
       };
       if (editingIncomeId) {

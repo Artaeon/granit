@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type Goal, type Milestone, type Task } from '$lib/api';
+  import { api, fmtDateISO, type Goal, type Milestone, type Task } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import Drawer from '$lib/components/Drawer.svelte';
   import { inlineMd } from '$lib/util/inlineMd';
@@ -218,7 +218,7 @@
   function todayPlusDays(n: number): string {
     const d = new Date();
     d.setDate(d.getDate() + n);
-    return d.toISOString().slice(0, 10);
+    return fmtDateISO(d);
   }
 
   async function suggestTasks() {
@@ -238,7 +238,7 @@
       const dow = d.getDay(); // 0 Sun … 5 Fri
       const delta = dow <= 5 ? 5 - dow : 7 - dow + 5;
       d.setDate(d.getDate() + (delta === 0 ? 5 : delta));
-      return d.toISOString().slice(0, 10);
+      return fmtDateISO(d);
     })();
 
     const ctx = [

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { api, type Task } from '$lib/api';
+  import { api, type Task , todayISO } from '$lib/api';
   import { inlineMd } from '$lib/util/inlineMd';
   import { cleanTaskText } from '$lib/util/taskParse';
   import { toast } from '$lib/components/toast';
@@ -356,7 +356,7 @@
 
   let dueClass = $derived.by(() => {
     if (!task.dueDate) return 'text-dim';
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     if (task.dueDate < today) return 'text-error';
     if (task.dueDate === today) return 'text-warning';
     return 'text-dim';
@@ -385,7 +385,7 @@
   // Icon char per due-state — nothing fancy, just enough to let the eye
   // distinguish "overdue" (⚠) from "soon" (📅) at a glance.
   function dueIcon(due: string): string {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     if (due < today) return '⚠';
     if (due === today) return '⏰';
     return '📅';
@@ -407,11 +407,11 @@
   // the priority border but signals urgency at a glance.
   let isOverdue = $derived.by(() => {
     if (task.done || !task.dueDate) return false;
-    return task.dueDate < new Date().toISOString().slice(0, 10);
+    return task.dueDate < todayISO();
   });
   let isDueToday = $derived.by(() => {
     if (task.done || !task.dueDate) return false;
-    return task.dueDate === new Date().toISOString().slice(0, 10);
+    return task.dueDate === todayISO();
   });
 </script>
 

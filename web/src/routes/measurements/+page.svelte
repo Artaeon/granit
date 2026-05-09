@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type MeasurementSeries, type MeasurementEntry } from '$lib/api';
+  import { api, type MeasurementSeries, type MeasurementEntry , todayISO } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
@@ -151,7 +151,7 @@
 
   // ── Quick-log: log a value against the selected series ─────────────
   let logValue = $state('');
-  let logDate = $state(new Date().toISOString().slice(0, 10));
+  let logDate = $state(todayISO());
   async function submitLog(seriesId: string) {
     const v = parseFloat(logValue);
     if (!Number.isFinite(v)) return;
@@ -162,7 +162,7 @@
         value: v
       });
       logValue = '';
-      logDate = new Date().toISOString().slice(0, 10);
+      logDate = todayISO();
       toast.success('logged');
       await load();
       if (selectedId === seriesId) await loadDetail(seriesId);

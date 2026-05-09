@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { api, type ChatMessage } from '$lib/api';
+  import { api, type ChatMessage , todayISO } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { classifyAiError } from '$lib/util/aiErrors';
   import PageHeader from '$lib/components/PageHeader.svelte';
@@ -89,7 +89,7 @@
     const title = `Chat ${stamp}`;
     const path = `Chats/${stamp.replace(/[: ]/g, '-')}.md`;
     const body =
-      `---\ntype: chat\ndate: ${new Date().toISOString().slice(0, 10)}\n---\n\n# ${title}\n\n` +
+      `---\ntype: chat\ndate: ${todayISO()}\n---\n\n# ${title}\n\n` +
       messages
         .map((m) => `## ${m.role === 'user' ? 'You' : m.role === 'assistant' ? 'Assistant' : 'System'}\n\n${m.content}`)
         .join('\n\n');

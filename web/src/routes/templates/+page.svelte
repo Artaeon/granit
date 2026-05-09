@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
-  import { api, type NoteTemplate } from '$lib/api';
+  import { api, type NoteTemplate , todayISO } from '$lib/api';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
@@ -43,7 +43,7 @@
       toast.warning('add a title');
       return;
     }
-    const finalTitle = t || `Untitled ${new Date().toISOString().slice(0, 10)}`;
+    const finalTitle = t || `Untitled ${todayISO()}`;
     let path = slugify(finalTitle) + '.md';
     if (folder.trim()) {
       path = folder.trim().replace(/\/+$/, '') + '/' + path;
@@ -66,7 +66,7 @@
   }
 
   // Live preview: substitute {{title}} / {{date}} just like the server will
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
   let previewTitle = $derived(title.trim() || `Untitled ${today}`);
   let preview = $derived.by(() => {
     if (!selected) return '';

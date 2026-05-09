@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { Task } from '$lib/api';
+  import { todayISO, type Task } from '$lib/api';
 
   let { task, compact = false }: { task: Task; compact?: boolean } = $props();
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
 
   function dueClass(d?: string): string {
     if (!d) return 'text-dim';

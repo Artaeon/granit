@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { api, type Project, type Task } from '$lib/api';
+  import { api, type Project, type Task , todayISO } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import ProjectDetail from '$lib/projects/ProjectDetail.svelte';
@@ -256,7 +256,7 @@
       '- Never invent details (no fake names, no fake deadlines). You only know what is in the input.';
 
     const user =
-      `Today is ${new Date().toISOString().slice(0, 10)}. Stalled projects:\n\n` +
+      `Today is ${todayISO()}. Stalled projects:\n\n` +
       '```json\n' +
       JSON.stringify(payload, null, 2) +
       '\n```\n\n' +

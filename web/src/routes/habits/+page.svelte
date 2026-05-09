@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type HabitInfo, type HabitsResponse } from '$lib/api';
+  import { api, type HabitInfo, type HabitsResponse , todayISO } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import Heatmap from '$lib/components/Heatmap.svelte';
@@ -134,7 +134,7 @@
     try {
       // done=false for a fresh "track this" intent (the user hasn't
       // done it today yet, just wants the habit in the list).
-      await api.toggleHabit(name, data?.today ?? new Date().toISOString().slice(0, 10), false);
+      await api.toggleHabit(name, data?.today ?? todayISO(), false);
       addName = '';
       addOpen = false;
       await load();
@@ -163,7 +163,7 @@
   });
 
   async function toggleToday(h: HabitInfo) {
-    await toggleOnDate(h, data?.today ?? new Date().toISOString().slice(0, 10), !h.doneToday);
+    await toggleOnDate(h, data?.today ?? todayISO(), !h.doneToday);
   }
 
   // Click-on-dot retro-toggle. Works for any date, including future

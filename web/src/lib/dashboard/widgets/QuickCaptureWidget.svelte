@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte';
-  import { api, type Note } from '$lib/api';
+  import { api, type Note , todayISO } from '$lib/api';
   import { parseTaskInput } from '$lib/util/taskParse';
   import { toast } from '$lib/components/toast';
   import { goto } from '$app/navigation';
@@ -178,7 +178,7 @@
   }
 
   async function captureNote(title: string) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISO();
     const slug = title
       .toLowerCase()
       .replace(/[^a-z0-9\s-]/g, '')
@@ -378,7 +378,7 @@
       {:else if mode === 'jot'}
         Lands in today's daily note under <code>## Jots</code> with the time stamped.
       {:else}
-        Creates <code>Inbox/{new Date().toISOString().slice(0, 10)}-…md</code> and opens it.
+        Creates <code>Inbox/{todayISO()}-…md</code> and opens it.
       {/if}
       <span class="opacity-60"> · Tab cycles modes</span>
     </p>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api } from '$lib/api';
+  import { api , todayISO } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
 
@@ -22,7 +22,7 @@
   let abort: AbortController | null = null;
 
   // Cache: load on mount if today's briefing was already generated.
-  let today = new Date().toISOString().slice(0, 10);
+  let today = todayISO();
   $effect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);

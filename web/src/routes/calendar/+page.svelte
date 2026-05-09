@@ -968,7 +968,7 @@
       return;
     }
     const today = new Date();
-    const todayISO = today.toISOString().slice(0, 10);
+    const todayISO = fmtDateISO(today);
     // 7-day load summary: count of events landing on each of the
     // next 7 days (including today). Uses the same date-key shape
     // as monthEvents — `date` if set, else first 10 chars of start.
