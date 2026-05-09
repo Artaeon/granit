@@ -142,10 +142,32 @@
   });
 
   // ---- derived lists per view ----
+  //
+  // Performance note: each heavy view (alpha / tags / folders / all)
+  // walks all 5000+ notes and either sorts or buckets them. If we
+  // computed every one of these unconditionally, a single WS-driven
+  // loadAll() would re-run all five derivations synchronously — felt
+  // like a UI freeze when typing in another tab. We now gate each
+  // heavy derivation on `view === ...` so only the visible one
+  // re-runs when notes change. Tab counts use cheap O(1) approximations
+  // (notes.length / pinnedCount) instead of consuming the heavy
+  // derivations — counts only need to be roughly right for the UI cue.
 
-  let pinnedList = $derived.by(() => notes.filter((n) => pinned.has(n.path)));
+  // O(notes) but a single pass with no allocation — much cheaper
+  // than the full filter+derived list when we only need the count
+  // for the tab strip. The Set lookup is O(1).
+  let pinnedCount = $derived.by(() => {
+    let c = 0;
+    for (const n of notes) if (pinned.has(n.path)) c++;
+    return c;
+  });
+  let pinnedList = $derived.by(() => {
+    if (view !== 'pinned') return [];
+    return notes.filter((n) => pinned.has(n.path));
+  });
 
   let recent = $derived.by(() => {
+    if (view !== 'recent') return [];
     return [...notes]
       .sort((a, b) => (a.modTime > b.modTime ? -1 : 1))
       .slice(0, 30);
@@ -161,6 +183,7 @@
   }
 
   let allSorted = $derived.by(() => {
+    if (view !== 'all') return [];
     const arr = notes.filter(passesFolderFilter);
     arr.sort((a, b) => {
       switch (sortKey) {
@@ -185,6 +208,7 @@
   // scan-friendly.
   interface AlphaSection { letter: string; notes: Note[] }
   let alphaSections = $derived.by<AlphaSection[]>(() => {
+    if (view !== 'alpha') return [];
     const buckets = new Map<string, Note[]>();
     for (const n of notes) {
       const first = (n.title || n.path).trim().charAt(0).toUpperCase();
@@ -216,6 +240,7 @@
   // card so they aren't invisible.
   interface FolderCard { name: string; count: number; recentTitle: string; recentModTime: string; isRoot: boolean }
   let folderCards = $derived.by<FolderCard[]>(() => {
+    if (view !== 'folders') return [];
     const buckets = new Map<string, { notes: Note[]; isRoot: boolean }>();
     for (const n of notes) {
       const slash = n.path.indexOf('/');
@@ -247,6 +272,29 @@
     return out;
   });
 
+  // Cheap O(n) counts for the tab strip — single pass, no allocation,
+  // no sorting. These avoid forcing the heavy folderCards / tagSections
+  // / alphaSections derivations to run when the user isn't viewing
+  // them. The only state we actually need for the tab badge is the
+  // unique-bucket count, which we get without materializing buckets.
+  let folderCount = $derived.by(() => {
+    const seen = new Set<string>();
+    for (const n of notes) {
+      const slash = n.path.indexOf('/');
+      seen.add(slash === -1 ? '__root__' : n.path.slice(0, slash));
+    }
+    return seen.size;
+  });
+  let tagCount = $derived.by(() => {
+    const seen = new Set<string>();
+    let hasUntagged = false;
+    for (const n of notes) {
+      if (n.tags && n.tags.length > 0) seen.add(n.tags[0]);
+      else hasUntagged = true;
+    }
+    return seen.size + (hasUntagged ? 1 : 0);
+  });
+
   // Tag-grouped view — bucket each note under its primary tag (the
   // first entry in `note.tags`). Notes without tags collect under a
   // single "untagged" bucket that sorts last so the meaningful tags
@@ -256,6 +304,7 @@
   // big tag jumps to the top, ties resolve predictably.
   interface TagSection { tag: string; notes: Note[]; untagged: boolean }
   let tagSections = $derived.by<TagSection[]>(() => {
+    if (view !== 'tags') return [];
     const buckets = new Map<string, Note[]>();
     let untagged: Note[] = [];
     for (const n of notes) {
@@ -385,7 +434,7 @@
     <div class="flex items-center justify-between gap-3 mb-3">
       <div class="min-w-0">
         <h1 class="text-xl sm:text-2xl font-semibold text-text truncate">Notes</h1>
-        <p class="text-xs text-dim mt-0.5">{notes.length} notes · {pinnedList.length} pinned</p>
+        <p class="text-xs text-dim mt-0.5">{notes.length} notes · {pinnedCount} pinned</p>
       </div>
       <button
         onclick={() => (createOpen = true)}
@@ -422,13 +471,18 @@
         aria-label="view"
       >
         {#each [
-          { id: 'recent' as View, label: 'Recent', count: recent.length },
-          { id: 'pinned' as View, label: 'Pinned', count: pinnedList.length },
+          // Counts are cheap O(n) approximations — they intentionally
+          // do NOT consume the heavy view derivations (recent /
+          // pinnedList / alphaSections / tagSections / folderCards).
+          // Those only run when the user actually opens that view.
+          // 'Recent' caps at 30, so notes.length<30 we show n, else 30.
+          { id: 'recent' as View, label: 'Recent', count: Math.min(30, notes.length) },
+          { id: 'pinned' as View, label: 'Pinned', count: pinnedCount },
           { id: 'tree' as View, label: 'Tree', count: notes.length },
           { id: 'all' as View, label: 'All', count: notes.length },
           { id: 'alpha' as View, label: 'A–Z', count: notes.length },
-          { id: 'tags' as View, label: 'Tags', count: tagSections.length },
-          { id: 'folders' as View, label: 'Folders', count: folderCards.length },
+          { id: 'tags' as View, label: 'Tags', count: tagCount },
+          { id: 'folders' as View, label: 'Folders', count: folderCount },
           ...(q.trim() ? [{ id: 'search' as View, label: 'Search', count: searchResults.length }] : [])
         ] as t}
           <button
