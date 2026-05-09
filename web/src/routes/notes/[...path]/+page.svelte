@@ -10,6 +10,7 @@
   import BacklinksPanel from '$lib/notes/BacklinksPanel.svelte';
   import AnnotationsPanel from '$lib/notes/AnnotationsPanel.svelte';
   import ConcordancePanel from '$lib/notes/ConcordancePanel.svelte';
+  import SentenceStatsPanel from '$lib/notes/SentenceStatsPanel.svelte';
   import LocalGraph from '$lib/notes/LocalGraph.svelte';
   import FrontmatterEditor from '$lib/notes/FrontmatterEditor.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
@@ -1445,6 +1446,21 @@
           Word frequencies
         </h3>
         <ConcordancePanel body={body} onJumpToWord={jumpToWord} />
+      </section>
+      <!-- Sentence rhythm — diagnostic for prose music. Surfaces
+           the average sentence length, distribution across five
+           literary bands (terse / medium / long / heavy / run-on),
+           and a "rhythm" signal flagging monotone writing. Long-
+           sentence offenders are clickable for in-place revision. -->
+      <section>
+        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+            <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            <path d="M8 12h2M12 12h2M16 12h2"/>
+          </svg>
+          Sentence rhythm
+        </h3>
+        <SentenceStatsPanel body={body} onJumpToLine={jumpToLine} />
       </section>
       <!-- Reference note: pin any note to read alongside while
            writing. The classic research move — paper open in one
