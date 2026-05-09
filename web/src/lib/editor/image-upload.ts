@@ -22,6 +22,7 @@
 
 import { EditorView } from '@codemirror/view';
 import { EditorSelection, type ChangeSpec } from '@codemirror/state';
+import { errorMessage } from '$lib/util/errorMessage';
 
 const TOKEN_KEY = 'everything.token';
 

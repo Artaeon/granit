@@ -17,31 +17,36 @@
 
 import { readable, type Readable } from 'svelte/store';
 
-interface MediaQueryListLegacy extends MediaQueryList {
-  /** Pre-2018 Safari + IE. Deprecated but still in some browsers
-   *  (Linux WebKit forks, older Android). */
-  addListener?(fn: (e: MediaQueryListEvent) => void): void;
-  removeListener?(fn: (e: MediaQueryListEvent) => void): void;
-}
+// Pre-2018 Safari + IE shape — `addListener`/`removeListener` are
+// deprecated but still in some browsers (Linux WebKit forks, older
+// Android). We can't extend `MediaQueryList` because the lib.dom
+// types declare these as required (different signature than ours);
+// a structural fallback type lets us probe at runtime without
+// fighting the built-in declaration.
+type LegacyMql = {
+  addListener?: (fn: (e: MediaQueryListEvent) => void) => void;
+  removeListener?: (fn: (e: MediaQueryListEvent) => void) => void;
+};
 
 export function mediaQuery(query: string): Readable<boolean> {
   return readable<boolean>(false, (set) => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return () => {};
     }
-    const mql = window.matchMedia(query) as MediaQueryListLegacy;
+    const mql = window.matchMedia(query);
+    const legacy = mql as unknown as LegacyMql;
     set(mql.matches);
     const handler = (e: MediaQueryListEvent) => set(e.matches);
     if (typeof mql.addEventListener === 'function') {
       mql.addEventListener('change', handler);
     } else {
-      mql.addListener?.(handler);
+      legacy.addListener?.(handler);
     }
     return () => {
       if (typeof mql.removeEventListener === 'function') {
         mql.removeEventListener('change', handler);
       } else {
-        mql.removeListener?.(handler);
+        legacy.removeListener?.(handler);
       }
     };
   });
