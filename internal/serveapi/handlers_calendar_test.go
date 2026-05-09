@@ -1,11 +1,21 @@
 package serveapi
 
 import (
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/artaeon/granit/internal/daily"
 	"github.com/artaeon/granit/internal/granitmeta"
+	"github.com/artaeon/granit/internal/tasks"
+	"github.com/artaeon/granit/internal/vault"
+	"github.com/artaeon/granit/internal/wshub"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // TestExpandAllDayDates pins the multi-day all-day expansion contract.
@@ -169,4 +179,151 @@ func TestApplyTimedOverride(t *testing.T) {
 			}
 		})
 	}
+}
+
+// calendarTestServer wires the minimum Server surface needed to drive
+// handleCalendar end-to-end (events.json round-trip + GET /calendar).
+// Mirrors metaTestServer's shape but mounts the calendar route too.
+func calendarTestServer(t *testing.T) (*Server, http.Handler) {
+	t.Helper()
+	root := t.TempDir()
+	v, err := vault.NewVault(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := tasks.Load(root, func() []tasks.NoteContent { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.Default()
+	s := &Server{
+		cfg: Config{
+			Vault:     v,
+			TaskStore: store,
+			Daily:     daily.DailyConfig{Template: daily.DefaultConfig().Template},
+			Logger:    logger,
+		},
+		hub: wshub.New(logger),
+	}
+	r := chi.NewRouter()
+	r.Get("/api/v1/calendar", s.handleCalendar)
+	return s, r
+}
+
+// TestCalendar_FloatingWallClockEmit pins the timezone-floating contract
+// for native events.json. Reproduces the user-reported regression: on a
+// UTC server with a UTC+2 client, an event entered at 08:00–16:00 was
+// rendered at 10:00–18:00 because the server (1) parsed the stored
+// wall-clock as time.Local (UTC) and (2) emitted with time.RFC3339
+// ("...Z"), which the browser then re-converted to local time, adding
+// the +2hr offset on top of numbers that were never zoned to begin with.
+//
+// The fix: events.json carries wall-clock numbers (no zone). Parse them
+// in time.UTC (treat as zone-free) and emit a floating ISO string
+// without the trailing Z so `new Date(...)` in the browser parses it
+// as the client's local zone — 08:00 in JSON → 08:00 on the grid,
+// regardless of server or client offset.
+//
+// The test simulates a UTC+2 browser by re-parsing the emit in a
+// FixedZone(+02:00) and asserting the wall-clock hour is the same
+// number the user typed. A developer running on a UTC machine sees
+// the same assertion fire either way: the contract is "wall-clock
+// digits survive intact through the emit", not "the digits match
+// the developer's local zone".
+func TestCalendar_FloatingWallClockEmit(t *testing.T) {
+	s, h := calendarTestServer(t)
+
+	// Persist an 08:00–16:00 event the way the API would have written it.
+	ev := granitmeta.Event{
+		ID:        "evt-floating",
+		Title:     "Deep work",
+		Date:      "2026-05-09",
+		StartTime: "08:00",
+		EndTime:   "16:00",
+	}
+	if err := granitmeta.WriteEvents(s.cfg.Vault.Root, []granitmeta.Event{ev}); err != nil {
+		t.Fatalf("WriteEvents: %v", err)
+	}
+
+	// Hit GET /api/v1/calendar like the web client would.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/calendar?from=2026-05-09&to=2026-05-09", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("calendar: %d %s", w.Code, w.Body.String())
+	}
+
+	var out struct {
+		Events []calendarEvent `json:"events"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	var got *calendarEvent
+	for i := range out.Events {
+		if out.Events[i].EventID == "evt-floating" {
+			got = &out.Events[i]
+			break
+		}
+	}
+	if got == nil {
+		t.Fatalf("event not found in feed; got %d events", len(out.Events))
+	}
+	if got.Start == nil || got.End == nil {
+		t.Fatalf("expected start+end timestamps, got %+v", got)
+	}
+
+	// Contract 1: emitted strings must be floating — no zone designator.
+	// `Z` (UTC), `+HH:MM` (offset) both make the browser anchor the time
+	// to a specific instant, then re-render in client-local — which is
+	// the round-trip that produced the +2hr drift.
+	for _, s := range []string{*got.Start, *got.End} {
+		if endsWith(s, "Z") {
+			t.Errorf("emit must not be UTC-flavoured (trailing Z): %q", s)
+		}
+		if hasOffset(s) {
+			t.Errorf("emit must not carry a numeric offset: %q", s)
+		}
+	}
+
+	// Contract 2: simulate `new Date(start)` running in a UTC+2 browser.
+	// A floating ISO string ("2026-05-09T08:00:00") is parsed by JS
+	// engines as the client's local zone. We model that by parsing the
+	// string in a +02:00 location and asserting the wall-clock hour is
+	// the same number the user typed — 8, not 10.
+	vienna := time.FixedZone("UTC+2", 2*60*60)
+	startInBrowser, err := time.ParseInLocation("2006-01-02T15:04:05", *got.Start, vienna)
+	if err != nil {
+		t.Fatalf("client-side parse failed; the emit format isn't floating: %v\nvalue=%q", err, *got.Start)
+	}
+	if h := startInBrowser.Hour(); h != 8 {
+		t.Errorf("UTC+2 browser sees start hour %d, want 8 (the wall-clock the user typed)", h)
+	}
+	endInBrowser, err := time.ParseInLocation("2006-01-02T15:04:05", *got.End, vienna)
+	if err != nil {
+		t.Fatalf("client-side end parse failed: %v\nvalue=%q", err, *got.End)
+	}
+	if h := endInBrowser.Hour(); h != 16 {
+		t.Errorf("UTC+2 browser sees end hour %d, want 16", h)
+	}
+}
+
+// endsWith / hasOffset are local helpers used by the floating-emit test.
+// Kept inline (not pulled into utils) so the test's intent is obvious
+// at the call site.
+func endsWith(s, suffix string) bool {
+	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
+}
+func hasOffset(s string) bool {
+	// A floating ISO string ends in seconds (digit). RFC3339 with
+	// offset ends in "+HH:MM" or "-HH:MM" — we look for the sign in
+	// the last 6 chars to avoid matching the "-" inside the date.
+	if len(s) < 6 {
+		return false
+	}
+	tail := s[len(s)-6:]
+	return (tail[0] == '+' || tail[0] == '-') && tail[3] == ':'
 }

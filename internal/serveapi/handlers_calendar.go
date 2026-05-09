@@ -347,10 +347,22 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				if hasOvr {
 					ce.OverrideKey = ovrKey
 				}
-				sStr := occStart.Format(time.RFC3339)
+				// Floating ISO emit (no Z, no offset). The browser
+				// parses "2006-01-02T15:04:05" as the CLIENT's local
+				// zone, so the wall-clock numbers the user typed
+				// (events.json HH:MM) round-trip cleanly to the grid
+				// regardless of server or client timezone.
+				// time.RFC3339 would attach the parser's zone offset
+				// to the string — on a UTC server that's "Z", which
+				// the browser then converts back into local time and
+				// adds the offset, producing the +2hr drift the user
+				// reported. ICS events keep their RFC3339 emit (see
+				// the ICS branch below) because they carry real
+				// instants with their own TZID semantics.
+				sStr := occStart.Format("2006-01-02T15:04:05")
 				ce.Start = &sStr
 				if !occEnd.IsZero() {
-					eStr := occEnd.Format(time.RFC3339)
+					eStr := occEnd.Format("2006-01-02T15:04:05")
 					ce.End = &eStr
 					ce.DurationMinutes = int(occEnd.Sub(occStart).Minutes())
 				}
