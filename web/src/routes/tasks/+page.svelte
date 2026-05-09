@@ -19,6 +19,7 @@
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { saveProposals, loadProposals } from '$lib/util/proposalCache';
   import { extractJsonBlock } from '$lib/util/jsonExtract';
+  import { buildPlanDayPrompt, validatePlanItems, roundUpTo15Min, type PlanItem } from '$lib/tasks/aiPrompts';
 
   type View = 'list' | 'kanban' | 'today' | 'triage' | 'inbox' | 'stale' | 'quickwins' | 'review';
   type Group = 'due' | 'priority' | 'note' | 'project' | 'tag' | 'goal' | 'deadline';
@@ -153,12 +154,6 @@
   //
   // Goes through chatStream so it joins the audit rollup, sabbath
   // gate, redaction, cost tracking. NEVER bypass.
-  type PlanItem = {
-    taskId: string;
-    order: number;
-    estimateMinutes: number;
-    rationale: string;
-  };
   let aiFocusBusy = $state(false);
   let aiFocusError = $state('');
   let aiFocusResponse = $state('');
@@ -182,37 +177,7 @@
     aiFocusPlan = [];
     aiFocusSkipped = '';
     aiFocusAbort = new AbortController();
-    // Compose a context blob with up to ~30 open tasks. Cap so a
-    // huge backlog doesn't blow the prompt size; the AI's job is
-    // to pick from the slice we feed it, not to read the whole
-    // graph. Today's date threads in so "due tomorrow" lines up.
-    const open = tasks.filter((t) => !t.done).slice(0, 30);
-    const today = todayISO();
-    const focusMinutes = Math.max(30, Math.round(aiFocusHours * 60));
-    const lines = open.map((t) => {
-      const bits: string[] = [`id:${t.id} — ${t.text}`];
-      if (t.priority) bits.push(`p${t.priority}`);
-      if (t.dueDate) bits.push(`due ${t.dueDate}`);
-      if (t.scheduledStart) bits.push(`scheduled ${t.scheduledStart.slice(0, 10)}`);
-      if (t.estimatedMinutes) bits.push(`est ${t.estimatedMinutes}m`);
-      return bits.join(' · ');
-    }).join('\n');
-    // SHARP system prompt. The point: refuse the "everything is
-    // important" trap. Force prioritisation. Name what to do FIRST.
-    const system =
-      'You are a calm, ruthless planning partner. Your job: build a realistic plan for ONE day, not a wishlist. ' +
-      'Hard rules: ' +
-      '(1) Pick 3-7 tasks max. Fewer is better when the user has limited focus. ' +
-      '(2) Sum of estimateMinutes MUST fit within the focus_minutes budget. If the budget is tight, drop tasks — do not shrink estimates to fake fit. ' +
-      '(3) Order by what unlocks the day: anything overdue or due-today goes first, then the highest-leverage deep-work item while attention is fresh, admin/quick-wins last. ' +
-      '(4) Each rationale must be ONE sentence under 18 words, naming WHY this task NOW (not generic praise). Examples of GOOD rationales: "Overdue two days — close the loop before the standup at 10."; "Deep-work block while you\'re fresh — the report is the bottleneck for Friday\'s review."; "30-min admin task — slot at the energy dip after lunch." ' +
-      '(5) If a task lacks an estimate, give your best 15/30/60 min guess based on the title. ' +
-      '(6) Output STRICT JSON ONLY, no markdown fences, no preamble. Schema: ' +
-      '{"plan":[{"taskId":"<exact id from list>","order":1,"estimateMinutes":30,"rationale":"…"}],"skipped_reasons":"<one sentence on what you cut and why, or empty>"}.';
-    const userMessage =
-      `Today is ${today}. The user has roughly ${aiFocusHours} hour${aiFocusHours === 1 ? '' : 's'} (~${focusMinutes} minutes) of focus time today. ` +
-      'Build a plan from their open tasks below. Use the EXACT taskId values in the JSON; do not invent new ones.\n\n' +
-      'Open tasks:\n\n' + lines;
+    const { system, user: userMessage } = buildPlanDayPrompt(tasks, todayISO(), aiFocusHours);
     try {
       await api.chatStream(
         [
@@ -229,21 +194,15 @@
             // model populate the panel before the stream officially
             // finishes.
             const block = extractJsonBlock(aiFocusResponse);
-            if (block) {
-              try {
-                const parsed = JSON.parse(block) as { plan?: PlanItem[]; skipped_reasons?: string };
-                if (Array.isArray(parsed.plan)) {
-                  // Validate each item has a taskId that exists in
-                  // the open list. Drop hallucinated IDs silently.
-                  const valid = parsed.plan
-                    .filter((p) => p && typeof p.taskId === 'string' && tasks.some((t) => t.id === p.taskId))
-                    .sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
-                  aiFocusPlan = valid;
-                  aiFocusSkipped = typeof parsed.skipped_reasons === 'string' ? parsed.skipped_reasons : '';
-                }
-              } catch {
-                // Partial JSON — wait for more chunks.
+            if (!block) return;
+            try {
+              const parsed = JSON.parse(block) as { plan?: PlanItem[]; skipped_reasons?: string };
+              if (Array.isArray(parsed.plan)) {
+                aiFocusPlan = validatePlanItems(parsed.plan, tasks);
+                aiFocusSkipped = typeof parsed.skipped_reasons === 'string' ? parsed.skipped_reasons : '';
               }
+            } catch {
+              // Partial JSON — wait for more chunks.
             }
           },
           onError: (err) => { aiFocusError = err.message; }
@@ -281,13 +240,7 @@
     const earlier = aiFocusPlan
       .filter((x) => (x.order ?? 99) < (p.order ?? 99))
       .reduce((sum, x) => sum + Math.max(15, x.estimateMinutes || 30), 0);
-    const start = new Date();
-    // Round up to the next 15-minute boundary so the schedule reads
-    // as 09:15 / 09:30 / 09:45 etc rather than awkward 09:07 stamps.
-    const m = start.getMinutes();
-    const remainder = m % 15;
-    if (remainder !== 0) start.setMinutes(m + (15 - remainder), 0, 0);
-    else start.setSeconds(0, 0);
+    const start = roundUpTo15Min(new Date());
     start.setMinutes(start.getMinutes() + earlier);
     const today = todayISO();
     try {
