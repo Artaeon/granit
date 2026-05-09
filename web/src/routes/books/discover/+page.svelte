@@ -1,49 +1,50 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type BookDiscoverResult, type BookDiscoverSource } from '$lib/api';
+  import {
+    api,
+    type BookDiscoverResult,
+    type BookDiscoverSource,
+    type BookDiscoverWarning
+  } from '$lib/api';
   import { errorMessage } from '$lib/util/errorMessage';
   import { toast } from '$lib/components/toast';
-  import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
 
-  // Discover — search Project Gutenberg + Standard Ebooks (legal,
-  // public-domain or hand-typeset open content) and one-click
-  // import into <vault>/Books/. The shelf at /books picks the
-  // imported file up automatically via the WS state.changed
-  // broadcast the import handler emits.
+  // Discover — search Project Gutenberg and one-click import into
+  // <vault>/Books/. The shelf at /books picks the imported file up
+  // automatically via the state.changed WS broadcast the import
+  // handler emits.
   //
-  // Why no auto-search-on-load: the catalogues span ~70k titles;
+  // Standard Ebooks used to be a second source here but they put
+  // their full catalogue OPDS feeds behind a paid Patrons Circle
+  // membership in 2026 (every /opds/* endpoint now returns 401 to
+  // unauthenticated callers). Until we add an auth surface for
+  // their credentials, only Project Gutenberg is wired up.
+  //
+  // Why no auto-search-on-load: the catalogue spans ~70k titles;
   // a default query would be either misleading or arbitrary. Empty
-  // search → suggested-query chips ("Marcus Aurelius", "Austen",
-  // "Tolstoy") so the user has obvious starting points without
-  // pretending to "browse the catalog".
+  // search → suggested-query chips so the user has obvious starting
+  // points without pretending to "browse the catalog".
 
   type Source = BookDiscoverSource;
-
-  // Persist the user's source filter so a return visit reopens
-  // with their preferred subset (default: both sources on).
-  const SOURCE_KEY = 'granit.books.discover.sources';
-  const DEFAULT_ENABLED: Set<Source> = new Set(['gutenberg', 'standardebooks']);
-  function loadSources(): Set<Source> {
-    const raw = loadStoredString(SOURCE_KEY, '');
-    if (!raw) return new Set(DEFAULT_ENABLED);
-    const list = raw.split(',').filter((s): s is Source =>
-      s === 'gutenberg' || s === 'standardebooks'
-    );
-    return list.length > 0 ? new Set(list) : new Set(DEFAULT_ENABLED);
-  }
-  let enabled = $state<Set<Source>>(loadSources());
-  $effect(() => saveStoredString(SOURCE_KEY, [...enabled].join(',')));
 
   let q = $state('');
   let busy = $state(false);
   let error = $state('');
   let results = $state<BookDiscoverResult[]>([]);
+  let warnings = $state<BookDiscoverWarning[]>([]);
   let searched = $state(false);
   let importingId = $state<string | null>(null); // source+externalId of the in-flight import
+
+  // Frontend-side import timeout. The backend caps each download at
+  // 120 s, so 150 s on the client guarantees we never out-wait the
+  // server (the spinner can't get stuck if the server returned).
+  // Implemented as a hard AbortController fallback in case the fetch
+  // promise never settles (proxy mid-flight, browser tab throttled).
+  const IMPORT_HARD_TIMEOUT_MS = 150 * 1000;
 
   const SUGGESTIONS = [
     'Pride and Prejudice',
@@ -60,11 +61,8 @@
     const term = q.trim();
     if (!term) {
       results = [];
+      warnings = [];
       searched = false;
-      return;
-    }
-    if (enabled.size === 0) {
-      error = 'Pick at least one source';
       return;
     }
     busy = true;
@@ -72,13 +70,15 @@
     searched = true;
     try {
       const r = await api.discoverBooks(term, {
-        sources: [...enabled],
+        sources: ['gutenberg'],
         limit: 30
       });
       results = r.results;
+      warnings = r.warnings ?? [];
     } catch (e) {
       error = errorMessage(e);
       results = [];
+      warnings = [];
     } finally {
       busy = false;
     }
@@ -88,6 +88,18 @@
     const key = r.source + ':' + r.externalId;
     if (importingId) return;
     importingId = key;
+
+    // Guarantee the spinner can't outlive the request. If the
+    // backend returns successfully, we resolve well before this fires.
+    const timer = setTimeout(() => {
+      if (importingId === key) {
+        importingId = null;
+        toast.error(
+          `Import timed out after ${Math.round(IMPORT_HARD_TIMEOUT_MS / 1000)}s. The download server may be slow — try again, or pick a different result.`
+        );
+      }
+    }, IMPORT_HARD_TIMEOUT_MS);
+
     try {
       const sum = await api.importBook({
         source: r.source,
@@ -100,15 +112,11 @@
     } catch (e) {
       toast.error('Import failed: ' + errorMessage(e));
     } finally {
-      importingId = null;
+      clearTimeout(timer);
+      // Only clear if our key still owns it (the timeout fallback
+      // may have already cleared it on a slow request).
+      if (importingId === key) importingId = null;
     }
-  }
-
-  function toggleSource(s: Source) {
-    const next = new Set(enabled);
-    if (next.has(s)) next.delete(s);
-    else next.add(s);
-    enabled = next;
   }
 
   function onKey(e: KeyboardEvent) {
@@ -129,16 +137,12 @@
       : { label: 'Standard Ebooks',   cls: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-200' };
   }
 
-  // Group results by source so the user sees clusters (and a
-  // header with the source name) rather than a scrambled grid.
-  let grouped = $derived.by(() => {
-    const map: Record<Source, BookDiscoverResult[]> = {
-      gutenberg: [],
-      standardebooks: []
-    };
-    for (const r of results) map[r.source].push(r);
-    return map;
-  });
+  function warningCopy(w: BookDiscoverWarning): string {
+    if (w.source === 'standardebooks') {
+      return 'Standard Ebooks moved their catalogue feed behind a paid Patrons Circle subscription — search and import are unavailable in this version.';
+    }
+    return w.message;
+  }
 
   onMount(() => {
     if (!$auth) return;
@@ -166,38 +170,34 @@
   </PageHeader>
 
   <!-- Search row -->
-  <div class="mt-2 flex flex-col sm:flex-row gap-3">
-    <div class="flex-1 flex gap-2">
-      <input
-        type="search"
-        bind:value={q}
-        onkeydown={onKey}
-        placeholder="Search by title, author, subject…"
-        class="flex-1 px-3 py-2 bg-surface0 border border-surface1 rounded text-text placeholder:text-dim focus:outline-none focus:border-primary"
-        autocomplete="off"
-      />
-      <button
-        onclick={search}
-        disabled={busy || !q.trim()}
-        class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {busy ? 'Searching…' : 'Search'}
-      </button>
-    </div>
-    <div class="flex gap-2 flex-wrap">
-      {#each [{ id: 'gutenberg' as Source, label: 'Gutenberg' }, { id: 'standardebooks' as Source, label: 'Standard Ebooks' }] as s (s.id)}
-        <label class="flex items-center gap-1.5 text-sm px-3 py-2 bg-surface0 border border-surface1 rounded cursor-pointer hover:border-primary {enabled.has(s.id) ? 'border-primary text-text' : 'text-dim'}">
-          <input
-            type="checkbox"
-            checked={enabled.has(s.id)}
-            onchange={() => toggleSource(s.id)}
-            class="accent-primary"
-          />
-          {s.label}
-        </label>
+  <div class="mt-2 flex gap-2">
+    <input
+      type="search"
+      bind:value={q}
+      onkeydown={onKey}
+      placeholder="Search Project Gutenberg by title, author, or subject…"
+      class="flex-1 px-3 py-2 bg-surface0 border border-surface1 rounded text-text placeholder:text-dim focus:outline-none focus:border-primary"
+      autocomplete="off"
+    />
+    <button
+      onclick={search}
+      disabled={busy || !q.trim()}
+      class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {busy ? 'Searching…' : 'Search'}
+    </button>
+  </div>
+
+  {#if warnings.length > 0}
+    <div class="mt-3 space-y-2">
+      {#each warnings as w (w.source)}
+        <div class="bg-warning/10 border border-warning/30 text-warning rounded p-2.5 text-xs">
+          <span class="font-medium">{sourceBadge(w.source).label}:</span>
+          {warningCopy(w)}
+        </div>
       {/each}
     </div>
-  </div>
+  {/if}
 
   {#if !searched && !error}
     <div class="mt-8">
@@ -214,7 +214,6 @@
       </div>
       <div class="mt-12 max-w-2xl text-sm text-dim space-y-2">
         <p><strong class="text-text">Project Gutenberg</strong> — ~70 000 titles, mostly classics in the public domain. Format quality varies, but coverage is unmatched.</p>
-        <p><strong class="text-text">Standard Ebooks</strong> — ~600 carefully typeset editions of public-domain works. The reading experience matches a hardcover. <a href="https://standardebooks.org/about" target="_blank" class="underline hover:text-text">Learn more →</a></p>
         <p class="pt-3 text-xs">Imported books land in <code class="text-text bg-surface0 px-1 py-0.5 rounded">&lt;vault&gt;/Books/</code> and appear on your shelf immediately.</p>
       </div>
     </div>
@@ -245,84 +244,71 @@
       description="Try a different keyword, or toggle a source above. Title and author both work — Standard Ebooks also matches on subject."
     />
   {:else if results.length > 0}
-    <div class="mt-6 space-y-8">
-      {#each (['gutenberg', 'standardebooks'] as Source[]) as src (src)}
-        {#if grouped[src].length > 0}
-          <section>
-            <header class="flex items-center gap-2 mb-3">
-              <h2 class="text-sm font-medium text-text">
-                {src === 'gutenberg' ? 'Project Gutenberg' : 'Standard Ebooks'}
-              </h2>
-              <span class="text-xs text-dim">{grouped[src].length} result{grouped[src].length === 1 ? '' : 's'}</span>
-            </header>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {#each grouped[src] as r (r.source + r.externalId)}
-                <article class="flex gap-3 p-3 border border-surface1 rounded-lg bg-surface0/50 hover:bg-surface0 transition-colors">
-                  <div class="w-20 h-28 flex-shrink-0 bg-surface1 rounded overflow-hidden flex items-center justify-center">
-                    {#if r.coverUrl}
-                      <img
-                        src={r.coverUrl}
-                        alt=""
-                        class="w-full h-full object-cover"
-                        loading="lazy"
-                        referrerpolicy="no-referrer"
-                        onerror={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
-                    {:else}
-                      <span class="text-dim text-xs px-1 text-center font-serif">{r.title.slice(0, 20)}</span>
-                    {/if}
-                  </div>
-                  <div class="flex-1 min-w-0 flex flex-col">
-                    <span
-                      class="self-start text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded {sourceBadge(r.source).cls} mb-1"
-                    >
-                      {sourceBadge(r.source).label}
-                    </span>
-                    <h3 class="text-sm font-medium leading-snug line-clamp-2" title={r.title}>{r.title}</h3>
-                    {#if r.authors && r.authors.length > 0}
-                      <p class="text-xs text-subtext line-clamp-1 mt-0.5">{r.authors.join(', ')}</p>
-                    {/if}
-                    {#if r.description}
-                      <p class="text-xs text-dim line-clamp-3 mt-1.5 leading-snug">{r.description}</p>
-                    {/if}
-                    <div class="mt-auto pt-2 flex items-center gap-2">
-                      <button
-                        onclick={() => importResult(r)}
-                        disabled={importingId !== null}
-                        class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {importingId === r.source + ':' + r.externalId ? 'Saving…' : '+ Add'}
-                      </button>
-                      {#if r.externalUrl}
-                        <a
-                          href={r.externalUrl}
-                          target="_blank"
-                          rel="noopener"
-                          class="text-xs px-2.5 py-1 text-dim hover:text-text"
-                        >
-                          Source ↗
-                        </a>
-                      {/if}
-                    </div>
-                  </div>
-                </article>
-              {/each}
+    <div class="mt-6">
+      <header class="flex items-center gap-2 mb-3">
+        <h2 class="text-sm font-medium text-text">Project Gutenberg</h2>
+        <span class="text-xs text-dim">{results.length} result{results.length === 1 ? '' : 's'}</span>
+      </header>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {#each results as r (r.source + r.externalId)}
+          <article class="flex gap-3 p-3 border border-surface1 rounded-lg bg-surface0/50 hover:bg-surface0 transition-colors">
+            <div class="w-20 h-28 flex-shrink-0 bg-surface1 rounded overflow-hidden flex items-center justify-center">
+              {#if r.coverUrl}
+                <img
+                  src={r.coverUrl}
+                  alt=""
+                  class="w-full h-full object-cover"
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                  onerror={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              {:else}
+                <span class="text-dim text-xs px-1 text-center font-serif">{r.title.slice(0, 20)}</span>
+              {/if}
             </div>
-          </section>
-        {/if}
-      {/each}
+            <div class="flex-1 min-w-0 flex flex-col">
+              <span
+                class="self-start text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded {sourceBadge(r.source).cls} mb-1"
+              >
+                {sourceBadge(r.source).label}
+              </span>
+              <h3 class="text-sm font-medium leading-snug line-clamp-2" title={r.title}>{r.title}</h3>
+              {#if r.authors && r.authors.length > 0}
+                <p class="text-xs text-subtext line-clamp-1 mt-0.5">{r.authors.join(', ')}</p>
+              {/if}
+              {#if r.description}
+                <p class="text-xs text-dim line-clamp-3 mt-1.5 leading-snug">{r.description}</p>
+              {/if}
+              <div class="mt-auto pt-2 flex items-center gap-2">
+                <button
+                  onclick={() => importResult(r)}
+                  disabled={importingId !== null}
+                  class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {importingId === r.source + ':' + r.externalId ? 'Saving…' : '+ Add'}
+                </button>
+                {#if r.externalUrl}
+                  <a
+                    href={r.externalUrl}
+                    target="_blank"
+                    rel="noopener"
+                    class="text-xs px-2.5 py-1 text-dim hover:text-text"
+                  >
+                    Source ↗
+                  </a>
+                {/if}
+              </div>
+            </div>
+          </article>
+        {/each}
+      </div>
     </div>
 
-    <!-- License clarity — public-domain doesn't mean "use however"
-         (some Standard Ebooks editions add typeset value the user
-         should attribute on republication). Quiet footer reminder. -->
     <p class="text-[11px] text-dim mt-12 mb-8 max-w-2xl leading-relaxed">
-      Project Gutenberg titles are in the US public domain.
-      Standard Ebooks titles are public domain in the US and licensed under
-      <a href="https://standardebooks.org/about" target="_blank" rel="noopener" class="underline hover:text-text">CC0</a>
-      — read freely; check their licence page if you plan to republish.
+      Project Gutenberg titles are in the US public domain — read and share freely. Some titles may still be
+      under copyright outside the US; verify the title page if you plan to redistribute.
     </p>
   {/if}
 </div>

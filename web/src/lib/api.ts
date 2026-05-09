@@ -933,6 +933,12 @@ export interface NoteAnnotation {
 
 // Discover — one row from the search proxy. The shape is shared
 // across sources so the UI renders a uniform card grid.
+//
+// The 'standardebooks' source is kept in the type union for API
+// compatibility with older clients but Standard Ebooks paywalled
+// every catalogue OPDS feed in 2026 (Patrons Circle Basic auth).
+// The /discover page hides it from the source filter; the backend
+// surfaces a per-source warning if a stale client still requests it.
 export type BookDiscoverSource = 'gutenberg' | 'standardebooks';
 export interface BookDiscoverResult {
   source: BookDiscoverSource;
@@ -947,6 +953,15 @@ export interface BookDiscoverResult {
   externalUrl?: string;
   license?: string;
   description?: string;
+}
+
+// Per-source warning surfaced when one source fails but at least
+// one other source returned successfully. Lets the UI render
+// "Standard Ebooks unavailable" inline instead of treating a
+// partial outage as a hard search failure.
+export interface BookDiscoverWarning {
+  source: BookDiscoverSource;
+  message: string;
 }
 
 // People — lightweight CRM. The list response also carries derived
@@ -1929,9 +1944,12 @@ export const api = {
     const params = new URLSearchParams({ q });
     if (opts.sources && opts.sources.length > 0) params.set('source', opts.sources.join(','));
     if (opts.limit) params.set('limit', String(opts.limit));
-    return req<{ results: BookDiscoverResult[]; total: number; q: string }>(
-      `/books/discover/search?${params}`
-    );
+    return req<{
+      results: BookDiscoverResult[];
+      total: number;
+      q: string;
+      warnings?: BookDiscoverWarning[];
+    }>(`/books/discover/search?${params}`);
   },
   importBook: (body: { source: BookDiscoverSource; downloadUrl: string; title?: string }) =>
     req<BookSummary>('/books/discover/import', {
