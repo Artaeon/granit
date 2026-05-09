@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
+  import { fly, fade } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { page } from '$app/stores';
   import { api, type ChatMessage } from '$lib/api';
   import { sabbath } from '$lib/stores/sabbath';
@@ -477,6 +479,19 @@
     abort?.abort();
     if (recording) stopVoice();
     aiOverlayOpen.set(false);
+  }
+
+  // Direction-aware open/close transition. On desktop the panel
+  // slides in from the right edge (it lives anchored md:right-0);
+  // on mobile it rises from the bottom (it's a sheet with
+  // inset-x-0 bottom-0). We pick the axis from window.innerWidth
+  // at transition time rather than at first render so a user
+  // resizing their browser between mobile and desktop breakpoints
+  // gets the right animation. 768 matches Tailwind's md:.
+  function panelTransitionParams() {
+    if (typeof window === 'undefined') return { x: 24, y: 0 };
+    const isDesktop = window.innerWidth >= 768;
+    return isDesktop ? { x: 24, y: 0 } : { x: 0, y: 24 };
   }
   function toggle() {
     aiOverlayOpen.update((v) => !v);
@@ -1732,6 +1747,7 @@
     type="button"
     aria-label="close AI overlay"
     onclick={close}
+    transition:fade={{ duration: 150 }}
     class="md:hidden fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
   ></button>
 
@@ -1741,6 +1757,8 @@
     role="dialog"
     aria-label="AI assistant"
     style:--ai-panel-w="{panelWidth}px"
+    in:fly={{ duration: 200, easing: cubicOut, ...panelTransitionParams() }}
+    out:fly={{ duration: 150, easing: cubicOut, ...panelTransitionParams() }}
     class="ai-overlay-panel fixed z-50 flex flex-col bg-base border-surface1 shadow-2xl
            inset-x-0 bottom-0 max-h-[85dvh] rounded-t-xl border-t pb-safe
            md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:top-0 md:h-full md:max-h-none md:rounded-none md:border-l md:border-t-0 md:pb-0 {resizing ? 'ai-overlay-resizing' : ''}"
