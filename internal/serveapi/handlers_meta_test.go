@@ -1,6 +1,21 @@
 package serveapi
 
-import "testing"
+import (
+	"bytes"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/artaeon/granit/internal/daily"
+	"github.com/artaeon/granit/internal/granitmeta"
+	"github.com/artaeon/granit/internal/tasks"
+	"github.com/artaeon/granit/internal/vault"
+	"github.com/artaeon/granit/internal/wshub"
+
+	"github.com/go-chi/chi/v5"
+)
 
 // TestValidateEventTimes pins the boundary contract for the events
 // API: only valid 24-hour HH:MM times pass through, only YYYY-MM-DD
@@ -55,4 +70,148 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// metaTestServer is the minimal Server wiring needed to drive the
+// events handlers — same pattern as financeTestServer, just without
+// finance-specific deps. Returns the server + a router that mounts
+// the events routes so URL params (chi.URLParam) resolve correctly.
+func metaTestServer(t *testing.T) (*Server, http.Handler) {
+	t.Helper()
+	root := t.TempDir()
+	v, err := vault.NewVault(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Scan(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := tasks.Load(root, func() []tasks.NoteContent { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.Default()
+	s := &Server{
+		cfg: Config{
+			Vault:     v,
+			TaskStore: store,
+			Daily:     daily.DailyConfig{Template: daily.DefaultConfig().Template},
+			Logger:    logger,
+		},
+		hub: wshub.New(logger),
+	}
+	r := chi.NewRouter()
+	r.Get("/api/v1/events", s.handleListEvents)
+	r.Post("/api/v1/events", s.handleCreateEvent)
+	r.Patch("/api/v1/events/{id}", s.handlePatchEvent)
+	r.Post("/api/v1/events/{id}/skip", s.handleSkipEventOccurrence)
+	r.Delete("/api/v1/events/{id}", s.handleDeleteEvent)
+	return s, r
+}
+
+// TestEvents_DragEdges locks the boundary the user hit with "drag make
+// it longer drag it somewhere else it completely buggy and places it
+// somewhere else": events.json carries a single date plus HH:MM
+// start/end, so an event whose end falls on the next calendar day
+// can't be represented and validateEventTimes refuses it. The frontend
+// now clamps end_time to 23:59 to keep the move on-day; this test
+// pins the BACKEND contract that triggers the clamp need: end MUST
+// be > start, equality is rejected, and a happy-path drag-move PATCH
+// (date + start + end shifted together) round-trips cleanly.
+func TestEvents_DragEdges(t *testing.T) {
+	_, h := metaTestServer(t)
+
+	// Helper: POST /api/v1/events with a JSON body, return the created event.
+	create := func(body string) granitmeta.Event {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/events", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("create: got %d, want 201; body=%s", w.Code, w.Body.String())
+		}
+		var ev granitmeta.Event
+		if err := json.Unmarshal(w.Body.Bytes(), &ev); err != nil {
+			t.Fatalf("decode create: %v", err)
+		}
+		return ev
+	}
+	// Helper: PATCH /api/v1/events/{id} with a JSON body, asserting expectedStatus.
+	patch := func(id, body string, expectedStatus int) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/events/"+id, bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != expectedStatus {
+			t.Fatalf("patch: got %d, want %d; body=%s", w.Code, expectedStatus, w.Body.String())
+		}
+		return w
+	}
+
+	// Happy-path drag-move: original 11:00–12:00 on 2026-05-09, drag to
+	// 14:30 same day. Frontend sends date + start_time + end_time all
+	// at once (which is exactly what +page.svelte's moveEvent emits).
+	// Must round-trip with the new times intact.
+	created := create(`{"title":"team sync","date":"2026-05-09","start_time":"11:00","end_time":"12:00"}`)
+	moved := patch(created.ID, `{"date":"2026-05-09","start_time":"14:30","end_time":"15:30"}`, http.StatusOK)
+	var movedEv granitmeta.Event
+	if err := json.Unmarshal(moved.Body.Bytes(), &movedEv); err != nil {
+		t.Fatal(err)
+	}
+	if movedEv.StartTime != "14:30" || movedEv.EndTime != "15:30" {
+		t.Errorf("after drag-move: start=%q end=%q want 14:30/15:30", movedEv.StartTime, movedEv.EndTime)
+	}
+
+	// The frontend's old (pre-clamp) behavior: drag a 60-min event to
+	// 23:30 produced end_time="00:30" (next-day wrap). The schema can't
+	// represent that — backend MUST refuse. This is the contract the
+	// frontend clamp now respects; if validateEventTimes ever silently
+	// accepts an end <= start, the clamp loses its safety net.
+	patch(created.ID, `{"start_time":"23:30","end_time":"00:30"}`, http.StatusBadRequest)
+
+	// Same shape via resize: original 11:00 start, push end to "10:59"
+	// (resize that would make end < start) — must 400.
+	patch(created.ID, `{"end_time":"10:59"}`, http.StatusBadRequest)
+
+	// Edge of the day: an event ending at 23:59 must round-trip — the
+	// clamp on the frontend snaps end-time HERE, so the boundary case
+	// has to stay accepted forever.
+	clamped := patch(created.ID, `{"start_time":"23:00","end_time":"23:59"}`, http.StatusOK)
+	var clampedEv granitmeta.Event
+	if err := json.Unmarshal(clamped.Body.Bytes(), &clampedEv); err != nil {
+		t.Fatal(err)
+	}
+	if clampedEv.StartTime != "23:00" || clampedEv.EndTime != "23:59" {
+		t.Errorf("end-of-day clamp landing: got %q–%q want 23:00–23:59", clampedEv.StartTime, clampedEv.EndTime)
+	}
+
+	// Cross-day move on the date field alone — moving a Wed event to
+	// Thursday with the same times must work. (The user reported drag
+	// "places it somewhere else" — partly the midnight bug above, but
+	// also we want to lock that a clean date+times PATCH lands on the
+	// new date with no shenanigans.)
+	moved2 := patch(created.ID, `{"date":"2026-05-10","start_time":"09:00","end_time":"10:00"}`, http.StatusOK)
+	var movedEv2 granitmeta.Event
+	if err := json.Unmarshal(moved2.Body.Bytes(), &movedEv2); err != nil {
+		t.Fatal(err)
+	}
+	if movedEv2.Date != "2026-05-10" || movedEv2.StartTime != "09:00" || movedEv2.EndTime != "10:00" {
+		t.Errorf("cross-day drag: got date=%q start=%q end=%q want 2026-05-10/09:00/10:00",
+			movedEv2.Date, movedEv2.StartTime, movedEv2.EndTime)
+	}
+
+	// All-day event drag-move: empty start/end times must round-trip
+	// without acquiring a time. Without this, dragging an all-day event
+	// would accidentally turn it into a timed event at 00:00.
+	allday := create(`{"title":"vacation","date":"2026-06-01"}`)
+	movedAD := patch(allday.ID, `{"date":"2026-06-02"}`, http.StatusOK)
+	var movedADEv granitmeta.Event
+	if err := json.Unmarshal(movedAD.Body.Bytes(), &movedADEv); err != nil {
+		t.Fatal(err)
+	}
+	if movedADEv.Date != "2026-06-02" || movedADEv.StartTime != "" || movedADEv.EndTime != "" {
+		t.Errorf("all-day drag: date=%q start=%q end=%q want 2026-06-02//", movedADEv.Date, movedADEv.StartTime, movedADEv.EndTime)
+	}
 }
