@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/artaeon/granit/internal/annotations"
 	"github.com/artaeon/granit/internal/atomicio"
 	"github.com/artaeon/granit/internal/history"
 	"github.com/artaeon/granit/internal/vault"
@@ -491,6 +492,14 @@ func (s *Server) handleRenameNote(w http.ResponseWriter, r *http.Request) {
 		s.search.Update(to, n.Content)
 	}
 	s.rescanMu.Unlock()
+	// Rewrite every annotation tied to the old path so margin notes
+	// follow the rename instead of dangling. Best-effort — a write
+	// failure here doesn't roll back the rename, but we broadcast
+	// a state.changed so any open editor refetches its margin column
+	// and surfaces any partial state to the user.
+	if n, err := annotations.RewriteNotePath(s.cfg.Vault.Root, from, to); err == nil && n > 0 {
+		s.hub.Broadcast(wshub.Event{Type: "state.changed", Path: ".granit/annotations.json"})
+	}
 	s.hub.Broadcast(wshub.Event{Type: "note.removed", Path: from})
 	s.hub.Broadcast(wshub.Event{Type: "note.changed", Path: to})
 	writeJSON(w, http.StatusOK, map[string]string{"from": from, "to": to})
