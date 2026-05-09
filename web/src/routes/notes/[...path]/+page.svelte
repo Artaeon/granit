@@ -1124,6 +1124,44 @@
     }
   }
 
+  // Folder breadcrumbs — derived once so the template stays
+  // declarative. Each crumb carries its own folder filter URL so a
+  // mid-path click goes "show me everything in <root>/a/b/" without
+  // recomputing the prefix in markup. When the user expands a
+  // collapsed deep path we flip `breadcrumbExpanded` to render every
+  // segment instead of first/…/last.
+  let breadcrumbExpanded = $state(false);
+  $effect(() => {
+    // Reset on note change so the next note doesn't inherit the
+    // expanded state from a previous deep path.
+    void note?.path;
+    breadcrumbExpanded = false;
+  });
+  interface Crumb { label: string; href: string }
+  let allCrumbs = $derived.by<Crumb[]>(() => {
+    if (!note) return [];
+    const segs = note.path.split('/').slice(0, -1);
+    return segs.map((seg, i) => ({
+      label: seg,
+      href: `/notes?folder=${encodeURIComponent(segs.slice(0, i + 1).join('/'))}`
+    }));
+  });
+  // When the path has more than 3 folder segments we collapse the
+  // middle ones into a clickable ellipsis so the bar stays one-line
+  // even on deeply-nested paths (e.g. work/projects/2026/q1/notes).
+  // Showing the first two + last keeps the most relevant context
+  // (top-level area + immediate parent) without truncating the title.
+  const CRUMB_COLLAPSE_THRESHOLD = 4;
+  let visibleCrumbs = $derived.by<Crumb[]>(() => {
+    if (breadcrumbExpanded) return allCrumbs;
+    if (allCrumbs.length <= CRUMB_COLLAPSE_THRESHOLD) return allCrumbs;
+    // Keep the first two and the last segment; expansion shows all.
+    return [...allCrumbs.slice(0, 2), ...allCrumbs.slice(-1)];
+  });
+  let crumbsCollapsed = $derived(
+    !breadcrumbExpanded && allCrumbs.length > CRUMB_COLLAPSE_THRESHOLD
+  );
+
   let dailyLabel = $derived.by(() => {
     if (!dailyDate) return '';
     const today = new Date();
@@ -1343,20 +1381,37 @@
             {/if}
           </h1>
           <!-- Folder breadcrumbs — each segment is a clickable filter
-               link back into the notes index. Plus tag chips pulled
-               from the frontmatter when present. -->
-          <div class="text-[11px] text-dim flex items-center gap-1 truncate">
-            <a href="/notes" class="hover:text-primary">vault</a>
-            {#each note.path.split('/').slice(0, -1) as seg, i}
-              <span class="text-dim/60">/</span>
-              <a href="/notes?folder={encodeURIComponent(note.path.split('/').slice(0, i + 1).join('/'))}" class="hover:text-primary truncate font-mono">{seg}</a>
+               link back into the notes index. Deep paths collapse to
+               first/…/last with the ellipsis acting as an expand
+               toggle so the bar stays one-line even on
+               work/projects/2026/q1/notes/foo.md. Tag chips render
+               beside the trail when present. -->
+          <div class="text-[11px] text-dim flex items-center gap-1 min-w-0 flex-nowrap">
+            <a href="/notes" class="hover:text-primary flex-shrink-0">vault</a>
+            {#each visibleCrumbs as c, i}
+              <span class="text-dim/60 flex-shrink-0">/</span>
+              {#if crumbsCollapsed && i === 2}
+                <button
+                  type="button"
+                  onclick={() => (breadcrumbExpanded = true)}
+                  class="px-1 rounded hover:bg-surface0 hover:text-text flex-shrink-0 font-mono"
+                  title="Show full path ({allCrumbs.length} folders)"
+                  aria-label="Expand collapsed folders"
+                >…</button>
+                <span class="text-dim/60 flex-shrink-0">/</span>
+              {/if}
+              <a
+                href={c.href}
+                class="hover:text-primary truncate font-mono {i === visibleCrumbs.length - 1 ? '' : 'flex-shrink'}"
+                title={c.label}
+              >{c.label}</a>
             {/each}
             {#if (note.frontmatter as Record<string, unknown>)?.tags && Array.isArray((note.frontmatter as Record<string, unknown>).tags)}
-              <span class="ml-2 flex items-center gap-1 flex-wrap">
+              <span class="ml-2 hidden sm:flex items-center gap-1 flex-wrap min-w-0">
                 {#each ((note.frontmatter as Record<string, unknown>).tags as string[]).slice(0, 6) as t}
                   <a
                     href="/notes?tag={encodeURIComponent(t)}"
-                    class="px-1.5 py-0.5 rounded text-[10px] hover:bg-surface1"
+                    class="px-1.5 py-0.5 rounded text-[10px] hover:bg-surface1 flex-shrink-0"
                     style="background: color-mix(in srgb, var(--color-secondary) 14%, transparent); color: var(--color-secondary);"
                   >#{t}</a>
                 {/each}
