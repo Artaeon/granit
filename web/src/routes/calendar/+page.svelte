@@ -573,6 +573,20 @@
           return;
         }
       }
+      // Recurring-series safety: dragging ONE occurrence currently
+      // moves the WHOLE series (the patch goes to the parent event).
+      // Per-instance overrides are tracked as the next iteration; in
+      // the meantime, ask the user before we silently shift every
+      // future Monday because they wanted to bump just this Monday.
+      // The 'skip this' button on the detail view is the workaround
+      // for "cancel just this one"; for "move just this one" we
+      // currently can't do better than warn-then-move-series.
+      if (ev.rrule) {
+        const ok = confirm(
+          `"${ev.title}" is a recurring event. Moving it here will shift the ENTIRE series — every occurrence moves by the same delta.\n\nContinue?`
+        );
+        if (!ok) return;
+      }
       if (ev.type === 'event' && ev.eventId) {
         const dateStr = `${newStart.getFullYear()}-${String(newStart.getMonth() + 1).padStart(2, '0')}-${String(newStart.getDate()).padStart(2, '0')}`;
         const startTime = `${String(newStart.getHours()).padStart(2, '0')}:${String(newStart.getMinutes()).padStart(2, '0')}`;
@@ -629,6 +643,16 @@
   // start/end as full timestamps not separate date+time fields.
   async function resizeEvent(ev: CalendarEvent, durationMinutes: number) {
     try {
+      // Mirrors moveEvent: a resize on one occurrence rewrites the
+      // SERIES end_time today (no per-instance overrides yet), so a
+      // resize of "this Tuesday" actually changes EVERY Tuesday's
+      // end. Surface that before commit.
+      if (ev.rrule && !ev.taskId) {
+        const ok = confirm(
+          `"${ev.title}" is a recurring event. Resizing here will change the duration of the ENTIRE series.\n\nContinue?`
+        );
+        if (!ok) return;
+      }
       if (ev.taskId) {
         await api.patchTask(ev.taskId, { durationMinutes });
       } else if (ev.type === 'event' && ev.eventId && ev.start) {
