@@ -109,6 +109,25 @@
       send();
     }
   }
+
+  // Auto-grow the composer up to ~40dvh so a multi-line draft is
+  // visible end-to-end without the user manually resizing. Same
+  // pattern as the AIOverlay's autosize — height:auto reset → read
+  // scrollHeight → clamp → write back. Falls back to internal scroll
+  // once we hit the cap. Re-runs on every input mutation via $effect
+  // so paste / programmatic writes also resize correctly.
+  function autosizeInput() {
+    if (!inputEl) return;
+    const cap = Math.max(120, Math.floor(window.innerHeight * 0.4));
+    inputEl.style.height = 'auto';
+    const next = Math.min(cap, inputEl.scrollHeight);
+    inputEl.style.height = next + 'px';
+    inputEl.style.overflowY = inputEl.scrollHeight > cap ? 'auto' : 'hidden';
+  }
+  $effect(() => {
+    void input;
+    tick().then(() => autosizeInput());
+  });
 </script>
 
 <div class="h-full flex flex-col overflow-hidden">
@@ -183,14 +202,16 @@
         bind:this={inputEl}
         bind:value={input}
         onkeydown={onKey}
+        oninput={autosizeInput}
         placeholder="Send a message…   (Enter to send, Shift+Enter for newline)"
         rows="1"
-        class="flex-1 min-w-0 px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-none max-h-40"
+        class="flex-1 min-w-0 px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-none transition-colors"
+        style="min-height: 2.5rem;"
       ></textarea>
       <button
         type="submit"
         disabled={busy || !input.trim()}
-        class="px-4 py-3 sm:py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
+        class="tap-target px-4 py-3 sm:py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50 hover:bg-primary/90 active:bg-primary/80 transition-colors"
       >Send</button>
     </form>
   </div>
