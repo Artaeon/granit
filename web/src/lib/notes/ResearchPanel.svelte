@@ -12,6 +12,8 @@
   the note has none of the above — saves rail space on a fresh note.
 -->
 <script lang="ts">
+  import { parseBody } from '$lib/util/bodyParse';
+
   let {
     body = '',
     onJump
@@ -20,26 +22,26 @@
     onJump?: (lineNum: number) => void;
   } = $props();
 
-  // Skip code fences for all derivations — code routinely contains
-  // `==`, URLs, and bracketed text we don't want to treat as
-  // highlights / refs / sources.
-  function stripFences(src: string): string {
-    return src.replace(/```[\s\S]*?```/g, (m) => '\n'.repeat(m.split('\n').length - 1));
-  }
+  // Pull lines + fence flags from the shared parser cache. Previously
+  // each of the three derivations below ran its own full-body
+  // stripFences regex + split — three passes per keystroke per panel
+  // mount, doubled by the desktop-rail / mobile-drawer rendering both
+  // copies of the rail at every viewport. That work added up to a
+  // material chunk of the per-keystroke freeze on long notes.
 
   type Highlight = { text: string; line: number };
   type Footnote = { id: string; line: number; defined: boolean; refOnly: boolean };
   type Source = { url: string; label: string; line: number };
 
   let highlights = $derived.by<Highlight[]>(() => {
-    const stripped = stripFences(body);
+    const parsed = parseBody(body);
     const out: Highlight[] = [];
-    const lines = stripped.split('\n');
     const re = /==([^=\n][^=]*?)==/g;
-    for (let i = 0; i < lines.length; i++) {
+    for (let i = 0; i < parsed.lines.length; i++) {
+      if (parsed.inFence[i]) continue;
       let m: RegExpExecArray | null;
       re.lastIndex = 0;
-      while ((m = re.exec(lines[i])) !== null) {
+      while ((m = re.exec(parsed.lines[i])) !== null) {
         const text = m[1].trim();
         if (text) out.push({ text, line: i + 1 });
       }
@@ -48,24 +50,25 @@
   });
 
   let footnotes = $derived.by<Footnote[]>(() => {
-    const stripped = stripFences(body);
-    const lines = stripped.split('\n');
+    const parsed = parseBody(body);
     const refs = new Map<string, number>(); // first-occurrence line
     const defs = new Set<string>();
     const defLines = new Map<string, number>();
-    for (let i = 0; i < lines.length; i++) {
-      const dm = /^\[\^([^\]\s]+)\]:\s/.exec(lines[i]);
+    for (let i = 0; i < parsed.lines.length; i++) {
+      if (parsed.inFence[i]) continue;
+      const ln = parsed.lines[i];
+      const dm = /^\[\^([^\]\s]+)\]:\s/.exec(ln);
       if (dm) {
         defs.add(dm[1]);
         defLines.set(dm[1], i + 1);
       }
       const refRe = /\[\^([^\]\s]+)\]/g;
       let rm: RegExpExecArray | null;
-      while ((rm = refRe.exec(lines[i])) !== null) {
+      while ((rm = refRe.exec(ln)) !== null) {
         // Skip definition lines — those start with `[^id]:` and the
         // bare `[^id]` at the front matched by refRe is the def, not
         // a ref.
-        if (lines[i].startsWith('[^' + rm[1] + ']:')) continue;
+        if (ln.startsWith('[^' + rm[1] + ']:')) continue;
         if (!refs.has(rm[1])) refs.set(rm[1], i + 1);
       }
     }
@@ -84,16 +87,16 @@
   });
 
   let sources = $derived.by<Source[]>(() => {
-    const stripped = stripFences(body);
-    const lines = stripped.split('\n');
+    const parsed = parseBody(body);
     const out: Source[] = [];
     const seen = new Set<string>();
     // Markdown link form first (richest — gives us a label).
     const linkRe = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
-    for (let i = 0; i < lines.length; i++) {
+    for (let i = 0; i < parsed.lines.length; i++) {
+      if (parsed.inFence[i]) continue;
       let m: RegExpExecArray | null;
       linkRe.lastIndex = 0;
-      while ((m = linkRe.exec(lines[i])) !== null) {
+      while ((m = linkRe.exec(parsed.lines[i])) !== null) {
         if (seen.has(m[2])) continue;
         seen.add(m[2]);
         out.push({ url: m[2], label: m[1], line: i + 1 });
@@ -101,10 +104,11 @@
     }
     // Bare URLs (no label) — fall back to a hostname display.
     const bareRe = /(?:^|[\s(])(https?:\/\/[^\s)<>]+)/g;
-    for (let i = 0; i < lines.length; i++) {
+    for (let i = 0; i < parsed.lines.length; i++) {
+      if (parsed.inFence[i]) continue;
       let m: RegExpExecArray | null;
       bareRe.lastIndex = 0;
-      while ((m = bareRe.exec(lines[i])) !== null) {
+      while ((m = bareRe.exec(parsed.lines[i])) !== null) {
         const url = m[1].replace(/[.,;:]+$/, '');
         if (seen.has(url)) continue;
         seen.add(url);

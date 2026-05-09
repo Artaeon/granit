@@ -19,6 +19,7 @@
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { parseBody, type ParsedHeading } from '$lib/util/bodyParse';
 
   let {
     body,
@@ -41,27 +42,17 @@
     visited?: Set<number>;
   } = $props();
 
-  interface Heading {
-    level: number;
-    text: string;
-    line: number;
-  }
+  type Heading = ParsedHeading;
 
-  let headings = $derived.by((): Heading[] => {
-    const out: Heading[] = [];
-    const lines = body.split('\n');
-    let inFence = false;
-    for (let i = 0; i < lines.length; i++) {
-      const ln = lines[i];
-      if (ln.match(/^```/)) inFence = !inFence;
-      if (inFence) continue;
-      const m = ln.match(/^(#{1,6})\s+(.+?)\s*#*$/);
-      if (m) {
-        out.push({ level: m[1].length, text: m[2].trim(), line: i + 1 });
-      }
-    }
-    return out;
-  });
+  // Single shared body parse — Outline, SectionQuestionsPanel, and
+  // ResearchPanel each used to run their own full-body split on
+  // every keystroke. Even worse, the `infoContent` snippet on the
+  // notes route renders into BOTH the desktop aside and the mobile
+  // drawer, so on every viewport both copies are mounted and each
+  // panel ran twice. The shared parseBody util slots by reference
+  // identity so multi-reader requests within one render pass collapse
+  // to a single linear scan.
+  let headings = $derived(parseBody(body).headings);
 
   // Active heading from the cursor (edit mode) — pick the heading
   // with the greatest line ≤ cursorLine. Cheap linear scan since

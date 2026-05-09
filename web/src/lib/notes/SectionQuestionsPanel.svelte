@@ -19,60 +19,21 @@
 <script lang="ts">
   import { api } from '$lib/api';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
+  import { parseBody, type ParsedSection } from '$lib/util/bodyParse';
 
-  interface Section {
-    line: number;
-    level: number;
-    title: string;
-    body: string;
-  }
+  type Section = ParsedSection;
 
   let {
     notePath,
     body
   }: { notePath: string; body: string } = $props();
 
-  // Parse the body into (heading, body-until-next-heading) segments.
-  // Fence-aware so a `## ` literal inside a code block doesn't
-  // create a phantom section. Same shape as the slideshow split,
-  // but here we keep level 1-3 (deeper headings tend to be too
-  // small to support 3 questions).
-  let sections = $derived.by<Section[]>(() => {
-    if (!body.trim()) return [];
-    const lines = body.split('\n');
-    const out: Section[] = [];
-    let cur: Section | null = null;
-    let inFence = false;
-    for (let i = 0; i < lines.length; i++) {
-      const ln = lines[i];
-      const t = ln.trim();
-      if (t.startsWith('```') || t.startsWith('~~~')) {
-        inFence = !inFence;
-        if (cur) cur.body += ln + '\n';
-        continue;
-      }
-      if (inFence) {
-        if (cur) cur.body += ln + '\n';
-        continue;
-      }
-      const m = /^(#{1,3})\s+(.+?)\s*#*$/.exec(t);
-      if (m) {
-        if (cur) out.push(cur);
-        cur = {
-          line: i + 1,
-          level: m[1].length,
-          title: m[2].trim(),
-          body: ''
-        };
-        continue;
-      }
-      if (cur) cur.body += ln + '\n';
-    }
-    if (cur) out.push(cur);
-    // Skip sections with no body (a heading immediately followed by
-    // another heading) — there's nothing to ask questions about.
-    return out.filter((s) => s.body.trim().length > 0);
-  });
+  // Shared parse cache — the body is split + scanned ONCE per keystroke
+  // across Outline / SectionQuestionsPanel / ResearchPanel rather than
+  // each running its own full pass (multiplied by the desktop +
+  // mobile-drawer double-mount of the rail). On a long note that was
+  // the bulk of the per-keystroke main-thread cost.
+  let sections = $derived(body.trim() ? parseBody(body).sections : []);
 
   let pickedLine = $state<number | null>(null);
   let questions = $state('');
