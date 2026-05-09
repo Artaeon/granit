@@ -75,16 +75,26 @@
 
   let activeLine = $derived(observedActiveLine ?? cursorActiveLine);
 
-  // (Re)attach the IntersectionObserver whenever the scroll
-  // container OR the rendered headings change. The {@html} drop in
-  // MarkdownRenderer wholesale-replaces children on body edits, so
-  // a stale observer would point at gone-away nodes. We `untrack` the
-  // body-derived headings so we don't loop on every scroll-driven
-  // observedActiveLine update — only structure changes (new heading
-  // count or new container) re-attach.
+  // (Re)attach the IntersectionObserver only when the heading
+  // STRUCTURE changes — i.e. the set of source line numbers — not on
+  // every keystroke. Previously this effect tracked the headings
+  // array reference, which a body-derived $derived rebuilds for
+  // every body change. On a long preview-mode note that meant
+  // disconnecting + reconnecting the observer + re-querying every
+  // [data-heading-line] element on every keystroke; the DOM walk
+  // alone could blow the per-keystroke budget on slow devices.
+  //
+  // structuralKey collapses the heading list to a join of line
+  // numbers — same key string for the same set of lines, regardless
+  // of whether the underlying array got a fresh reference. That
+  // matches what the observer actually cares about (the targets it
+  // observes are keyed by data-heading-line). When the user edits
+  // text WITHIN a section without adding/removing/moving a heading,
+  // the key stays identical and the effect doesn't re-run.
+  let structuralKey = $derived(headings.map((h) => h.line).join(','));
   $effect(() => {
     const container = scrollContainer ?? null;
-    void headings; // dependency — re-run on heading list change
+    void structuralKey; // dependency — re-run only on heading shape change
     if (!container) return;
 
     let raf = 0;
