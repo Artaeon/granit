@@ -33,14 +33,27 @@
     /** Optional callback fired when the user clicks an annotation
      *  card so the editor can scroll its line into view. */
     onJumpToLine?: (line: number) => void;
+    /** Optional callback fired with the loaded count whenever the
+     *  in-store annotation set changes. The parent uses this to
+     *  render a count badge on the section header without re-
+     *  fetching or duplicating the load. */
+    onCountChange?: (count: number) => void;
   };
-  let { notePath, activeLine, onJumpToLine }: Props = $props();
+  let { notePath, activeLine, onJumpToLine, onCountChange }: Props = $props();
 
   const COLORS = ANNOTATION_COLORS;
   type Color = AnnotationColor;
   const DEFAULT_COLOR: Color = DEFAULT_ANNOTATION_COLOR;
 
   let items = $state<NoteAnnotation[]>([]);
+  // Re-fire onCountChange whenever the in-memory list shape moves.
+  // Bumping it from $effect rather than from each mutation site
+  // keeps every code path that sets `items` consistent — load, AI
+  // accept, manual save, edit, delete, WS-driven refresh all flow
+  // through the same notification.
+  $effect(() => {
+    onCountChange?.(items.length);
+  });
   let loading = $state(false);
   let composing = $state(false);
   let composerText = $state('');

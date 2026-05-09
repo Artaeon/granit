@@ -229,6 +229,12 @@
 
   let treeDrawerOpen = $state(false);
   let infoDrawerOpen = $state(false);
+  // Margin-note count for the active note. Surfaced via the
+  // section header badge so the user sees at a glance how many
+  // annotations the current note carries without scrolling. The
+  // AnnotationsPanel owns the load + WS refresh; we receive
+  // updates via its onCountChange prop.
+  let annotationCount = $state(0);
 
   let pinned = $state<Set<string>>(new Set());
   let pinBusy = $state(false);
@@ -1377,18 +1383,24 @@
            it's an active-reading surface (the user wants their
            comments visible while skimming the source text). -->
       <section>
-        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
+        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
             <path d="M14 4h6v6"/>
             <path d="M10 20H4v-6"/>
             <path d="M14 4l-4 4M4 20l6-6"/>
           </svg>
-          Margin notes
+          <span>Margin notes</span>
+          {#if annotationCount > 0}
+            <span class="ml-auto normal-case tracking-normal text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary tabular-nums">
+              {annotationCount}
+            </span>
+          {/if}
         </h3>
         <AnnotationsPanel
           notePath={note.path}
           activeLine={cursorLine}
           onJumpToLine={jumpToLine}
+          onCountChange={(n) => (annotationCount = n)}
         />
       </section>
       <section>
