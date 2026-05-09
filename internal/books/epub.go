@@ -262,7 +262,9 @@ func (e *EPUB) Chapter(idx int, assetPrefix string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return rewriteRefs(string(body), path.Dir(item.Href), assetPrefix), nil
+	html := rewriteRefs(string(body), path.Dir(item.Href), assetPrefix)
+	html = sanitiseChapter(html)
+	return html, nil
 }
 
 // Asset reads an arbitrary manifest-relative path and returns the
@@ -417,6 +419,38 @@ func rewriteRefs(body, chapterDir, prefix string) string {
 	})
 }
 
+// Scripts + event handlers + javascript: URLs are stripped before
+// chapter HTML is sent to the browser. The reader uses {@html …}
+// to render — defensible for user-imported EPUBs from vetted
+// sources, but a single malicious EPUB dropped into the vault
+// could otherwise execute arbitrary JS in the user's session.
+// This isn't a full sanitiser (no DOMPurify) — it's defense in
+// depth that catches the obvious abuse:
+//
+//   - <script>...</script> blocks (and self-closed variants)
+//   - on* event-handler attributes (onclick, onload, onerror, ...)
+//   - href="javascript:..." URLs
+//
+// Trade-off: regex-based HTML scrubbing is brittle in general,
+// but EPUB chapters are XHTML — well-formed by spec — so the
+// regex paths hit cleanly. We don't try to defend against
+// adversarial EPUBs that exploit the regex (e.g. `<scr<script>ipt>`);
+// the threat model is "unsophisticated malicious content slipped
+// into the user's library", not "nation-state EPUB attack".
+var (
+	scriptBlockRe = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
+	scriptSelfRe  = regexp.MustCompile(`(?is)<script[^>]*/>`)
+	onEventAttrRe = regexp.MustCompile(`(?i)\son[a-z]+\s*=\s*"[^"]*"|(?i)\son[a-z]+\s*=\s*'[^']*'`)
+	jsHrefRe      = regexp.MustCompile(`(?i)(href|src)\s*=\s*["']\s*javascript:[^"']*["']`)
+)
+
+func sanitiseChapter(body string) string {
+	body = scriptBlockRe.ReplaceAllString(body, "")
+	body = scriptSelfRe.ReplaceAllString(body, "")
+	body = onEventAttrRe.ReplaceAllString(body, "")
+	body = jsHrefRe.ReplaceAllString(body, `$1=""`)
+	return body
+}
 
 // ── ID generation ────────────────────────────────────────────────
 

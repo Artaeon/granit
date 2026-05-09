@@ -9,6 +9,44 @@ import (
 	"testing"
 )
 
+// makeEPUBWithChapter writes a minimal one-chapter EPUB with the
+// supplied raw chapter body to disk at `path`. Lets sanitiser-end-
+// to-end tests inject hostile XHTML without re-stating the whole
+// container/OPF skeleton inline.
+func makeEPUBWithChapter(t *testing.T, path, chapterBody string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	zw := zip.NewWriter(f)
+	write := func(name, body string) {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("mimetype", "application/epub+zip")
+	write("META-INF/container.xml", `<?xml version="1.0"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`)
+	write("OEBPS/content.opf", `<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Hostile</dc:title></metadata>
+  <manifest><item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/></manifest>
+  <spine><itemref idref="ch1"/></spine>
+</package>`)
+	write("OEBPS/ch1.xhtml", `<?xml version="1.0"?><html>`+chapterBody+`</html>`)
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // buildMinimalEPUB writes a tiny valid EPUB to disk and returns
 // the path. Used by every test below — keeps fixture creation in
 // one place so a future schema change to our reader stays
@@ -182,6 +220,79 @@ func TestRewriteRefsLeavesDataHrefAlone(t *testing.T) {
 	}
 	if !strings.Contains(got, `href="/api/v1/books/test/asset/real.html"`) {
 		t.Errorf("real href not rewritten: %s", got)
+	}
+}
+
+func TestSanitiseChapterStripsScripts(t *testing.T) {
+	cases := []struct {
+		in   string
+		gone []string // substrings that must NOT be in the output
+		kept []string // substrings that MUST be in the output
+	}{
+		{
+			in:   `<p>Hello</p><script>alert(1)</script>`,
+			gone: []string{"<script", "alert(1)"},
+			kept: []string{"<p>Hello</p>"},
+		},
+		{
+			// Self-closing form (rare but legal).
+			in:   `<p>x</p><script src="evil.js"/>`,
+			gone: []string{"<script", "evil.js"},
+			kept: []string{"<p>x</p>"},
+		},
+		{
+			// Event handler attribute.
+			in:   `<img src="ok.png" onerror="alert(1)" />`,
+			gone: []string{"onerror", "alert(1)"},
+			kept: []string{`src="ok.png"`},
+		},
+		{
+			// javascript: URL.
+			in:   `<a href="javascript:alert(1)">click</a>`,
+			gone: []string{"javascript:", "alert(1)"},
+			kept: []string{`href=""`, "click"},
+		},
+		{
+			// Multi-line script block — (?is) flags handle it.
+			in:   "<script>\nalert(1);\nfoo();\n</script>",
+			gone: []string{"alert", "foo"},
+		},
+	}
+	for i, c := range cases {
+		got := sanitiseChapter(c.in)
+		for _, bad := range c.gone {
+			if strings.Contains(got, bad) {
+				t.Errorf("case %d: expected %q stripped, got: %s", i, bad, got)
+			}
+		}
+		for _, ok := range c.kept {
+			if !strings.Contains(got, ok) {
+				t.Errorf("case %d: expected %q kept, got: %s", i, ok, got)
+			}
+		}
+	}
+}
+
+func TestChapterIsSanitised(t *testing.T) {
+	// End-to-end: malicious chapter HTML inside an EPUB returns
+	// scrubbed body to the caller, not the raw zip content.
+	dir := t.TempDir()
+	path := dir + "/scary.epub"
+	makeEPUBWithChapter(t, path, `<body><p>Real text</p><script>alert('xss')</script></body>`)
+	e, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	html, err := e.Chapter(0, "/asset")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "alert") || strings.Contains(html, "<script") {
+		t.Errorf("script not stripped from chapter: %s", html)
+	}
+	if !strings.Contains(html, "Real text") {
+		t.Errorf("real content stripped too: %s", html)
 	}
 }
 
