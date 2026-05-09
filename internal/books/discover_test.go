@@ -2,6 +2,11 @@ package books
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -107,5 +112,132 @@ func TestSearchEmptyQueryRejected(t *testing.T) {
 	_, err := Search(context.Background(), "  ", DiscoverOptions{})
 	if err == nil {
 		t.Errorf("expected error for empty query")
+	}
+}
+
+func TestStandardEbooksReturnsPaywalledSentinel(t *testing.T) {
+	// Standard Ebooks moved every catalogue OPDS feed behind a
+	// paid Patrons Circle subscription in 2026. The sentinel error
+	// lets the handler render a friendly "subscription required"
+	// notice instead of a generic 502 — assert it survives wrapping
+	// so caller code can keep using IsStandardEbooksPaywalled().
+	resp, err := Search(context.Background(), "tolstoy", DiscoverOptions{
+		Sources: []Source{SourceStandardEbook},
+	})
+	if err == nil {
+		t.Fatalf("expected SE-only search to error, got %+v", resp)
+	}
+	if len(resp.Warnings) != 1 || resp.Warnings[0].Source != SourceStandardEbook {
+		t.Errorf("expected exactly one SE warning; got %+v", resp.Warnings)
+	}
+	// Direct Import call must hit the same sentinel.
+	if _, err := Import(context.Background(), t.TempDir(), SourceStandardEbook, "https://standardebooks.org/x", ""); !IsStandardEbooksPaywalled(err) {
+		t.Errorf("Import(SE) should return paywalled sentinel; got %v", err)
+	}
+}
+
+func TestImportRejectsHTTP(t *testing.T) {
+	// We refuse plaintext HTTP — every legitimate catalogue serves
+	// HTTPS, and a downgrade would let an MITM swap an EPUB for an
+	// arbitrary payload that ends up under <vault>/Books/.
+	_, err := Import(context.Background(), t.TempDir(), SourceGutenberg, "http://example.com/x.epub", "")
+	if err == nil {
+		t.Errorf("expected Import to reject http:// URL")
+	}
+}
+
+func TestImportRejectsEmptyURL(t *testing.T) {
+	_, err := Import(context.Background(), t.TempDir(), SourceGutenberg, "", "")
+	if err == nil {
+		t.Errorf("expected Import to reject empty URL")
+	}
+}
+
+func TestImportStreamsFileToVaultBooks(t *testing.T) {
+	// End-to-end: serve a real minimal EPUB over httptest, run Import,
+	// verify the file lands in <vault>/Books/, the response is a
+	// valid Summary, and Scan() picks the file up on the next call —
+	// the user-visible "I added a book and reloaded → nothing" bug
+	// would manifest as Scan() returning empty after this passed.
+	src := buildMinimalEPUB(t)
+	body, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/epub+zip")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+
+	vault := t.TempDir()
+	// Import only allows https://, and httptest.NewTLSServer's cert
+	// is self-signed — inject the test server's already-trusted
+	// client through the package-level seam so importClient()
+	// returns it instead of building a fresh one.
+	httpClientForTest = srv.Client()
+	t.Cleanup(func() { httpClientForTest = nil })
+
+	sum, err := Import(context.Background(), vault, SourceGutenberg, srv.URL+"/pride.epub", "Pride and Prejudice")
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+	// File on disk under <vault>/Books/.
+	want := filepath.Join(vault, BooksDirName, "Pride and Prejudice.epub")
+	if !strings.HasSuffix(filepath.Join(vault, sum.Path), want) {
+		t.Errorf("Summary.Path doesn't point inside Books/: got %q", sum.Path)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("expected file at %s after Import: %v", want, err)
+	}
+	// Scan must surface the imported book — this is the regression
+	// guard for the "reload → empty shelf" bug.
+	all, err := Scan(vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 || all[0].ID != sum.ID {
+		t.Errorf("Scan didn't find the imported book; got %+v", all)
+	}
+	// Re-importing the same URL writes a "-2" suffix rather than
+	// clobbering the first file (uniqueFilename branch).
+	sum2, err := Import(context.Background(), vault, SourceGutenberg, srv.URL+"/pride.epub", "Pride and Prejudice")
+	if err != nil {
+		t.Fatalf("second Import failed: %v", err)
+	}
+	if sum.Path == sum2.Path {
+		t.Errorf("second Import should produce distinct path; both got %q", sum.Path)
+	}
+	all2, _ := Scan(vault)
+	if len(all2) != 2 {
+		t.Errorf("expected 2 books after duplicate Import, got %d", len(all2))
+	}
+}
+
+func TestImportRejectsHTMLMasqueradingAsEPUB(t *testing.T) {
+	// A common Gutenberg failure mode: the server serves the
+	// "ebook removed" HTML page with a 200, not a 404. Without the
+	// PK-magic check we'd happily save garbage into Books/ and the
+	// user would discover the failure by trying to open it.
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html><body>Not the EPUB you wanted.</body></html>"))
+	}))
+	t.Cleanup(srv.Close)
+
+	httpClientForTest = srv.Client()
+	t.Cleanup(func() { httpClientForTest = nil })
+
+	vault := t.TempDir()
+	_, err := Import(context.Background(), vault, SourceGutenberg, srv.URL+"/x.epub", "x")
+	if err == nil || !strings.Contains(err.Error(), "magic") {
+		t.Errorf("expected PK-magic rejection; got %v", err)
+	}
+	// Critical: no file lingers under Books/ after the rejected import.
+	entries, _ := os.ReadDir(filepath.Join(vault, BooksDirName))
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), ".") {
+			t.Errorf("expected no committed file after rejection; found %s", e.Name())
+		}
 	}
 }

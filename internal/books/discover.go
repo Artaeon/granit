@@ -3,12 +3,12 @@ package books
 import (
 	"context"
 	"encoding/json"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -20,29 +20,28 @@ import (
 // Discover surfaces — search proxies for legal e-book sources so
 // the user can browse → preview → save without leaving granit.
 //
-// The two sources we support in v1:
+// v1 source: Project Gutenberg via the Gutendex JSON API
+// (gutendex.com). Real search endpoint, ~70k titles, mostly
+// pre-1928 classics in dozens of languages. Covers + EPUB
+// downloads are direct-link-able without auth.
 //
-//   - Project Gutenberg via the Gutendex JSON API (gutendex.com).
-//     Real search endpoint, ~70k titles, mostly pre-1928 classics
-//     in dozens of languages. Covers + EPUB downloads are
-//     direct-link-able.
-//
-//   - Standard Ebooks via their OPDS catalogue. No search API on
-//     their side — we fetch the full feed once per server uptime
-//     (with a 24h refresh) and filter locally. ~600 titles, but
-//     each is hand-typeset with care that no automated source can
-//     match. License: public domain in the US (their metadata is
-//     explicit; we surface it on the cards).
+// Standard Ebooks (formerly part of the v1 set) put their full-
+// catalog OPDS feed behind Patrons Circle Basic auth in 2026 —
+// every /opds/* endpoint now returns 401 to unauthenticated
+// callers, so we can't search or import without paid
+// credentials. We keep the SourceStandardEbook constant for API
+// compatibility but the implementation immediately errors with a
+// clear message; the UI hides the source until we add an auth
+// surface.
 //
 // We deliberately skip Open Library / Internet Archive for v1
 // because their EPUB resolution path goes through Archive.org
 // borrows + login flows that don't fit the granit "drop in vault
-// and read" model. Easy to add later as a third Source value.
+// and read" model.
 //
 // Anna's Archive and similar shadow libraries are NOT integrated
 // — most of what they index is copyrighted material distributed
-// without permission, and an in-app downloader would turn granit
-// into a piracy tool. Out of scope by design.
+// without permission. Out of scope by design.
 
 // Source identifies a discovery backend. Stable string values so
 // the import handler can dispatch to the right downloader.
@@ -52,6 +51,20 @@ const (
 	SourceGutenberg     Source = "gutenberg"
 	SourceStandardEbook Source = "standardebooks"
 )
+
+// errStandardEbooksPaywalled is returned by every SE code path.
+// Stable sentinel so handlers / UI can branch on it (display a
+// "subscription required" notice rather than a generic 502).
+var errStandardEbooksPaywalled = errors.New(
+	"books: Standard Ebooks moved their catalogue feed behind a paid Patrons Circle subscription — search and import are disabled in v1",
+)
+
+// IsStandardEbooksPaywalled reports whether the error is the
+// sentinel above. Lets the handler emit a friendly 503 with a
+// dedicated copy block rather than a generic upstream-failed message.
+func IsStandardEbooksPaywalled(err error) bool {
+	return errors.Is(err, errStandardEbooksPaywalled)
+}
 
 // DiscoverResult is one row in a search response. The shape is
 // shared across sources so the UI can render a uniform card grid.
@@ -71,22 +84,39 @@ type DiscoverResult struct {
 }
 
 // DiscoverOptions filters a search call. Empty Sources means
-// "search all". Limit caps the per-source page size; the
-// aggregate result count can be up to len(sources)*Limit.
+// "search all enabled sources". Limit caps the per-source page size.
 type DiscoverOptions struct {
 	Sources []Source
 	Limit   int
 }
 
+// SourceWarning is a non-fatal per-source failure surfaced to the
+// caller. Lets the UI render "Project Gutenberg unavailable" inline
+// instead of treating a partial outage as a total search failure.
+type SourceWarning struct {
+	Source  Source `json:"source"`
+	Message string `json:"message"`
+}
+
+// SearchResponse bundles the merged result list with any per-source
+// warnings. Empty Results + non-empty Warnings means every source
+// failed; empty Results + no Warnings means "no matches found".
+type SearchResponse struct {
+	Results  []DiscoverResult `json:"results"`
+	Warnings []SourceWarning  `json:"warnings,omitempty"`
+}
+
 // Search runs the query against every requested source in
-// parallel and returns the combined result list. Failures from
-// one source don't kill the others — degraded state is preferred
-// to a search that returns nothing because Project Gutenberg's
-// CDN is briefly down.
-func Search(ctx context.Context, query string, opts DiscoverOptions) ([]DiscoverResult, error) {
+// parallel and returns the combined result list plus per-source
+// warnings. A single source's failure never kills the others —
+// degraded results beat an empty page.
+//
+// Returns an error only when every requested source failed. An
+// empty result list with no warnings is a valid "no matches" outcome.
+func Search(ctx context.Context, query string, opts DiscoverOptions) (SearchResponse, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return nil, errors.New("books: empty query")
+		return SearchResponse{}, errors.New("books: empty query")
 	}
 	limit := opts.Limit
 	if limit <= 0 {
@@ -94,50 +124,70 @@ func Search(ctx context.Context, query string, opts DiscoverOptions) ([]Discover
 	}
 	sources := opts.Sources
 	if len(sources) == 0 {
-		sources = []Source{SourceGutenberg, SourceStandardEbook}
+		// Gutenberg only by default — Standard Ebooks is paywalled.
+		sources = []Source{SourceGutenberg}
 	}
-	var (
-		mu      sync.Mutex
-		out     []DiscoverResult
-		wg      sync.WaitGroup
-		firstErr error
-	)
+
+	type srcResult struct {
+		source Source
+		rs     []DiscoverResult
+		err    error
+	}
+	out := make(chan srcResult, len(sources))
+	var wg sync.WaitGroup
 	for _, src := range sources {
 		wg.Add(1)
 		go func(s Source) {
 			defer wg.Done()
-			var (
-				rs  []DiscoverResult
-				err error
-			)
+			var rs []DiscoverResult
+			var err error
 			switch s {
 			case SourceGutenberg:
 				rs, err = searchGutenberg(ctx, query, limit)
 			case SourceStandardEbook:
-				rs, err = searchStandardEbooks(ctx, query, limit)
+				err = errStandardEbooksPaywalled
+			default:
+				err = fmt.Errorf("books: unknown source %q", s)
 			}
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil && firstErr == nil {
-				firstErr = err
-			}
-			out = append(out, rs...)
+			out <- srcResult{s, rs, err}
 		}(src)
 	}
 	wg.Wait()
-	// Stable order: by source then title. Lets the UI render
-	// "all Project Gutenberg results, then all Standard Ebooks
-	// results" rather than scrambling them.
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Source != out[j].Source {
-			return out[i].Source < out[j].Source
+	close(out)
+
+	var (
+		results  []DiscoverResult
+		warnings []SourceWarning
+		okCount  int
+	)
+	for r := range out {
+		if r.err != nil {
+			warnings = append(warnings, SourceWarning{
+				Source:  r.source,
+				Message: r.err.Error(),
+			})
+			continue
 		}
-		return strings.ToLower(out[i].Title) < strings.ToLower(out[j].Title)
-	})
-	if len(out) == 0 && firstErr != nil {
-		return nil, firstErr
+		okCount++
+		results = append(results, r.rs...)
 	}
-	return out, nil
+
+	// Stable order: by source then title.
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].Source != results[j].Source {
+			return results[i].Source < results[j].Source
+		}
+		return strings.ToLower(results[i].Title) < strings.ToLower(results[j].Title)
+	})
+
+	// Every source failed → propagate the first error so the caller
+	// can render a hard error state. Otherwise return whatever we
+	// got (results may be empty if no matches but at least one
+	// source returned cleanly).
+	if okCount == 0 && len(warnings) > 0 {
+		return SearchResponse{Warnings: warnings}, errors.New(warnings[0].Message)
+	}
+	return SearchResponse{Results: results, Warnings: warnings}, nil
 }
 
 // ── Project Gutenberg via Gutendex ────────────────────────────────
@@ -173,10 +223,11 @@ func searchGutenberg(ctx context.Context, q string, limit int) ([]DiscoverResult
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "granit/1.0 (https://github.com/artaeon/granit)")
-	res, err := httpClient().Do(req)
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/json")
+	res, err := searchClient().Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gutendex: %w", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
@@ -184,7 +235,7 @@ func searchGutenberg(ctx context.Context, q string, limit int) ([]DiscoverResult
 	}
 	var body gutendexResponse
 	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gutendex: decode: %w", err)
 	}
 	out := make([]DiscoverResult, 0, len(body.Results))
 	for _, b := range body.Results {
@@ -202,8 +253,6 @@ func searchGutenberg(ctx context.Context, q string, limit int) ([]DiscoverResult
 		if len(b.Languages) > 0 {
 			lang = b.Languages[0]
 		}
-		// Subjects are very long in Gutenberg metadata; cap at 4
-		// for shelf legibility.
 		subjects := b.Subjects
 		if len(subjects) > 4 {
 			subjects = subjects[:4]
@@ -262,8 +311,7 @@ func pickGutenbergCover(formats map[string]string) string {
 }
 
 // swapAuthorOrder turns "Austen, Jane" into "Jane Austen" so the
-// result cards read like book covers. Gutenberg metadata is
-// surname-first by archival convention.
+// result cards read like book covers.
 func swapAuthorOrder(name string) string {
 	if i := strings.Index(name, ","); i > 0 {
 		surname := strings.TrimSpace(name[:i])
@@ -275,165 +323,20 @@ func swapAuthorOrder(name string) string {
 	return name
 }
 
-// ── Standard Ebooks via OPDS feed ─────────────────────────────────
+// stripTags pulls human-readable text out of an OPDS / HTML summary.
+var tagStripRe = regexp.MustCompile(`<[^>]+>`)
 
-const standardEbooksOPDS = "https://standardebooks.org/opds/all"
-
-// seCache is an in-memory cache of the parsed Standard Ebooks
-// catalog. The full feed is ~5MB; we fetch it on first /discover
-// hit and refresh after 24 h.
-var seCache struct {
-	sync.Mutex
-	entries  []DiscoverResult
-	fetched  time.Time
+func stripTags(s string) string {
+	clean := tagStripRe.ReplaceAllString(s, "")
+	clean = strings.Join(strings.Fields(clean), " ")
+	if len(clean) > 280 {
+		clean = clean[:277] + "…"
+	}
+	return clean
 }
 
-const seCacheTTL = 24 * time.Hour
-
-type opdsFeed struct {
-	XMLName xml.Name   `xml:"feed"`
-	Entries []opdsEntry `xml:"entry"`
-}
-
-type opdsEntry struct {
-	Title    string      `xml:"title"`
-	Authors  []opdsName  `xml:"author"`
-	Updated  string      `xml:"updated"`
-	Summary  string      `xml:"summary"`
-	Links    []opdsLink  `xml:"link"`
-	Subjects []opdsCategory `xml:"category"`
-	Language string      `xml:"language"`
-	ID       string      `xml:"id"`
-}
-
-type opdsName struct {
-	Name string `xml:"name"`
-}
-
-type opdsLink struct {
-	Rel  string `xml:"rel,attr"`
-	Type string `xml:"type,attr"`
-	Href string `xml:"href,attr"`
-}
-
-type opdsCategory struct {
-	Label string `xml:"label,attr"`
-	Term  string `xml:"term,attr"`
-}
-
-func searchStandardEbooks(ctx context.Context, q string, limit int) ([]DiscoverResult, error) {
-	all, err := loadStandardEbooks(ctx)
-	if err != nil {
-		return nil, err
-	}
-	qLower := strings.ToLower(q)
-	out := make([]DiscoverResult, 0, limit)
-	for _, e := range all {
-		// Match against title + authors + subjects. Cheap linear
-		// scan — 600 entries fits in a millisecond.
-		hay := strings.ToLower(e.Title)
-		for _, a := range e.Authors {
-			hay += " " + strings.ToLower(a)
-		}
-		for _, s := range e.Subjects {
-			hay += " " + strings.ToLower(s)
-		}
-		if strings.Contains(hay, qLower) {
-			out = append(out, e)
-			if len(out) >= limit {
-				break
-			}
-		}
-	}
-	return out, nil
-}
-
-func loadStandardEbooks(ctx context.Context) ([]DiscoverResult, error) {
-	seCache.Lock()
-	defer seCache.Unlock()
-	if time.Since(seCache.fetched) < seCacheTTL && len(seCache.entries) > 0 {
-		return seCache.entries, nil
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, standardEbooksOPDS, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "granit/1.0 (https://github.com/artaeon/granit)")
-	req.Header.Set("Accept", "application/atom+xml")
-	res, err := httpClient().Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("standardebooks: status %d", res.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, 25*1024*1024))
-	if err != nil {
-		return nil, err
-	}
-	var feed opdsFeed
-	if err := xml.Unmarshal(body, &feed); err != nil {
-		return nil, err
-	}
-	results := make([]DiscoverResult, 0, len(feed.Entries))
-	for _, e := range feed.Entries {
-		dl := ""
-		cover := ""
-		external := ""
-		for _, l := range e.Links {
-			switch {
-			case strings.Contains(l.Type, "epub+zip") && dl == "":
-				dl = absURL("https://standardebooks.org", l.Href)
-			case strings.Contains(l.Rel, "image/thumbnail") && cover == "":
-				cover = absURL("https://standardebooks.org", l.Href)
-			case strings.Contains(l.Rel, "image") && cover == "":
-				cover = absURL("https://standardebooks.org", l.Href)
-			case l.Rel == "alternate" && external == "":
-				external = absURL("https://standardebooks.org", l.Href)
-			}
-		}
-		if dl == "" {
-			continue
-		}
-		authors := make([]string, 0, len(e.Authors))
-		for _, a := range e.Authors {
-			if n := strings.TrimSpace(a.Name); n != "" {
-				authors = append(authors, n)
-			}
-		}
-		subjects := make([]string, 0, len(e.Subjects))
-		for _, s := range e.Subjects {
-			if s.Label != "" {
-				subjects = append(subjects, s.Label)
-			} else if s.Term != "" {
-				subjects = append(subjects, s.Term)
-			}
-		}
-		if len(subjects) > 4 {
-			subjects = subjects[:4]
-		}
-		results = append(results, DiscoverResult{
-			Source:      SourceStandardEbook,
-			ExternalID:  e.ID,
-			Title:       strings.TrimSpace(e.Title),
-			Authors:     authors,
-			Language:    e.Language,
-			Subjects:    subjects,
-			DownloadURL: dl,
-			CoverURL:    cover,
-			ExternalURL: external,
-			License:     "Public domain in the US",
-			Description: stripTags(e.Summary),
-		})
-	}
-	seCache.entries = results
-	seCache.fetched = time.Now()
-	return results, nil
-}
-
-// absURL turns "/foo/bar" into "https://standardebooks.org/foo/bar".
-// OPDS feeds mix relative + absolute hrefs.
+// absURL turns "/foo/bar" into "https://host/foo/bar". Used for
+// OPDS-style relative refs.
 func absURL(base, href string) string {
 	if href == "" {
 		return ""
@@ -447,67 +350,57 @@ func absURL(base, href string) string {
 	return base + "/" + href
 }
 
-// stripTags pulls the human-readable text out of an OPDS summary
-// that may contain inline HTML. Tags collapse to empty string —
-// in real prose summaries, words are already separated by whitespace
-// so we don't need to inject one when removing `<em>`/`<strong>`.
-// Replacing with space would put a stray space before punctuation
-// in "<em>x</em>." (becomes "x ."), so empty is the better choice.
-var tagStripRe = regexp.MustCompile(`<[^>]+>`)
-
-func stripTags(s string) string {
-	clean := tagStripRe.ReplaceAllString(s, "")
-	clean = strings.Join(strings.Fields(clean), " ")
-	if len(clean) > 280 {
-		clean = clean[:277] + "…"
-	}
-	return clean
-}
-
 // ── Import ────────────────────────────────────────────────────────
+
+// MaxImportBytes caps every download at 50 MB. The largest
+// legitimate EPUBs (illustrated editions of long classics) sit
+// around 30 MB; anything bigger is almost certainly a mis-resolved
+// ZIP wrapping the whole catalogue.
+const MaxImportBytes = 50 * 1024 * 1024
 
 // Import streams the EPUB at downloadURL into <vault>/Books/ and
 // returns the resulting Summary so the caller can navigate
-// straight to /books/<id>. Validates that the response looks like
-// an EPUB (zip header + EPUB mimetype entry) before accepting it
-// — a bait-and-switch HTML 404 page silently saved as
+// straight to /books/<id>.
+//
+// Streaming (vs buffering bytes in memory) means a 30 MB import
+// does not pin 30 MB of RES — important for the small VPS profiles
+// granit ships on. A temp file lives next to the destination so
+// the final rename is atomic on the same filesystem.
+//
+// Validates the response is actually an EPUB (zip header) before
+// committing — a bait-and-switch HTML 404 page silently saved as
 // "pride-and-prejudice.epub" would be confusing.
 func Import(ctx context.Context, vaultRoot string, source Source, downloadURL, suggestedTitle string) (Summary, error) {
+	if source == SourceStandardEbook {
+		return Summary{}, errStandardEbooksPaywalled
+	}
 	if downloadURL == "" {
 		return Summary{}, errors.New("books: empty download URL")
 	}
 	if !strings.HasPrefix(downloadURL, "https://") {
 		return Summary{}, errors.New("books: download URL must be https")
 	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return Summary{}, err
 	}
-	req.Header.Set("User-Agent", "granit/1.0 (https://github.com/artaeon/granit)")
-	res, err := httpClient().Do(req)
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/epub+zip,application/zip;q=0.9,*/*;q=0.5")
+	res, err := importClient().Do(req)
 	if err != nil {
-		return Summary{}, err
+		return Summary{}, fmt.Errorf("books: download failed: %w", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
 		return Summary{}, fmt.Errorf("books: download status %d", res.StatusCode)
 	}
-	// Cap at 50 MB — the largest legitimate EPUBs (illustrated
-	// editions of long classics) sit around 30 MB. Anything bigger
-	// is almost certainly not what the user intended.
-	body, err := io.ReadAll(io.LimitReader(res.Body, 50*1024*1024))
-	if err != nil {
-		return Summary{}, err
+
+	dir := filepath.Join(vaultRoot, BooksDirName)
+	if err := mkdirAll(dir); err != nil {
+		return Summary{}, fmt.Errorf("books: mkdir %s: %w", dir, err)
 	}
-	// Quick zip-header sniff before we touch the filesystem.
-	// Real EPUBs start with PK\x03\x04 (zip local file header).
-	if len(body) < 4 || body[0] != 'P' || body[1] != 'K' {
-		return Summary{}, errors.New("books: response isn't a zip / EPUB")
-	}
-	// Sanitize a filename. Prefer the suggested title; fall back
-	// to the URL's tail. Strip path separators, parentheses, and
-	// any bytes that would break Sync (Syncthing/iCloud) on
-	// certain filesystems.
+
 	base := suggestedTitle
 	if base == "" {
 		base = strings.TrimSuffix(filepath.Base(downloadURL), filepath.Ext(downloadURL))
@@ -516,22 +409,71 @@ func Import(ctx context.Context, vaultRoot string, source Source, downloadURL, s
 	if clean == "" {
 		clean = "book"
 	}
-	dir := filepath.Join(vaultRoot, BooksDirName)
-	if err := mkdirAll(dir); err != nil {
-		return Summary{}, err
-	}
-	// If a file with the same name already exists, suffix with
-	// "-2", "-3", etc. so a re-import doesn't clobber.
 	target := uniqueFilename(filepath.Join(dir, clean+".epub"))
-	if err := writeFileAtomic(target, body); err != nil {
+
+	// Stream into a sibling temp file. We can't reuse atomicio.WriteWithPerm
+	// here because it takes []byte (we'd lose the streaming win), so we
+	// inline the same temp+rename shape with explicit bounded copy.
+	tmp, err := os.CreateTemp(dir, ".import-*.epub")
+	if err != nil {
+		return Summary{}, fmt.Errorf("books: create temp: %w", err)
+	}
+	tmpPath := tmp.Name()
+	cleanupTmp := func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}
+	written, err := io.Copy(tmp, io.LimitReader(res.Body, MaxImportBytes+1))
+	if err != nil {
+		cleanupTmp()
+		return Summary{}, fmt.Errorf("books: download body: %w", err)
+	}
+	if written > MaxImportBytes {
+		cleanupTmp()
+		return Summary{}, fmt.Errorf("books: download exceeds %d bytes (got at least %d)", MaxImportBytes, written)
+	}
+	if written < 4 {
+		cleanupTmp()
+		return Summary{}, errors.New("books: response too short to be an EPUB")
+	}
+	// Quick zip-header sniff before we commit. Real EPUBs start
+	// with PK\x03\x04 (zip local file header).
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		cleanupTmp()
 		return Summary{}, err
 	}
-	// Open + summary so the caller can navigate.
+	hdr := make([]byte, 4)
+	if _, err := io.ReadFull(tmp, hdr); err != nil {
+		cleanupTmp()
+		return Summary{}, fmt.Errorf("books: read header: %w", err)
+	}
+	if !(hdr[0] == 'P' && hdr[1] == 'K' && hdr[2] == 0x03 && hdr[3] == 0x04) {
+		cleanupTmp()
+		return Summary{}, errors.New("books: response isn't a zip / EPUB (wrong magic bytes)")
+	}
+	if err := tmp.Sync(); err != nil {
+		cleanupTmp()
+		return Summary{}, err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return Summary{}, err
+	}
+	// Match user-content perms: 0o644 so the user can open the
+	// EPUB in Calibre / Kindle desktop without permission shuffling.
+	if err := os.Chmod(tmpPath, 0o644); err != nil {
+		_ = os.Remove(tmpPath)
+		return Summary{}, err
+	}
+	if err := os.Rename(tmpPath, target); err != nil {
+		_ = os.Remove(tmpPath)
+		return Summary{}, fmt.Errorf("books: rename to %s: %w", target, err)
+	}
+
+	// Validate by opening the saved file. If we can't parse it as
+	// an EPUB, roll back so the shelf doesn't show a broken row.
 	sum, err := summaryFromFile(vaultRoot, target)
 	if err != nil {
-		// Don't leave a corrupt file lying around — if the
-		// downloaded zip can't be parsed as an EPUB, roll back
-		// the write so the shelf doesn't show a broken row.
 		removeFile(target)
 		return Summary{}, fmt.Errorf("books: imported file isn't a valid EPUB: %w", err)
 	}
@@ -566,9 +508,32 @@ func uniqueFilename(p string) string {
 	return p // last resort
 }
 
-// httpClient is shared across all discovery calls. 30 s timeout
-// is generous for a search; downloads can take longer but the
-// per-request context handles cancellation.
-func httpClient() *http.Client {
+// userAgent is what we present to upstream catalogues. A clean
+// product UA with a real homepage URL keeps us above the bar of
+// the heuristics most public APIs run.
+const userAgent = "Granit/1.0 (https://github.com/artaeon/granit; +book-discover)"
+
+// httpClientForTest is a package-level seam tests use to inject a
+// client that trusts httptest.NewTLSServer's self-signed cert.
+// nil → production code paths build their own per-call client.
+var httpClientForTest *http.Client
+
+// searchClient is shared across catalogue search calls. 30 s
+// timeout fits the small JSON / XML feed responses.
+func searchClient() *http.Client {
+	if httpClientForTest != nil {
+		return httpClientForTest
+	}
 	return &http.Client{Timeout: 30 * time.Second}
+}
+
+// importClient is the long-tail download client. EPUB downloads
+// from www.gutenberg.org's primary mirror occasionally take
+// 60+ seconds when the CDN is cold; 120 s gives slow connections
+// enough headroom without leaking goroutines forever.
+func importClient() *http.Client {
+	if httpClientForTest != nil {
+		return httpClientForTest
+	}
+	return &http.Client{Timeout: 120 * time.Second}
 }

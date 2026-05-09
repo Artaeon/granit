@@ -340,8 +340,9 @@ func (s *Server) handleDiscoverBooks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "q parameter required")
 		return
 	}
-	// Source filter — comma-separated, e.g. ?source=gutenberg
-	// or ?source=standardebooks. Empty = both.
+	// Source filter — comma-separated, e.g. ?source=gutenberg.
+	// Empty defaults to "all enabled" (Gutenberg only in v1; SE
+	// is paywalled and surfaces as a per-source warning).
 	var srcs []books.Source
 	if raw := r.URL.Query().Get("source"); raw != "" {
 		for _, s := range strings.Split(raw, ",") {
@@ -358,22 +359,33 @@ func (s *Server) handleDiscoverBooks(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
-	results, err := books.Search(r.Context(), q, books.DiscoverOptions{
+	resp, err := books.Search(r.Context(), q, books.DiscoverOptions{
 		Sources: srcs,
 		Limit:   limit,
 	})
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		// Every requested source failed. Return 502 with the merged
+		// failure surface so the UI can render warnings inline rather
+		// than a single opaque error string.
+		writeJSON(w, http.StatusBadGateway, map[string]any{
+			"error":    err.Error(),
+			"warnings": resp.Warnings,
+		})
 		return
 	}
+	results := resp.Results
 	if results == nil {
 		results = []books.DiscoverResult{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"results": results,
 		"total":   len(results),
 		"q":       q,
-	})
+	}
+	if len(resp.Warnings) > 0 {
+		out["warnings"] = resp.Warnings
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleImportBook(w http.ResponseWriter, r *http.Request) {
@@ -396,6 +408,14 @@ func (s *Server) handleImportBook(w http.ResponseWriter, r *http.Request) {
 	}
 	sum, err := books.Import(r.Context(), s.cfg.Vault.Root, src, body.DownloadURL, body.Title)
 	if err != nil {
+		// Standard Ebooks paywalled their feed in 2026 — surface
+		// that as 503 (Service Unavailable) with a clear message
+		// so the UI can render a "subscription required" notice
+		// instead of a generic upstream-failed error.
+		if books.IsStandardEbooksPaywalled(err) {
+			writeError(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
