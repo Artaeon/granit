@@ -27,6 +27,7 @@
     rememberScroll,
     recallScroll
   } from '$lib/notes/noteHistory';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import type { ExtractRequest } from '$lib/editor/extract-note';
   import AskAIDialog from '$lib/notes/AskAIDialog.svelte';
@@ -76,10 +77,8 @@
   );
   // Restore preference once at mount.
   onMount(() => {
-    try {
-      const v = localStorage.getItem(VIEW_KEY);
-      if (v === 'edit' || v === 'preview' || v === 'split') viewMode = v;
-    } catch {}
+    const v = loadStoredString(VIEW_KEY, '');
+    if (v === 'edit' || v === 'preview' || v === 'split') viewMode = v;
     // Boot the pinned-notes store so the toolbar's pin star (and any
     // other pin-aware surface mounted after this) reflects the
     // server-authoritative list without each component re-fetching.
@@ -113,7 +112,7 @@
   });
   function setViewMode(m: ViewMode) {
     viewMode = m;
-    try { localStorage.setItem(VIEW_KEY, m); } catch {}
+    saveStoredString(VIEW_KEY, m);
   }
 
   let note = $state<Note | null>(null);

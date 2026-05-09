@@ -43,6 +43,7 @@
   import { sabbath, SABBATH_HIDE_MODULES } from '$lib/stores/sabbath';
   import { goto } from '$app/navigation';
   import { toast } from '$lib/components/toast';
+  import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
 
   let palette: { show: () => void } | undefined = $state();
 
@@ -298,14 +299,7 @@
     ai: true
   };
   function loadCollapsed(): Record<string, boolean> {
-    if (typeof localStorage === 'undefined') return { ...DEFAULT_COLLAPSED };
-    try {
-      const raw = localStorage.getItem(COLLAPSED_KEY);
-      if (raw === null) return { ...DEFAULT_COLLAPSED };
-      return JSON.parse(raw) as Record<string, boolean>;
-    } catch {
-      return { ...DEFAULT_COLLAPSED };
-    }
+    return loadStored<Record<string, boolean>>(COLLAPSED_KEY, { ...DEFAULT_COLLAPSED });
   }
   let collapsedSections = $state<Record<string, boolean>>(loadCollapsed());
   function toggleSection(id: string) {
@@ -313,7 +307,7 @@
     if (next[id]) delete next[id];
     else next[id] = true;
     collapsedSections = next;
-    try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next)); } catch {}
+    saveStored(COLLAPSED_KEY, next);
   }
   // Auto-expand the section containing the active route. Without
   // this the user can land on /goals (collapsed-by-default Plan
@@ -339,12 +333,10 @@
     });
   });
 
-  let compact = $state<boolean>(
-    typeof localStorage !== 'undefined' && localStorage.getItem(COMPACT_KEY) === '1'
-  );
+  let compact = $state<boolean>(loadStoredString(COMPACT_KEY, '0') === '1');
   function toggleCompact() {
     compact = !compact;
-    try { localStorage.setItem(COMPACT_KEY, compact ? '1' : '0'); } catch {}
+    saveStoredString(COMPACT_KEY, compact ? '1' : '0');
   }
 
   // Route guard: if the user lands on a path whose module is disabled

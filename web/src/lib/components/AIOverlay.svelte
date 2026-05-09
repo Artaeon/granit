@@ -8,6 +8,7 @@
   import { aiOverlayOpen, takeAIOverlaySeed } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import {
     AGENT_MODES,
@@ -75,21 +76,14 @@
   const PANEL_WIDTH_MAX = 720;
   const PANEL_WIDTH_DEFAULT = 420;
   function loadPanelWidth(): number {
-    if (typeof localStorage === 'undefined') return PANEL_WIDTH_DEFAULT;
-    try {
-      const raw = localStorage.getItem(PANEL_WIDTH_KEY);
-      const n = raw ? parseInt(raw, 10) : NaN;
-      if (!Number.isFinite(n)) return PANEL_WIDTH_DEFAULT;
-      return Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, n));
-    } catch {
-      return PANEL_WIDTH_DEFAULT;
-    }
+    const n = parseInt(loadStoredString(PANEL_WIDTH_KEY, ''), 10);
+    if (!Number.isFinite(n)) return PANEL_WIDTH_DEFAULT;
+    return Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, n));
   }
   let panelWidth = $state<number>(loadPanelWidth());
   let resizing = $state(false);
   function persistPanelWidth(n: number) {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(PANEL_WIDTH_KEY, String(n)); } catch {}
+    saveStoredString(PANEL_WIDTH_KEY, String(n));
   }
   function onResizeStart(e: PointerEvent) {
     // Pointer-events lets one handler cover mouse + touch + pen. We
