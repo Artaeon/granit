@@ -7,6 +7,7 @@
   import { toast } from '$lib/components/toast';
   import ProjectDetail from '$lib/projects/ProjectDetail.svelte';
   import ProjectCreate from '$lib/projects/ProjectCreate.svelte';
+  import ProjectTimeline from '$lib/projects/ProjectTimeline.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
 
   let projects = $state<Project[]>([]);
@@ -360,6 +361,22 @@
   let selectedName = $derived($page.url.searchParams.get('p') ?? '');
   let selected = $derived(projects.find((p) => p.name === selectedName) ?? null);
 
+  // View modes — list (default; sidebar + detail), timeline (Gantt-ish
+  // bars across the full width). Persisted via ?view= so a "show me
+  // the project plan" link is shareable. When in timeline mode the
+  // sidebar collapses (timeline takes the full surface) and clicking
+  // a bar opens the detail drawer-style on top.
+  type ViewMode = 'list' | 'timeline';
+  let viewMode = $derived<ViewMode>(
+    ($page.url.searchParams.get('view') as ViewMode) === 'timeline' ? 'timeline' : 'list'
+  );
+  function setViewMode(v: ViewMode) {
+    const params = new URLSearchParams($page.url.searchParams);
+    if (v === 'list') params.delete('view');
+    else params.set('view', v);
+    goto(`/projects?${params.toString()}`, { replaceState: true, keepFocus: true });
+  }
+
   // ?venture=<name> scopes the list to a single venture. Cleared via the
   // header chip. Persisted to URL so a "venture roll-up" view is shareable.
   let ventureFilter = $derived($page.url.searchParams.get('venture') ?? '');
@@ -483,10 +500,42 @@
        split), so the user always sees their season focus without it
        competing with horizontal space. Hidden on mobile when the
        detail pane is open to keep the chrome quiet. -->
-  <div class="px-3 sm:px-4 pt-3 flex-shrink-0 {selectedName ? 'hidden md:block' : ''}">
+  <div class="px-3 sm:px-4 pt-3 flex-shrink-0 {selectedName && viewMode === 'list' ? 'hidden md:block' : ''}">
     <VisionContextStrip />
   </div>
+
+  <!-- Top-level view-mode toggle. Lives outside the sidebar so the
+       buttons stay visible in timeline mode (where the sidebar is
+       hidden). The list mode is the default — picked by users who
+       want the sidebar+detail browsing flow. Timeline gives a
+       Gantt-ish whole-portfolio plan view. -->
+  <div class="px-3 sm:px-4 pt-2 flex-shrink-0 flex items-center gap-1.5 {selectedName && viewMode === 'list' ? 'hidden md:flex' : 'flex'}">
+    <div class="inline-flex rounded border border-surface1 bg-surface0 overflow-hidden text-xs" role="tablist" aria-label="view mode">
+      <button
+        role="tab"
+        aria-selected={viewMode === 'list'}
+        onclick={() => setViewMode('list')}
+        class="px-2.5 py-1 {viewMode === 'list' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
+        title="List + detail (default)"
+      >☰ List</button>
+      <button
+        role="tab"
+        aria-selected={viewMode === 'timeline'}
+        onclick={() => setViewMode('timeline')}
+        class="px-2.5 py-1 border-l border-surface1 {viewMode === 'timeline' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
+        title="Gantt-ish timeline across all projects"
+      >▭ Timeline</button>
+    </div>
+    {#if viewMode === 'timeline'}
+      <button
+        onclick={() => (createOpen = true)}
+        class="ml-auto px-2.5 py-1 text-xs bg-primary text-on-primary rounded hover:opacity-90"
+      >+ new</button>
+    {/if}
+  </div>
+
   <div class="flex-1 min-h-0 flex">
+  {#if viewMode === 'list'}
   <!-- List -->
   <aside class="w-full md:w-72 lg:w-80 xl:w-96 flex-shrink-0 border-r border-surface1 bg-mantle/40 flex flex-col {selectedName ? 'hidden md:flex' : ''}">
     <header class="px-3 py-2.5 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
@@ -726,6 +775,33 @@
       </div>
     {/if}
   </main>
+  {:else if viewMode === 'timeline'}
+    <!-- Timeline view — full-width Gantt-ish chart. Clicking a bar
+         flips the URL to ?p=<name>, which keeps the project drawer
+         opening on top so the timeline stays the active surface. -->
+    <main class="flex-1 min-w-0 flex flex-col {selectedName ? 'hidden md:flex' : ''}">
+      <ProjectTimeline
+        projects={filtered}
+        tasks={tasks}
+        onSelect={selectProject}
+        colorVar={colorVar}
+        statusTone={statusTone}
+      />
+    </main>
+    {#if selected}
+      <!-- On desktop the detail pane sits beside the timeline; on
+           mobile it covers (the timeline is too dense to share with
+           a side pane). -->
+      <aside class="w-full md:w-[28rem] lg:w-[32rem] flex-shrink-0 border-l border-surface1 bg-base">
+        <ProjectDetail
+          project={selected}
+          onClose={() => selectProject('')}
+          onUpdated={load}
+          onDeleted={deleted}
+        />
+      </aside>
+    {/if}
+  {/if}
   </div>
 </div>
 
