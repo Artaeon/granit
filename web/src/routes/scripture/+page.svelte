@@ -17,6 +17,7 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
   import type { AgentPreset } from '$lib/api';
+  import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
 
   // Four modes:
   //   read   — verse-of-the-day in big type, "another one" button,
@@ -51,14 +52,13 @@
   type ReadSize = 'sm' | 'md' | 'lg';
   const READ_SIZE_KEY = 'granit.scripture.readSize';
   function loadReadSize(): ReadSize {
-    if (typeof localStorage === 'undefined') return 'md';
-    const v = localStorage.getItem(READ_SIZE_KEY);
+    const v = loadStoredString(READ_SIZE_KEY, 'md');
     return v === 'sm' || v === 'lg' ? v : 'md';
   }
   let readSize = $state<ReadSize>(loadReadSize());
   function setReadSize(s: ReadSize) {
     readSize = s;
-    try { localStorage.setItem(READ_SIZE_KEY, s); } catch {}
+    saveStoredString(READ_SIZE_KEY, s);
   }
   // Tailwind class triplet keyed by size — kept here so the three
   // sizes are visible at a glance and stay coordinated with line
@@ -81,18 +81,8 @@
   type Stats = Record<string, { tries: number; correct: number }>;
   const STATS_KEY = 'granit.scripture.stats';
 
-  function loadStats(): Stats {
-    try {
-      const raw = localStorage.getItem(STATS_KEY);
-      if (!raw) return {};
-      return JSON.parse(raw);
-    } catch {
-      return {};
-    }
-  }
-  function saveStats(s: Stats) {
-    try { localStorage.setItem(STATS_KEY, JSON.stringify(s)); } catch {}
-  }
+  function loadStats(): Stats { return loadStored<Stats>(STATS_KEY, {}); }
+  function saveStats(s: Stats) { saveStored(STATS_KEY, s); }
 
   async function load() {
     loading = true;
@@ -576,16 +566,12 @@
   });
 
   // For overall stats display in the memo header.
-  let totalTries = $derived.by(() => {
-    if (typeof localStorage === 'undefined') return 0;
-    const s = loadStats();
-    return Object.values(s).reduce((sum, x) => sum + x.tries, 0);
-  });
-  let totalCorrect = $derived.by(() => {
-    if (typeof localStorage === 'undefined') return 0;
-    const s = loadStats();
-    return Object.values(s).reduce((sum, x) => sum + x.correct, 0);
-  });
+  let totalTries = $derived.by(() =>
+    Object.values(loadStats()).reduce((sum, x) => sum + x.tries, 0)
+  );
+  let totalCorrect = $derived.by(() =>
+    Object.values(loadStats()).reduce((sum, x) => sum + x.correct, 0)
+  );
 
   // ─── Bible mode ──────────────────────────────────────────────────────
   // Lazy-loaded so /scripture stays fast to first paint; we only fetch
@@ -649,19 +635,10 @@
   const STREAK_KEY = 'granit.bible.streak';
   type StreakState = { lastDay: string; streak: number };
   function loadStreak(): StreakState {
-    if (typeof localStorage === 'undefined') return { lastDay: '', streak: 0 };
-    try {
-      const raw = localStorage.getItem(STREAK_KEY);
-      if (!raw) return { lastDay: '', streak: 0 };
-      const s = JSON.parse(raw) as StreakState;
-      return { lastDay: s.lastDay ?? '', streak: s.streak ?? 0 };
-    } catch {
-      return { lastDay: '', streak: 0 };
-    }
+    const s = loadStored<StreakState | null>(STREAK_KEY, null);
+    return s ? { lastDay: s.lastDay ?? '', streak: s.streak ?? 0 } : { lastDay: '', streak: 0 };
   }
-  function saveStreak(s: StreakState): void {
-    try { localStorage.setItem(STREAK_KEY, JSON.stringify(s)); } catch {}
-  }
+  function saveStreak(s: StreakState): void { saveStored(STREAK_KEY, s); }
   let streak = $state<StreakState>(loadStreak());
 
   function todayKey(): string {
@@ -684,20 +661,11 @@
   }
 
   function loadRecent(): RecentChapter[] {
-    if (typeof localStorage === 'undefined') return [];
-    try {
-      const raw = localStorage.getItem(RECENT_KEY);
-      if (!raw) return [];
-      const arr = JSON.parse(raw) as RecentChapter[];
-      return Array.isArray(arr) ? arr : [];
-    } catch {
-      return [];
-    }
+    const arr = loadStored<RecentChapter[]>(RECENT_KEY, []);
+    return Array.isArray(arr) ? arr : [];
   }
-  function saveRecent(list: RecentChapter[]): void {
-    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch {}
-  }
-  let recent = $state<RecentChapter[]>(typeof localStorage === 'undefined' ? [] : loadRecent());
+  function saveRecent(list: RecentChapter[]): void { saveStored(RECENT_KEY, list); }
+  let recent = $state<RecentChapter[]>(loadRecent());
 
   function pushRecent(book: string, bookCode: string, chapter: number) {
     const next: RecentChapter[] = [

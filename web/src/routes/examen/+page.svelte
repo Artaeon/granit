@@ -4,6 +4,7 @@
   import { auth } from '$lib/stores/auth';
   import { api, todayISO, type Note, type PrayerIntention } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { loadStored, saveStored } from '$lib/util/storage';
 
   // /examen — evening companion to /morning. Two-question Ignatian
   // rhythm (where did I see God? where did I miss?) plus optional
@@ -52,23 +53,16 @@
   function snapshot(): Snapshot {
     return { sawGod, missed, gratitude, tomorrow };
   }
-  function persist() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot())); } catch {}
-  }
+  function persist() { saveStored<Snapshot>(STORAGE_KEY, snapshot()); }
   function restore() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const s = JSON.parse(raw) as Partial<Snapshot>;
-      sawGod = s.sawGod ?? '';
-      missed = s.missed ?? '';
-      gratitude = s.gratitude ?? '';
-      tomorrow = s.tomorrow ?? '';
-    } catch {}
+    const s = loadStored<Partial<Snapshot> | null>(STORAGE_KEY, null);
+    if (!s) return;
+    sawGod = s.sawGod ?? '';
+    missed = s.missed ?? '';
+    gratitude = s.gratitude ?? '';
+    tomorrow = s.tomorrow ?? '';
   }
-  function clearPersisted() {
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
-  }
+  function clearPersisted() { saveStored<Snapshot>(STORAGE_KEY, undefined); }
   $effect(() => {
     void sawGod; void missed; void gratitude; void tomorrow;
     persist();

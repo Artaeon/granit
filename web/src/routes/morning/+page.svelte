@@ -27,6 +27,7 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import { classifyAiError } from '$lib/util/aiErrors';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
+  import { loadStored, saveStored } from '$lib/util/storage';
 
   // ─── Data ─────────────────────────────────────────────────────────
   let activeGoals = $state<Goal[]>([]);
@@ -92,35 +93,28 @@
       thoughts,
       newHabit
     };
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
+    saveStored<Snapshot>(STORAGE_KEY, s);
   }
   function restore() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return false;
-      const s = JSON.parse(raw) as Snapshot;
-      if (s.scriptureSource) {
-        const m = scriptures.find((x) => x.source === s.scriptureSource);
-        if (m) scripture = m;
-      }
-      customScripture = s.customScripture ?? '';
-      customSource = s.customSource ?? '';
-      winSentence = s.winSentence ?? '';
-      goal = s.goal ?? '';
-      linkedGoalId = s.linkedGoalId ?? '';
-      pickedTasks = new Set(s.pickedTasks ?? []);
-      pickedHabits = new Set(s.pickedHabits ?? []);
-      pickedIntentions = new Set(s.pickedIntentions ?? []);
-      thoughts = s.thoughts ?? '';
-      newHabit = s.newHabit ?? '';
-      return true;
-    } catch {
-      return false;
+    const s = loadStored<Snapshot | null>(STORAGE_KEY, null);
+    if (!s) return false;
+    if (s.scriptureSource) {
+      const m = scriptures.find((x) => x.source === s.scriptureSource);
+      if (m) scripture = m;
     }
+    customScripture = s.customScripture ?? '';
+    customSource = s.customSource ?? '';
+    winSentence = s.winSentence ?? '';
+    goal = s.goal ?? '';
+    linkedGoalId = s.linkedGoalId ?? '';
+    pickedTasks = new Set(s.pickedTasks ?? []);
+    pickedHabits = new Set(s.pickedHabits ?? []);
+    pickedIntentions = new Set(s.pickedIntentions ?? []);
+    thoughts = s.thoughts ?? '';
+    newHabit = s.newHabit ?? '';
+    return true;
   }
-  function clearPersisted() {
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
-  }
+  function clearPersisted() { saveStored<Snapshot>(STORAGE_KEY, undefined); }
   $effect(() => {
     void scripture; void customScripture; void customSource;
     void winSentence; void goal; void linkedGoalId;
