@@ -23,6 +23,20 @@
   let notesBuf = $state('');
   let recurrenceBuf = $state('');
   let busy = $state(false);
+  // Editable scheduling. The drawer was previously read-only here;
+  // users had to bounce to the calendar grid to set a due date.
+  let dueBuf = $state('');
+  let schedDateBuf = $state(''); // YYYY-MM-DD
+  let schedTimeBuf = $state(''); // HH:MM
+  // Inline title editing — click the title to edit, Enter / blur to
+  // commit, Esc to cancel.
+  let titleEditing = $state(false);
+  let titleBuf = $state('');
+  // Tags + estimate edits would round-trip through the task line's
+  // #tag / est:Nm markers (parseTaskInput handles them on read), but
+  // the patchTask API doesn't currently expose direct fields for
+  // either. Keeping these read-only on the drawer for now — quick-add
+  // bar is the canonical surface for setting them at create time.
 
   // Linkable-entity lists. Lazy-loaded the first time the drawer opens
   // so the list pages don't pay the lookup cost on every card render.
@@ -217,6 +231,11 @@
     if (open && task) {
       notesBuf = task.notes ?? '';
       recurrenceBuf = task.recurrence ?? '';
+      dueBuf = task.dueDate ?? '';
+      schedDateBuf = task.scheduledStart ? task.scheduledStart.slice(0, 10) : '';
+      schedTimeBuf = task.scheduledStart ? task.scheduledStart.slice(11, 16) : '';
+      titleEditing = false;
+      titleBuf = cleanTaskText(task.text);
       aiDecompAbort?.abort();
       aiDecompRaw = '';
       aiDecompError = '';
@@ -257,6 +276,75 @@
   async function setGoal(id: string) { await patch({ goalId: id }); }
   async function setDeadline(id: string) { await patch({ deadlineId: id }); }
 
+  // Title edit. cleanTaskText strips inline markers (!1 / due:.. / #tag)
+  // for display; we round-trip the user's edit as the new task text and
+  // let the parser re-extract markers from the new line on the next
+  // read. Empty title is a no-op.
+  async function commitTitle() {
+    if (!task) { titleEditing = false; return; }
+    const next = titleBuf.trim();
+    if (!next || next === cleanTaskText(task.text)) { titleEditing = false; return; }
+    titleEditing = false;
+    await patch({ text: next });
+  }
+  function cancelTitleEdit() {
+    if (task) titleBuf = cleanTaskText(task.text);
+    titleEditing = false;
+  }
+
+  // Date / time edits. The backend accepts dueDate as 'YYYY-MM-DD' or
+  // empty to clear. scheduledStart is 'YYYY-MM-DDTHH:MM' (local, no
+  // zone — the backend stores it as wall-clock, see commit 05183fc).
+  async function commitDue() {
+    if (!task) return;
+    const next = dueBuf.trim();
+    if (next === (task.dueDate ?? '')) return;
+    await patch({ dueDate: next });
+  }
+  async function commitScheduled() {
+    if (!task) return;
+    const ds = schedDateBuf.trim();
+    const ts = schedTimeBuf.trim();
+    let next = '';
+    if (ds && ts) next = `${ds}T${ts}`;
+    else if (ds) next = `${ds}T09:00`; // sensible default if user picked date but no time
+    if (next === (task.scheduledStart ?? '')) return;
+    await patch({ scheduledStart: next });
+  }
+  async function clearScheduled() {
+    if (!task) return;
+    schedDateBuf = '';
+    schedTimeBuf = '';
+    await patch({ scheduledStart: '' });
+  }
+
+  // Snooze quick-actions. Sets snoozedUntil to the given local-time
+  // YYYY-MM-DDTHH:MM string + flips triage to 'snoozed'. Uses local
+  // wall-clock so the timing matches the user's intent without TZ
+  // arithmetic.
+  function snoozeOffset(days: number, hour = 9): string {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    d.setHours(hour, 0, 0, 0);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${dd}T${hh}:${mi}`;
+  }
+  async function snoozeUntil(days: number) {
+    await patch({ snoozedUntil: snoozeOffset(days), triage: 'snoozed' });
+  }
+  async function unsnooze() {
+    await patch({ snoozedUntil: '', triage: 'triaged' });
+  }
+  let snoozeActive = $derived.by(() => {
+    if (!task?.snoozedUntil) return false;
+    const sn = new Date(task.snoozedUntil);
+    return Number.isFinite(sn.getTime()) && sn.getTime() > Date.now();
+  });
+
   function close() { open = false; }
   function openNote() {
     if (!task) return;
@@ -285,7 +373,13 @@
     <div class="h-full flex flex-col overflow-hidden">
       <header class="px-4 py-3 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
         <h2 class="text-sm font-semibold text-text flex-1 truncate">Task details</h2>
-        <button onclick={close} aria-label="close" class="text-dim hover:text-text">×</button>
+        {#if busy}
+          <span class="text-[10px] text-dim italic" aria-live="polite">saving…</span>
+        {/if}
+        {#if snoozeActive}
+          <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/25" title={`snoozed until ${task?.snoozedUntil}`}>snoozed</span>
+        {/if}
+        <button onclick={close} aria-label="close" class="text-dim hover:text-text text-xl leading-none">×</button>
       </header>
 
       <div class="flex-1 overflow-y-auto p-4 space-y-4">
@@ -303,7 +397,26 @@
             {/if}
           </button>
           <div class="flex-1 min-w-0">
-            <h3 class="text-base font-medium text-text break-words {task.done ? 'line-through text-dim' : ''}">{cleanTaskText(task.text)}</h3>
+            {#if titleEditing}
+              <input
+                bind:value={titleBuf}
+                onblur={commitTitle}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); void commitTitle(); }
+                  else if (e.key === 'Escape') { e.preventDefault(); cancelTitleEdit(); }
+                }}
+                disabled={busy}
+                aria-label="task title"
+                class="w-full px-2 py-1 -mx-2 -my-1 bg-mantle border border-primary rounded text-base font-medium text-text focus:outline-none"
+              />
+            {:else}
+              <button
+                type="button"
+                onclick={() => { titleEditing = true; }}
+                class="text-base font-medium text-text break-words text-left w-full hover:bg-surface1/40 rounded px-2 py-1 -mx-2 -my-1 transition-colors {task.done ? 'line-through text-dim' : ''}"
+                title="click to rename"
+              >{cleanTaskText(task.text)}</button>
+            {/if}
             <a href="/notes/{encodeURIComponent(task.notePath)}" onclick={openNote} class="text-xs text-secondary hover:underline font-mono">
               {task.notePath}
             </a>
@@ -407,6 +520,91 @@
             <div class="bg-surface0 rounded p-2 text-xs text-subtext whitespace-pre-wrap">{aiDecompRaw}</div>
           {/if}
         </section>
+
+        <!-- Schedule. Two inputs: due date (a calendar deadline,
+             optional time) and scheduled-start (the actual block on
+             the calendar grid). Some tasks have both — "due Friday,
+             scheduled to start Wednesday morning". -->
+        <section>
+          <h4 class="text-[11px] uppercase tracking-wider text-dim mb-1.5">Schedule</h4>
+          <div class="space-y-2 text-xs">
+            <label class="flex items-center gap-2">
+              <span class="text-dim w-20 flex-shrink-0">Due</span>
+              <input
+                type="date"
+                bind:value={dueBuf}
+                onchange={commitDue}
+                disabled={busy}
+                class="flex-1 min-w-0 bg-surface0 border border-surface1 rounded px-2 py-1 text-text"
+              />
+              {#if dueBuf}
+                <button onclick={() => { dueBuf = ''; void commitDue(); }} class="text-dim hover:text-error" title="clear due date" aria-label="clear due date">×</button>
+              {/if}
+            </label>
+            <label class="flex items-center gap-2">
+              <span class="text-dim w-20 flex-shrink-0">Start</span>
+              <input
+                type="date"
+                bind:value={schedDateBuf}
+                onchange={commitScheduled}
+                disabled={busy}
+                class="flex-1 min-w-0 bg-surface0 border border-surface1 rounded px-2 py-1 text-text"
+              />
+              <input
+                type="time"
+                bind:value={schedTimeBuf}
+                onchange={commitScheduled}
+                disabled={busy || !schedDateBuf}
+                class="w-24 bg-surface0 border border-surface1 rounded px-2 py-1 text-text disabled:opacity-50"
+              />
+              {#if schedDateBuf || schedTimeBuf}
+                <button onclick={() => void clearScheduled()} class="text-dim hover:text-error" title="clear scheduled start" aria-label="clear scheduled start">×</button>
+              {/if}
+            </label>
+            {#if task.estimatedMinutes}
+              <div class="flex items-baseline gap-2 text-[11px] text-dim">
+                <span class="w-20 flex-shrink-0">Estimate</span>
+                <span class="text-text font-mono tabular-nums">{task.estimatedMinutes}m</span>
+                <span class="italic">— set via <code>est:30m</code> in the quick-add bar</span>
+              </div>
+            {/if}
+          </div>
+        </section>
+
+        <!-- Snooze. Common-cadence quick-actions on the row, custom
+             ISO input falling out below. Setting any of these flips
+             triage to 'snoozed' so the task hides from default views
+             until the timestamp passes. -->
+        <section>
+          <h4 class="text-[11px] uppercase tracking-wider text-dim mb-1.5">Snooze</h4>
+          {#if snoozeActive && task.snoozedUntil}
+            <div class="flex items-baseline gap-2 mb-2 px-2 py-1.5 bg-info/10 border border-info/20 rounded">
+              <span class="text-xs text-info flex-1">until {fmtDate(task.snoozedUntil)}</span>
+              <button onclick={unsnooze} disabled={busy} class="text-[11px] text-warning hover:underline">unsnooze</button>
+            </div>
+          {/if}
+          <div class="flex flex-wrap gap-1 text-xs">
+            <button onclick={() => void snoozeUntil(1)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">tomorrow</button>
+            <button onclick={() => void snoozeUntil(2)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">in 2d</button>
+            <button onclick={() => void snoozeUntil(7)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">next week</button>
+            <button onclick={() => void snoozeUntil(14)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">in 2 weeks</button>
+            <button onclick={() => void snoozeUntil(30)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">next month</button>
+          </div>
+        </section>
+
+        <!-- Tags (read-only summary). Tags round-trip as #tag markers
+             in the task line; the quick-add bar is the place to set
+             them at create time. -->
+        {#if task.tags && task.tags.length > 0}
+          <section>
+            <h4 class="text-[11px] uppercase tracking-wider text-dim mb-1.5">Tags</h4>
+            <div class="flex flex-wrap gap-1">
+              {#each task.tags as t (t)}
+                <span class="text-[11px] px-1.5 py-0.5 rounded bg-surface1 text-accent">#{t}</span>
+              {/each}
+            </div>
+          </section>
+        {/if}
 
         <!-- Triage row -->
         <section>
@@ -515,9 +713,6 @@
             {/if}
             {#if task.updatedAt}
               <div class="flex gap-2"><dt class="text-dim w-24">Updated</dt><dd class="text-text">{fmtDate(task.updatedAt)}</dd></div>
-            {/if}
-            {#if task.estimatedMinutes}
-              <div class="flex gap-2"><dt class="text-dim w-24">Estimate</dt><dd class="text-text">{task.estimatedMinutes} min</dd></div>
             {/if}
             {#if task.dependsOn && task.dependsOn.length}
               <div class="flex gap-2"><dt class="text-dim w-24">Depends on</dt><dd class="text-text">{task.dependsOn.join(', ')}</dd></div>
