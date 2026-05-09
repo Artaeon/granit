@@ -2310,7 +2310,8 @@ export type DashboardWidgetType =
   | 'task-velocity'
   | 'weekly-review-nudge'
   | 'ai-usage'
-  | 'today-stream';
+  | 'today-stream'
+  | 'recent-annotations';
 
 export interface DashboardWidget {
   id: string;

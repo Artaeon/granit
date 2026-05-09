@@ -117,7 +117,12 @@ export const widgetRegistry: WidgetMeta[] = [
   // customize panel. None auto-injected into existing dashboards.
   { type: 'habits', label: 'Habits', description: 'Today\'s habit ticks + per-target progress + at-risk indicator', span: 1, load: lazy(() => import('./widgets/HabitsWidget.svelte')) },
   { type: 'pomodoro', label: 'Pomodoro', description: 'In-page focus timer with audible chime; persists across reloads', span: 1, load: lazy(() => import('./widgets/PomodoroWidget.svelte')) },
-  { type: 'install', label: 'Install commands', description: 'Granit\'s install commands for fresh devices', span: 2, load: lazy(() => import('./widgets/InstallWidget.svelte')) }
+  { type: 'install', label: 'Install commands', description: 'Granit\'s install commands for fresh devices', span: 2, load: lazy(() => import('./widgets/InstallWidget.svelte')) },
+  // Recent annotations — surfaces the marginalia layer on the
+  // home page so re-reads don't have to start by opening the
+  // source note. Sister to recent-notes ("what did I edit") with
+  // a different question ("what did I think about").
+  { type: 'recent-annotations', label: 'Recent margin notes', description: 'Latest annotations across your vault — the marginalia layer at a glance', span: 1, load: lazy(() => import('./widgets/RecentAnnotationsWidget.svelte')) }
 ];
 
 export function widgetMeta(type: string): WidgetMeta | undefined {
