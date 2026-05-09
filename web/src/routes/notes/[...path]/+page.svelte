@@ -8,6 +8,7 @@
   import NotesTree from '$lib/notes/NotesTree.svelte';
   import Outline from '$lib/notes/Outline.svelte';
   import BacklinksPanel from '$lib/notes/BacklinksPanel.svelte';
+  import AnnotationsPanel from '$lib/notes/AnnotationsPanel.svelte';
   import LocalGraph from '$lib/notes/LocalGraph.svelte';
   import FrontmatterEditor from '$lib/notes/FrontmatterEditor.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
@@ -1324,6 +1325,25 @@
       />
     </section>
     {#if note}
+      <!-- Margin annotations — user-authored marginalia anchored
+           to a specific line. Sits near the top of the rail because
+           it's an active-reading surface (the user wants their
+           comments visible while skimming the source text). -->
+      <section>
+        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+            <path d="M14 4h6v6"/>
+            <path d="M10 20H4v-6"/>
+            <path d="M14 4l-4 4M4 20l6-6"/>
+          </svg>
+          Margin notes
+        </h3>
+        <AnnotationsPanel
+          notePath={note.path}
+          activeLine={cursorLine}
+          onJumpToLine={jumpToLine}
+        />
+      </section>
       <section>
         <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Local graph</h3>
         <LocalGraph path={note.path} onNavigate={navigateWikilink} />

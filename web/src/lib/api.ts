@@ -917,6 +917,20 @@ export interface BookSidecar {
   bookmarks?: BookBookmark[];
 }
 
+// Margin annotations on notes — user-authored marginalia tied to
+// a specific line, displayed as a side column in the editor /
+// preview. Mirrors internal/annotations.
+export interface NoteAnnotation {
+  id: string;
+  notePath: string;
+  lineNum: number;
+  anchorText: string;
+  text: string;
+  color?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 // Discover — one row from the search proxy. The shape is shared
 // across sources so the UI renders a uniform card grid.
 export type BookDiscoverSource = 'gutenberg' | 'standardebooks';
@@ -1873,6 +1887,24 @@ export const api = {
     const blob = await res.blob();
     return URL.createObjectURL(blob);
   },
+  // Margin annotations on notes. The list endpoint accepts an
+  // optional notePath query — empty returns the full store for a
+  // future cross-vault "all annotations" surface; the editor
+  // always passes the active path.
+  listAnnotations: (notePath?: string) => {
+    const q = notePath ? `?notePath=${encodeURIComponent(notePath)}` : '';
+    return req<{ annotations: NoteAnnotation[]; total: number }>(`/annotations${q}`);
+  },
+  createAnnotation: (a: Partial<NoteAnnotation>) =>
+    req<NoteAnnotation>('/annotations', { method: 'POST', body: JSON.stringify(a) }),
+  patchAnnotation: (id: string, patch: { text?: string; color?: string; lineNum?: number; anchorText?: string }) =>
+    req<NoteAnnotation>(`/annotations/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    }),
+  deleteAnnotation: (id: string) =>
+    req<void>(`/annotations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   // Discover — search legal e-book sources (Project Gutenberg +
   // Standard Ebooks) and import a chosen result into the vault.
   // The import endpoint streams the EPUB through the backend so:
