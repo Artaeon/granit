@@ -946,6 +946,7 @@
           { id: 'weekly_review',   label: 'Weekly review',   desc: 'Friday/Sunday: drafts a Wins / Setbacks / Learned / Next-week review.' },
           { id: 'inbox_triage',    label: 'Inbox triage',    desc: 'Suggests priority + schedule for untriaged tasks.' },
           { id: 'deadline_detect', label: 'Deadline detect', desc: 'Reads open tasks without due dates and proposes one when the title carries a clear deadline signal.' },
+          { id: 'annotate_note',   label: 'Annotate note',   desc: 'Reads a note and proposes 3-5 margin notes — questions, counter-arguments, "this matters" markers — anchored to specific lines. Review and accept each from the editor right rail.' },
           { id: 'summarise',       label: 'Summarise (existing)',  desc: 'In-editor "summarise selection / whole note" — already shipping.' },
           { id: 'extract_tasks',   label: 'Extract tasks (existing)', desc: 'In-editor "extract tasks from this note" — already shipping.' },
           { id: 'suggest_tags',    label: 'Suggest tags (existing)', desc: 'In-editor "suggest tags for this note" — already shipping.' },
