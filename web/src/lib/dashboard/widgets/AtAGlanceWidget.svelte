@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, todayISO, type Task, type HabitInfo, type PrayerIntention, type Deadline } from '$lib/api';
+  import { api, todayISO, fmtDateISO, type Task, type HabitInfo, type PrayerIntention, type Deadline } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
 
   // AtAGlanceWidget — compact daily overview row. Single span-2 widget
@@ -74,7 +74,7 @@
     if (!deadlines) return null;
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + 7);
-    const cutoffISO = cutoff.toISOString().slice(0, 10);
+    const cutoffISO = fmtDateISO(cutoff);
     return deadlines.filter(
       (d) => d.status !== 'met' && d.status !== 'cancelled' && d.date <= cutoffISO
     ).length;
