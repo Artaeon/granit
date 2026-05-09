@@ -16,6 +16,9 @@
   import TaskDetail from '$lib/tasks/TaskDetail.svelte';
   import TaskContextMenu from '$lib/tasks/TaskContextMenu.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
+  import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
+  import { saveProposals, loadProposals } from '$lib/util/proposalCache';
+  import { extractJsonBlock } from '$lib/util/jsonExtract';
 
   type View = 'list' | 'kanban' | 'today' | 'triage' | 'inbox' | 'stale' | 'quickwins' | 'review';
   type Group = 'due' | 'priority' | 'note' | 'project' | 'tag' | 'goal' | 'deadline';
@@ -33,12 +36,8 @@
   const VIEW_KEY = 'granit.tasks.view';
   const GROUP_KEY = 'granit.tasks.groupBy';
 
-  let view = $state<View>(
-    (typeof localStorage !== 'undefined' && (localStorage.getItem(VIEW_KEY) as View)) || 'list'
-  );
-  let groupBy = $state<Group>(
-    (typeof localStorage !== 'undefined' && (localStorage.getItem(GROUP_KEY) as Group)) || 'due'
-  );
+  let view = $state<View>(loadStoredString(VIEW_KEY, 'list') as View);
+  let groupBy = $state<Group>(loadStoredString(GROUP_KEY, 'due') as Group);
   let kanbanMode = $state<'priority' | 'due' | 'triage' | 'config'>('priority');
   let kanbanSwimlane = $state<'none' | 'project' | 'tag' | 'priority'>('none');
   let helpOpen = $state(false);
@@ -59,14 +58,9 @@
   // shipped. Persisted in localStorage so the user's preference sticks.
   const SOURCE_KEY = 'granit.tasks.source';
   let sourceFilter = $state<'task-notes' | 'all'>(
-    typeof localStorage !== 'undefined' && localStorage.getItem(SOURCE_KEY) === 'all'
-      ? 'all'
-      : 'task-notes'
+    loadStoredString(SOURCE_KEY, 'task-notes') === 'all' ? 'all' : 'task-notes'
   );
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(SOURCE_KEY, sourceFilter); } catch {}
-  });
+  $effect(() => saveStoredString(SOURCE_KEY, sourceFilter));
   let loading = $state(false);
   // URL sync: hydrate filter state from ?status=…&priority=…&… on
   // first load so refresh / shared links keep filters intact, and
@@ -140,34 +134,11 @@
   // up via r.Context() and short-circuits before billing tokens).
   let aiTriageAbort: AbortController | null = null;
 
-  // Persist proposals to localStorage so navigating away (or a
-  // refresh / SW update) doesn't burn the AI work the user just
-  // paid for. Tag with the date they were generated; we drop them
-  // on load if they're older than 24h since the underlying tasks
-  // may have moved on. Same shape used for deadline proposals below.
+  // Cached AI proposals — see $lib/util/proposalCache. Stored under
+  // these feature keys with a 24 h TTL so a refresh / SW update
+  // doesn't lose the suggestions the user already paid tokens for.
   const TRIAGE_KEY = 'granit.ai.triage.proposals';
   const DEADLINE_KEY = 'granit.ai.deadlines.proposals';
-  const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000;
-  function saveProposals<T>(key: string, items: T[]) {
-    try {
-      if (items.length === 0) localStorage.removeItem(key);
-      else localStorage.setItem(key, JSON.stringify({ at: Date.now(), items }));
-    } catch {}
-  }
-  function loadProposals<T>(key: string): T[] {
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as { at?: number; items?: T[] };
-      if (!parsed.at || Date.now() - parsed.at > PROPOSAL_TTL_MS) {
-        localStorage.removeItem(key);
-        return [];
-      }
-      return parsed.items ?? [];
-    } catch {
-      return [];
-    }
-  }
 
   // ── AI Plan-my-day ───────────────────────────────────────────────
   // Different agent than triage: triage processes UNTRIAGED tasks;
@@ -199,36 +170,9 @@
   // deep-work day for most knowledge workers).
   const FOCUS_HOURS_KEY = 'granit.tasks.focusHours';
   let aiFocusHours = $state<number>(
-    typeof localStorage !== 'undefined'
-      ? Number(localStorage.getItem(FOCUS_HOURS_KEY) || '4') || 4
-      : 4
+    Number(loadStoredString(FOCUS_HOURS_KEY, '4')) || 4
   );
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(FOCUS_HOURS_KEY, String(aiFocusHours)); } catch {}
-  });
-
-  // Extract the first {...} JSON object from a streaming reply.
-  // Models occasionally wrap JSON in ```json fences or add a
-  // sentence of commentary; we strip both before parsing.
-  function extractJsonBlock(s: string): string | null {
-    if (!s) return null;
-    const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const candidate = fence ? fence[1] : s;
-    // Find first '{' and matching '}' by counting depth.
-    const start = candidate.indexOf('{');
-    if (start < 0) return null;
-    let depth = 0;
-    for (let i = start; i < candidate.length; i++) {
-      const c = candidate[i];
-      if (c === '{') depth++;
-      else if (c === '}') {
-        depth--;
-        if (depth === 0) return candidate.slice(start, i + 1);
-      }
-    }
-    return null;
-  }
+  $effect(() => saveStoredString(FOCUS_HOURS_KEY, String(aiFocusHours)));
 
   async function runAIFocus() {
     if (aiFocusBusy) return;
@@ -766,13 +710,8 @@
     }
   });
 
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      localStorage.setItem(VIEW_KEY, view);
-      localStorage.setItem(GROUP_KEY, groupBy);
-    } catch {}
-  });
+  $effect(() => saveStoredString(VIEW_KEY, view));
+  $effect(() => saveStoredString(GROUP_KEY, groupBy));
 
   async function load() {
     if (!$auth) return;
@@ -1096,20 +1035,8 @@
   // survives a refresh, but only IDs that still exist in the current
   // task list are kept (prevents the set from growing forever).
   const COLLAPSE_KEY = 'granit.tasks.collapsed';
-  let collapsedIds = $state<Set<string>>(new Set());
-  onMount(() => {
-    try {
-      const raw = localStorage.getItem(COLLAPSE_KEY);
-      if (raw) {
-        const arr = JSON.parse(raw) as string[];
-        if (Array.isArray(arr)) collapsedIds = new Set(arr);
-      }
-    } catch {}
-  });
-  $effect(() => {
-    void collapsedIds;
-    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(Array.from(collapsedIds))); } catch {}
-  });
+  let collapsedIds = $state<Set<string>>(new Set(loadStored<string[]>(COLLAPSE_KEY, [])));
+  $effect(() => saveStored(COLLAPSE_KEY, Array.from(collapsedIds)));
 
   // Parent map: for every task with indent > 0, finds its parent in
   // the same notePath (the nearest preceding task with smaller
@@ -1184,18 +1111,9 @@
     groupBy: Group;
   };
   const PRESETS_KEY = 'granit.tasks.presets';
-  let presets = $state<FilterPreset[]>([]);
-  onMount(() => {
-    try {
-      const raw = localStorage.getItem(PRESETS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) presets = parsed;
-      }
-    } catch {}
-  });
+  let presets = $state<FilterPreset[]>(loadStored<FilterPreset[]>(PRESETS_KEY, []));
   function persistPresets() {
-    try { localStorage.setItem(PRESETS_KEY, JSON.stringify(presets)); } catch {}
+    saveStored(PRESETS_KEY, presets);
   }
   function captureCurrentAsPreset() {
     const name = prompt('Name this filter preset:', '');
