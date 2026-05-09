@@ -9,6 +9,7 @@
   import Outline from '$lib/notes/Outline.svelte';
   import BacklinksPanel from '$lib/notes/BacklinksPanel.svelte';
   import AnnotationsPanel from '$lib/notes/AnnotationsPanel.svelte';
+  import ConcordancePanel from '$lib/notes/ConcordancePanel.svelte';
   import LocalGraph from '$lib/notes/LocalGraph.svelte';
   import FrontmatterEditor from '$lib/notes/FrontmatterEditor.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
@@ -1125,6 +1126,28 @@
     infoDrawerOpen = false;
   }
 
+  // jumpToWord — find the first line containing the (case-
+  // insensitive) word and scroll the editor to it. Used by the
+  // concordance panel: clicking a frequent term audits its usage
+  // in context. We scan body lines rather than calling editor.find
+  // because the editor exposes a generic openFind() but not
+  // "select this word at first occurrence" — a one-time linear
+  // scan is cheaper than rebuilding that surface.
+  function jumpToWord(word: string) {
+    if (!body || !word) return;
+    const needle = word.toLowerCase();
+    const lines = body.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      // \b around the needle so "story" doesn't match "history".
+      // Re-create per call so the regex picks up the latest word.
+      const re = new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`, 'i');
+      if (re.test(lines[i])) {
+        jumpToLine(i + 1);
+        return;
+      }
+    }
+  }
+
   async function saveFrontmatter(next: Record<string, unknown>) {
     if (!note) return;
     try {
@@ -1386,6 +1409,19 @@
            those — saves rail space on a fresh note. -->
       <section>
         <ResearchPanel body={body} onJump={jumpToLine} />
+      </section>
+      <!-- Concordance: top-N most-frequent content words in the
+           note. Editing tool ("am I overusing 'really'?") + reading
+           tool ("what does this note keep returning to?"). Clicking
+           a term jumps to the first occurrence in context. -->
+      <section>
+        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
+            <path d="M3 6h18M3 12h12M3 18h6"/>
+          </svg>
+          Word frequencies
+        </h3>
+        <ConcordancePanel body={body} onJumpToWord={jumpToWord} />
       </section>
       <!-- Reference note: pin any note to read alongside while
            writing. The classic research move — paper open in one
