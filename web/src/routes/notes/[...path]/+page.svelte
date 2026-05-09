@@ -263,10 +263,10 @@
 
   let draftRestored = $state(false);
 
-  async function load(p: string) {
+  async function load(p: string, opts: { force?: boolean } = {}) {
     error = '';
     draftRestored = false;
-    if (lastLoadedPath === p) return;
+    if (!opts.force && lastLoadedPath === p) return;
     // Same-note reloads (WS-triggered note.changed) must not clobber
     // in-flight typing. Snapshot the body before the await; if the user
     // types during the fetch, abort the body overwrite and let the
@@ -860,16 +860,54 @@
   // own save sets lastSavedAt within milliseconds before the bounce-
   // back, so the 3s window is short enough that an external edit
   // arriving moments later still wins.
-  onMount(() =>
-    onWsEvent((ev) => {
+  //
+  // Two correctness guards on top of the original lastSavedAt window:
+  //
+  // 1. body !== prev — the SYNCHRONOUS "user typed something we
+  //    haven't saved yet" signal. The `dirty` flag is updated by an
+  //    $effect that runs in a microtask AFTER body changes, leaving
+  //    a small race window where a WS event arriving mid-keystroke
+  //    saw `dirty=false` and triggered load(). The reload then
+  //    overwrote the user's keystrokes with the server's body
+  //    (which itself was the pre-edit version). Comparing body to
+  //    prev directly catches the in-flight typing without waiting
+  //    for the effect microtask.
+  //
+  // 2. Coalesce reloads to a single trailing-edge call per ~600ms.
+  //    The server fires `note.changed` from BOTH the PUT handler
+  //    AND the file-watcher (after the PUT writes the file), so a
+  //    single autosave produces ≥2 WS events in close succession.
+  //    Without coalescing, we'd schedule two `load()` calls and
+  //    flash the editor twice. Same trailing-edge pattern that
+  //    NotesTree.svelte adopted in 8cf45ba.
+  let wsReloadTimer: ReturnType<typeof setTimeout> | null = null;
+  function scheduleWsReload(p: string) {
+    if (wsReloadTimer) clearTimeout(wsReloadTimer);
+    wsReloadTimer = setTimeout(() => {
+      wsReloadTimer = null;
+      // Re-evaluate the guards at the moment of reload — the user
+      // could have started typing during the 600ms window.
+      if (!note || note.path !== p) return;
+      if (body !== prev || saving) return;
+      if (lastSavedAt && Date.now() - lastSavedAt < 3000) return;
+      void load(p, { force: true });
+    }, 600);
+  }
+  onMount(() => {
+    const off = onWsEvent((ev) => {
       if (ev.type !== 'note.changed') return;
       if (!note || ev.path !== note.path) return;
-      if (dirty || saving) return;
+      // Cheap synchronous-only guards here; the timed evaluation
+      // re-checks the rest at fire time.
+      if (body !== prev || saving) return;
       if (lastSavedAt && Date.now() - lastSavedAt < 3000) return;
-      lastLoadedPath = '';
-      load(note.path);
-    })
-  );
+      scheduleWsReload(note.path);
+    });
+    return () => {
+      off();
+      if (wsReloadTimer) { clearTimeout(wsReloadTimer); wsReloadTimer = null; }
+    };
+  });
 
   let wordCount = $derived.by(() => {
     const t = body.trim();
