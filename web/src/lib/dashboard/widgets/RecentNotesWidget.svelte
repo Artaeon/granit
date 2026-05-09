@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
+  import { createCoalescedReload } from '$lib/util/coalesce';
 
   // Recent notes with a one-line excerpt + tag chips, ordered by
   // mod-time. The original widget showed title + date only; that
@@ -15,17 +16,9 @@
 
   // Coalesce WS-driven reloads — note.changed fires repeatedly while
   // the user types in the editor; without coalescing the widget
-  // refetches on every keystroke and re-paints the rail. 600ms
-  // matches the project-wide pattern (commit 8cf45ba).
-  let reloadTimer: ReturnType<typeof setTimeout> | null = null;
-  function scheduleReload() {
-    if (reloadTimer) clearTimeout(reloadTimer);
-    reloadTimer = setTimeout(() => {
-      reloadTimer = null;
-      void load();
-    }, 600);
-  }
-
+  // refetches on every keystroke and re-paints the rail. The shared
+  // helper uses a trailing-edge throttle (the original code here was
+  // a debounce, which would never fire under sustained typing).
   async function load() {
     loading = true;
     try {
@@ -35,13 +28,15 @@
       loading = false;
     }
   }
+  const reload = createCoalescedReload(() => load(), 600);
+
   onMount(() => {
     void load();
     return onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') scheduleReload();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
     });
   });
-  onDestroy(() => { if (reloadTimer) clearTimeout(reloadTimer); });
+  onDestroy(reload.cancel);
 
   // Relative date — feels warmer than "Apr 12" when the user is
   // looking at "what did I touch yesterday".

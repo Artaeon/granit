@@ -3,6 +3,7 @@
   import { auth } from '$lib/stores/auth';
   import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
+  import { createCoalescedReload } from '$lib/util/coalesce';
   import { buildTree, filterTree, ancestorFolders, type TreeNode } from './treeUtils';
   import TreeNodeView from './TreeNode.svelte';
   import { pinnedNotes, unpinPath, ensurePinnedLoaded } from './pinnedNotes';
@@ -37,29 +38,20 @@
   // every save (potentially every couple of seconds while a user types).
   // A naive load() per event refetches 5000 notes + rebuilds the entire
   // tree synchronously, which froze the UI for users with mid-sized
-  // vaults. Coalesce into a single trailing-edge reload per window.
-  let reloadTimer: ReturnType<typeof setTimeout> | null = null;
-  let reloadPending = false;
-  function scheduleReload() {
-    reloadPending = true;
-    if (reloadTimer) return;
-    reloadTimer = setTimeout(() => {
-      reloadTimer = null;
-      if (!reloadPending) return;
-      reloadPending = false;
-      void load();
-    }, 600);
-  }
+  // vaults. See $lib/util/coalesce for the canonical implementation
+  // (trailing-edge throttle with a pending flag — a pure debounce
+  // would never fire under sustained traffic).
+  const wsReload = createCoalescedReload(() => load(), 600);
 
   onMount(() => {
     if (autoLoad) load();
     ensurePinnedLoaded();
     const unsub = onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') scheduleReload();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') wsReload.trigger();
     });
     return () => {
       unsub();
-      if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
+      wsReload.cancel();
     };
   });
 

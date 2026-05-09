@@ -4,6 +4,7 @@
   import { auth } from '$lib/stores/auth';
   import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
+  import { createCoalescedReload } from '$lib/util/coalesce';
   import { toast } from '$lib/components/toast';
   import NotesTree from '$lib/notes/NotesTree.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
@@ -82,28 +83,20 @@
   // every tick, freezing the page on mid-sized vaults. One trailing-
   // edge reload per window suffices: the user doesn't need sub-second
   // freshness on a list panel.
-  let reloadTimer: ReturnType<typeof setTimeout> | null = null;
-  let reloadPending = false;
-  function scheduleReload() {
-    reloadPending = true;
-    if (reloadTimer) return;
-    reloadTimer = setTimeout(() => {
-      reloadTimer = null;
-      if (!reloadPending) return;
-      reloadPending = false;
-      void loadAll();
-    }, 600);
-  }
+  // See $lib/util/coalesce for the canonical implementation.
+  const reload = createCoalescedReload(() => loadAll(), 600);
 
   onMount(() => {
     loadAll();
     const unsub = onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') scheduleReload();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
     });
     // Mobile browsers (and any backgrounded tab) suspend the WS, so
     // notes created/edited on another device while we were away never
     // make it through. Refetch on the visibility flip so a returning
-    // tab catches up without the user having to pull-to-refresh.
+    // tab catches up without the user having to pull-to-refresh. We
+    // call loadAll directly (bypassing the coalesce window) so the
+    // user sees the fresh list as soon as the tab returns.
     const onVisible = () => {
       if (document.visibilityState === 'visible') loadAll();
     };
@@ -113,7 +106,7 @@
       unsub();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
-      if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
+      reload.cancel();
     };
   });
 
