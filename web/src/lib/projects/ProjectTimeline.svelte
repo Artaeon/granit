@@ -15,21 +15,19 @@
 
   let {
     projects,
-    tasks: _tasks = [],
     onSelect,
-    colorVar,
-    statusTone: _statusTone
+    colorVar
   }: {
     projects: Project[];
+    /** Accepted but unused — kept available so future extensions
+     *  (e.g. task-density tinting along the bar) can read tasks
+     *  without a parent contract change. */
     tasks?: Task[];
     onSelect: (name: string) => void;
     colorVar: (c?: string) => string;
-    statusTone: (s: string) => string;
+    /** Accepted but unused — same forward-compat reasoning as tasks. */
+    statusTone?: (s: string) => string;
   } = $props();
-  // tasks/statusTone are accepted to keep the parent's call signature
-  // homogenous across views even if this component doesn't use them.
-  void _tasks;
-  void _statusTone;
 
   // Range = [earliest project start … max(latest due, today + 14d)].
   // Padding the right edge means projects with no due_date still

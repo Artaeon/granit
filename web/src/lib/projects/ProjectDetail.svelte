@@ -3,6 +3,7 @@
   import { api, type Goal, type Project, type ProjectGoal, type Task } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import GoalEditor from './GoalEditor.svelte';
+  import ProjectNotesTab from './ProjectNotesTab.svelte';
   import TaskRow from '$lib/components/TaskRow.svelte';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
 
@@ -1024,6 +1025,15 @@
           {/if}
         {/if}
       </section>
+
+      <!-- Notes linked to this project. Three matching signals
+           (frontmatter project: field, [[Name]] wikilink, path under
+           folder) are tried in order so an explicit link beats a
+           drive-by mention. The two CTAs at the top let the user
+           extend the link set: "+ Link existing" pops a search dialog
+           that writes the project frontmatter back, "+ New note"
+           drops a fresh note pre-filled and jumps to the editor. -->
+      <ProjectNotesTab project={project} />
 
       <!-- Metadata grid -->
       <section class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 pt-4 border-t border-surface1">
