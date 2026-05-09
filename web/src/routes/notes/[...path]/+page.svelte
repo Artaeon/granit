@@ -653,6 +653,58 @@
   // toolbar button or Mod-Shift-P.
   let presentationOpen = $state(false);
 
+  // Mobile overflow menu — collapses the secondary header buttons
+  // (find, print, slideshow, audio, reading, focus, help) into a
+  // single ⋯ trigger on phones. Without this the header overflowed
+  // horizontally on narrow viewports; the buttons were just
+  // `hidden sm:flex` so mobile users had no way to reach them at
+  // all. Positioned with the same viewport-aware fixed-coordinate
+  // pattern as EditorAIMenu so it never spills off-screen.
+  let overflowOpen = $state(false);
+  let overflowMenuEl: HTMLDivElement | undefined = $state();
+  let overflowTriggerEl: HTMLButtonElement | undefined = $state();
+  let overflowMenuTop = $state(0);
+  let overflowMenuLeft = $state(0);
+  let overflowMenuWidth = $state(240);
+
+  function repositionOverflow() {
+    if (!overflowTriggerEl) return;
+    const rect = overflowTriggerEl.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const margin = 8;
+    overflowMenuWidth = Math.min(240, vw - margin * 2);
+    let left = rect.right - overflowMenuWidth;
+    if (left < margin) left = margin;
+    if (left + overflowMenuWidth > vw - margin) left = vw - margin - overflowMenuWidth;
+    overflowMenuLeft = left;
+    overflowMenuTop = rect.bottom + 4;
+  }
+
+  $effect(() => {
+    if (!overflowOpen) return;
+    repositionOverflow();
+    function onDocClick(e: MouseEvent) {
+      if (!overflowMenuEl || !overflowTriggerEl) return;
+      if (e.target instanceof Node && overflowMenuEl.contains(e.target)) return;
+      if (e.target instanceof Node && overflowTriggerEl.contains(e.target)) return;
+      overflowOpen = false;
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') overflowOpen = false;
+    }
+    function onResize() { repositionOverflow(); }
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onResize, true);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onResize, true);
+    };
+  });
+
   function handleAskAI(req: AskAIRequest) {
     askAIRequest = req;
   }
@@ -1420,6 +1472,19 @@
             onReplaceBody={aiMenuReplaceBody}
           />
         {/if}
+        <!-- Mobile overflow trigger — collapses the secondary buttons
+             (find, print, slideshow, audio, reading, focus, help)
+             into one menu on phones. Hidden on sm+ where there's
+             room for those buttons inline. -->
+        <button
+          bind:this={overflowTriggerEl}
+          onclick={() => (overflowOpen = !overflowOpen)}
+          aria-label="More actions"
+          aria-haspopup="menu"
+          aria-expanded={overflowOpen}
+          title="More actions"
+          class="sm:hidden w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-lg leading-none"
+        >⋯</button>
         <!-- Slideshow — open the note as a fullscreen deck split
              on H2 boundaries. Mod-Shift-P also opens it. Hidden on
              phones because driving a deck on a 4" screen is
@@ -1750,6 +1815,115 @@
   sourcePath={note?.path ?? ''}
   onDismiss={dismissAskAI}
 />
+
+<!-- Mobile overflow popover — surfaces the secondary header
+     actions on phones. Rendered with `position: fixed` and
+     viewport-clamped coordinates so it escapes any ancestor
+     overflow (the editor / drawer ancestors) and never lands
+     off-screen on narrow phones. -->
+{#if overflowOpen && note}
+  <div
+    bind:this={overflowMenuEl}
+    role="menu"
+    aria-label="More actions"
+    class="fixed z-50 bg-mantle border border-surface1 rounded-md shadow-xl py-1 text-sm"
+    style="top: {overflowMenuTop}px; left: {overflowMenuLeft}px; width: {overflowMenuWidth}px;"
+  >
+    <button
+      type="button"
+      role="menuitem"
+      onclick={() => { overflowOpen = false; editor?.openFind(); }}
+      class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem]"
+    >
+      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
+        <circle cx="11" cy="11" r="7"/>
+        <path d="M21 21l-4.5-4.5" stroke-linecap="round"/>
+      </svg>
+      <span>Find / replace</span>
+    </button>
+    <button
+      type="button"
+      role="menuitem"
+      onclick={() => { overflowOpen = false; printOpen = true; }}
+      class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem]"
+    >
+      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M6 9V4h12v5"/>
+        <rect x="6" y="14" width="12" height="6" rx="1"/>
+        <path d="M6 17H4a2 2 0 01-2-2v-3a2 2 0 012-2h16a2 2 0 012 2v3a2 2 0 01-2 2h-2"/>
+      </svg>
+      <span>Export PDF</span>
+    </button>
+    <button
+      type="button"
+      role="menuitem"
+      onclick={() => { overflowOpen = false; presentationOpen = true; }}
+      class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem]"
+    >
+      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
+        <rect x="3" y="4" width="18" height="13" rx="1.5"/>
+        <path d="M8 21h8M12 17v4" stroke-linecap="round"/>
+      </svg>
+      <span>Slideshow</span>
+    </button>
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={audioOpen}
+      onclick={() => { overflowOpen = false; audioOpen = !audioOpen; }}
+      class="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-surface0 text-left min-h-[2.25rem]
+        {audioOpen ? 'text-secondary' : 'text-text'}"
+    >
+      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M11 5L6 9H2v6h4l5 4V5z" stroke-linejoin="round"/>
+        <path d="M15.5 8.5a5 5 0 010 7" stroke-linecap="round"/>
+        <path d="M19 5a9 9 0 010 14" stroke-linecap="round"/>
+      </svg>
+      <span>{audioOpen ? 'Close audio' : 'Read aloud'}</span>
+    </button>
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={readingMode}
+      onclick={() => { overflowOpen = false; toggleReadingMode(); }}
+      class="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-surface0 text-left min-h-[2.25rem]
+        {readingMode ? 'text-primary' : 'text-text'}"
+    >
+      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M2 5h7a3 3 0 013 3v11a2 2 0 00-2-2H2V5z"/>
+        <path d="M22 5h-7a3 3 0 00-3 3v11a2 2 0 012-2h8V5z"/>
+      </svg>
+      <span>{readingMode ? 'Exit reading mode' : 'Reading mode'}</span>
+    </button>
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={focusMode}
+      onclick={() => { overflowOpen = false; focusMode = !focusMode; }}
+      class="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-surface0 text-left min-h-[2.25rem]
+        {focusMode ? 'text-primary' : 'text-text'}"
+    >
+      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
+        {#if focusMode}
+          <path d="M9 4v4H5M15 4v4h4M9 20v-4H5M15 20v-4h4" stroke-linecap="round" stroke-linejoin="round"/>
+        {:else}
+          <path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4" stroke-linecap="round" stroke-linejoin="round"/>
+        {/if}
+      </svg>
+      <span>{focusMode ? 'Exit focus mode' : 'Focus mode'}</span>
+    </button>
+    <div class="border-t border-surface1 my-1"></div>
+    <button
+      type="button"
+      role="menuitem"
+      onclick={() => { overflowOpen = false; helpOpen = true; }}
+      class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem]"
+    >
+      <span class="w-4 h-4 flex-shrink-0 flex items-center justify-center font-mono text-sm">?</span>
+      <span>Keyboard shortcuts</span>
+    </button>
+  </div>
+{/if}
 
 <style>
   /* Focus mode: hide the side asides (tree on the left, info on the
