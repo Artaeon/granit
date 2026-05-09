@@ -8,6 +8,7 @@
     type BookDetail,
     type BookSidecar,
     type BookHighlight,
+    type BookBookmark,
     type BookTOCEntry
   } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
@@ -243,6 +244,56 @@
     };
   }
 
+  // ── Bookmarks ───────────────────────────────────────────────────
+  // Lightweight "remember this spot" markers — chapter + scroll
+  // fraction + an optional label. Distinct from highlights:
+  // bookmarks aren't tied to a quoted passage, they're navigation
+  // anchors ("come back here").
+  async function addBookmark() {
+    if (!detail) return;
+    const chapter = detail.chapters[chapterIdx];
+    const defaultLabel = chapter ? chapter.label : `Chapter ${chapterIdx + 1}`;
+    const label = prompt('Bookmark label (optional):', defaultLabel);
+    if (label === null) return; // cancelled
+    try {
+      const b = await api.createBookBookmark(bookId, {
+        chapterIdx,
+        scrollFraction: currentScrollFraction(),
+        label: label.trim() || defaultLabel
+      });
+      sidecar = sidecar
+        ? { ...sidecar, bookmarks: [...(sidecar.bookmarks ?? []), b] }
+        : sidecar;
+      toast.success('Bookmark saved');
+    } catch (e) {
+      toast.error('Bookmark failed: ' + errorMessage(e));
+    }
+  }
+
+  async function jumpToBookmark(b: BookBookmark) {
+    if (b.chapterIdx !== chapterIdx) {
+      await jumpToChapter(b.chapterIdx);
+    }
+    if (b.scrollFraction && chapterEl) {
+      const el = chapterEl;
+      requestAnimationFrame(() => {
+        el.scrollTop = b.scrollFraction! * Math.max(1, el.scrollHeight - el.clientHeight);
+      });
+    }
+  }
+
+  async function deleteBookmark(bid: string, e: Event) {
+    e.stopPropagation();
+    try {
+      await api.deleteBookBookmark(bookId, bid);
+      sidecar = sidecar
+        ? { ...sidecar, bookmarks: (sidecar.bookmarks ?? []).filter((b) => b.id !== bid) }
+        : sidecar;
+    } catch (err) {
+      toast.error('Delete failed: ' + errorMessage(err));
+    }
+  }
+
   async function highlight(color: string) {
     if (!toolbar) return;
     const text = toolbar.text;
@@ -277,39 +328,100 @@
   }
 
   // Wrap saved highlights for the current chapter in <mark> tags.
-  // Cheap text-search anchoring — full CFI is overkill given that
-  // the source EPUB doesn't change underneath.
+  // Anchored via prefix + text + suffix (30 chars each side, saved
+  // at highlight time): we collapse the chapter to its flat text,
+  // search for prefix+text+suffix as a contiguous span, and pick
+  // the offset where text sits inside that match. Falls back to
+  // first-occurrence anchoring when the prefix/suffix are absent
+  // (older highlights) or when the chapter has been edited
+  // underneath them.
   function applyHighlights() {
     if (!chapterEl || !sidecar?.highlights) return;
     for (const h of sidecar.highlights) {
       if (h.chapterIdx !== chapterIdx) continue;
-      wrapTextInElement(chapterEl, h.text, h.color, h.id);
+      // Skip if already wrapped — saves repeated work on re-render.
+      if (chapterEl.querySelector(`mark[data-hid="${h.id}"]`)) continue;
+      const offset = locateHighlight(chapterEl, h.text, h.prefix ?? '', h.suffix ?? '');
+      if (offset < 0) continue;
+      wrapRange(chapterEl, offset, h.text.length, h.color, h.id);
     }
   }
 
-  function wrapTextInElement(root: HTMLElement, text: string, color: string, id: string) {
-    if (text.length < 2) return;
-    // Skip if already wrapped — saves repeated work on re-render.
-    if (root.querySelector(`mark[data-hid="${id}"]`)) return;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
-    const targets: Text[] = [];
-    let node: Node | null;
-    while ((node = walker.nextNode())) {
-      if (node.textContent && node.textContent.includes(text)) {
-        targets.push(node as Text);
-      }
+  /**
+   * Find the absolute character offset (within the flattened
+   * chapter text) of a saved highlight, using prefix + text + suffix
+   * as a disambiguator. Returns -1 if nothing matches.
+   *
+   * Strategy: assemble `prefix + text + suffix` and search for it
+   * verbatim. If found, the highlight starts at `match + prefix.length`.
+   * If not found (chapter changed since highlight, or anchors are
+   * empty), fall back to the first occurrence of `text` alone.
+   */
+  function locateHighlight(root: HTMLElement, text: string, prefix: string, suffix: string): number {
+    const flat = root.textContent ?? '';
+    if (text.length < 2 || !flat.includes(text)) return -1;
+    if (prefix || suffix) {
+      const composite = prefix + text + suffix;
+      const idx = flat.indexOf(composite);
+      if (idx >= 0) return idx + prefix.length;
     }
-    if (targets.length === 0) return;
-    const t = targets[0];
-    const idx = t.textContent!.indexOf(text);
-    if (idx < 0) return;
-    const before = t.splitText(idx);
-    before.splitText(text.length);
-    const mark = document.createElement('mark');
-    mark.dataset.hid = id;
-    mark.className = `bookmark-color-${color}`;
-    mark.textContent = before.textContent;
-    before.replaceWith(mark);
+    return flat.indexOf(text);
+  }
+
+  /**
+   * Wrap (offset, offset+length) of the flattened chapter text in
+   * a <mark>. Walks the DOM accumulating text-node lengths; when
+   * we cross `offset` we split the text node, advance through any
+   * intervening nodes (so a highlight crossing tag boundaries
+   * still wraps cleanly), and stop at offset+length.
+   */
+  function wrapRange(root: HTMLElement, offset: number, length: number, color: string, id: string) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    let pos = 0;
+    let remaining = length;
+    let node: Node | null;
+    const toWrap: Text[] = [];
+    while ((node = walker.nextNode())) {
+      const t = node as Text;
+      const len = t.textContent?.length ?? 0;
+      if (len === 0) continue;
+      const startInNode = offset - pos;
+      const endInNode = offset + length - pos;
+      if (endInNode <= 0) {
+        pos += len;
+        continue;
+      }
+      if (startInNode >= len) {
+        pos += len;
+        continue;
+      }
+      // This node intersects [offset, offset+length). Split as
+      // needed so the wrap target is exactly the matching text.
+      let target = t;
+      if (startInNode > 0) {
+        target = t.splitText(startInNode);
+      }
+      const remainingInTarget = Math.min(remaining, target.textContent?.length ?? 0);
+      if (remainingInTarget < (target.textContent?.length ?? 0)) {
+        target.splitText(remainingInTarget);
+      }
+      toWrap.push(target);
+      remaining -= remainingInTarget;
+      pos += len;
+      if (remaining <= 0) break;
+    }
+    if (toWrap.length === 0) return;
+    for (let i = 0; i < toWrap.length; i++) {
+      const t = toWrap[i];
+      const mark = document.createElement('mark');
+      // Only the first segment carries the data-hid so the de-dup
+      // check above stays correct (a multi-node highlight isn't
+      // counted as N marks).
+      if (i === 0) mark.dataset.hid = id;
+      mark.className = `bookmark-color-${color}`;
+      mark.textContent = t.textContent;
+      t.replaceWith(mark);
+    }
   }
 
   // Chapter-list label resolved through the current TOC (or the
@@ -418,6 +530,16 @@
         </div>
       </div>
       <button
+        onclick={addBookmark}
+        class="text-xs px-2 py-1 rounded hover:bg-surface1/50 text-subtext flex items-center gap-1"
+        title="Bookmark current spot"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span class="hidden sm:inline">Bookmark</span>
+      </button>
+      <button
         onclick={() => (sidebarOpen = !sidebarOpen)}
         class="text-xs px-2 py-1 rounded hover:bg-surface1/50 text-subtext"
         title="Toggle table of contents"
@@ -519,6 +641,32 @@
                 {/each}
               {/if}
             </ul>
+
+            {#if (sidecar?.bookmarks ?? []).length > 0}
+              <h3 class="text-xs uppercase tracking-wider text-dim mt-6 mb-2">Bookmarks</h3>
+              <ul class="space-y-1">
+                {#each sidecar?.bookmarks ?? [] as b (b.id)}
+                  <li class="group flex items-center rounded hover:bg-surface1/50">
+                    <button
+                      class="flex-1 min-w-0 text-left text-xs leading-snug px-2 py-1.5 flex items-center gap-2"
+                      onclick={() => jumpToBookmark(b)}
+                    >
+                      <span class="text-primary flex-shrink-0">▸</span>
+                      <span class="flex-1 truncate text-text">{b.label}</span>
+                      <span class="text-dim flex-shrink-0">ch {b.chapterIdx + 1}</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="opacity-0 group-hover:opacity-100 text-dim hover:text-error px-2 py-1.5 flex-shrink-0"
+                      title="Remove bookmark"
+                      onclick={(e) => deleteBookmark(b.id, e)}
+                    >
+                      ×
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
 
             {#if (sidecar?.highlights ?? []).length > 0}
               <h3 class="text-xs uppercase tracking-wider text-dim mt-6 mb-2">Highlights</h3>

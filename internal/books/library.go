@@ -34,6 +34,11 @@ type Summary struct {
 	// next to the title — useful when deciding what to read on a
 	// long flight where bandwidth matters.
 	Bytes int64 `json:"bytes"`
+	// TotalChapters is the spine length, captured at scan time
+	// while we already have the EPUB open. Stashing it here is the
+	// difference between O(1) and O(N×Open) when the list handler
+	// renders a "ch X of Y" caption per row.
+	TotalChapters int `json:"totalChapters"`
 }
 
 // Detail is the reader-page payload — full spine + TOC, with
@@ -179,12 +184,13 @@ func summaryFromFile(vaultRoot, abs string) (Summary, error) {
 		bytes = stat.Size()
 	}
 	return Summary{
-		ID:       SlugID(e.Title, abs),
-		Title:    fallbackTitle(e.Title, abs),
-		Authors:  e.Authors,
-		HasCover: e.CoverID != "",
-		Path:     filepath.ToSlash(rel),
-		Bytes:    bytes,
+		ID:            SlugID(e.Title, abs),
+		Title:         fallbackTitle(e.Title, abs),
+		Authors:       e.Authors,
+		HasCover:      e.CoverID != "",
+		Path:          filepath.ToSlash(rel),
+		Bytes:         bytes,
+		TotalChapters: len(e.Spine),
 	}, nil
 }
 

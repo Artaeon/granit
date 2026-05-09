@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/artaeon/granit/internal/books"
@@ -42,40 +43,31 @@ func (s *Server) handleListBooks(w http.ResponseWriter, r *http.Request) {
 	if all == nil {
 		all = []books.Summary{}
 	}
-	// Merge minimal progress so the shelf can render "X% read"
-	// without N round-trips. We don't ship the full sidecar here
-	// (highlights would balloon the payload) — just the fields
-	// the shelf card needs.
+	// Merge minimal progress per row so the shelf can render
+	// "X% read" without N round-trips. Highlights stay off the
+	// shelf payload — they belong to the per-book sidecar fetch.
+	//
+	// TotalChapters comes from the Summary itself (captured at
+	// scan time when we already had the EPUB open) — earlier
+	// versions re-opened the EPUB twice per row here, which was
+	// O(N×Open) for an O(N) endpoint.
 	type shelfRow struct {
 		books.Summary
 		LastReadAt      string  `json:"lastReadAt,omitempty"`
 		FurthestChapter int     `json:"furthestChapter"`
 		ProgressPct     float64 `json:"progressPct"`
-		// TotalChapters lets the UI render "ch 7 of 22" — we'd
-		// otherwise need a per-row open() to compute it.
-		TotalChapters int `json:"totalChapters"`
 	}
 	out := make([]shelfRow, 0, len(all))
 	for _, sum := range all {
 		row := shelfRow{Summary: sum}
-		// Cheap-ish: open just to get spine length. EPUB toc is
-		// small. If this becomes a hot path we'd cache via
-		// content-hash; not worth it for v1.
-		if e, _, err := books.FindByID(s.cfg.Vault.Root, sum.ID); err == nil {
-			_ = e
-			if d, ee, derr := books.LoadDetail(s.cfg.Vault.Root, sum.ID); derr == nil {
-				row.TotalChapters = len(d.Chapters)
-				ee.Close()
-			}
-		}
 		if sc, err := books.LoadSidecar(s.cfg.Vault.Root, sum.ID); err == nil && sc != nil {
 			row.LastReadAt = sc.Progress.LastReadAt
 			row.FurthestChapter = sc.Progress.FurthestChapter
-			if row.TotalChapters > 0 {
+			if sum.TotalChapters > 0 {
 				// (furthestChapter+1)/total — chapter 0 already
 				// implies "started reading", so +1 keeps the bar
 				// from showing 0% for an opened book.
-				pct := float64(sc.Progress.FurthestChapter+1) * 100.0 / float64(row.TotalChapters)
+				pct := float64(sc.Progress.FurthestChapter+1) * 100.0 / float64(sum.TotalChapters)
 				if pct > 100 {
 					pct = 100
 				}
@@ -91,7 +83,7 @@ func (s *Server) handleGetBook(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	d, e, err := books.LoadDetail(s.cfg.Vault.Root, id)
 	if err != nil {
-		if errors.Is(err, errors.New("file does not exist")) {
+		if errors.Is(err, os.ErrNotExist) {
 			writeError(w, http.StatusNotFound, "book not found")
 			return
 		}

@@ -90,10 +90,14 @@ type ManifestItem struct {
 // index into Spine that the entry resolves to (so the reader can
 // jump to that chapter without re-resolving). Children carry
 // nested headings — most EPUBs only nest one or two levels.
+//
+// JSON tags are explicit to keep the wire shape camelCase
+// (matches the rest of the granit API surface; without tags the
+// default capitalised field names would leak through).
 type TOCEntry struct {
-	Title    string
-	SpineIdx int
-	Children []TOCEntry
+	Title    string     `json:"title"`
+	SpineIdx int        `json:"spineIdx"`
+	Children []TOCEntry `json:"children,omitempty"`
 }
 
 // Open parses the EPUB at the given filesystem path. Caller must
