@@ -607,8 +607,15 @@
         }
       }
       // Per-instance override path: write a single override entry
-      // keyed by the occurrence's UTC anchor; expander surfaces the
-      // override on render. SERIES base stays untouched.
+      // keyed by the occurrence's UTC ANCHOR (the series-base time
+      // for this occurrence, NOT the currently rendered time). When
+      // an override is already active, `ev.start` reflects the
+      // overridden time, so re-deriving the key from `ev.start`
+      // would mint a fresh override at the wrong anchor and the
+      // original override would stay buried in the map. Use
+      // ev.override_key when present (canonical anchor surfaced by
+      // the calendar feed); fall back to ev.start for first-time
+      // overrides where the rendered time IS the anchor.
       if (recurringMode === 'instance' && ev.type === 'event' && ev.eventId && ev.start) {
         const dateStr = `${newStart.getFullYear()}-${String(newStart.getMonth() + 1).padStart(2, '0')}-${String(newStart.getDate()).padStart(2, '0')}`;
         const startTime = `${String(newStart.getHours()).padStart(2, '0')}:${String(newStart.getMinutes()).padStart(2, '0')}`;
@@ -617,11 +624,7 @@
         const maxEndMinOnly = 24 * 60 - 1;
         const endMin = Math.min(startMinOnly + dur, maxEndMinOnly);
         const endTime = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
-        // Key into Event.Overrides: UTC anchor of the ORIGINAL
-        // occurrence (the one currently rendered, before the move).
-        // Mirror EventDetail's exDateKey contract — backend matches
-        // by string equality so the format must match exactly.
-        const key = new Date(ev.start).toISOString().slice(0, 19);
+        const key = ev.override_key ?? new Date(ev.start).toISOString().slice(0, 19);
         await api.overrideEventOccurrence(ev.eventId, key, {
           date: dateStr,
           start_time: startTime,
@@ -718,7 +721,10 @@
         const maxEndMin = 24 * 60 - 1;
         const endMin = Math.min(startMin + durationMinutes, maxEndMin);
         const endTime = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
-        const key = new Date(ev.start).toISOString().slice(0, 19);
+        // See moveEvent: prefer the surfaced override_key over re-
+        // deriving from ev.start so we don't mint a fresh override
+        // at an already-overridden time.
+        const key = ev.override_key ?? new Date(ev.start).toISOString().slice(0, 19);
         // Resize keeps the start_time on the original occurrence date
         // unchanged — only end_time shifts. We still send start_time so
         // the override carries a complete (start, end) pair and the

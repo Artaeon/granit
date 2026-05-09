@@ -224,6 +224,34 @@ func TestEvents_PerInstanceOverride(t *testing.T) {
 	override(oneOff.ID,
 		`{"key":"2026-04-01T08:00:00","override":{"start_time":"11:00"}}`,
 		http.StatusBadRequest)
+
+	// Re-overriding an already-overridden occurrence at the SAME key
+	// must mutate the existing entry rather than minting a new one
+	// at a shifted key. This is the contract the frontend's
+	// override_key surfacing relies on: moveEvent passes the
+	// canonical anchor key (not the rendered start), so multiple
+	// drag-moves of the same Tuesday compose to one override entry.
+	override(ev.ID,
+		`{"key":"2026-03-05T08:00:00","override":{"start_time":"10:00","end_time":"11:00"}}`,
+		http.StatusOK)
+	override(ev.ID,
+		`{"key":"2026-03-05T08:00:00","override":{"start_time":"13:00","end_time":"14:00"}}`,
+		http.StatusOK)
+	listReq3 := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	lw3 := httptest.NewRecorder()
+	h.ServeHTTP(lw3, listReq3)
+	var list3 struct {
+		Events []granitmeta.Event `json:"events"`
+	}
+	if err := json.Unmarshal(lw3.Body.Bytes(), &list3); err != nil {
+		t.Fatal(err)
+	}
+	if len(list3.Events[0].Overrides) != 1 {
+		t.Errorf("expected 1 override after double-write at same key, got %d", len(list3.Events[0].Overrides))
+	}
+	if got := list3.Events[0].Overrides["2026-03-05T08:00:00"]; got.StartTime != "13:00" {
+		t.Errorf("override didn't update on second write: %+v", got)
+	}
 }
 
 // TestEvents_DragEdges locks the boundary the user hit with "drag make

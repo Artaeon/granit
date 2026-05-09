@@ -312,6 +312,12 @@
   // isn't on the patch path today.
   function exDateKey(): string {
     if (!event) return '';
+    // For an already-overridden occurrence, the canonical anchor is
+    // surfaced as event.override_key by the calendar feed. Prefer it
+    // — re-deriving from event.start would point at the OVERRIDDEN
+    // time, not the series anchor, and the EXDATE/Override map keys
+    // by anchor.
+    if (event.override_key) return event.override_key;
     if (event.start) {
       // event.start is RFC3339 from the calendar feed (the backend's
       // expandRRULE emits each occurrence's Start as time.RFC3339,
