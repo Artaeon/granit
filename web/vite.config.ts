@@ -1,5 +1,7 @@
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
+// vitest/config exports the same defineConfig but with the `test`
+// block typed. svelte-check would otherwise reject the test config.
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [sveltekit()],

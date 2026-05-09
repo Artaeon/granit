@@ -16,6 +16,7 @@
   import TaskDetail from '$lib/tasks/TaskDetail.svelte';
   import TaskContextMenu from '$lib/tasks/TaskContextMenu.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
+  import EisenhowerView from '$lib/tasks/EisenhowerView.svelte';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { saveProposals, loadProposals } from '$lib/util/proposalCache';
   import { extractJsonBlock } from '$lib/util/jsonExtract';
@@ -29,7 +30,7 @@
     type StaleVerdict
   } from '$lib/tasks/aiPrompts';
 
-  type View = 'list' | 'kanban' | 'today' | 'triage' | 'inbox' | 'stale' | 'quickwins' | 'review';
+  type View = 'list' | 'kanban' | 'today' | 'triage' | 'inbox' | 'stale' | 'quickwins' | 'review' | 'eisenhower';
   type Group = 'due' | 'priority' | 'note' | 'project' | 'tag' | 'goal' | 'deadline';
 
   let tasks = $state<Task[]>([]);
@@ -97,7 +98,7 @@
     if (sp.has('deadline')) deadlineFilter = get('deadline');
     if (sp.has('view')) {
       const v = get('view') as View;
-      if (['list', 'kanban', 'today', 'triage', 'inbox', 'stale', 'quickwins', 'review'].includes(v)) view = v;
+      if (['list', 'kanban', 'today', 'triage', 'inbox', 'stale', 'quickwins', 'review', 'eisenhower'].includes(v)) view = v;
     }
     if (sp.has('group')) {
       const g = get('group') as Group;
@@ -1482,6 +1483,11 @@
             class="px-2 sm:px-3 py-1.5 {view === 'kanban' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
             onclick={() => (view = 'kanban')}
           >Kanban</button>
+          <button
+            class="px-2 sm:px-3 py-1.5 {view === 'eisenhower' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (view = 'eisenhower')}
+            title="2×2 matrix: urgent × important — Covey / GTD style prioritisation"
+          >Matrix</button>
         </div>
         <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm">
           <button
@@ -1823,6 +1829,13 @@
           onChanged={load}
           onOpenDetail={openDetail}
           onContextMenu={openContext}
+        />
+      {:else if view === 'eisenhower'}
+        <EisenhowerView
+          tasks={filtered}
+          onOpenDetail={openDetail}
+          onContextMenu={openContext}
+          onChanged={load}
         />
       {:else if view === 'triage'}
         <TriageBoard tasks={filtered} onChanged={load} />
