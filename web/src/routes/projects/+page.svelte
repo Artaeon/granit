@@ -8,6 +8,7 @@
   import ProjectDetail from '$lib/projects/ProjectDetail.svelte';
   import ProjectCreate from '$lib/projects/ProjectCreate.svelte';
   import ProjectTimeline from '$lib/projects/ProjectTimeline.svelte';
+  import ProjectHeatmap from '$lib/projects/ProjectHeatmap.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
 
   let projects = $state<Project[]>([]);
@@ -366,9 +367,13 @@
   // the project plan" link is shareable. When in timeline mode the
   // sidebar collapses (timeline takes the full surface) and clicking
   // a bar opens the detail drawer-style on top.
-  type ViewMode = 'list' | 'timeline';
+  type ViewMode = 'list' | 'timeline' | 'heatmap';
   let viewMode = $derived<ViewMode>(
-    ($page.url.searchParams.get('view') as ViewMode) === 'timeline' ? 'timeline' : 'list'
+    (() => {
+      const v = $page.url.searchParams.get('view');
+      if (v === 'timeline' || v === 'heatmap') return v;
+      return 'list';
+    })()
   );
   function setViewMode(v: ViewMode) {
     const params = new URLSearchParams($page.url.searchParams);
@@ -525,8 +530,15 @@
         class="px-2.5 py-1 border-l border-surface1 {viewMode === 'timeline' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
         title="Gantt-ish timeline across all projects"
       >▭ Timeline</button>
+      <button
+        role="tab"
+        aria-selected={viewMode === 'heatmap'}
+        onclick={() => setViewMode('heatmap')}
+        class="px-2.5 py-1 border-l border-surface1 {viewMode === 'heatmap' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
+        title="Per-project completion volume by week"
+      >▦ Heatmap</button>
     </div>
-    {#if viewMode === 'timeline'}
+    {#if viewMode === 'timeline' || viewMode === 'heatmap'}
       <button
         onclick={() => (createOpen = true)}
         class="ml-auto px-2.5 py-1 text-xs bg-primary text-on-primary rounded hover:opacity-90"
@@ -792,6 +804,28 @@
       <!-- On desktop the detail pane sits beside the timeline; on
            mobile it covers (the timeline is too dense to share with
            a side pane). -->
+      <aside class="w-full md:w-[28rem] lg:w-[32rem] flex-shrink-0 border-l border-surface1 bg-base">
+        <ProjectDetail
+          project={selected}
+          onClose={() => selectProject('')}
+          onUpdated={load}
+          onDeleted={deleted}
+        />
+      </aside>
+    {/if}
+  {:else if viewMode === 'heatmap'}
+    <!-- Heatmap — projects × weeks completion grid. Same overlay
+         pattern as timeline: full surface chart, optional detail
+         pane on the right when a project is selected. -->
+    <main class="flex-1 min-w-0 flex flex-col {selectedName ? 'hidden md:flex' : ''}">
+      <ProjectHeatmap
+        projects={filtered}
+        tasks={tasks}
+        onSelect={selectProject}
+        colorVar={colorVar}
+      />
+    </main>
+    {#if selected}
       <aside class="w-full md:w-[28rem] lg:w-[32rem] flex-shrink-0 border-l border-surface1 bg-base">
         <ProjectDetail
           project={selected}
