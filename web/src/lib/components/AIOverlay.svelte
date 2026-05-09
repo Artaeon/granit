@@ -30,14 +30,9 @@
     type PinnedMessage,
     type ThreadSearchHit
   } from '$lib/chat/history';
-  import {
-    loadRagIndex,
-    retrieveForRag,
-    getRagIndex,
-    isRagIndexLoaded,
-    type RagHit
-  } from '$lib/chat/rag';
+  import { retrieveForRag, type RagHit } from '$lib/chat/rag';
   import SlashCommandPicker from '$lib/components/SlashCommandPicker.svelte';
+  import MentionPicker, { type MentionRef } from '$lib/components/MentionPicker.svelte';
 
   // AIOverlay — global AI panel. Slides in from the right on
   // desktop, becomes a bottom sheet on mobile. Triggered with
@@ -881,306 +876,18 @@
   }
 
   // ── @-mention picker ───────────────────────────────────────────
-  // Type "@" in the composer and a small popup lists tasks, goals,
-  // projects, deadlines, events, and notes. Selecting one stamps the
-  // input with @<title> for the user's eyes, and stashes a structured
-  // reference object that gets folded into the next send() as a
-  // strict system message ("the user is referencing Task Txx: ...
-  // due 2026-05-12, priority P1"). This is cleaner than splicing
-  // raw entity bodies into the user message — it lets the model
-  // ground its reply on real fields instead of the user's prose
-  // glossing them.
-  type MentionKind = 'task' | 'goal' | 'project' | 'deadline' | 'event' | 'note';
-  interface MentionRef {
-    kind: MentionKind;
-    /** Stable id (task id, goal id, deadline id, project name, note path...). */
-    id: string;
-    /** Display title. */
-    title: string;
-    /** Pre-formatted system-prompt fragment describing the entity's
-     *  key fields. Built at pick time so we don't need a second fetch
-     *  on send. */
-    contextLine: string;
-  }
-  type MentionCandidate = {
-    kind: MentionKind;
-    id: string;
-    title: string;
-    subtitle: string;
-    contextLine: string;
-  };
+  // Owns the dropdown UI, candidate scoring, and entity index loading
+  // — extracted to $lib/components/MentionPicker.svelte. The parent
+  // holds the open flag (so Esc-from-anywhere can dismiss it) and the
+  // queued mentionedRefs (consumed by send() as a strict system
+  // message, then cleared so a follow-up doesn't repeat them). Picks
+  // come back via onPick.
   let mentionPickerOpen = $state(false);
-  let mentionQuery = $state('');
-  // Anchor: where in input the @ sits (start) — replaced on pick.
-  let mentionAnchor = $state(-1);
-  let mentionCandidates = $state<MentionCandidate[]>([]);
-  let mentionLoading = $state(false);
-  let mentionSelectedIdx = $state(0);
-  // The list of attached entity refs for the next outgoing message.
-  // Cleared after each send. The user can also clear it manually
-  // from the chip strip below the composer.
+  let mentionPickerRef: MentionPicker | undefined = $state();
   let mentionedRefs = $state<MentionRef[]>([]);
-  // Cached entity index — populated lazily on first @-mention. Same
-  // shape as ragIndex (small enough to hold full list per type).
-  let mentionIndex = $state<{
-    tasks: { id: string; text: string; priority: number; dueDate?: string; done: boolean }[];
-    goals: { id: string; title: string; status?: string; target_date?: string }[];
-    projects: { name: string; description?: string; status?: string }[];
-    deadlines: { id: string; title: string; date: string; importance: string }[];
-    events: { id: string; title: string; date: string; start_time?: string }[];
-  }>({ tasks: [], goals: [], projects: [], deadlines: [], events: [] });
-  let mentionIndexLoaded = $state(false);
-
-  async function loadMentionIndex() {
-    if (mentionIndexLoaded) return;
-    mentionLoading = true;
-    try {
-      // Parallel fetch — each endpoint is small. Failures fall through
-      // (the user still gets the working subset). Notes piggy-back on
-      // the RAG index so we don't double-fetch them.
-      const [tasks, goals, projects, deadlines, events] = await Promise.all([
-        api.listTasks({ status: 'open' }).catch(() => ({ tasks: [], total: 0 })),
-        api.listGoals().catch(() => ({ goals: [], total: 0 })),
-        api.listProjects().catch(() => ({ projects: [], total: 0 })),
-        api.listDeadlines().catch(() => ({ deadlines: [], total: 0 })),
-        api.listEvents().catch(() => ({ events: [], total: 0 }))
-      ]);
-      // Pre-warm the note index for @-mention note matches. Fire-and-
-      // forget — note results show up once the index lands.
-      void loadRagIndex();
-      mentionIndex = {
-        tasks: tasks.tasks.map((t) => ({
-          id: t.id,
-          text: t.text,
-          priority: t.priority,
-          dueDate: t.dueDate,
-          done: t.done
-        })),
-        goals: goals.goals.map((g) => ({
-          id: g.id,
-          title: g.title,
-          status: g.status,
-          target_date: g.target_date
-        })),
-        projects: projects.projects.map((p) => ({
-          name: p.name,
-          description: p.description,
-          status: p.status
-        })),
-        deadlines: deadlines.deadlines.map((d) => ({
-          id: d.id,
-          title: d.title,
-          date: d.date,
-          importance: d.importance
-        })),
-        events: events.events.map((e) => ({
-          id: e.id,
-          title: e.title,
-          date: e.date,
-          start_time: e.start_time
-        }))
-      };
-    } finally {
-      mentionIndexLoaded = true;
-      mentionLoading = false;
-    }
-  }
-
-  // Score a candidate against the user's typed query. Substring match
-  // on title/text wins over prefix; everything is lowercase. Empty
-  // query returns the most recent / highest-priority entries per type.
-  function buildMentionCandidates(q: string): MentionCandidate[] {
-    const ql = q.trim().toLowerCase();
-    const out: MentionCandidate[] = [];
-    // Tasks
-    for (const t of mentionIndex.tasks) {
-      const text = t.text.toLowerCase();
-      if (ql && !text.includes(ql)) continue;
-      const due = t.dueDate ? ` · due ${t.dueDate}` : '';
-      const prio = t.priority > 0 ? `P${t.priority}` : '';
-      out.push({
-        kind: 'task',
-        id: t.id,
-        title: t.text,
-        subtitle: `${prio}${due || ' · no due'}`.trim(),
-        contextLine:
-          `Task ${t.id}: ${t.text}` +
-          (t.dueDate ? ` (due ${t.dueDate})` : '') +
-          (t.priority > 0 ? ` (priority P${t.priority})` : '') +
-          (t.done ? ' [done]' : '')
-      });
-    }
-    // Goals
-    for (const g of mentionIndex.goals) {
-      if (ql && !g.title.toLowerCase().includes(ql)) continue;
-      out.push({
-        kind: 'goal',
-        id: g.id,
-        title: g.title,
-        subtitle: `${g.status ?? 'active'}${g.target_date ? ' · ' + g.target_date : ''}`,
-        contextLine:
-          `Goal ${g.id}: ${g.title}` +
-          (g.target_date ? ` (target ${g.target_date})` : '') +
-          (g.status ? ` [status: ${g.status}]` : '')
-      });
-    }
-    // Projects
-    for (const p of mentionIndex.projects) {
-      if (ql && !p.name.toLowerCase().includes(ql)) continue;
-      out.push({
-        kind: 'project',
-        id: p.name,
-        title: p.name,
-        subtitle: p.status || 'project',
-        contextLine:
-          `Project "${p.name}"` +
-          (p.description ? ` — ${p.description.slice(0, 200)}` : '')
-      });
-    }
-    // Deadlines
-    for (const d of mentionIndex.deadlines) {
-      if (ql && !d.title.toLowerCase().includes(ql)) continue;
-      out.push({
-        kind: 'deadline',
-        id: d.id,
-        title: d.title,
-        subtitle: `${d.date} · ${d.importance}`,
-        contextLine: `Deadline "${d.title}" on ${d.date} (importance: ${d.importance})`
-      });
-    }
-    // Events
-    for (const e of mentionIndex.events) {
-      if (ql && !e.title.toLowerCase().includes(ql)) continue;
-      const when = e.start_time ? `${e.date} ${e.start_time}` : e.date;
-      out.push({
-        kind: 'event',
-        id: e.id,
-        title: e.title,
-        subtitle: when,
-        contextLine: `Event "${e.title}" on ${when}`
-      });
-    }
-    // Notes — reuse the RAG index. Cheap subset; we only show the top
-    // 8 by title match so the picker isn't dominated by 5k notes.
-    if (isRagIndexLoaded()) {
-      for (const n of getRagIndex()) {
-        if (ql && !n.title.toLowerCase().includes(ql)) continue;
-        out.push({
-          kind: 'note',
-          id: n.path,
-          title: n.title,
-          subtitle: n.path,
-          // Note context is a back-pointer. Body injection is handled
-          // separately via attachNote / RAG; this just tells the
-          // model "the user is asking about this specific note".
-          contextLine: `Note "${n.title}" at path \`${n.path}\``
-        });
-      }
-    }
-    // Cap total candidates so the picker stays scannable.
-    const limit = 12;
-    if (out.length <= limit) return out;
-    // Prefer exact-prefix matches when query has content.
-    if (ql) {
-      out.sort((a, b) => {
-        const ap = a.title.toLowerCase().startsWith(ql) ? 0 : 1;
-        const bp = b.title.toLowerCase().startsWith(ql) ? 0 : 1;
-        return ap - bp;
-      });
-    }
-    return out.slice(0, limit);
-  }
-
-  function detectMentionTrigger() {
-    if (!inputEl) return;
-    const caret = inputEl.selectionStart ?? -1;
-    if (caret < 0) {
-      mentionPickerOpen = false;
-      return;
-    }
-    // Walk back from caret to find a leading "@" with no whitespace
-    // between it and the caret; bail if we hit whitespace first.
-    let i = caret - 1;
-    while (i >= 0) {
-      const c = input[i];
-      if (c === '@') {
-        const prev = i > 0 ? input[i - 1] : ' ';
-        if (prev === ' ' || prev === '\n' || prev === '\t' || i === 0) {
-          mentionAnchor = i;
-          mentionQuery = input.slice(i + 1, caret);
-          if (!mentionPickerOpen) {
-            mentionPickerOpen = true;
-            mentionSelectedIdx = 0;
-            void loadMentionIndex().then(() => {
-              if (mentionPickerOpen) mentionCandidates = buildMentionCandidates(mentionQuery);
-            });
-          } else {
-            mentionCandidates = buildMentionCandidates(mentionQuery);
-            mentionSelectedIdx = 0;
-          }
-          return;
-        }
-        break;
-      }
-      if (c === ' ' || c === '\n' || c === '\t') break;
-      i--;
-    }
-    mentionPickerOpen = false;
-  }
-
-  function pickMention(c: MentionCandidate) {
-    if (mentionAnchor < 0) {
-      mentionPickerOpen = false;
-      return;
-    }
-    // Splice "@<query>" → "@<title> " in the input, and stash the ref.
-    const before = input.slice(0, mentionAnchor);
-    const after = input.slice((inputEl?.selectionStart ?? mentionAnchor) ?? mentionAnchor);
-    const insert = `@${c.title} `;
-    input = before + insert + after;
-    const newCaret = before.length + insert.length;
-    mentionedRefs = [...mentionedRefs, { kind: c.kind, id: c.id, title: c.title, contextLine: c.contextLine }];
-    mentionPickerOpen = false;
-    mentionAnchor = -1;
-    mentionQuery = '';
-    tick().then(() => {
-      if (inputEl) {
-        inputEl.focus();
-        inputEl.setSelectionRange(newCaret, newCaret);
-      }
-    });
-  }
 
   function removeMention(idx: number) {
     mentionedRefs = mentionedRefs.filter((_, i) => i !== idx);
-  }
-
-  function onMentionKey(e: KeyboardEvent): boolean {
-    if (!mentionPickerOpen || mentionCandidates.length === 0) return false;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      mentionSelectedIdx = (mentionSelectedIdx + 1) % mentionCandidates.length;
-      return true;
-    }
-    if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      mentionSelectedIdx = (mentionSelectedIdx - 1 + mentionCandidates.length) % mentionCandidates.length;
-      return true;
-    }
-    if (e.key === 'Enter' || e.key === 'Tab') {
-      const c = mentionCandidates[mentionSelectedIdx];
-      if (c) {
-        e.preventDefault();
-        pickMention(c);
-        return true;
-      }
-    }
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      mentionPickerOpen = false;
-      return true;
-    }
-    return false;
   }
 
   // ── Voice input ────────────────────────────────────────────────
@@ -1481,7 +1188,7 @@
     // send-on-enter. handleKey returns true when the picker swallows
     // the event; the slash picker also returns false on the
     // exact-match-Enter case so this fall-through still calls send().
-    if (onMentionKey(e)) return;
+    if (mentionPickerRef?.handleKey(e)) return;
     if (slashPickerRef?.handleKey(e)) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -1490,7 +1197,7 @@
   }
   function onInputChange() {
     slashPickerRef?.detectTrigger();
-    detectMentionTrigger();
+    mentionPickerRef?.detectTrigger();
     autosizeInput();
   }
   // Composer auto-grow. textarea[rows=2] is the resting height; as the
@@ -1522,7 +1229,7 @@
   function onInputClick() {
     // Caret moved without typing — re-evaluate mention/slash context.
     slashPickerRef?.detectTrigger();
-    detectMentionTrigger();
+    mentionPickerRef?.detectTrigger();
   }
 
   // Mode quick-switch: Mod+1..9 picks the matching entry by
@@ -2047,7 +1754,7 @@
             >See what's here</button>
             <button
               type="button"
-              onclick={() => { input = '@'; refocusComposer(); detectMentionTrigger(); }}
+              onclick={() => { input = '@'; refocusComposer(); mentionPickerRef?.detectTrigger(); }}
               class="tap-target px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary text-[11px] transition-colors"
             >Reference an item</button>
             {#if voiceSupported}
@@ -2200,11 +1907,12 @@
           class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-none disabled:opacity-60 transition-colors {recording ? 'border-error' : ''}"
           style="min-height: 2.5rem;"
         ></textarea>
-        <!-- Slash-command picker. Mutually exclusive with the mention
-             picker (slash always wins because the input must start
-             with /). The picker hides itself when its open flag is
-             false; the mention picker is wrapped in {:else if} below
-             so they can never both render at once. -->
+        <!-- Slash-command + mention pickers. Mutually exclusive: slash
+             always wins because the input must start with /, so the
+             mention picker only renders when slash is closed. Each
+             component owns its own dropdown UI + filter logic; the
+             parent only chains keydown via handleKey() and forwards
+             oninput/onclick triggers to detectTrigger(). -->
         <SlashCommandPicker
           bind:this={slashPickerRef}
           bind:value={input}
@@ -2212,36 +1920,14 @@
           {inputEl}
           onSubmit={() => { void send(); }}
         />
-        {#if !slashPickerOpen && mentionPickerOpen}
-          <!-- @-mention picker. Floats above the composer; arrow
-               keys navigate, Enter / Tab picks, Esc dismisses.
-               Candidates pulled from a cached entity index loaded
-               on first @-trigger. -->
-          <div
-            role="listbox"
-            class="absolute left-0 right-0 bottom-full mb-1 bg-mantle border border-surface1 rounded-lg shadow-xl z-30 max-h-64 overflow-y-auto"
-          >
-            {#if mentionLoading && mentionCandidates.length === 0}
-              <div class="px-3 py-2 text-[11px] text-dim italic">Loading…</div>
-            {:else if mentionCandidates.length === 0}
-              <div class="px-3 py-2 text-[11px] text-dim italic">No matches for "{mentionQuery}".</div>
-            {:else}
-              {#each mentionCandidates as c, i (c.kind + ':' + c.id)}
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={i === mentionSelectedIdx}
-                  onmousedown={(e) => { e.preventDefault(); pickMention(c); }}
-                  onmouseenter={() => (mentionSelectedIdx = i)}
-                  class="w-full flex items-baseline gap-2 px-3 py-1.5 text-left hover:bg-surface0 {i === mentionSelectedIdx ? 'bg-surface0' : ''}"
-                >
-                  <span class="text-[9px] uppercase tracking-wider text-secondary flex-shrink-0 w-12">{c.kind}</span>
-                  <span class="text-xs text-text truncate flex-1">{c.title}</span>
-                  <span class="text-[10px] text-dim truncate max-w-[40%]">{c.subtitle}</span>
-                </button>
-              {/each}
-            {/if}
-          </div>
+        {#if !slashPickerOpen}
+          <MentionPicker
+            bind:this={mentionPickerRef}
+            bind:value={input}
+            bind:open={mentionPickerOpen}
+            {inputEl}
+            onPick={(ref) => { mentionedRefs = [...mentionedRefs, ref]; }}
+          />
         {/if}
       </div>
       {#if voiceSupported}
