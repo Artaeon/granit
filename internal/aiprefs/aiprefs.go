@@ -38,6 +38,12 @@ const (
 	FeatureContinue       Feature = "continue_writing"
 	FeatureExplain        Feature = "explain"
 	FeatureChat           Feature = "chat"
+	// FeatureAnnotateNote — given the body of a note, propose 3-5
+	// margin annotations the user might want to add (questions,
+	// counter-arguments, "this matters" markers). Each suggestion
+	// returns line + anchor + text + color so the existing
+	// annotations store can accept them with minimal client work.
+	FeatureAnnotateNote Feature = "annotate_note"
 )
 
 // FeatureConfig is the per-feature setting record.
@@ -75,6 +81,10 @@ func Defaults() Preferences {
 			FeatureContinue:       {Enabled: true, Provider: ""},
 			FeatureExplain:        {Enabled: true, Provider: ""},
 			FeatureChat:           {Enabled: true, Provider: ""},
+			// Off by default — same posture as the other "AI
+			// proposes a batch of edits" features (inbox triage,
+			// deadline detect). User opts in via Settings → AI.
+			FeatureAnnotateNote: {Enabled: false, Provider: "ollama"},
 		},
 		RedactionEnabled: true,
 		DefaultProvider:  "ollama",

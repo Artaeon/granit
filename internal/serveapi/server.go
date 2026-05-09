@@ -545,6 +545,12 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/api/v1/ai/inbox-triage", s.handleAIInboxTriage)
 		r.Post("/api/v1/ai/deadline-detect", s.handleAIDeadlineDetect)
 		r.Post("/api/v1/ai/suggest-links", s.handleAISuggestLinks)
+		// AI margin-annotation suggester — given a note's body, the
+		// AI proposes 3-5 marginalia entries (questions / counter-
+		// arguments / "this matters" markers). Returns structured
+		// JSON the user reviews + accepts via the existing
+		// /annotations create endpoint.
+		r.Post("/api/v1/ai/annotate-note", s.handleAISuggestAnnotations)
 
 		// Recurring tasks — same .granit/recurring.json file the TUI's
 		// recurringtasks overlay edits. Server fires due rules at
