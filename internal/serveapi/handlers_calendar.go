@@ -39,6 +39,13 @@ type calendarEvent struct {
 	// can show a ↻ indicator and the edit modal can offer to edit
 	// the series. Empty for one-off events.
 	RRule string `json:"rrule,omitempty"`
+	// ProjectID surfaces the optional project link from
+	// granitmeta.Event.ProjectID. Used by the calendar's project
+	// filter + colour-by-project overlay; also surfaced on
+	// task_scheduled / task_due rows when the underlying task is
+	// scoped to a project (via tasks.Project), so 'show only events
+	// for project X' filters tasks AND events together.
+	ProjectID string `json:"project_id,omitempty"`
 }
 
 // expandAllDayDates walks every day in an all-day event's [start, end)
@@ -171,13 +178,14 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 						continue
 					}
 					events = append(events, calendarEvent{
-						Type:     "event",
-						Title:    ev.Title,
-						Date:     occDate,
-						EventID:  ev.ID,
-						Color:    ev.Color,
-						Location: ev.Location,
-						RRule:    ev.RRule,
+						Type:      "event",
+						Title:     ev.Title,
+						Date:      occDate,
+						EventID:   ev.ID,
+						Color:     ev.Color,
+						Location:  ev.Location,
+						RRule:     ev.RRule,
+						ProjectID: ev.ProjectID,
 					})
 					continue
 				}
@@ -185,12 +193,13 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				ce := calendarEvent{
-					Type:     "event",
-					Title:    ev.Title,
-					EventID:  ev.ID,
-					Color:    ev.Color,
-					Location: ev.Location,
-					RRule:    ev.RRule,
+					Type:      "event",
+					Title:     ev.Title,
+					EventID:   ev.ID,
+					Color:     ev.Color,
+					Location:  ev.Location,
+					RRule:     ev.RRule,
+					ProjectID: ev.ProjectID,
 				}
 				sStr := occ.Start.Format(time.RFC3339)
 				ce.Start = &sStr
@@ -209,15 +218,23 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 	fromDate := from.Format("2006-01-02")
 	toDate := to.Format("2006-01-02")
 	for _, t := range all {
+		// Project link: ProjectID wins (canonical sidecar field), Project
+		// (markdown-extracted) is the fallback. Either drives the
+		// project-filter / colour-by-project overlay on the grid.
+		proj := t.ProjectID
+		if proj == "" {
+			proj = t.Project
+		}
 		if t.DueDate != "" && t.DueDate >= fromDate && t.DueDate <= toDate {
 			events = append(events, calendarEvent{
-				Type:     "task_due",
-				Date:     t.DueDate,
-				Title:    t.Text,
-				NotePath: t.NotePath,
-				TaskID:   t.ID,
-				Done:     t.Done,
-				Priority: t.Priority,
+				Type:      "task_due",
+				Date:      t.DueDate,
+				Title:     t.Text,
+				NotePath:  t.NotePath,
+				TaskID:    t.ID,
+				Done:      t.Done,
+				Priority:  t.Priority,
+				ProjectID: proj,
 			})
 		}
 		if t.ScheduledStart != nil {
@@ -227,13 +244,14 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 			}
 			startStr := st.Format(time.RFC3339)
 			ce := calendarEvent{
-				Type:     "task_scheduled",
-				Start:    &startStr,
-				Title:    t.Text,
-				NotePath: t.NotePath,
-				TaskID:   t.ID,
-				Done:     t.Done,
-				Priority: t.Priority,
+				Type:      "task_scheduled",
+				Start:     &startStr,
+				Title:     t.Text,
+				NotePath:  t.NotePath,
+				TaskID:    t.ID,
+				Done:      t.Done,
+				Priority:  t.Priority,
+				ProjectID: proj,
 			}
 			if t.Duration > 0 {
 				ce.DurationMinutes = int(t.Duration / time.Minute)

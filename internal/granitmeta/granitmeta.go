@@ -46,6 +46,13 @@ type Event struct {
 	// whole series. Stored as a slice rather than a map so JSON
 	// round-trips cleanly through events.json.
 	ExDates []string `json:"ex_dates,omitempty"`
+	// ProjectID is the optional project name this event is linked
+	// to. Free-text by design (matches Project.Name) so renaming a
+	// project doesn't transitively break event links — same trade-
+	// off as Task.Project. Drives the calendar's project-filter,
+	// project-color overlay, and the "events for project X" pivot
+	// in the project detail surface. Empty for unlinked events.
+	ProjectID string `json:"project_id,omitempty"`
 }
 
 func ReadEvents(vaultRoot string) ([]Event, error) {
