@@ -1955,33 +1955,46 @@
     </div>
 
     {#if historyOpen}
-      <!-- History side panel. Two tabs:
+      <!-- History panel. Two tabs:
              - threads: chronological list of saved chats. Click to
                load (current thread is auto-saved before swapping).
              - pinned: flat list of starred assistant replies across
                all threads. Persists even if the parent thread was
                pruned by LRU.
-           Search filters the threads tab by content match. -->
-      <div class="border-b border-surface1 bg-mantle/40 flex-shrink-0 max-h-[40dvh] overflow-y-auto">
-        <div class="flex items-center gap-1 px-3 pt-2 text-[11px]">
+           Layout split between mobile + desktop: on phones, history
+           is a full-screen slide-over that COVERS the chat (one tap
+           to a thread, no half-screen-of-chat-pushed-down nonsense);
+           on desktop, it stays inline as a top strip beneath the
+           toolbar so the chat below is still visible. The panel is
+           positioned `absolute inset-0` on mobile within the dialog
+           — z-30 sits above the chat body but below the header
+           (z-50 on the resize handle) so the user can still see what
+           thread they came from. -->
+      <div
+        class="ai-history-panel border-surface1 bg-mantle/95 backdrop-blur-sm flex flex-col
+               absolute inset-0 z-30 border-t
+               md:static md:bg-mantle/40 md:backdrop-blur-none md:border-b md:border-t-0 md:max-h-[40dvh]"
+      >
+        <div class="flex items-center gap-1 px-3 pt-3 pb-1 text-[11px] flex-shrink-0">
           <button
             type="button"
             onclick={() => (historyTab = 'threads')}
-            class="px-2 py-1 rounded {historyTab === 'threads' ? 'bg-surface1 text-text font-medium' : 'text-dim hover:text-text'}"
-          >Threads ({savedThreads.length})</button>
+            class="tap-target px-2.5 py-1.5 rounded transition-colors {historyTab === 'threads' ? 'bg-surface1 text-text font-medium' : 'text-dim hover:text-text hover:bg-surface0'}"
+          >Threads <span class="opacity-60">({savedThreads.length})</span></button>
           <button
             type="button"
             onclick={() => (historyTab = 'pinned')}
-            class="px-2 py-1 rounded {historyTab === 'pinned' ? 'bg-surface1 text-text font-medium' : 'text-dim hover:text-text'}"
-          >Pinned ({pinnedItems.length})</button>
+            class="tap-target px-2.5 py-1.5 rounded transition-colors {historyTab === 'pinned' ? 'bg-surface1 text-text font-medium' : 'text-dim hover:text-text hover:bg-surface0'}"
+          >Pinned <span class="opacity-60">({pinnedItems.length})</span></button>
           <span class="flex-1"></span>
           <button
             type="button"
             onclick={() => (historyOpen = false)}
-            class="text-dim hover:text-text px-1"
+            class="tap-target inline-flex items-center justify-center text-dim hover:text-text hover:bg-surface0 active:bg-surface1 rounded px-2 py-1 text-base leading-none transition-colors"
             aria-label="Close history"
           >×</button>
         </div>
+        <div class="flex-1 min-h-0 overflow-y-auto">
         {#if historyTab === 'threads'}
           <div class="px-3 pt-2 pb-1">
             <input
@@ -2076,6 +2089,7 @@
             {/if}
           </ul>
         {/if}
+        </div>
       </div>
     {/if}
 
