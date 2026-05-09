@@ -90,6 +90,9 @@ function parse(body: string): ParsedBody {
   for (let i = 0; i < lines.length; i++) {
     const ln = lines[i];
     const t = ln.trim();
+    // Fence markers are detected on the trimmed line (matches what
+    // the previous SectionQuestionsPanel implementation did) — close
+    // enough to GFM's "fence on its own line" rule for our purposes.
     const isFenceMark = t.startsWith('```') || t.startsWith('~~~');
     if (isFenceMark) {
       fence = !fence;
@@ -102,7 +105,14 @@ function parse(body: string): ParsedBody {
       if (cur) sectionBuf[sections.length - 1].push(ln);
       continue;
     }
-    const hm = /^(#{1,6})\s+(.+?)\s*#*$/.exec(t);
+    // Heading detection runs against the UNTRIMMED line, matching
+    // the prior Outline implementation. This makes "  # foo"
+    // (leading whitespace) NOT a heading, same as before. The
+    // SectionQuestionsPanel did its match against the trimmed line
+    // and so was a touch more permissive; the union here uses the
+    // stricter rule because the union is read by Outline too and
+    // surprising new headings would be visible to the user.
+    const hm = /^(#{1,6})\s+(.+?)\s*#*$/.exec(ln);
     if (hm) {
       const level = hm[1].length;
       const text = hm[2].trim();
