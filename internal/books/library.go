@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -158,7 +159,7 @@ func chaptersFromSpine(spine []SpineItem, toc []TOCEntry) []ChapterMeta {
 	for i, s := range spine {
 		label := labels[i]
 		if label == "" {
-			label = "Chapter " + itoa(i+1)
+			label = "Chapter " + strconv.Itoa(i+1)
 		}
 		out[i] = ChapterMeta{Index: i, Label: label, Linear: s.Linear}
 	}
@@ -201,25 +202,3 @@ func fallbackTitle(t, abs string) string {
 	return strings.TrimSuffix(filepath.Base(abs), filepath.Ext(abs))
 }
 
-// itoa avoids the strconv import for a one-line internal helper.
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
-}
