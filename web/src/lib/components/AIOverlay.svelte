@@ -1904,9 +1904,16 @@
           </div>
         {/if}
       </div>
-      {#if statusInfo}
+      {#if statusInfo && panelWidth >= 480}
+        <!-- Status pill shows on desktop panels >=480px wide. On
+             narrower panels the mode picker label + 3 right-side
+             icons + close button already fill the row; the pill
+             gets hidden so the layout doesn't compress the mode
+             label into ellipsis. Mobile keeps it hidden too —
+             the user opened the overlay to chat, not to read a
+             provider name. -->
         <span
-          class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface1 text-subtext truncate hidden sm:inline-block"
+          class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface1 text-subtext truncate hidden md:inline-block max-w-[10rem]"
           title="Default backend (per-feature overrides apply individually)"
         >{statusInfo.provider} · {statusInfo.model}</span>
       {/if}
