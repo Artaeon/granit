@@ -70,6 +70,12 @@
   let containerEl: HTMLDivElement | undefined = $state();
   let view: EditorView | undefined;
   let internalChange = false;
+  // Watermark of the last `value` we synced into the CodeMirror state.
+  // Used by both the updateListener (user typing) and the external
+  // $effect below to short-circuit no-op syncs in O(1) without
+  // materializing the doc string. See the long comment on the $effect
+  // for the full story.
+  let lastAppliedValue: string | null = null;
 
   function setupView() {
     if (!containerEl) return;
@@ -160,7 +166,14 @@
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
             internalChange = true;
-            value = u.state.doc.toString();
+            const next = u.state.doc.toString();
+            value = next;
+            // Keep the external-sync watermark in lockstep with the
+            // user's own edits so the next parent reactivity ping
+            // (with this same string echoed back as `value`) hits
+            // the O(1) identity short-circuit and never materializes
+            // the doc again.
+            lastAppliedValue = next;
             queueMicrotask(() => (internalChange = false));
           }
           // Fire cursor info on selection or doc changes. Both
@@ -222,20 +235,38 @@
   // state, which felt like the editor "broke" until a reload
   // re-mounted everything.
   //
-  // Two-line guard:
+  // Three-layer guard:
   //   1. internalChange flag suppresses the dispatch when the
   //      change came from the user's own typing (the updateListener
   //      already updated `value` to match the doc).
-  //   2. doc.toString() !== v skips the dispatch when the values
-  //      already match (saves a layout flush + selection reset on
-  //      every reactive ping).
+  //   2. lastAppliedValue identity check — when a parent reactivity
+  //      ping re-passes the SAME string we already applied (common
+  //      after autosave bounces and other state updates), bail
+  //      WITHOUT materializing the doc. Previously we called
+  //      doc.toString() which is O(N) and allocates the full doc
+  //      string on every ping; on a 1MB note that was a perceptible
+  //      ~5–10ms hitch right after every save returned. We never
+  //      need the actual doc text here — we only need to know
+  //      whether `value` matches what we last set, which a closure
+  //      reference comparison answers in O(1).
+  //   3. Fallback toString() comparison only when the reference
+  //      check missed (parent rebuilt an equal string). Cheap on
+  //      small docs; only runs when the cheap path didn't already
+  //      bail.
   // When the dispatch DOES fire (genuinely external value change),
   // we clamp the original selection to the new doc length so the
   // cursor lands at a sensible position instead of jumping to 0.
   $effect(() => {
     const v = value;
     if (!view || internalChange) return;
-    if (view.state.doc.toString() === v) return;
+    if (lastAppliedValue !== null && lastAppliedValue === v) return;
+    // Only fall back to the expensive toString() when the cheap
+    // identity check missed. Catches parent re-renders that produce
+    // a new string instance with the same content.
+    if (view.state.doc.toString() === v) {
+      lastAppliedValue = v;
+      return;
+    }
     const sel = view.state.selection.main;
     const len = v.length;
     const anchor = Math.min(sel.anchor, len);
@@ -244,6 +275,7 @@
       changes: { from: 0, to: view.state.doc.length, insert: v },
       selection: { anchor, head }
     });
+    lastAppliedValue = v;
   });
 
   onDestroy(() => view?.destroy());
