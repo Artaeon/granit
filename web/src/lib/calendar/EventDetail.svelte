@@ -319,16 +319,17 @@
     // by anchor.
     if (event.override_key) return event.override_key;
     if (event.start) {
-      // event.start is RFC3339 from the calendar feed (the backend's
-      // expandRRULE emits each occurrence's Start as time.RFC3339,
-      // typically with the server's offset). new Date(...).toISOString()
-      // converts that instant to UTC and renders Z-suffixed RFC3339.
-      // The expander's isExcluded compares against
-      //   t.UTC().Format("2006-01-02T15:04:05")
-      // — the bare 19-char prefix of toISOString, which is exactly
-      // what we slice off here.
-      const iso = new Date(event.start).toISOString(); // YYYY-MM-DDTHH:MM:SS.sssZ
-      return iso.slice(0, 19); // YYYY-MM-DDTHH:MM:SS in UTC
+      // event.start is the floating-ISO emit from handleCalendar
+      // ("2026-05-09T08:00:00", no Z, no offset). The server keys
+      // overrides + EXDATEs by the same wall-clock digits — slicing
+      // the leading 19 chars matches that shape directly.
+      // Round-tripping through new Date(...).toISOString() would
+      // re-anchor the wall-clock to the client zone and then re-emit
+      // in UTC, shifting the key by the client offset (e.g. on UTC+2,
+      // 08:00 floating → 06:00 UTC). The skip / reset endpoints would
+      // then store at the wrong anchor and the EXDATE would no longer
+      // match the expander's emitted occurrence.
+      return event.start.slice(0, 19);
     }
     return event.date ?? '';
   }

@@ -624,7 +624,17 @@
         const maxEndMinOnly = 24 * 60 - 1;
         const endMin = Math.min(startMinOnly + dur, maxEndMinOnly);
         const endTime = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
-        const key = ev.override_key ?? new Date(ev.start).toISOString().slice(0, 19);
+        // Slice the floating ISO directly instead of round-tripping
+        // through Date+toISOString. The backend now emits start/end
+        // as floating wall-clock ("2026-05-09T08:00:00", no Z, no
+        // offset) and keys overrides by the same wall-clock digits.
+        // new Date(...).toISOString() would re-anchor those digits
+        // to the client zone and emit a UTC-shifted key — on a
+        // UTC+2 client the key would land 2hr ahead of the anchor,
+        // and the override would silently mint at the wrong slot.
+        // The leading 19 chars of `ev.start` always carry the
+        // YYYY-MM-DDTHH:MM:SS shape the server expects.
+        const key = ev.override_key ?? ev.start.slice(0, 19);
         await api.overrideEventOccurrence(ev.eventId, key, {
           date: dateStr,
           start_time: startTime,
@@ -723,8 +733,11 @@
         const endTime = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
         // See moveEvent: prefer the surfaced override_key over re-
         // deriving from ev.start so we don't mint a fresh override
-        // at an already-overridden time.
-        const key = ev.override_key ?? new Date(ev.start).toISOString().slice(0, 19);
+        // at an already-overridden time. Slice the floating ISO
+        // directly instead of new Date(...).toISOString() — see
+        // the long-form note in moveEvent for why round-tripping
+        // through Date silently shifts the key by the client offset.
+        const key = ev.override_key ?? ev.start.slice(0, 19);
         // Resize keeps the start_time on the original occurrence date
         // unchanged — only end_time shifts. We still send start_time so
         // the override carries a complete (start, end) pair and the
