@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { api, type CalendarEvent } from '$lib/api';
+  import { onMount } from 'svelte';
+  import { api, type CalendarEvent, type Project } from '$lib/api';
   import { toast } from '$lib/components/toast';
 
   let {
     open = $bindable(false),
     date,
     existingEvents = [],
+    defaultProjectId = '',
     onCreated
   }: {
     open?: boolean;
@@ -14,6 +16,10 @@
      *  detection. Defaults to empty so callers that don't care about
      *  conflicts (e.g. unit tests) don't have to provide it. */
     existingEvents?: CalendarEvent[];
+    /** Pre-fill the project picker — e.g. when the calendar page is
+     *  filtered to one project, a fresh create should default to that
+     *  project. Empty = no default link. */
+    defaultProjectId?: string;
     onCreated: () => void | Promise<void>;
   } = $props();
 
@@ -26,7 +32,22 @@
   // calendar fills with distinct hues automatically.
   let color = $state('');
   let remindMinutes = $state(0); // 0 = no reminder
+  let projectId = $state('');
   let saving = $state(false);
+
+  // Project list — loaded once on mount, kept until the page reloads.
+  // Failure degrades silently (the picker shows the "(no project)"
+  // option only) so a missing /projects endpoint doesn't block event
+  // creation.
+  let projects = $state<Project[]>([]);
+  onMount(async () => {
+    try {
+      const r = await api.listProjects();
+      projects = r.projects ?? [];
+    } catch {
+      projects = [];
+    }
+  });
 
   // ── Recurrence picker ─────────────────────────────────────────
   // Stored as RFC 5545 RRULE strings so the same expander handles
@@ -106,6 +127,11 @@
   $effect(() => {
     if (open && date) {
       dateISO = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      // Seed the project picker from the parent's hint each time the
+      // sheet opens (e.g. /calendar?project=Foo deep-link or the
+      // calendar page's "filter by project" pre-fill). After open,
+      // the user owns the value.
+      if (!projectId) projectId = defaultProjectId;
     }
   });
 
@@ -117,6 +143,7 @@
     location = '';
     color = '';
     remindMinutes = 0;
+    projectId = '';
     aiInput = '';
     aiBusy = false;
     aiError = '';
@@ -214,7 +241,8 @@
         location: location.trim(),
         color,
         remind_minutes_before: remindMinutes || undefined,
-        rrule: rrule || undefined
+        rrule: rrule || undefined,
+        project_id: projectId || undefined
       });
       close();
       await onCreated();
@@ -385,6 +413,28 @@
             class="w-full px-3 py-3 sm:py-2.5 bg-surface0 border border-surface1 rounded-lg text-base sm:text-sm text-text focus:outline-none focus:border-primary"
           />
         </div>
+
+        <!-- Project link (optional). The calendar page surfaces a
+             chip + colour overlay for events with a project_id, and
+             a per-project filter folds linked events alongside the
+             project's tasks — so a user can use the calendar as a
+             project-management surface. Hidden when no projects
+             exist (fresh vault). -->
+        {#if projects.length > 0}
+          <div>
+            <label class="block text-[11px] uppercase tracking-wider text-dim mb-1.5" for="ev-project">Project</label>
+            <select
+              id="ev-project"
+              bind:value={projectId}
+              class="w-full px-3 py-3 sm:py-2.5 bg-surface0 border border-surface1 rounded-lg text-base sm:text-sm text-text focus:outline-none focus:border-primary"
+            >
+              <option value="">No project</option>
+              {#each projects as p (p.name)}
+                <option value={p.name}>{p.name}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
 
         <div>
           <label class="block text-[11px] uppercase tracking-wider text-dim mb-1.5" for="ev-rem">Reminder</label>

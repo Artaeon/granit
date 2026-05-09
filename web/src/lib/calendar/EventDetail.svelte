@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { api, type CalendarEvent, type CalendarSource } from '$lib/api';
+  import { api, type CalendarEvent, type CalendarSource, type Project } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { onMount } from 'svelte';
   import { eventStartDate, eventEndDate, fmtTime, eventTypeColor } from './utils';
@@ -21,6 +21,21 @@
   let editDate = $state('');
   let editLocation = $state('');
   let editColor = $state('cyan');
+  let editProjectId = $state('');
+
+  // Project list — loaded once on mount so the picker is populated by
+  // the time the user clicks 'edit'. Failure degrades silently to "No
+  // project" only.
+  let projects = $state<Project[]>([]);
+  async function loadProjects() {
+    try {
+      const r = await api.listProjects();
+      projects = r.projects ?? [];
+    } catch {
+      projects = [];
+    }
+  }
+  onMount(loadProjects);
 
   // 24-hour HH:MM picker buffers — same pattern as UnifiedCreate.
   // Native <input type="time"> renders AM/PM on most OS locales
@@ -158,12 +173,21 @@
     editRepeat = parsed.repeat;
     editUntilDate = parsed.until;
     editCustomRule = parsed.custom;
+    // Seed the project link from the event so unchanged saves
+    // round-trip. Empty when the event isn't linked.
+    editProjectId = event.project_id ?? '';
     editing = true;
   }
 
-  // Build an RFC3339 string from YYYY-MM-DD + HH:MM. Mirrors what the
-  // create form posts so the server's parser sees the same shape on
-  // both endpoints.
+  // Build an RFC3339 string from YYYY-MM-DD + HH:MM. The Date is
+  // constructed in LOCAL time (the user's wall clock), then
+  // toISOString() converts that instant to UTC for transmission —
+  // so a EU user typing 14:30 sends "12:30:00Z". The backend's
+  // parseClientTime parses RFC3339 (UTC), and the icswriter emits
+  // UTC Z, so the round-trip preserves the user's wall-clock
+  // intent. Used only for the ICS write path; events.json takes
+  // separate date + HH:MM fields and stores them verbatim (see the
+  // patchEvent branch below).
   function localRFC3339FromParts(date: string, time: string): string {
     const [y, mo, d] = date.split('-').map(Number);
     const [h, mi] = time.split(':').map(Number);
@@ -193,7 +217,12 @@
           // Send rrule unconditionally so editing a recurring event
           // back to non-recurring (editRepeat='none' → '') correctly
           // clears the rule rather than leaving the old one in place.
-          rrule: editRRule
+          rrule: editRRule,
+          // Send project_id unconditionally too — clearing the link
+          // (editProjectId='') must overwrite a previously-linked
+          // project on disk, not be silently dropped by omitempty
+          // round-tripping through Partial<>.
+          project_id: editProjectId
         });
       } else {
         return;
@@ -407,6 +436,21 @@
           {#if event.location}
             <div class="text-sm text-dim mt-1">@ {event.location}</div>
           {/if}
+          {#if event.project_id}
+            <!-- Project chip — links to the project page. Same surface
+                 that drives the calendar's per-project filter; clicking
+                 here jumps to the project's detail view. -->
+            <a
+              href={`/projects/${encodeURIComponent(event.project_id)}`}
+              class="inline-flex items-center gap-1 text-xs px-2 py-0.5 mt-2 rounded-full bg-secondary/15 text-secondary border border-secondary/30 hover:bg-secondary/25"
+              title="open project"
+            >
+              <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 7h7l2 2h9v11H3z" stroke-linejoin="round"/>
+              </svg>
+              {event.project_id}
+            </a>
+          {/if}
           {#if event.notePath}
             <div class="text-xs text-dim mt-2 font-mono truncate">{event.notePath}</div>
           {/if}
@@ -522,6 +566,27 @@
             {#if editRRule}
               <p class="text-[10px] text-dim font-mono"><span class="text-secondary">→</span> {editRRule}</p>
             {/if}
+          {/if}
+          <!-- Project link picker — drives the calendar's project
+               filter + colour-by-project overlay. Hidden when no
+               projects exist (fresh vault); ICS events get it too
+               so a writable .ics calendar can carry project links
+               via the events.json sidecar (the link is on the
+               native event record, not in the ICS payload). -->
+          {#if event?.type === 'event' && projects.length > 0}
+            <div class="flex items-center gap-2 flex-wrap">
+              <label class="text-[11px] text-dim uppercase tracking-wider" for="ev-edit-project">Project</label>
+              <select
+                id="ev-edit-project"
+                bind:value={editProjectId}
+                class="bg-surface0 border border-surface1 rounded px-2 py-1 text-sm text-text"
+              >
+                <option value="">No project</option>
+                {#each projects as p (p.name)}
+                  <option value={p.name}>{p.name}</option>
+                {/each}
+              </select>
+            </div>
           {/if}
           <div class="flex items-center gap-2">
             <span class="text-[11px] text-dim uppercase tracking-wider">Color</span>

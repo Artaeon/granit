@@ -178,6 +178,12 @@ export interface CalendarEvent {
    *  recurring event. Repeated on every occurrence so the chip can
    *  show a ↻ indicator and the edit modal can target the series. */
   rrule?: string;
+  /** Optional project name this event/task is linked to. For events
+   *  it comes from granitmeta.Event.ProjectID; for tasks it's the
+   *  task's project_id (sidecar) or Project (markdown-extracted)
+   *  field, surfaced uniformly so the calendar's project-filter
+   *  folds events + tasks together. Empty for unlinked rows. */
+  project_id?: string;
 }
 
 // Mirrors internal/deadlines.Deadline — top-level "this matters by date X"
@@ -313,6 +319,12 @@ export interface CalendarEventEntry {
    *  Optional UNTIL=YYYYMMDDT235959Z suffix. The backend uses the
    *  same expander as ICS so semantics match across sources. */
   rrule?: string;
+  /** Optional project link — free-text project name (matches
+   *  Project.name). The calendar surfaces a small chip + colour
+   *  overlay for linked events, and the per-project filter on the
+   *  calendar page folds these in alongside scheduled tasks. Empty
+   *  for unlinked events. */
+  project_id?: string;
 }
 
 export interface Milestone {
