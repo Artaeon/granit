@@ -9,6 +9,7 @@
   import ProjectCreate from '$lib/projects/ProjectCreate.svelte';
   import ProjectTimeline from '$lib/projects/ProjectTimeline.svelte';
   import ProjectHeatmap from '$lib/projects/ProjectHeatmap.svelte';
+  import ProjectStatusBar from '$lib/projects/ProjectStatusBar.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
 
   let projects = $state<Project[]>([]);
@@ -728,6 +729,14 @@
                       <span class="text-dim">{p.tasksDone}/{p.tasksTotal}</span>
                     {/if}
                   </div>
+
+                  <!-- Task-by-status mini-bar — open / scheduled-this-week
+                       / done split. The progress bar above answers
+                       "how far?", this answers "is the open work being
+                       picked up?" — a project with 30 open tasks and
+                       0 scheduled tells a different story from one with
+                       30 open and 8 scheduled. -->
+                  <ProjectStatusBar project={p} tasks={tasks} />
 
                   {#if momentumByProject.get(p.name)}
                     {@const m = momentumByProject.get(p.name)!}
