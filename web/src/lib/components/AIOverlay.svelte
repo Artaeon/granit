@@ -56,6 +56,74 @@
   let inputEl: HTMLTextAreaElement | undefined = $state();
   let scrollEl: HTMLDivElement | undefined = $state();
 
+  // ── Resizable panel (desktop only) ──────────────────────────────
+  // The default 420px panel is comfortable for short chats but tight
+  // when the history rail is open or the user is reading a long
+  // assistant reply with a code block. Users drag the left edge to
+  // widen the panel; the chosen width persists in localStorage so a
+  // single tweak sticks across sessions. Mobile (bottom-sheet) ignores
+  // this — width is always 100vw there.
+  const PANEL_WIDTH_KEY = 'granit.chat.overlay.width';
+  const PANEL_WIDTH_MIN = 360;
+  const PANEL_WIDTH_MAX = 720;
+  const PANEL_WIDTH_DEFAULT = 420;
+  function loadPanelWidth(): number {
+    if (typeof localStorage === 'undefined') return PANEL_WIDTH_DEFAULT;
+    try {
+      const raw = localStorage.getItem(PANEL_WIDTH_KEY);
+      const n = raw ? parseInt(raw, 10) : NaN;
+      if (!Number.isFinite(n)) return PANEL_WIDTH_DEFAULT;
+      return Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, n));
+    } catch {
+      return PANEL_WIDTH_DEFAULT;
+    }
+  }
+  let panelWidth = $state<number>(loadPanelWidth());
+  let resizing = $state(false);
+  function persistPanelWidth(n: number) {
+    if (typeof localStorage === 'undefined') return;
+    try { localStorage.setItem(PANEL_WIDTH_KEY, String(n)); } catch {}
+  }
+  function onResizeStart(e: PointerEvent) {
+    // Pointer-events lets one handler cover mouse + touch + pen. We
+    // capture so the user can drag past the panel edge without losing
+    // the gesture if their cursor strays into the chat content.
+    e.preventDefault();
+    resizing = true;
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
+    function onMove(ev: PointerEvent) {
+      // Panel is right-anchored; widening means pulling LEFT, which
+      // increases (window.innerWidth - clientX). Clamp to min/max.
+      const w = window.innerWidth - ev.clientX;
+      panelWidth = Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, w));
+    }
+    function onUp() {
+      resizing = false;
+      target.releasePointerCapture(e.pointerId);
+      target.removeEventListener('pointermove', onMove);
+      target.removeEventListener('pointerup', onUp);
+      target.removeEventListener('pointercancel', onUp);
+      persistPanelWidth(panelWidth);
+    }
+    target.addEventListener('pointermove', onMove);
+    target.addEventListener('pointerup', onUp);
+    target.addEventListener('pointercancel', onUp);
+  }
+  function onResizeKey(e: KeyboardEvent) {
+    // Keyboard fallback for accessibility — left/right arrow nudges
+    // the panel by 16px steps. Home/End jumps to min/max.
+    let next = panelWidth;
+    if (e.key === 'ArrowLeft') next = Math.min(PANEL_WIDTH_MAX, panelWidth + 16);
+    else if (e.key === 'ArrowRight') next = Math.max(PANEL_WIDTH_MIN, panelWidth - 16);
+    else if (e.key === 'Home') next = PANEL_WIDTH_MAX;
+    else if (e.key === 'End') next = PANEL_WIDTH_MIN;
+    else return;
+    e.preventDefault();
+    panelWidth = next;
+    persistPanelWidth(next);
+  }
+
   let busy = $state(false);
   let abort: AbortController | null = null;
 
@@ -1672,10 +1740,30 @@
     data-ai-overlay
     role="dialog"
     aria-label="AI assistant"
-    class="fixed z-50 flex flex-col bg-base border-surface1 shadow-2xl
+    style:--ai-panel-w="{panelWidth}px"
+    class="ai-overlay-panel fixed z-50 flex flex-col bg-base border-surface1 shadow-2xl
            inset-x-0 bottom-0 max-h-[85dvh] rounded-t-xl border-t pb-safe
-           md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:top-0 md:h-full md:w-[420px] md:max-h-none md:rounded-none md:border-l md:border-t-0 md:pb-0"
+           md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:top-0 md:h-full md:max-h-none md:rounded-none md:border-l md:border-t-0 md:pb-0 {resizing ? 'ai-overlay-resizing' : ''}"
   >
+    <!-- Desktop-only drag handle on the LEFT edge of the panel. The
+         panel is right-anchored; widening means pulling left so the
+         handle sits exactly where the user expects (between content
+         + panel). 6px wide hit area, transparent until hover so it
+         doesn't add visual noise. PointerEvents capture so the drag
+         survives the cursor straying off the strip. -->
+    <button
+      type="button"
+      aria-label="Resize AI panel"
+      aria-valuenow={panelWidth}
+      aria-valuemin={PANEL_WIDTH_MIN}
+      aria-valuemax={PANEL_WIDTH_MAX}
+      role="slider"
+      onpointerdown={onResizeStart}
+      onkeydown={onResizeKey}
+      class="hidden md:block absolute left-0 top-0 bottom-0 w-1.5 -ml-0.5 z-50 cursor-col-resize group {resizing ? 'bg-primary/40' : 'hover:bg-primary/30 focus-visible:bg-primary/40'} transition-colors"
+    >
+      <span class="sr-only">Drag to resize panel</span>
+    </button>
     <!-- Header. Mobile gets a drag-handle visual hint at the very
          top; both layouts get title + status pill + close. -->
     <div class="md:hidden flex justify-center pt-2 pb-1">
@@ -2312,3 +2400,22 @@
     </form>
   </div>
 {/if}
+
+<style>
+  /* Desktop panel width is driven by a CSS variable so the user-
+     dragged width sticks even across HMR. Tailwind's arbitrary-
+     value classes don't reliably resolve var() for sizing utilities
+     across all build configs, so we keep the width here in a
+     scoped style block. Mobile (max-width 767px) gets full-width
+     bottom-sheet behaviour from the Tailwind classes above. */
+  @media (min-width: 768px) {
+    :global(.ai-overlay-panel) {
+      width: var(--ai-panel-w, 420px);
+      transition: width 150ms ease-out;
+    }
+    :global(.ai-overlay-panel.ai-overlay-resizing) {
+      transition: none;
+      user-select: none;
+    }
+  }
+</style>
