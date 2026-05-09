@@ -5,6 +5,7 @@
   import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { createCoalescedReload } from '$lib/util/coalesce';
+  import { relativeTime } from '$lib/util/relativeTime';
   import { toast } from '$lib/components/toast';
   import NotesTree from '$lib/notes/NotesTree.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
@@ -392,18 +393,9 @@
     }
   }
 
-  function fmtRelative(iso: string): string {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
-    const mins = Math.round((Date.now() - d.getTime()) / 60_000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    if (mins < 24 * 60) return `${Math.round(mins / 60)}h ago`;
-    const days = Math.round(mins / (24 * 60));
-    if (days < 7) return `${days}d ago`;
-    if (days < 30) return `${Math.round(days / 7)}w ago`;
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  }
+  // Falls back to a calendar date past 30 days — past that, "5w
+  // ago" reads less well than "Apr 12".
+  const fmtRelative = (iso: string) => relativeTime(iso, { dateThresholdDays: 30 });
 
   function fmtSize(bytes?: number): string {
     if (!bytes) return '';

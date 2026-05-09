@@ -9,6 +9,7 @@
   import RecurringEditor from '$lib/components/RecurringEditor.svelte';
   import { modulesStore } from '$lib/stores/modules';
   import { toast } from '$lib/components/toast';
+  import { relativeTime } from '$lib/util/relativeTime';
 
   // Curated OpenAI model picker — refreshed against
   // developers.openai.com/api/docs/pricing periodically. Server is the
@@ -191,17 +192,14 @@
     }
   }
 
-  function fmtRelative(iso: string): string {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return iso;
-    const mins = Math.round((Date.now() - d.getTime()) / 60_000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins} min ago`;
-    if (mins < 24 * 60) return `${Math.round(mins / 60)}h ago`;
-    const days = Math.round(mins / (24 * 60));
-    if (days < 7) return `${days}d ago`;
-    return d.toLocaleDateString();
-  }
+  // Falls back to the calendar date past 7 days; the locale full
+  // date format used here is fine for the audit-log "last activity"
+  // surface — older entries don't need precision.
+  const fmtRelative = (iso: string) =>
+    relativeTime(iso, {
+      dateThresholdDays: 7,
+      dateFormatter: (d) => d.toLocaleDateString()
+    }) || iso;
 
   async function changePassword(e: Event) {
     e.preventDefault();

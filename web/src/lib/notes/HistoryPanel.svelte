@@ -24,27 +24,17 @@
   import { toast } from '$lib/components/toast';
   import { req } from '$lib/api';
   import { lineDiff, diffStats, type DiffLine } from '$lib/util/lineDiff';
+  import { relativeTime } from '$lib/util/relativeTime';
 
   // Inline relative-time formatter — there's no shared helper yet
   // and the panel only needs five buckets ("just now", N seconds /
   // minutes / hours / days). Pulling in date-fns or rolling a full
   // i18n-aware Intl.RelativeTimeFormat would be overkill for one
   // call site.
+  // Use the shared relative-time helper; falls back to the original
+  // ISO if unparseable to preserve the previous behaviour.
   function fmtRelativeTime(iso: string): string {
-    const t = new Date(iso).getTime();
-    if (!Number.isFinite(t)) return iso;
-    const diffSec = Math.round((Date.now() - t) / 1000);
-    if (diffSec < 5) return 'just now';
-    if (diffSec < 60) return `${diffSec}s ago`;
-    const diffMin = Math.round(diffSec / 60);
-    if (diffMin < 60) return `${diffMin}m ago`;
-    const diffHr = Math.round(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h ago`;
-    const diffDay = Math.round(diffHr / 24);
-    if (diffDay < 30) return `${diffDay}d ago`;
-    const diffMo = Math.round(diffDay / 30);
-    if (diffMo < 12) return `${diffMo}mo ago`;
-    return `${Math.round(diffMo / 12)}y ago`;
+    return relativeTime(iso) || iso;
   }
 
   type Version = { timestamp: string; size: number; hash: string };
