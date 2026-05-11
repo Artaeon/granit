@@ -112,6 +112,22 @@
       const g = get('group') as Group;
       if (['due', 'priority', 'note', 'project', 'tag', 'goal', 'deadline'].includes(g)) groupBy = g;
     }
+    // ?agent=1 launches the Task Agent directly — the sidebar's
+    // "Run Task Agent" entry uses this to open the agent from
+    // outside the page without a global ref. Consumed once: we
+    // clear the param on hydrate so a hash-refresh doesn't keep
+    // re-popping the dialog.
+    if (sp.get('agent') === '1') {
+      agentOpen = true;
+      const next = new URLSearchParams(sp);
+      next.delete('agent');
+      const qs = next.toString();
+      void goto(qs ? `${$page.url.pathname}?${qs}` : $page.url.pathname, {
+        replaceState: true,
+        noScroll: true,
+        keepFocus: true
+      });
+    }
     urlHydrated = true;
   }
   function syncToUrl() {
@@ -1548,22 +1564,13 @@
           >Triage</button>
         </div>
       </div>
-      <button
-        onclick={() => (agentOpen = true)}
-        aria-label="open task agent"
-        title={selectedIds.size > 0
-          ? `Task agent — operate on ${selectedIds.size} selected task${selectedIds.size === 1 ? '' : 's'}`
-          : 'Task agent — describe what you want done in plain words'}
-        class="inline-flex items-center gap-1 px-2 py-1 text-xs border rounded {selectedIds.size > 0
-          ? 'border-primary bg-primary/10 text-primary'
-          : 'border-surface1 bg-surface0 text-text hover:border-primary'}"
-      >
-        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
-          <path d="M5 21h14" />
-        </svg>
-        <span class="hidden sm:inline">{selectedIds.size > 0 ? `Agent · ${selectedIds.size}` : 'Agent'}</span>
-      </button>
+      <!-- Task Agent button removed from the page header — the
+           agent now launches from the chat sidebar (Cmd+J →
+           "Run Task Agent" chip) so AI work has one consistent
+           entry point across the app. The dialog component still
+           lives here and opens via ?agent=1 URL param from the
+           sidebar's nav-and-open shim. -->
+
       <button
         onclick={() => (helpOpen = !helpOpen)}
         aria-label="keyboard shortcuts"

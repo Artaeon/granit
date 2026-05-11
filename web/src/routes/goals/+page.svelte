@@ -89,6 +89,16 @@
   }
   onMount(() => {
     load();
+    // ?agent=1 launches the Goal Agent — used by the chat sidebar.
+    if ($page.url.searchParams.get('agent') === '1') {
+      agentOpen = true;
+      const params = new URLSearchParams($page.url.searchParams);
+      params.delete('agent');
+      void goto(`/goals${params.toString() ? '?' + params : ''}`, {
+        replaceState: true,
+        keepFocus: true
+      });
+    }
     const unsub = onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
       // Re-fetch when the TUI (or another web tab) writes goals.json.
@@ -995,18 +1005,8 @@
           class="px-3 py-1.5 border border-surface1 text-subtext rounded text-sm hover:border-warning hover:text-warning disabled:opacity-50"
           title="Surface tasks that don't advance any stated goal"
         >{auditOpen ? '✕ audit' : '🔍 Alignment audit'}</button>
-        <button
-          type="button"
-          onclick={() => (agentOpen = true)}
-          class="px-3 py-1.5 border border-surface1 text-subtext rounded text-sm hover:border-primary hover:text-primary inline-flex items-center gap-1"
-          title="Goal agent — describe what you want done"
-        >
-          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
-            <path d="M5 21h14" />
-          </svg>
-          Agent
-        </button>
+        <!-- Goal Agent button removed; launches from the chat
+             sidebar via ?agent=1. -->
         <button
           onclick={() => (createOpen = true)}
           class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"

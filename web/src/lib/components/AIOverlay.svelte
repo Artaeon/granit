@@ -3,6 +3,7 @@
   import { fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
   import { api, type ChatMessage, type AIMemoryFact } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { sabbath } from '$lib/stores/sabbath';
@@ -815,6 +816,33 @@
   // alone (path starts with /calendar) is enough to enter the
   // Calendar Manager mode and inject the date-window prelude.
   const onCalendarPage = $derived($page.url.pathname.startsWith('/calendar'));
+  // Page-agent launcher — drives the "Run X Agent" sidebar entry
+  // point. Each entity page (/tasks /projects /goals /calendar) owns
+  // its own embedded agent dialog; the sidebar opens it by navigating
+  // there with ?agent=1. Returns null on pages without an agent so
+  // the button hides cleanly.
+  const pageAgent = $derived.by(() => {
+    const p = $page.url.pathname;
+    if (p.startsWith('/tasks')) return { path: '/tasks', label: 'Task Agent', glyph: 'TA' };
+    if (p === '/projects' || p.startsWith('/projects?') || p.startsWith('/projects/')) {
+      return {
+        path: '/projects',
+        label: currentProjectName ? `Project Agent · ${currentProjectName}` : 'Project Agent',
+        glyph: 'PA'
+      };
+    }
+    if (p.startsWith('/goals')) return { path: '/goals', label: 'Goal Agent', glyph: 'GA' };
+    if (p.startsWith('/calendar')) return { path: '/calendar', label: 'Calendar Agent', glyph: 'CA' };
+    return null;
+  });
+  function launchPageAgent() {
+    if (!pageAgent) return;
+    const params = new URLSearchParams($page.url.searchParams);
+    params.set('agent', '1');
+    const qs = params.toString();
+    void goto(`${pageAgent.path}${qs ? '?' + qs : ''}`, { keepFocus: true });
+    close();
+  }
 
   function close() {
     abort?.abort();
@@ -2315,6 +2343,21 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
          composer with high-leverage PM intents instead of
          hitting a separate endpoint. -->
     <div class="px-4 py-3 border-b border-surface1 flex flex-wrap gap-1.5 flex-shrink-0">
+      {#if pageAgent}
+        <!-- Run page-scoped Agent — replaces the per-page "Agent"
+             toolbar buttons that used to live on /tasks /projects
+             /goals /calendar. Navigates with ?agent=1 so the host
+             page hydrates and opens its own AgentDialog. -->
+        <button
+          onclick={launchPageAgent}
+          title="Open the agent for this page"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-gradient-to-r from-primary/20 to-secondary/15 border border-primary/50 rounded text-primary hover:from-primary/30 hover:to-secondary/25 inline-flex items-center gap-1.5 font-medium"
+        >
+          <span class="text-[10px] font-semibold tracking-tight inline-flex items-center justify-center w-5 h-5 rounded-sm bg-primary/25 text-primary leading-none">{pageAgent.glyph}</span>
+          Run {pageAgent.label}
+        </button>
+        <span class="hidden sm:inline-block w-px h-5 self-center bg-surface1 mx-1"></span>
+      {/if}
       {#if currentProjectName}
         <span class="text-[10px] text-dim uppercase tracking-wide self-center mr-1 flex-shrink-0">PM:</span>
         <button

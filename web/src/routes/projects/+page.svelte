@@ -369,6 +369,18 @@
 
   onMount(() => {
     load();
+    // ?agent=1 launches the Project Agent — used by the chat
+    // sidebar's "Run Project Agent" entry. Consumed once: we
+    // clean the param so reload doesn't keep re-opening.
+    if ($page.url.searchParams.get('agent') === '1') {
+      agentOpen = true;
+      const params = new URLSearchParams($page.url.searchParams);
+      params.delete('agent');
+      void goto(`/projects${params.toString() ? '?' + params : ''}`, {
+        replaceState: true,
+        keepFocus: true
+      });
+    }
     const unsub = onWsEvent((ev) => {
       if (ev.type.startsWith('project.')) load();
       if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
@@ -676,17 +688,8 @@
           title="clear venture filter"
         >🏢 {ventureFilter} ×</button>
       {/if}
-      <button
-        onclick={() => (agentOpen = true)}
-        title="Project agent — describe what you want done in plain words"
-        class="text-xs px-2.5 py-1 min-h-[32px] rounded border border-surface1 bg-surface0 text-text hover:border-primary inline-flex items-center gap-1"
-      >
-        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
-          <path d="M5 21h14" />
-        </svg>
-        <span class="hidden sm:inline">Agent</span>
-      </button>
+      <!-- Project Agent button — removed; launches from the chat
+           sidebar via ?agent=1 instead. -->
       <button
         onclick={() => (createOpen = true)}
         class="ml-auto px-2.5 py-1.5 sm:py-1 min-h-[32px] text-xs bg-primary text-on-primary rounded hover:opacity-90"
@@ -700,18 +703,9 @@
   <aside class="w-full md:w-72 lg:w-80 xl:w-96 flex-shrink-0 border-r border-surface1 bg-mantle/40 flex flex-col {selectedName ? 'hidden md:flex' : ''}">
     <header class="px-3 py-2.5 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
       <h2 class="text-sm font-medium text-text flex-1">Projects</h2>
-      <button
-        onclick={() => (agentOpen = true)}
-        title="Project agent — describe what you want done"
-        aria-label="open project agent"
-        class="px-2 py-1 text-xs rounded border border-surface1 bg-surface0 text-text hover:border-primary inline-flex items-center gap-1"
-      >
-        <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
-          <path d="M5 21h14" />
-        </svg>
-        <span class="hidden sm:inline">AI</span>
-      </button>
+      <!-- Project Agent button removed; launches from the chat
+           sidebar via ?agent=1. -->
+
       <button
         onclick={() => (createOpen = true)}
         class="px-2.5 py-1 text-xs bg-primary text-on-primary rounded hover:opacity-90"

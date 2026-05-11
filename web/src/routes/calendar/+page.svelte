@@ -245,6 +245,16 @@
     }
     const proj = url.searchParams.get('project');
     if (proj) projectFilter = proj;
+    // ?agent=1 launches the Calendar Agent — used by the chat sidebar.
+    if (url.searchParams.get('agent') === '1') {
+      agentOpen = true;
+      const params = new URLSearchParams(url.searchParams);
+      params.delete('agent');
+      void goto(`/calendar${params.toString() ? '?' + params : ''}`, {
+        replaceState: true,
+        keepFocus: true
+      });
+    }
   });
 
   // Dashboard overlay — full-screen CalendarDashboardPanel. State
@@ -1404,25 +1414,8 @@
         <span aria-hidden="true">✨</span>
         <span>{aiBusy ? 'thinking…' : 'Plan my week'}</span>
       </button>
-      <!-- Calendar Agent — conversational mutation engine. Same
-           shape as Tasks/Projects/Goals agents; ICS events are
-           excluded server-side so the agent only edits things it
-           can actually patch. Visible on every viewport so mobile
-           users can reach it too. On phones the label drops away
-           and the sparkle icon stands alone next to the existing
-           toolbar buttons. -->
-      <button
-        onclick={() => (agentOpen = true)}
-        title="Calendar agent — describe what you want done (Shift+A)"
-        aria-label="open calendar agent"
-        class="inline-flex px-2 sm:px-2.5 py-1.5 text-xs sm:text-sm bg-surface0 border border-surface1 text-subtext rounded hover:border-primary hover:text-text items-center gap-1"
-      >
-        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
-          <path d="M5 21h14" />
-        </svg>
-        <span class="hidden sm:inline">Agent</span>
-      </button>
+      <!-- Calendar Agent button removed; launches from the chat
+           sidebar via ?agent=1 (Shift+A still works via hotkey). -->
       <!-- Dashboard — opens the full-screen CalendarDashboardPanel
            overlay. Visual companion to the Calendar Manager chat
            prelude; shares the same context bundle so the two
