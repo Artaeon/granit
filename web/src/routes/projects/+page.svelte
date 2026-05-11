@@ -11,6 +11,7 @@
   import ProjectHeatmap from '$lib/projects/ProjectHeatmap.svelte';
   import ProjectKanban from '$lib/projects/ProjectKanban.svelte';
   import ProjectAgent from '$lib/projects/ProjectAgent.svelte';
+  import ProjectDashboardPanel from '$lib/projects/ProjectDashboardPanel.svelte';
   import type { KanbanStatus } from '$lib/projects/kanbanGroup';
   import { isTypingTarget } from '$lib/util/isTypingTarget';
   import ProjectStatusBar from '$lib/projects/ProjectStatusBar.svelte';
@@ -444,6 +445,27 @@
     const params = new URLSearchParams($page.url.searchParams);
     if (name) params.set('p', name);
     else params.delete('p');
+    // Closing or switching the project also closes the dashboard
+    // overlay — a different project shouldn't keep the prior
+    // project's dashboard mounted in the background.
+    params.delete('dashboard');
+    goto(`/projects?${params.toString()}`, { replaceState: true, keepFocus: true });
+  }
+
+  // Dashboard overlay — full-screen ProjectDashboardPanel for the
+  // selected project. State persists in the URL so a reload (or a
+  // shared link) keeps the dashboard open. Pure presentation flag;
+  // the panel does its own data load.
+  let dashboardOpen = $derived($page.url.searchParams.get('dashboard') === '1');
+  function openDashboard() {
+    if (!selectedName) return;
+    const params = new URLSearchParams($page.url.searchParams);
+    params.set('dashboard', '1');
+    goto(`/projects?${params.toString()}`, { replaceState: true, keepFocus: true });
+  }
+  function closeDashboard() {
+    const params = new URLSearchParams($page.url.searchParams);
+    params.delete('dashboard');
     goto(`/projects?${params.toString()}`, { replaceState: true, keepFocus: true });
   }
   function clearVentureFilter() {
@@ -926,6 +948,7 @@
         onClose={() => selectProject('')}
         onUpdated={load}
         onDeleted={deleted}
+        onOpenDashboard={openDashboard}
       />
     {:else}
       <div class="h-full flex items-center justify-center text-dim text-sm">
@@ -1010,6 +1033,16 @@
   {/if}
   </div>
 </div>
+
+{#if dashboardOpen && selected}
+  <!-- Project Dashboard overlay — full-screen visual operating
+       picture for the selected project. URL-persisted via
+       ?dashboard=1 so a reload keeps it open. Sits above every
+       other layout (list/kanban/timeline/heatmap) without
+       unmounting them, so closing the dashboard lands the user
+       back where they came from. -->
+  <ProjectDashboardPanel project={selected} onClose={closeDashboard} />
+{/if}
 
 <ProjectCreate bind:open={createOpen} ventures={ventures} onCreated={created} />
 

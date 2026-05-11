@@ -8,11 +8,17 @@
   import TaskRow from '$lib/components/TaskRow.svelte';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
 
-  let { project, onClose, onUpdated, onDeleted }: {
+  let { project, onClose, onUpdated, onDeleted, onOpenDashboard }: {
     project: Project;
     onClose: () => void;
     onUpdated: () => void | Promise<void>;
     onDeleted: (name: string) => void | Promise<void>;
+    /** Optional — when supplied, the header shows a Dashboard button
+     *  that delegates to the parent /projects page. The parent owns
+     *  the dashboard URL state (?dashboard=1) and renders the
+     *  ProjectDashboardPanel overlay on top, so this component stays
+     *  unaware of how the dashboard mounts. */
+    onOpenDashboard?: () => void;
   } = $props();
 
   // Local edit buffer — committed via patch on blur or save.
@@ -599,6 +605,27 @@
     >
       {#each statusOptions as s}<option value={s}>{s}</option>{/each}
     </select>
+    <!-- Dashboard — opens the full-screen ProjectDashboardPanel
+         overlay above the projects layout. Lives behind a thin
+         delegate so the detail drawer stays unaware of how the
+         dashboard mounts; the parent /projects page owns the
+         ?dashboard=1 URL state and renders the overlay. -->
+    {#if onOpenDashboard}
+      <button
+        onclick={onOpenDashboard}
+        title="open project dashboard — visual operating picture"
+        aria-label="open project dashboard"
+        class="px-2.5 py-1.5 min-h-[36px] text-xs rounded border border-surface1 bg-surface0 text-subtext hover:border-primary hover:text-primary inline-flex items-center gap-1"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="9" rx="1" />
+          <rect x="14" y="3" width="7" height="5" rx="1" />
+          <rect x="14" y="12" width="7" height="9" rx="1" />
+          <rect x="3" y="16" width="7" height="5" rx="1" />
+        </svg>
+        <span class="hidden sm:inline">Dashboard</span>
+      </button>
+    {/if}
     <!-- "Pray for this" — opens /prayer with the project pre-linked.
          Lets a moment of clarity in the project view become an
          intention in one click. -->
