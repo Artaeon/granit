@@ -1434,21 +1434,36 @@
     const folder = currentProjectName
       ? `Projects/${slugify(currentProjectName) || currentProjectName}`
       : 'Drafts';
-    const path = `${folder}/${slugify(title) || 'draft'}.md`;
+    const baseSlug = slugify(title) || 'draft';
+    const basePath = `${folder}/${baseSlug}.md`;
+    // Auto-suffix retry on path collision so saving the same
+    // draft twice doesn't surface a scary "save failed" toast
+    // and doesn't silently overwrite the first note. The suffix
+    // is "HHmm" from the current time — short, sortable, and
+    // unique enough for a single user.
+    const frontmatter = {
+      type: 'ai-draft',
+      mode: mode.id,
+      project: currentProjectName || undefined,
+      captured_at: new Date().toISOString(),
+      tags: ['ai-draft', mode.id]
+    };
     try {
-      await api.createNote({
-        path,
-        frontmatter: {
-          type: 'ai-draft',
-          mode: mode.id,
-          project: currentProjectName || undefined,
-          captured_at: new Date().toISOString(),
-          tags: ['ai-draft', mode.id]
-        },
-        body: cleaned
-      });
-      toast.success(`Saved · ${path}`, {
-        action: { label: 'Open', href: `/notes/${encodeURIComponent(path)}` }
+      let finalPath = basePath;
+      try {
+        await api.createNote({ path: basePath, frontmatter, body: cleaned });
+      } catch (err) {
+        // 409 Conflict — file exists. Retry with a time suffix.
+        // Any other error rethrows to the outer toast handler.
+        const msg = errorMessage(err);
+        if (!/already exists|409/i.test(msg)) throw err;
+        const now = new Date();
+        const suffix = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+        finalPath = `${folder}/${baseSlug}-${suffix}.md`;
+        await api.createNote({ path: finalPath, frontmatter, body: cleaned });
+      }
+      toast.success(`Saved · ${finalPath}`, {
+        action: { label: 'Open', href: `/notes/${encodeURIComponent(finalPath)}` }
       });
     } catch (e) {
       toast.error('Save failed: ' + errorMessage(e));
