@@ -6,7 +6,7 @@
     <link rel="icon" type="image/png" sizes="192x192" href="%sveltekit.assets%/icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="%sveltekit.assets%/icon-512.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#1a1b26" />
+    <meta name="theme-color" content="#000000" />
     <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
     <!-- iOS doesn't read manifest icons. apple-touch-icon must be PNG;
          180×180 is the universal size that scales cleanly to every iOS
@@ -35,13 +35,8 @@
                   ? 'light'
                   : 'dark';
           document.documentElement.setAttribute('data-theme', e);
-          // Palette: set data-palette before paint so the chosen
-          // colorscheme is on screen the very first frame instead
-          // of flashing through the default first.
-          var p = localStorage.getItem('granit.palette');
-          if (p && p !== 'default') document.documentElement.setAttribute('data-palette', p);
           var meta = document.querySelector('meta[name="theme-color"]');
-          if (meta) meta.setAttribute('content', e === 'light' ? '#eff1f5' : '#1a1b26');
+          if (meta) meta.setAttribute('content', e === 'light' ? '#ffffff' : '#000000');
         } catch (_) {}
       })();
     </script>

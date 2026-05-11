@@ -1,336 +1,90 @@
 @import 'tailwindcss';
 
 /* ── Theme palettes ─────────────────────────────────────────────
-   Two themes: dark (default, nightfox-ish) and light (catppuccin latte-ish).
-   Tailwind's @theme block exposes them as utility classes (`bg-base`,
-   `text-primary`, etc.). Theme switch sets `data-theme` on <html>; the
-   :root selector re-binds the same Tailwind tokens to the active palette.
+   Two themes only: dark (default OLED-black) and light (paper-white).
+   Apple-inspired greys + status colors (red / green / amber / blue).
+   Primary is the inverse of the page background — black on light,
+   white on dark — so CTAs read as the strongest mark on the page.
+
+   The @theme block exposes the variables as Tailwind utility classes
+   (`bg-base`, `text-primary`, etc.). Switching theme sets `data-theme`
+   on <html>; the matching :root override re-binds the same tokens.
 */
 
 @theme {
-  --color-base: #1a1b26;
-  --color-mantle: #16161e;
-  --color-crust: #13131a;
-  --color-surface0: #24273a;
-  --color-surface1: #2f3349;
-  --color-surface2: #3b425b;
-  --color-text: #c0caf5;
-  --color-subtext: #a9b1d6;
-  --color-dim: #6b7394;
-  --color-primary: #bb9af7;
-  --color-secondary: #7aa2f7;
-  --color-accent: #ff9e64;
-  --color-success: #9ece6a;
-  --color-warning: #e0af68;
-  --color-error: #f7768e;
-  --color-info: #7dcfff;
-  /* Foreground that always reads against bg-primary regardless of
-     theme. Dark theme: primary is light purple → use the dark mantle
-     for ~10:1 contrast. Light theme override below flips this to
-     near-white for ~7:1 against the deep purple. The previous
-     codebase-wide `bg-primary text-mantle` pattern broke in light
-     mode because mantle and primary are both light there. */
-  --color-on-primary: #16161e;
+  --color-base: #000000;
+  --color-mantle: #0a0a0a;
+  --color-crust: #000000;
+  --color-surface0: #1c1c1e;
+  --color-surface1: #2c2c2e;
+  --color-surface2: #3a3a3c;
+  --color-text: #ffffff;
+  --color-subtext: #ebebf0;
+  --color-dim: #8e8e93;
+  --color-primary: #ffffff;
+  --color-secondary: #d1d1d6;
+  --color-accent: #ffffff;
+  --color-success: #30d158;
+  --color-warning: #ff9f0a;
+  --color-error: #ff453a;
+  --color-info: #0a84ff;
+  --color-on-primary: #000000;
 
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', monospace;
 }
 
-/* Dark (default — explicit selector lets [data-theme="dark"] override
-   prefers-color-scheme:light if the user has chosen dark) */
+/* Dark — OLED-black surfaces, near-white text. Apple-style greys. */
 :root,
 [data-theme='dark'] {
-  --color-base: #1a1b26;
-  --color-mantle: #16161e;
-  --color-crust: #13131a;
-  --color-surface0: #24273a;
-  --color-surface1: #2f3349;
-  --color-surface2: #3b425b;
-  --color-text: #c0caf5;
-  --color-subtext: #a9b1d6;
-  --color-dim: #6b7394;
-  --color-primary: #bb9af7;
-  --color-secondary: #7aa2f7;
-  --color-accent: #ff9e64;
-  --color-success: #9ece6a;
-  --color-warning: #e0af68;
-  --color-error: #f7768e;
-  --color-info: #7dcfff;
-  --color-on-primary: #16161e;
-  color-scheme: dark;
-}
-
-/* Light — catppuccin latte */
-/* Global safety net: any element with bg-primary inherits a readable
-   text color even when the author forgot the matching text class. The
-   previous codebase-wide pattern was to pair `bg-primary` with
-   `text-mantle`, which broke in light theme. This rule guarantees
-   readability across themes regardless of which utility is or isn't
-   applied — author overrides via an explicit `text-*` class still win
-   because Tailwind's specificity order puts utilities last. */
-:where(button, a, [role="button"]).bg-primary,
-:where(button, a, [role="button"])[class*="bg-primary "],
-button.bg-primary, a.bg-primary {
-  color: var(--color-on-primary);
-}
-
-[data-theme='light'] {
-  --color-base: #eff1f5;
-  --color-mantle: #e6e9ef;
-  --color-crust: #dce0e8;
-  --color-surface0: #ccd0da;
-  --color-surface1: #bcc0cc;
-  --color-surface2: #acb0be;
-  --color-text: #4c4f69;
-  --color-subtext: #5c5f77;
-  --color-dim: #8c8fa1;
-  --color-primary: #8839ef;
-  --color-secondary: #1e66f5;
-  --color-accent: #fe640b;
-  --color-success: #40a02b;
-  --color-warning: #df8e1d;
-  --color-error: #d20f39;
-  --color-info: #04a5e5;
-  /* On light theme primary is a deep saturated purple — near-white
-     reads cleanly here (~7:1) where light mantle was washing out. */
-  --color-on-primary: #ffffff;
-  color-scheme: light;
-}
-
-/* ── Alternate palettes ─────────────────────────────────────────────
-   Picked from well-known terminal / editor palettes so they read
-   familiar to power users. Each palette is dark by default; their
-   light siblings are flagged with [data-theme='light'] selectors
-   below where they differ enough to need it. The data-palette axis
-   sits on <html> alongside data-theme.
-*/
-
-/* Rose Pine — soft, low-saturation, pinks-and-pines. Originally a
-   Vim colorscheme (rose-pine/rose-pine). */
-[data-palette='rose-pine'] {
-  --color-base: #191724;
-  --color-mantle: #1f1d2e;
-  --color-crust: #16141f;
-  --color-surface0: #26233a;
-  --color-surface1: #2a2737;
-  --color-surface2: #393552;
-  --color-text: #e0def4;
-  --color-subtext: #c4a7e7;
-  --color-dim: #6e6a86;
-  --color-primary: #c4a7e7;
-  --color-secondary: #9ccfd8;
-  --color-accent: #ebbcba;
-  --color-success: #31748f;
-  --color-warning: #f6c177;
-  --color-error: #eb6f92;
-  --color-info: #9ccfd8;
-  --color-on-primary: #191724;
-  color-scheme: dark;
-}
-[data-palette='rose-pine'][data-theme='light'] {
-  --color-base: #faf4ed;
-  --color-mantle: #fffaf3;
-  --color-crust: #f2e9e1;
-  --color-surface0: #f4ede8;
-  --color-surface1: #dfdad9;
-  --color-surface2: #cecacd;
-  --color-text: #575279;
-  --color-subtext: #797593;
-  --color-dim: #9893a5;
-  --color-primary: #907aa9;
-  --color-secondary: #56949f;
-  --color-accent: #d7827e;
-  --color-success: #286983;
-  --color-warning: #ea9d34;
-  --color-error: #b4637a;
-  --color-info: #56949f;
-  --color-on-primary: #faf4ed;
-  color-scheme: light;
-}
-
-/* Gruvbox — high-contrast retro palette by morhetz. The light
-   variant uses the documented hard background. */
-[data-palette='gruvbox'] {
-  --color-base: #282828;
-  --color-mantle: #1d2021;
-  --color-crust: #16181a;
-  --color-surface0: #3c3836;
-  --color-surface1: #504945;
-  --color-surface2: #665c54;
-  --color-text: #ebdbb2;
-  --color-subtext: #d5c4a1;
-  --color-dim: #928374;
-  --color-primary: #d3869b;
-  --color-secondary: #83a598;
-  --color-accent: #fe8019;
-  --color-success: #b8bb26;
-  --color-warning: #fabd2f;
-  --color-error: #fb4934;
-  --color-info: #8ec07c;
-  --color-on-primary: #1d2021;
-  color-scheme: dark;
-}
-[data-palette='gruvbox'][data-theme='light'] {
-  --color-base: #fbf1c7;
-  --color-mantle: #f9f5d7;
-  --color-crust: #f2e5bc;
-  --color-surface0: #ebdbb2;
-  --color-surface1: #d5c4a1;
-  --color-surface2: #bdae93;
-  --color-text: #3c3836;
-  --color-subtext: #504945;
-  --color-dim: #7c6f64;
-  --color-primary: #b16286;
-  --color-secondary: #076678;
-  --color-accent: #af3a03;
-  --color-success: #79740e;
-  --color-warning: #b57614;
-  --color-error: #9d0006;
-  --color-info: #427b58;
-  --color-on-primary: #fbf1c7;
-  color-scheme: light;
-}
-
-/* Nord — cool blues and greys, by arcticicestudio. The light
-   variant uses Snow Storm. */
-[data-palette='nord'] {
-  --color-base: #2e3440;
-  --color-mantle: #242933;
-  --color-crust: #1e222a;
-  --color-surface0: #3b4252;
-  --color-surface1: #434c5e;
-  --color-surface2: #4c566a;
-  --color-text: #eceff4;
-  --color-subtext: #d8dee9;
-  --color-dim: #7b8497;
-  --color-primary: #88c0d0;
-  --color-secondary: #81a1c1;
-  --color-accent: #d08770;
-  --color-success: #a3be8c;
-  --color-warning: #ebcb8b;
-  --color-error: #bf616a;
-  --color-info: #5e81ac;
-  --color-on-primary: #2e3440;
-  color-scheme: dark;
-}
-[data-palette='nord'][data-theme='light'] {
-  --color-base: #eceff4;
-  --color-mantle: #e5e9f0;
-  --color-crust: #d8dee9;
-  --color-surface0: #d8dee9;
-  --color-surface1: #c2cad8;
-  --color-surface2: #a8b3c5;
-  --color-text: #2e3440;
-  --color-subtext: #3b4252;
-  --color-dim: #5e6678;
-  --color-primary: #5e81ac;
-  --color-secondary: #81a1c1;
-  --color-accent: #d08770;
-  --color-success: #a3be8c;
-  --color-warning: #b48a3a;
-  --color-error: #bf616a;
-  --color-info: #5e81ac;
-  --color-on-primary: #eceff4;
-  color-scheme: light;
-}
-
-/* Solarized — Ethan Schoonover. The classic editor palette. */
-[data-palette='solarized'] {
-  --color-base: #002b36;
-  --color-mantle: #073642;
-  --color-crust: #001f27;
-  --color-surface0: #073642;
-  --color-surface1: #0e4351;
-  --color-surface2: #2a5b6a;
-  --color-text: #eee8d5;
-  --color-subtext: #93a1a1;
-  --color-dim: #586e75;
-  --color-primary: #b58900;
-  --color-secondary: #268bd2;
-  --color-accent: #cb4b16;
-  --color-success: #859900;
-  --color-warning: #b58900;
-  --color-error: #dc322f;
-  --color-info: #2aa198;
-  --color-on-primary: #002b36;
-  color-scheme: dark;
-}
-[data-palette='solarized'][data-theme='light'] {
-  --color-base: #fdf6e3;
-  --color-mantle: #eee8d5;
-  --color-crust: #d8d2c0;
-  --color-surface0: #eee8d5;
-  --color-surface1: #d8d2c0;
-  --color-surface2: #b8b4a3;
-  --color-text: #586e75;
-  --color-subtext: #657b83;
-  --color-dim: #93a1a1;
-  --color-primary: #b58900;
-  --color-secondary: #268bd2;
-  --color-accent: #cb4b16;
-  --color-success: #859900;
-  --color-warning: #b58900;
-  --color-error: #dc322f;
-  --color-info: #2aa198;
-  --color-on-primary: #fdf6e3;
-  color-scheme: light;
-}
-
-/* Pure Black — true #000 OLED minimalism. Greyscale surfaces, white
-   primary, and status colors muted to the bare minimum needed to
-   read distinct semantics (warnings yellowish, errors reddish — no
-   purple/blue noise). Forces color-scheme: dark so native scrollbars
-   and form controls match, regardless of the dark/light axis toggle.
-
-   "Just enough color" is a deliberate restraint: a fully achromatic
-   error indicator (light grey) would be readable but indistinguishable
-   from a success / info. The minimum chroma below preserves semantic
-   contrast without breaking the monochrome aesthetic. */
-[data-palette='pure-black'] {
   --color-base: #000000;
-  --color-mantle: #050505;
+  --color-mantle: #0a0a0a;
   --color-crust: #000000;
-  --color-surface0: #0c0c0c;
-  --color-surface1: #1a1a1a;
-  --color-surface2: #262626;
+  --color-surface0: #1c1c1e;
+  --color-surface1: #2c2c2e;
+  --color-surface2: #3a3a3c;
   --color-text: #ffffff;
-  --color-subtext: #c8c8c8;
-  --color-dim: #6e6e6e;
+  --color-subtext: #ebebf0;
+  --color-dim: #8e8e93;
   --color-primary: #ffffff;
-  --color-secondary: #b0b0b0;
-  --color-accent: #d0d0d0;
-  --color-success: #9ccc9c;
-  --color-warning: #d8c080;
-  --color-error: #e89090;
-  --color-info: #a0c0d0;
+  --color-secondary: #d1d1d6;
+  --color-accent: #ffffff;
+  --color-success: #30d158;
+  --color-warning: #ff9f0a;
+  --color-error: #ff453a;
+  --color-info: #0a84ff;
   --color-on-primary: #000000;
   color-scheme: dark;
 }
 
-/* Pure White — paper-clean #fff inverse of Pure Black. Same restraint:
-   monochrome surfaces with the smallest possible chroma on status
-   tokens. Reads like a well-set hardcover; ideal for reviewing /
-   printing / long-form reading sessions where palette colors are
-   visual noise rather than navigation aids. */
-[data-palette='pure-white'] {
+/* Light — paper-white surfaces, near-black text. */
+[data-theme='light'] {
   --color-base: #ffffff;
-  --color-mantle: #fafafa;
-  --color-crust: #ffffff;
-  --color-surface0: #f4f4f4;
-  --color-surface1: #e8e8e8;
-  --color-surface2: #d8d8d8;
+  --color-mantle: #fbfbfd;
+  --color-crust: #f5f5f7;
+  --color-surface0: #f5f5f7;
+  --color-surface1: #e5e5ea;
+  --color-surface2: #d1d1d6;
   --color-text: #000000;
-  --color-subtext: #3a3a3a;
-  --color-dim: #8c8c8c;
+  --color-subtext: #3c3c43;
+  --color-dim: #8e8e93;
   --color-primary: #000000;
-  --color-secondary: #404040;
-  --color-accent: #2a2a2a;
-  --color-success: #2f7a2f;
-  --color-warning: #a06a00;
-  --color-error: #b62828;
-  --color-info: #1d6a8a;
+  --color-secondary: #1c1c1e;
+  --color-accent: #000000;
+  --color-success: #34c759;
+  --color-warning: #ff9500;
+  --color-error: #ff3b30;
+  --color-info: #007aff;
   --color-on-primary: #ffffff;
   color-scheme: light;
+}
+
+/* Global safety net: any element with bg-primary inherits a readable
+   text color even when the author forgot the matching text class. */
+:where(button, a, [role="button"]).bg-primary,
+:where(button, a, [role="button"])[class*="bg-primary "],
+button.bg-primary, a.bg-primary {
+  color: var(--color-on-primary);
 }
 
 html,
@@ -339,13 +93,15 @@ body {
   overscroll-behavior: none;
   background: var(--color-base);
   color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 body {
   font-family: var(--font-sans);
 }
 
 a {
-  color: var(--color-secondary);
+  color: var(--color-text);
 }
 a:hover {
   text-decoration: underline;
@@ -366,10 +122,8 @@ input[type='datetime-local'] {
 }
 
 /* Prevent iOS Safari from auto-zooming on focus of inputs whose text
-   is smaller than 16px. We apply a 16px floor only on coarse-pointer
-   devices so desktop layouts that intentionally use text-xs/text-sm
-   for compact forms (e.g. dense modal grids) keep their density.
-   Excludes [type='range'] (no zoom) and checkbox/radio (no text). */
+   is smaller than 16px. Only on coarse-pointer devices so desktop
+   layouts that use text-xs/text-sm for compact forms keep their density. */
 @media (pointer: coarse) {
   input:not([type='range']):not([type='checkbox']):not([type='radio']):not([type='color']),
   textarea,
@@ -378,11 +132,7 @@ input[type='datetime-local'] {
   }
 }
 
-/* Ensure tap targets meet the Apple HIG 44x44 minimum on touch
-   devices. Marker class so authors can opt in on otherwise-tiny
-   icon buttons without leaking the rule into desktop dense
-   toolbars. Apply with class="tap-target" or via the
-   `min-h-[2.75rem]` Tailwind class manually. */
+/* Apple HIG 44x44 minimum tap targets on touch devices. */
 @media (pointer: coarse) {
   .tap-target {
     min-width: 2.75rem;
@@ -399,11 +149,7 @@ input[type='datetime-local'] {
   .pb-bottomnav { padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px)); }
 }
 
-/* Scrollbars: thin and quiet by default. The previous 10px style with
-   a fully-painted track gutter looked like a slider crowding into the
-   sidebar nav — replaced with a transparent track + an inset thumb
-   that reveals on hover. Firefox honors the spec-level
-   scrollbar-width / scrollbar-color tuple in the *-rule below. */
+/* Scrollbars: thin and quiet. */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
@@ -418,8 +164,6 @@ input[type='datetime-local'] {
   scrollbar-color: var(--color-surface1) transparent;
 }
 
-/* Sidebar nav scrollbar is even quieter — only appears when hovering
-   the rail, so at rest the column has no track gutter painted. */
 aside nav::-webkit-scrollbar { width: 6px; }
 aside nav::-webkit-scrollbar-thumb {
   background: transparent;
@@ -432,11 +176,11 @@ aside:hover nav::-webkit-scrollbar-thumb { background: var(--color-surface1); ba
   color: var(--color-text);
   line-height: 1.65;
 }
-.prose-note h1, .prose-note h2, .prose-note h3, .prose-note h4 { line-height: 1.25; font-weight: 600; }
-.prose-note h1 { font-size: 1.6rem; color: var(--color-primary); margin: 1.4rem 0 0.6rem; }
-.prose-note h2 { font-size: 1.3rem; color: var(--color-secondary); margin: 1.2rem 0 0.5rem; }
-.prose-note h3 { font-size: 1.1rem; color: var(--color-info); margin: 1rem 0 0.4rem; }
-.prose-note h4 { font-size: 1rem; color: var(--color-info); margin: 0.8rem 0 0.3rem; }
+.prose-note h1, .prose-note h2, .prose-note h3, .prose-note h4 { line-height: 1.25; font-weight: 600; color: var(--color-text); }
+.prose-note h1 { font-size: 1.6rem; margin: 1.4rem 0 0.6rem; }
+.prose-note h2 { font-size: 1.3rem; margin: 1.2rem 0 0.5rem; }
+.prose-note h3 { font-size: 1.1rem; margin: 1rem 0 0.4rem; color: var(--color-subtext); }
+.prose-note h4 { font-size: 1rem; margin: 0.8rem 0 0.3rem; color: var(--color-subtext); }
 .prose-note p { margin: 0.6rem 0; }
 .prose-note ul, .prose-note ol { margin: 0.5rem 0 0.5rem 1.4rem; }
 .prose-note ul { list-style: disc; }
@@ -445,7 +189,7 @@ aside:hover nav::-webkit-scrollbar-thumb { background: var(--color-surface1); ba
 .prose-note strong { font-weight: 700; color: var(--color-text); }
 .prose-note em { font-style: italic; }
 .prose-note blockquote {
-  border-left: 3px solid var(--color-primary);
+  border-left: 3px solid var(--color-surface2);
   padding: 0.4rem 0 0.4rem 1rem;
   margin: 0.7rem 0;
   color: var(--color-subtext);
@@ -453,7 +197,7 @@ aside:hover nav::-webkit-scrollbar-thumb { background: var(--color-surface1); ba
 }
 .prose-note code {
   background: var(--color-surface0);
-  color: var(--color-accent);
+  color: var(--color-text);
   padding: 0.1em 0.35em;
   border-radius: 4px;
   font-family: var(--font-mono);
@@ -497,37 +241,27 @@ aside:hover nav::-webkit-scrollbar-thumb { background: var(--color-surface1); ba
   accent-color: var(--color-primary);
 }
 .prose-note .wikilink {
-  color: var(--color-secondary);
+  color: var(--color-text);
   text-decoration: none;
-  border-bottom: 1px dashed var(--color-secondary);
+  border-bottom: 1px dashed var(--color-dim);
   cursor: pointer;
 }
 .prose-note .wikilink:hover {
   border-bottom-style: solid;
-  color: var(--color-primary);
+  color: var(--color-text);
 }
 .prose-note .hashtag {
-  color: var(--color-accent);
+  color: var(--color-dim);
   font-size: 0.92em;
 }
-/* ==highlight== rendering. Yellow marker on light themes, dimmed
-   amber on dark so it reads as a highlight without blasting the
-   eyes against a near-black bg. The padding keeps the highlight
-   pill-shaped with breathing room around the text. */
+/* ==highlight== rendering. Quiet inverted block on both themes. */
 .prose-note .md-highlight,
 mark.md-highlight {
-  background-color: rgba(249, 226, 175, 0.85); /* catppuccin yellow */
-  color: #1e1e2e; /* base text color, fixed for contrast on yellow */
+  background-color: var(--color-surface1);
+  color: var(--color-text);
   padding: 0 0.2em;
   border-radius: 3px;
   text-shadow: none;
-}
-:root.dark .prose-note .md-highlight,
-:root.dark mark.md-highlight,
-[data-theme='dark'] .prose-note .md-highlight,
-[data-theme='dark'] mark.md-highlight {
-  background-color: rgba(249, 226, 175, 0.22);
-  color: var(--color-text);
 }
 .prose-note img {
   max-width: 100%;

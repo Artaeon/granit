@@ -3,7 +3,7 @@
   import { auth } from '$lib/stores/auth';
   import { api, type OpenAIModelOption, type CalendarSource } from '$lib/api';
   import { onWsEvent, wsConnected } from '$lib/ws';
-  import { theme, palette, themeIcon, themeLabel, PALETTES, type Theme, type Palette } from '$lib/stores/theme';
+  import { theme, themeLabel, type Theme } from '$lib/stores/theme';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import RecurringEditor from '$lib/components/RecurringEditor.svelte';
@@ -655,7 +655,9 @@
   <div class="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
     <PageHeader title="Settings" subtitle="Theme, keyboard shortcuts, vault info, sync status" />
 
-    <!-- Theme -->
+    <!-- Theme — two simple modes plus system-follow. Granit is
+         a strict monochrome surface; this control picks the side
+         of black/white you read against. -->
     <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
       <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Theme</h2>
       <div class="grid grid-cols-3 gap-2">
@@ -663,47 +665,26 @@
           {@const active = $theme === t}
           <button
             onclick={() => theme.set(t)}
-            class="px-3 py-3 rounded-lg border-2 flex flex-col items-center gap-1
-              {active ? 'border-primary bg-primary/10 text-primary' : 'border-surface1 bg-mantle text-subtext hover:border-primary/40'}"
+            class="px-3 py-3 rounded-lg border flex flex-col items-center gap-1.5 transition-colors
+              {active ? 'border-primary bg-surface1 text-text' : 'border-surface1 bg-mantle text-subtext hover:bg-surface1 hover:text-text'}"
           >
-            <span class="text-2xl">{themeIcon(t)}</span>
+            <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              {#if t === 'dark'}
+                <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>
+              {:else if t === 'light'}
+                <circle cx="12" cy="12" r="4"/>
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+              {:else}
+                <circle cx="12" cy="12" r="9"/>
+                <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>
+              {/if}
+            </svg>
             <span class="text-xs font-medium">{themeLabel(t)}</span>
           </button>
         {/each}
       </div>
       <p class="text-xs text-dim mt-2 leading-relaxed">
-        System follows your OS setting and updates live. Stored in <code class="text-[10px]">localStorage</code>.
-      </p>
-    </section>
-
-    <!-- Palette — applies on top of the dark/light theme axis.
-         Stored as data-palette on <html>; CSS variable overrides
-         in app.css drive the color tokens. -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Palette</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-        {#each PALETTES as p}
-          {@const active = $palette === p.id}
-          <button
-            onclick={() => palette.set(p.id)}
-            class="px-3 py-3 rounded-lg border-2 flex items-center gap-3 text-left
-              {active ? 'border-primary bg-primary/10' : 'border-surface1 bg-mantle hover:border-primary/40'}"
-            title={p.hint}
-          >
-            <span
-              class="w-6 h-6 rounded-full border border-surface1 flex-shrink-0"
-              style="background: {p.swatch};"
-              aria-hidden="true"
-            ></span>
-            <span class="flex flex-col min-w-0">
-              <span class="text-sm font-medium {active ? 'text-primary' : 'text-text'}">{p.label}</span>
-              <span class="text-[10px] text-dim truncate">{p.hint}</span>
-            </span>
-          </button>
-        {/each}
-      </div>
-      <p class="text-xs text-dim mt-2 leading-relaxed">
-        Combines with dark / light mode above — each palette has both variants. Default is the original Tokyo Night / Catppuccin Latte pair.
+        System follows your OS setting and updates live.
       </p>
     </section>
 
@@ -762,7 +743,7 @@
             <button
               onclick={() => void pausePush()}
               disabled={pushBusy}
-              class="px-3 py-1.5 bg-warning/15 text-warning rounded text-sm hover:bg-warning/25 disabled:opacity-50"
+              class="px-3 py-1.5 bg-surface0 text-warning rounded text-sm hover:bg-surface0 disabled:opacity-50"
               title="Stop receiving notifications without unsubscribing"
             >Pause notifications</button>
           {/if}
@@ -865,7 +846,7 @@
                     type="button"
                     onclick={() => { toggleDeadlineOffset(off); void savePrefs(); }}
                     class="px-2 py-1 text-[11px] rounded border transition-colors
-                      {active ? 'bg-primary/15 border-primary text-primary' : 'bg-surface0 border-surface1 text-dim hover:border-primary/40'}"
+                      {active ? 'bg-surface1 border-primary text-primary' : 'bg-surface0 border-surface1 text-dim hover:border-primary'}"
                   >{off === 0 ? 'day-of' : `${off}d`}</button>
                 {/each}
               </div>
@@ -931,7 +912,7 @@
       </p>
 
       {#if aiStatus?.sabbath_active}
-        <div class="mb-3 px-3 py-2 text-[11px] bg-warning/10 border border-warning/30 rounded text-warning">
+        <div class="mb-3 px-3 py-2 text-[11px] bg-surface0 border border-warning rounded text-warning">
           🕯️ Sabbath mode active — AI requests are paused today. Toggling features here is fine; calls just won't fire until Sabbath ends.
         </div>
       {/if}
@@ -1241,7 +1222,7 @@
 
     <!-- AI provider — same config the TUI reads. Setting up either
          surface is enough; both pick up changes automatically. -->
-    <section class="bg-surface0 border-2 border-primary/30 rounded-lg p-4 mb-4">
+    <section class="bg-surface0 border-2 border-surface2 rounded-lg p-4 mb-4">
       <header class="flex items-baseline gap-3 mb-3">
         <h2 class="text-base font-semibold text-text">AI provider</h2>
         {#if appCfg}
@@ -1359,7 +1340,7 @@
                 />
                 <button onclick={commitOpenAIKey} disabled={!openAIKeyBuf.trim() || configBusy} class="px-3 py-2 text-xs bg-primary text-on-primary rounded disabled:opacity-50">save</button>
                 {#if appCfg.openai_key_set}
-                  <button onclick={clearOpenAIKey} class="px-3 py-2 text-xs text-error hover:bg-error/10 rounded border border-error/30">clear</button>
+                  <button onclick={clearOpenAIKey} class="px-3 py-2 text-xs text-error hover:bg-surface0 rounded border border-error">clear</button>
                 {/if}
               </div>
               <p class="text-[11px] text-dim mt-1">Stored in <code>~/.config/granit/config.json</code>. Never echoed back to the browser after save.</p>
@@ -1575,7 +1556,7 @@
               <button onclick={() => (pwOpen = true)} class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded hover:border-primary text-text">
                 Change password
               </button>
-              <button onclick={revokeAllSessions} class="px-3 py-1.5 text-xs text-error hover:bg-error/10 rounded border border-error/30">
+              <button onclick={revokeAllSessions} class="px-3 py-1.5 text-xs text-error hover:bg-surface0 rounded border border-error">
                 Sign out everywhere
               </button>
             </div>
@@ -1628,7 +1609,7 @@
                 <div class="flex items-baseline gap-2">
                   <span class="text-sm text-text font-medium">{d.label || 'Unknown device'}</span>
                   {#if d.current}
-                    <span class="text-[10px] uppercase px-1.5 py-0.5 rounded bg-success/15 text-success">this device</span>
+                    <span class="text-[10px] uppercase px-1.5 py-0.5 rounded bg-surface0 text-success">this device</span>
                   {/if}
                   <code class="text-[10px] text-dim font-mono">{d.id}</code>
                 </div>
@@ -1640,7 +1621,7 @@
                 <button
                   onclick={() => revokeDevice(d.id)}
                   disabled={revokeBusy === d.id}
-                  class="px-2.5 py-1 text-xs text-error hover:bg-error/10 rounded border border-error/30 disabled:opacity-50 flex-shrink-0"
+                  class="px-2.5 py-1 text-xs text-error hover:bg-surface0 rounded border border-error disabled:opacity-50 flex-shrink-0"
                 >{revokeBusy === d.id ? 'revoking…' : 'revoke'}</button>
               {/if}
             </li>

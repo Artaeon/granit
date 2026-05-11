@@ -38,7 +38,7 @@
     drawerOpen = false;
   }
   import { connect, disconnect, wsConnected, onWsEvent } from '$lib/ws';
-  import { theme, nextTheme, themeIcon, themeLabel } from '$lib/stores/theme';
+  import { theme, nextTheme, themeLabel } from '$lib/stores/theme';
   import { modulesStore } from '$lib/stores/modules';
   import { sabbath, SABBATH_HIDE_MODULES } from '$lib/stores/sabbath';
   import { goto } from '$app/navigation';
@@ -682,7 +682,17 @@
         title={isCompact ? `Theme: ${themeLabel($theme)} — tap to cycle` : undefined}
         class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm text-subtext hover:bg-surface0 hover:text-text transition-colors"
       >
-        <span class="w-5 text-center text-base flex-shrink-0">{themeIcon($theme)}</span>
+        <svg viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          {#if $theme === 'dark'}
+            <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>
+          {:else if $theme === 'light'}
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          {:else}
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>
+          {/if}
+        </svg>
         {#if !isCompact}
           <span class="flex-1 text-left">Theme: {themeLabel($theme)}</span>
           <span class="text-[10px] text-dim">cycle</span>
