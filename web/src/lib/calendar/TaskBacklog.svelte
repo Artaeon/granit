@@ -203,22 +203,28 @@
   }
 </script>
 
-<div class="flex flex-col h-full bg-mantle border border-surface1 rounded overflow-hidden">
-  <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0">
-    <div class="flex-1 min-w-0">
-      <h3 class="text-sm font-medium text-text truncate">Today's plan</h3>
-      <p class="text-[10px] text-dim">drag onto grid · {filtered.length} task{filtered.length === 1 ? '' : 's'}</p>
+<div class="flex flex-col h-full bg-mantle border border-surface1 rounded-lg overflow-hidden">
+  <header class="px-3 py-2.5 border-b border-surface1 flex-shrink-0">
+    <div class="flex items-baseline gap-2">
+      <h3 class="text-sm font-semibold text-text flex-1 truncate">Today's plan</h3>
+      <span class="text-[10px] text-dim tabular-nums">{filtered.filter((t) => !isToday(t.scheduledStart)).length} unscheduled</span>
     </div>
+    <!-- AI plan button — primary action of this rail. Solid fill so
+         it reads as "the move" rather than a quiet utility. Opens
+         PlanMyDayDrawer for dry-run preview + per-row accept. -->
     <button
       onclick={openPlanDrawer}
-      class="px-2.5 py-1 text-xs rounded bg-surface1 text-secondary border border-surface2 hover:bg-surface2 flex items-center gap-1.5"
+      class="mt-2 w-full px-3 py-2 text-xs font-semibold rounded-md bg-primary text-on-primary hover:opacity-90 inline-flex items-center justify-center gap-1.5"
       title="Preview an AI-drafted schedule, edit, then apply"
     >
-      <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-        <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>
+      <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/>
       </svg>
-      Plan with AI
+      Auto-place with AI
     </button>
+    <p class="mt-2 text-[10px] text-dim leading-snug">
+      Drag a card onto the grid to schedule manually — or let AI propose slots for everything below.
+    </p>
   </header>
 
   <!-- Mobile: horizontal scroller. Desktop: vertical scroller. The
@@ -228,43 +234,63 @@
     {#if loading && filtered.length === 0}
       <div class="p-4 text-xs text-dim italic">loading…</div>
     {:else if filtered.length === 0}
-      <div class="p-4 text-xs text-dim italic">
-        Nothing for today. P1–P3 tasks and tasks due today / overdue show up here.
+      <div class="p-4 text-xs text-dim italic leading-relaxed">
+        Nothing for today. P1–P3 tasks and tasks due today or overdue surface here.
       </div>
     {:else}
-      <div class="flex flex-row md:flex-col gap-2 md:gap-1 p-2 md:p-2 h-full md:h-auto">
+      <ul class="flex flex-row md:flex-col gap-1.5 md:gap-1 p-2">
         {#each filtered as t (t.id)}
           {@const tone = priorityTone(t.priority)}
           {@const scheduled = isToday(t.scheduledStart)}
           {@const dur = durationOf(t)}
-          <div
+          <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
+          <li
             role="button"
             tabindex="0"
             onpointerdown={(e) => onRowPointerDown(e, t)}
             onclick={(e) => onRowClick(t, e)}
             onkeydown={(e) => { if (e.key === 'Enter') onRowClick(t, e as unknown as MouseEvent); }}
             title={scheduled
-              ? `scheduled at ${fmtScheduled(t.scheduledStart)} — drag on grid to move`
+              ? `scheduled at ${fmtScheduled(t.scheduledStart)} — drag on the grid to move`
               : 'drag onto the grid to schedule'}
-            class="flex items-center gap-2 px-2 py-1.5 rounded text-xs border border-surface1 bg-base
-              {scheduled ? 'opacity-40 cursor-default' : 'cursor-grab active:cursor-grabbing hover:border-primary'}
-              flex-shrink-0 md:flex-shrink min-w-[180px] md:min-w-0"
+            class="group flex items-stretch gap-2 px-2 py-1.5 rounded-md bg-base text-xs transition-colors
+              {scheduled ? 'opacity-45 cursor-default' : 'cursor-grab active:cursor-grabbing hover:bg-surface0'}
+              flex-shrink-0 md:flex-shrink min-w-[200px] md:min-w-0"
             style="touch-action: {scheduled ? 'auto' : 'none'};"
           >
+            <!-- Priority accent bar — vertical strip on the left in the
+                 priority colour. Matches the event chip's inset bar on
+                 the grid so a P1 task in the backlog reads as the same
+                 colour family when it lands as an event. -->
             <span
-              class="w-2 h-2 rounded-full flex-shrink-0"
+              class="w-1 rounded-full flex-shrink-0"
               style="background: var(--color-{tone})"
               aria-label="priority {t.priority || 'none'}"
             ></span>
-            <span class="flex-1 min-w-0 truncate text-text">{t.text}</span>
-            {#if scheduled}
-              <span class="text-[10px] text-dim font-mono flex-shrink-0">{fmtScheduled(t.scheduledStart)}</span>
-            {:else}
-              <span class="text-[10px] text-dim font-mono flex-shrink-0">{dur}m</span>
+            <div class="flex-1 min-w-0 flex flex-col justify-center">
+              <span class="text-text truncate font-medium">{t.text}</span>
+              {#if !scheduled && (t.dueDate || t.estimatedMinutes)}
+                <span class="text-[10px] text-dim mt-px truncate">
+                  {#if t.dueDate}due {t.dueDate}{/if}
+                  {#if t.dueDate && t.estimatedMinutes} · {/if}
+                  {#if t.estimatedMinutes}~{t.estimatedMinutes}m{/if}
+                </span>
+              {/if}
+            </div>
+            <span class="self-center text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded bg-surface0 text-dim flex-shrink-0">
+              {scheduled ? fmtScheduled(t.scheduledStart) : `${dur}m`}
+            </span>
+            {#if !scheduled}
+              <span
+                class="hidden md:flex self-center text-dim opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                aria-hidden="true"
+              >
+                <svg viewBox="0 0 24 24" class="w-3 h-3" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
+              </span>
             {/if}
-          </div>
+          </li>
         {/each}
-      </div>
+      </ul>
     {/if}
   </div>
 </div>
