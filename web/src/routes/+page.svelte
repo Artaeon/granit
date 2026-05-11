@@ -559,9 +559,13 @@
         {/if}
         <button
           onclick={() => (editing = !editing)}
-          class="text-xs px-3 py-1.5 bg-surface0 border border-surface1 rounded {editing ? 'text-primary border-primary' : 'text-subtext hover:border-primary'}"
+          class="text-xs px-3 py-1.5 bg-surface0 border border-surface1 rounded inline-flex items-center gap-1.5 {editing ? 'text-primary border-primary' : 'text-subtext hover:border-primary'}"
         >
-          {editing ? 'done editing' : '⚙ customize'}
+          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          {editing ? 'Done' : 'Customize'}
         </button>
       </div>
 
@@ -689,7 +693,12 @@
              each widget at its natural content height — without it,
              a short widget paired with a tall one stretches and the
              card looks half-empty inside. -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 items-start">
+        <!-- grid-auto-flow: dense lets the browser slot smaller cards
+             into gaps left by tall ones in earlier rows, so the layout
+             auto-fills empty space instead of leaving a phonebook-style
+             waterfall. items-start keeps each widget at its natural
+             height (no ugly empty padding inside short widgets). -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 items-start" style="grid-auto-flow: dense;">
           {#each activeWidgets as { widget, meta } (widget.id)}
             <!-- Each widget chunk is loaded lazily via meta.load();
                  the registry's loader is memoised so re-renders await
