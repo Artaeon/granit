@@ -839,7 +839,10 @@
     </Drawer>
   {/if}
 
-  <main class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col pb-bottomnav md:pb-0">
+  <main
+    class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col pb-bottomnav md:pb-0"
+    style="padding-right: var(--ai-pinned-w, 0px);"
+  >
     <!-- Sabbath ribbon. Visible from every authed page so the state
          is unmissable; the mode auto-clears at midnight. Click to
          exit. Z-index sits below the running-timer pill so they

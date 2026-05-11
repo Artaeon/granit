@@ -13,8 +13,37 @@
 // consumes-and-clears it on each open via takeAIOverlaySeed().
 
 import { writable } from 'svelte/store';
+import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
 export const aiOverlayOpen = writable(false);
+
+// Pinned mode (desktop only) — when true, the overlay renders as a
+// fixed right-anchored side column that reserves space in <main>
+// instead of overlapping content. Persisted across sessions so the
+// user's chosen layout sticks. Mobile ignores this — the sheet
+// always slides up regardless.
+const PINNED_KEY = 'granit.ai.pinned';
+function loadPinned(): boolean {
+  return loadStoredString(PINNED_KEY, '0') === '1';
+}
+export const aiOverlayPinned = writable<boolean>(loadPinned());
+aiOverlayPinned.subscribe((v) => {
+  if (typeof window === 'undefined') return;
+  saveStoredString(PINNED_KEY, v ? '1' : '0');
+  // Toggle a body-level marker class so global CSS can react to
+  // pinned mode if needed. The actual --ai-pinned-w value is
+  // written by AIOverlay (it knows the live panel width).
+  document.documentElement.classList.toggle('ai-pinned', v);
+});
+
+export function toggleAIOverlayPinned(): void {
+  aiOverlayPinned.update((v) => {
+    // Pinning auto-opens the panel; un-pinning leaves it as-is (the
+    // user can still close with Esc / the X button).
+    if (!v) aiOverlayOpen.set(true);
+    return !v;
+  });
+}
 
 export interface AIOverlaySeed {
   /** Mode id to switch to before sending. Optional. */

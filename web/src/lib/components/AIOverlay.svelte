@@ -7,7 +7,12 @@
   import { api, type ChatMessage, type AIMemoryFact } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { sabbath } from '$lib/stores/sabbath';
-  import { aiOverlayOpen, takeAIOverlaySeed } from '$lib/stores/ai-overlay';
+  import {
+    aiOverlayOpen,
+    aiOverlayPinned,
+    takeAIOverlaySeed,
+    toggleAIOverlayPinned
+  } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
@@ -83,7 +88,11 @@
   // the overlay without prop-drilling. We write back via store
   // setters when the user closes / Mod+J-toggles, keeping the
   // store as the single source of truth.
-  const open = $derived($aiOverlayOpen);
+  // When pinned on desktop, the panel is always rendered (forced
+  // open) so it acts like a permanent sidebar. Otherwise it follows
+  // the store flag. Pinned state on mobile is ignored (the sheet
+  // gesture model would conflict with a "permanent" sidebar).
+  const open = $derived($aiOverlayOpen || $aiOverlayPinned);
   let panelEl: HTMLDivElement | undefined = $state();
   let inputEl: HTMLTextAreaElement | undefined = $state();
   let scrollEl: HTMLDivElement | undefined = $state();
@@ -106,6 +115,19 @@
   }
   let panelWidth = $state<number>(loadPanelWidth());
   let resizing = $state(false);
+
+  // When pinned, push the current panel width up to documentElement
+  // so +layout.svelte can reserve a matching right gutter on <main>
+  // via the --ai-pinned-w variable. Cleared (set to 0) when unpinned
+  // so content reclaims the space.
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+    if ($aiOverlayPinned) {
+      document.documentElement.style.setProperty('--ai-pinned-w', `${panelWidth}px`);
+    } else {
+      document.documentElement.style.setProperty('--ai-pinned-w', '0px');
+    }
+  });
   function persistPanelWidth(n: number) {
     saveStoredString(PANEL_WIDTH_KEY, String(n));
   }
@@ -847,6 +869,13 @@
   function close() {
     abort?.abort();
     if (recording) stopVoice();
+    // When pinned, the close button instead unpins (so the user
+    // gets an obvious "remove this panel" action). Without this,
+    // close-via-X would do nothing visible since `open` stays true
+    // while pinned.
+    if ($aiOverlayPinned) {
+      aiOverlayPinned.set(false);
+    }
     aiOverlayOpen.set(false);
   }
 
@@ -2061,13 +2090,17 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
        sits next to content rather than over it, so the backdrop
        is hidden by md:hidden — desktop users dismiss with Esc or
        the close button. -->
-  <button
-    type="button"
-    aria-label="close AI overlay"
-    onclick={close}
-    transition:fade={{ duration: 150 }}
-    class="md:hidden fixed inset-0 z-40 bg-black/60"
-  ></button>
+  {#if !$aiOverlayPinned}
+    <!-- Backdrop only when floating; pinned mode reserves layout
+         space instead so there's no overlap to dim. -->
+    <button
+      type="button"
+      aria-label="close AI overlay"
+      onclick={close}
+      transition:fade={{ duration: 150 }}
+      class="md:hidden fixed inset-0 z-40 bg-black/60"
+    ></button>
+  {/if}
 
   <div
     bind:this={panelEl}
@@ -2077,11 +2110,11 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
     style:--ai-panel-w="{panelWidth}px"
     style:--ai-sheet-h={mobileSheetHeight}
     style:--ai-sheet-lift="{keyboardOffset}px"
-    in:fly={{ duration: 200, easing: cubicOut, ...panelTransitionParams() }}
-    out:fly={{ duration: 150, easing: cubicOut, ...panelTransitionParams() }}
-    class="ai-overlay-panel fixed z-50 flex flex-col bg-base border-surface1 shadow-2xl
+    in:fly={{ duration: $aiOverlayPinned ? 0 : 200, easing: cubicOut, ...panelTransitionParams() }}
+    out:fly={{ duration: $aiOverlayPinned ? 0 : 150, easing: cubicOut, ...panelTransitionParams() }}
+    class="ai-overlay-panel fixed z-50 flex flex-col bg-base border-surface1
            inset-x-0 rounded-t-xl border-t pb-safe
-           md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:top-0 md:h-full md:max-h-none md:rounded-none md:border-l md:border-t-0 md:pb-0 {resizing ? 'ai-overlay-resizing' : ''} {sheetDragging ? 'ai-overlay-snapping' : ''}"
+           md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:top-0 md:h-full md:max-h-none md:rounded-none md:border-l md:border-t-0 md:pb-0 {$aiOverlayPinned ? 'md:shadow-none' : 'shadow-2xl'} {resizing ? 'ai-overlay-resizing' : ''} {sheetDragging ? 'ai-overlay-snapping' : ''}"
   >
     <!-- Desktop-only drag handle on the LEFT edge of the panel. The
          panel is right-anchored; widening means pulling left so the
@@ -2328,6 +2361,23 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
       >
         <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 4v16M4 12h16" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <!-- Pin to right — desktop only. When pinned, the panel becomes
+           a fixed right column rather than an overlapping sheet; the
+           main page reserves a right gutter (set via the
+           --ai-pinned-w CSS variable on <html>) so content reflows
+           around it instead of sliding underneath. -->
+      <button
+        type="button"
+        onclick={toggleAIOverlayPinned}
+        aria-label={$aiOverlayPinned ? 'Unpin AI panel' : 'Pin AI panel to right'}
+        aria-pressed={$aiOverlayPinned}
+        title={$aiOverlayPinned ? 'Unpin from right' : 'Pin to right edge'}
+        class="hidden md:inline-flex tap-target items-center justify-center px-1.5 py-1 rounded transition-colors {$aiOverlayPinned ? 'text-primary bg-surface1' : 'text-dim hover:text-text hover:bg-surface0 active:bg-surface1'}"
+      >
+        <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 4h6l-1 7 4 3v2h-5v6l-1 1-1-1v-6H6v-2l4-3z"/>
         </svg>
       </button>
       <button
