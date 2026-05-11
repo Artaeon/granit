@@ -20,6 +20,10 @@
     persistModeId
   } from '$lib/ai/agents';
   import {
+    loadProjectContext,
+    renderProjectContext
+  } from '$lib/ai/projectManagerContext';
+  import {
     getThread,
     upsertThread,
     deleteThread,
@@ -1557,40 +1561,32 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
     // a long thread doesn't burn tokens re-asserting the context.
     if (isFirstTurn && currentProjectName) {
       try {
-        const proj = await api.getProject(currentProjectName);
-        // Pull open tasks scoped to this project. The listTasks
-        // endpoint filters by `project` (the schema's project field,
-        // not project_id) + `status=open`, returning the list pre-
-        // filtered so we can inject without post-processing. Cap at
-        // 20 client-side — a project with hundreds of open tasks
-        // would otherwise burn the token budget on the prelude.
-        let taskLines = '';
-        try {
-          const tr = await api.listTasks({ project: proj.name, status: 'open' });
-          const open = tr.tasks.slice(0, 20);
-          if (open.length > 0) {
-            const more = tr.tasks.length > 20 ? ` (showing first 20 of ${tr.tasks.length})` : '';
-            taskLines =
-              `\n\nOpen tasks on this project${more}:\n` +
-              open.map((t) => `- ${t.text}`).join('\n');
+        // Use the shared Project-Manager context loader so the
+        // chat surface and the Project Manager mode share one
+        // ground-truth bundle (linked goals, open + recently-done
+        // tasks, notes under the project folder). Tested in
+        // projectManagerContext.test.ts so the prelude shape
+        // can't silently drift.
+        const bundle = await loadProjectContext(currentProjectName, {
+          getProject: (n) => api.getProject(n),
+          listTasksForProject: async (n, s) => {
+            const r = await api.listTasks({ project: n, status: s });
+            return r.tasks;
+          },
+          listGoalsForProject: async (n) => {
+            const r = await api.listGoals();
+            return r.goals.filter((g) => g.project === n);
+          },
+          listNotesInFolder: async (folder) => {
+            const r = await api.listNotes({ folder, limit: 50 });
+            return r.notes;
           }
-        } catch {
-          // Task fetch failure shouldn't block the chat — fall
-          // through with description-only context.
-        }
-        const facts: string[] = [`Project name: ${proj.name}`];
-        if (proj.description) facts.push(`Description: ${proj.description}`);
-        if (proj.kind) facts.push(`Kind: ${proj.kind}`);
-        if (proj.venture) facts.push(`Venture: ${proj.venture}`);
-        if (proj.status) facts.push(`Status: ${proj.status}`);
-        if (proj.next_action) facts.push(`Stated next action: ${proj.next_action}`);
-        if (proj.due_date) facts.push(`Target date: ${proj.due_date}`);
+        });
         prelude.push({
           role: 'system',
           content:
             "The user is currently looking at this project in Granit. Use it as the default subject of their messages — they don't need to re-state which project they mean.\n\n" +
-            facts.join('\n') +
-            taskLines
+            renderProjectContext(bundle)
         });
       } catch {
         // Project fetch failure — skip the injection silently and
@@ -2002,8 +1998,31 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
     {/if}
 
     <!-- Quick actions row. Wraps on small viewports so it never
-         pushes the body off-screen. -->
+         pushes the body off-screen. Project-Manager chips surface
+         when the user has a project in scope; they pre-fill the
+         composer with high-leverage PM intents instead of
+         hitting a separate endpoint. -->
     <div class="px-4 py-3 border-b border-surface1 flex flex-wrap gap-1.5 flex-shrink-0">
+      {#if currentProjectName}
+        <span class="text-[10px] text-dim uppercase tracking-wide self-center mr-1 flex-shrink-0">PM:</span>
+        <button
+          onclick={() => { input = `Draft a one-page project brief for ${currentProjectName} — Why · Scope · Out of scope · Definition of done · Stakeholders. Markdown, paste-ready.`; }}
+          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+        >Draft brief</button>
+        <button
+          onclick={() => { input = `Write a crisp status update for ${currentProjectName} — what shipped, what's open, what's blocked, what's next. 1 short paragraph, no filler.`; }}
+          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+        >Status update</button>
+        <button
+          onclick={() => { input = `Brainstorm 3-5 distinct directions for ${currentProjectName}'s next milestone. For each: the move, the main risk, what would prove or kill it.`; }}
+          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+        >Brainstorm</button>
+        <button
+          onclick={() => { input = `Looking at the open tasks + linked goals on ${currentProjectName}, what's the ONE thing I should do next, and why? Pick one, defend it briefly.`; }}
+          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+        >What's next?</button>
+        <span class="w-full sm:hidden"></span>
+      {/if}
       <button
         onclick={runBriefing}
         disabled={busy || $sabbath}
