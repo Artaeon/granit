@@ -281,6 +281,26 @@
   onDestroy(() => view?.destroy());
 
   export function focus() { view?.focus(); }
+  /**
+   * Authoritative read of the current document content, materialised
+   * from CodeMirror's own state — NOT the `value` prop. The parent's
+   * bound `value` is updated through Svelte's microtask scheduler, so
+   * a long reactive cascade (post-autosave note prop mutations
+   * triggering panel rerenders) can leave the parent's mirror lagging
+   * the editor's actual content by 10s of ms during heavy typing.
+   *
+   * Why this matters: load() and the WS reload guards used to compare
+   * the parent's `body` to `prev` to decide "is it safe to overwrite
+   * the editor". With a stale `body`, that check could falsely
+   * conclude "no in-flight edits" and overwrite the editor with a
+   * shorter server body — discarding everything the user typed after
+   * the most recent autosave. Reading the doc directly is immune to
+   * that race because CodeMirror's view state is updated
+   * synchronously inside dispatch(), with no queue in front of it.
+   */
+  export function getContent(): string {
+    return view ? view.state.doc.toString() : value;
+  }
   export function scrollToLine(lineNum: number) {
     if (!view) return;
     const line = view.state.doc.line(Math.max(1, Math.min(lineNum, view.state.doc.lines)));

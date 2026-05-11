@@ -212,6 +212,7 @@
         getDOM: () => HTMLElement | undefined;
         openFind: () => void;
         insertAtCursor: (text: string) => void;
+        getContent: () => string;
       }
     | undefined = $state();
   // Re-derived after every render so the SelectionToolbar can scope
@@ -279,12 +280,22 @@
     // auto-save effect persist their edits. For navigation to a
     // different note (note?.path !== p), we always want to overwrite.
     const isSameNoteReload = note?.path === p;
-    const bodyAtStart = body;
+    // Snapshot from the EDITOR, not the bound `body` mirror. The
+    // bind:value write from CodeMirror's updateListener is microtask-
+    // deferred; on a slow render frame the parent's `body` can lag
+    // the actual doc by 10s of ms. If a WS reload fires inside that
+    // lag window we'd false-positive "no in-flight edits", replace
+    // the editor with the server's older body, and silently discard
+    // every keystroke the user added after the last autosave.
+    // editor.getContent() reads CodeMirror's state.doc directly,
+    // which is updated synchronously inside dispatch().
+    const liveAtStart = editor?.getContent?.() ?? body;
     lastLoadedPath = p;
     try {
       const fresh = await api.getNote(p);
-      if (isSameNoteReload && body !== bodyAtStart) {
-        return;
+      if (isSameNoteReload) {
+        const liveNow = editor?.getContent?.() ?? body;
+        if (liveNow !== liveAtStart) return;
       }
       const serverBody = fresh.body ?? '';
 
@@ -465,9 +476,47 @@
     try {
       const updated = await api.putNote(note.path, { frontmatter: note.frontmatter as Record<string, unknown>, body: sentBody });
       if (hunting) console.warn('[freeze-hunt] save:put-returned', { ms: (performance.now() - t0).toFixed(1) });
-      note = updated;
+      // ─────────────────────────────────────────────────────────────────
+      // CRITICAL: surgical property mutation instead of `note = updated`.
+      //
+      // The previous code reassigned the whole `note` object, which
+      // invalidated every reactive consumer of `note` even when only
+      // the modTime changed. The notes view passes `note.path` to
+      // ~10 panels (AskThisNotePanel, SectionQuestionsPanel,
+      // LocalGraph, BacklinksPanel, ReferenceNotePanel, LinkSuggestPanel,
+      // AnnotationsPanel, etc.) — each of those re-evaluated its props
+      // and re-ran its own $effects, which in some panels fire API
+      // calls (api.listBacklinks, api.getNote for the reference, ...).
+      // A single autosave fanned out into a wave of work that jammed
+      // Svelte's microtask scheduler for hundreds of ms — long enough
+      // that clicks queued behind it never dispatched (the user-
+      // visible "after autosave everything freezes I can't click
+      // anywhere" symptom).
+      //
+      // Svelte 5 wraps $state objects in a Proxy with per-property
+      // reactivity. Mutating just `modTime`/`size`/`links`/`title`
+      // (the fields that actually changed during the save) invalidates
+      // only the effects that read those specific fields, not every
+      // effect that reads `note.path` (the most common case).
+      //
+      // Path, frontmatter, and body are byte-for-byte identical to
+      // what we sent — leaving them alone keeps panel identity stable
+      // through autosave.
+      note.modTime = updated.modTime;
+      note.size = updated.size;
+      note.links = updated.links;
+      note.title = updated.title;
       prev = sentBody;
-      dirty = body !== sentBody;
+      // Trust the editor's view state over the Svelte-bound `body`.
+      // Bind-prop writes from CodeMirror's updateListener back to
+      // `value` are microtask-deferred; during a heavy reactive
+      // cascade they may not have landed by the time we check here,
+      // making the cheap `body !== sentBody` check produce a false
+      // "clean" result while the user has in-flight keystrokes. The
+      // editor's doc is updated synchronously inside CodeMirror's
+      // dispatch — reading from it always returns the truth.
+      const liveNow = editor?.getContent?.() ?? body;
+      dirty = liveNow !== sentBody;
       lastSavedAt = Date.now();
       saveFailed = false;
       saveFailCount = 0;
@@ -480,8 +529,9 @@
         // "server has newer content" branch to trip on a mid-edit
         // reload. Refresh the draft synchronously with the post-save
         // modTime so a crash / reload in the next 100ms (debounce
-        // window) doesn't fall into that path.
-        setDraft(updated.path, body, updated.modTime);
+        // window) doesn't fall into that path. Use the live editor
+        // content, not `body` — same lag concern as the dirty check.
+        setDraft(updated.path, liveNow, updated.modTime);
       }
       draftRestored = false;
       if (!opts.silent && !dirty) toast.success('saved');
@@ -578,9 +628,15 @@
   $effect(() => {
     void body;
     if (!note || !dirty) return;
-    if (lastDraftedBody === body) return;
-    lastDraftedBody = body;
-    setDraft(note.path, body, note.modTime);
+    // Read the editor's authoritative content. The body mirror can
+    // lag CodeMirror's actual doc during a slow reactive frame, and
+    // writing the stale mirror to localStorage was the silent-data-
+    // loss path: the user typed "ABCDEF" but only "AB" landed in the
+    // draft, so a crash before the next autosave restored "AB".
+    const current = editor?.getContent?.() ?? body;
+    if (lastDraftedBody === current) return;
+    lastDraftedBody = current;
+    setDraft(note.path, current, note.modTime);
   });
 
   // Force-flush draft on tab hide / before unload. Belt-and-suspenders
@@ -592,7 +648,11 @@
   $effect(() => {
     if (typeof window === 'undefined') return;
     const flush = () => {
-      if (note && dirty) setDraft(note.path, body, note.modTime);
+      // Pull from the editor's view state — `body` may be lagging
+      // when the OS suspends the tab. This is the last-resort save
+      // path before everything goes away; reading the wrong source
+      // here costs the user their final keystrokes.
+      if (note && dirty) setDraft(note.path, editor?.getContent?.() ?? body, note.modTime);
     };
     const onVis = () => { if (document.visibilityState === 'hidden') flush(); };
     window.addEventListener('beforeunload', flush);
@@ -963,6 +1023,14 @@
   //    Without coalescing, we'd schedule two `load()` calls and
   //    flash the editor twice. Same trailing-edge pattern that
   //    NotesTree.svelte adopted in 8cf45ba.
+  // Live-body read helper. Reads CodeMirror's state.doc directly so
+  // the "is the user currently typing?" check is immune to the
+  // Svelte microtask lag on bind:value. Falls back to `body` only
+  // when the editor isn't mounted (preview-only view) — same shape
+  // as before, just with the right truth source.
+  function liveBody(): string {
+    return editor?.getContent?.() ?? body;
+  }
   let wsReloadTimer: ReturnType<typeof setTimeout> | null = null;
   function scheduleWsReload(p: string) {
     if (wsReloadTimer) clearTimeout(wsReloadTimer);
@@ -971,7 +1039,7 @@
       // Re-evaluate the guards at the moment of reload — the user
       // could have started typing during the 600ms window.
       if (!note || note.path !== p) return;
-      if (body !== prev || saving) return;
+      if (liveBody() !== prev || saving) return;
       if (lastSavedAt && Date.now() - lastSavedAt < 3000) return;
       if (freezeHuntOn()) console.warn('[freeze-hunt] ws-reload:fire', { path: p });
       void load(p, { force: true });
@@ -982,8 +1050,10 @@
       if (ev.type !== 'note.changed') return;
       if (!note || ev.path !== note.path) return;
       // Cheap synchronous-only guards here; the timed evaluation
-      // re-checks the rest at fire time.
-      if (body !== prev || saving) return;
+      // re-checks the rest at fire time. liveBody() reads the
+      // editor's doc directly so in-flight typing that hasn't
+      // propagated to `body` yet still suppresses the reload.
+      if (liveBody() !== prev || saving) return;
       if (lastSavedAt && Date.now() - lastSavedAt < 3000) {
         if (freezeHuntOn()) console.warn('[freeze-hunt] ws-reload:suppress-own-bounce', { ageMs: Date.now() - (lastSavedAt ?? 0) });
         return;
