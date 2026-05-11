@@ -546,7 +546,7 @@
             {#if snoozed && task.snoozedUntil}
               <button
                 onclick={unsnooze}
-                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-warning bg-surface0 hover:bg-surface0"
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-warning bg-surface0 hover:bg-surface1"
                 title="click to wake now"
               >
                 <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>

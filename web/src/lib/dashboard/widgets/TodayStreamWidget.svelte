@@ -327,7 +327,7 @@
       {#each upcoming as u (u.iso)}
         <a
           href="/calendar"
-          class="flex flex-col gap-0.5 px-3 py-2 rounded bg-surface1 hover:bg-surface1 transition-colors {u.eventCount === 0 && u.taskCount === 0 ? 'opacity-60' : ''}"
+          class="flex flex-col gap-0.5 px-3 py-2 rounded bg-surface1 hover:bg-surface2 transition-colors {u.eventCount === 0 && u.taskCount === 0 ? 'opacity-60' : ''}"
         >
           <span class="text-[10px] uppercase tracking-wider text-dim">
             {fmtDayLabel(u.date)}

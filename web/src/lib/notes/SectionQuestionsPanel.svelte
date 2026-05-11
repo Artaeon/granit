@@ -168,7 +168,7 @@
           <button
             type="button"
             onclick={generate}
-            class="text-[11px] px-2 py-0.5 rounded bg-surface1 hover:bg-surface1 text-primary border border-surface2 inline-flex items-center gap-1"
+            class="text-[11px] px-2 py-0.5 rounded bg-surface1 hover:bg-surface2 text-primary border border-surface2 inline-flex items-center gap-1"
             title="Generate 3 study questions about this section"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-2.5 h-2.5">

@@ -148,7 +148,7 @@
       <button
         type="button"
         onclick={fire}
-        class="text-xs px-2 py-1 rounded bg-surface1 hover:bg-surface1 text-primary border border-surface2 inline-flex items-center gap-1.5"
+        class="text-xs px-2 py-1 rounded bg-surface1 hover:bg-surface2 text-primary border border-surface2 inline-flex items-center gap-1.5"
         title="Ask AI to suggest tags + outbound links from your vault"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5">

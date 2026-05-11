@@ -2146,7 +2146,7 @@
             type="button"
             onclick={() => save({ silent: false })}
             disabled={saving}
-            class="px-2.5 py-1 rounded bg-surface0 hover:bg-surface0 text-error font-medium flex-shrink-0 disabled:opacity-50"
+            class="px-2.5 py-1 rounded bg-surface0 hover:bg-surface1 text-error font-medium flex-shrink-0 disabled:opacity-50"
           >
             {saving ? 'retrying…' : 'retry now'}
           </button>
