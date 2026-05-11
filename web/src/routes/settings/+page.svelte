@@ -11,6 +11,7 @@
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { relativeTime } from '$lib/util/relativeTime';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // Curated OpenAI model picker — refreshed against
   // developers.openai.com/api/docs/pricing periodically. Server is the
@@ -649,12 +650,51 @@
     if (!s || s.startsWith('0001-')) return '—';
     return new Date(s).toLocaleString();
   }
+
+  // Top-level tab groups. Filters which sections render so the
+  // settings page reads as 5 focused screens instead of a 14-section
+  // phonebook. Persisted in localStorage so the user lands where
+  // they last were.
+  type SettingsTab = 'general' | 'ai' | 'sync' | 'modules' | 'vault';
+  const TAB_KEY = 'granit.settings.tab';
+  function loadTab(): SettingsTab {
+    const v = loadStoredString(TAB_KEY, 'general');
+    if (v === 'general' || v === 'ai' || v === 'sync' || v === 'modules' || v === 'vault') return v;
+    return 'general';
+  }
+  let tab = $state<SettingsTab>(loadTab());
+  $effect(() => saveStoredString(TAB_KEY, tab));
+  const TABS: { id: SettingsTab; label: string }[] = [
+    { id: 'general', label: 'General' },
+    { id: 'ai', label: 'AI' },
+    { id: 'sync', label: 'Sync' },
+    { id: 'modules', label: 'Modules' },
+    { id: 'vault', label: 'Vault' }
+  ];
 </script>
 
 <div class="h-full overflow-y-auto">
   <div class="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
-    <PageHeader title="Settings" subtitle="Theme, keyboard shortcuts, vault info, sync status" />
+    <PageHeader title="Settings" subtitle="Theme, AI, sync, modules, vault" />
 
+    <!-- Top tab strip. Pills stay visible above the section list
+         on scroll via sticky top-0 so the user can jump between
+         groups without scrolling back up. -->
+    <div class="sticky top-0 z-10 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 mb-4 bg-base border-b border-surface1 flex gap-1 overflow-x-auto">
+      {#each TABS as t (t.id)}
+        <button
+          type="button"
+          onclick={() => (tab = t.id)}
+          aria-pressed={tab === t.id}
+          class="px-3 py-1.5 text-sm rounded transition-colors whitespace-nowrap {tab === t.id ? 'bg-primary text-on-primary font-medium' : 'text-subtext hover:bg-surface0 hover:text-text'}"
+        >{t.label}</button>
+      {/each}
+    </div>
+
+    <!-- Each section below is gated by `{#if tab === '...'}` so the
+         tab strip filters them in place. Reordering happens by tab
+         on render, not by moving content in the file. -->
+    {#if tab === 'general'}
     <!-- Theme — two simple modes plus system-follow. Granit is
          a strict monochrome surface; this control picks the side
          of black/white you read against. -->
@@ -687,7 +727,9 @@
         System follows your OS setting and updates live.
       </p>
     </section>
+    {/if}
 
+    {#if tab === 'sync'}
     <!-- Push notifications. The most-asked feature for any
          self-hosted calendar tool: reminders that fire when the
          tab is closed. Opt-in because the subscribe flow needs
@@ -897,6 +939,9 @@
       {/if}
     </section>
 
+    {/if}
+
+    {#if tab === 'ai'}
     <!-- AI features. Per-feature opt-in toggles + audit log + a
          "what AI sees" peek so the user has perfect transparency
          into what data MIGHT leave the device. Foundation pieces
@@ -1131,6 +1176,9 @@
       {/if}
     </section>
 
+    {/if}
+
+    {#if tab === 'sync'}
     <!-- Autocommit — debounced git-commit-on-save. Opt-in because
          not every vault is a git repo and surprising commits would
          be hostile. The status line tells the user whether the
@@ -1164,6 +1212,9 @@
       </label>
     </section>
 
+    {/if}
+
+    {#if tab === 'modules'}
     <!-- Modules — toggle which surfaces appear in the sidebar / are
          routable. Backed by .granit/modules.json (same file the TUI
          registry persists to). Core surfaces (notes, tasks, calendar,
@@ -1220,6 +1271,9 @@
       {/if}
     </section>
 
+    {/if}
+
+    {#if tab === 'ai'}
     <!-- AI provider — same config the TUI reads. Setting up either
          surface is enough; both pick up changes automatically. -->
     <section class="bg-surface0 border-2 border-surface2 rounded-lg p-4 mb-4">
@@ -1378,6 +1432,9 @@
       {/if}
     </section>
 
+    {/if}
+
+    {#if tab === 'general'}
     <!-- Daily / weekly notes -->
     <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
       <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Daily notes</h2>
@@ -1527,6 +1584,9 @@
       {/if}
     </section>
 
+    {/if}
+
+    {#if tab === 'vault'}
     <!-- Security -->
     <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
       <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Security</h2>
@@ -1581,6 +1641,9 @@
       {/if}
     </section>
 
+    {/if}
+
+    {#if tab === 'sync'}
     <!-- Devices — every browser/laptop with an active session. The
          current device is highlighted. Each row can be revoked, which
          signs that device out without touching the password. -->
@@ -1634,6 +1697,9 @@
       {/if}
     </section>
 
+    {/if}
+
+    {#if tab === 'vault'}
     <!-- Vault info -->
     <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
       <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Vault</h2>
@@ -1661,6 +1727,9 @@
       {/if}
     </section>
 
+    {/if}
+
+    {#if tab === 'sync'}
     <!-- Sync status -->
     <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
       <div class="flex items-baseline justify-between mb-3">
@@ -1719,6 +1788,9 @@ git push</code></pre>
       {/if}
     </section>
 
+    {/if}
+
+    {#if tab === 'general'}
     <!-- Keyboard shortcuts -->
     <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
       <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Keyboard shortcuts</h2>
@@ -1748,5 +1820,6 @@ git push</code></pre>
         </button>
       </div>
     </section>
+    {/if}
   </div>
 </div>
