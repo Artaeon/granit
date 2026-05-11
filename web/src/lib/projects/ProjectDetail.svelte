@@ -4,6 +4,7 @@
   import { toast } from '$lib/components/toast';
   import GoalEditor from './GoalEditor.svelte';
   import ProjectNotesTab from './ProjectNotesTab.svelte';
+  import ProjectStarterPack from './ProjectStarterPack.svelte';
   import TaskRow from '$lib/components/TaskRow.svelte';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
 
@@ -814,6 +815,16 @@
         {:else if aiHealthBusy}
           <div class="bg-surface0 border border-surface1 rounded px-3 py-2 text-xs text-dim italic">analysing project state…</div>
         {/if}
+      </section>
+
+      <!-- Starter pack — one-tap AI generates the four bootstrap
+           documents (charter / milestones / risks / kickoff agenda)
+           as individual notes the user reviews + saves under
+           Projects/<name>/. Streams through chatStream so Sabbath /
+           consent / redaction / audit all apply unchanged. -->
+      <section>
+        <h3 class="text-xs uppercase tracking-wider text-dim font-medium mb-1.5">Starter pack</h3>
+        <ProjectStarterPack project={project} />
       </section>
 
       <!-- Description -->
