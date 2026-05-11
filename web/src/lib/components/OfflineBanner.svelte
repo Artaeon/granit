@@ -106,7 +106,7 @@
 {#if !$isOnline}
   <div
     in:fly={{ y: -10, duration: 180 }}
-    class="md:hidden fixed top-12 inset-x-0 z-30 px-3 py-1.5 bg-warning/15 border-b border-warning/30 text-warning text-xs flex items-center gap-2 backdrop-blur"
+    class="md:hidden fixed top-12 inset-x-0 z-30 px-3 py-1.5 bg-warning text-on-primary text-xs flex items-center gap-2"
   >
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
       <path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M5 12.55a11 11 0 0 1 14.08-1.4M1.42 9a16 16 0 0 1 4.5-3.07M9 19.5h.01" />
@@ -122,20 +122,20 @@
   </div>
   <div
     in:fly={{ x: 10, duration: 180 }}
-    class="hidden md:flex fixed top-3 right-3 z-30 px-3 py-1.5 rounded-lg border bg-warning/15 border-warning/30 text-warning text-xs items-center gap-2 backdrop-blur"
+    class="hidden md:flex fixed top-3 right-3 z-30 px-3 py-1.5 rounded-lg bg-warning text-on-primary text-xs items-center gap-2"
   >
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
       <path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M5 12.55a11 11 0 0 1 14.08-1.4M1.42 9a16 16 0 0 1 4.5-3.07" />
     </svg>
     <span>Offline</span>
     {#if queued > 0}
-      <span class="px-1.5 py-0.5 rounded-full bg-warning/30 text-warning font-mono text-[10px]" title={`${queued} drafts queued`}>{queued}</span>
+      <span class="px-1.5 py-0.5 rounded-full bg-mantle text-warning font-mono text-[10px]" title={`${queued} drafts queued`}>{queued}</span>
     {/if}
   </div>
 {:else if $wasOffline || flushing || lastFlushReport}
   <div
     in:fly={{ x: 10, duration: 180 }}
-    class="fixed top-3 right-3 z-30 px-3 py-1.5 rounded-lg border bg-success/15 border-success/30 text-success text-xs flex items-center gap-2 backdrop-blur"
+    class="fixed top-3 right-3 z-30 px-3 py-1.5 rounded-lg bg-success text-on-primary text-xs flex items-center gap-2"
   >
     {#if flushing}
       <span>↻ Syncing {queued} draft{queued === 1 ? '' : 's'}…</span>
@@ -154,7 +154,7 @@
     type="button"
     onclick={doFlush}
     disabled={flushing}
-    class="fixed top-3 right-3 z-30 px-3 py-1.5 rounded-lg border bg-info/15 border-info/30 text-info text-xs flex items-center gap-2 backdrop-blur hover:bg-info/25"
+    class="fixed top-3 right-3 z-30 px-3 py-1.5 rounded-lg bg-info text-on-primary text-xs flex items-center gap-2 hover:opacity-90"
     title={`${queued} drafts queued — click to retry now`}
   >
     <span>{queued} draft{queued === 1 ? '' : 's'} pending</span>

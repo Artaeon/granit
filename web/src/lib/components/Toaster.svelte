@@ -5,13 +5,13 @@
   function classFor(kind: ToastKind): string {
     switch (kind) {
       case 'success':
-        return 'bg-success/15 border-success/30 text-success';
+        return 'bg-success text-on-primary border-success';
       case 'warning':
-        return 'bg-warning/15 border-warning/30 text-warning';
+        return 'bg-warning text-on-primary border-warning';
       case 'error':
-        return 'bg-error/15 border-error/30 text-error';
+        return 'bg-error text-on-primary border-error';
       default:
-        return 'bg-info/15 border-info/30 text-info';
+        return 'bg-info text-on-primary border-info';
     }
   }
   function iconFor(kind: ToastKind): string {
@@ -42,7 +42,7 @@
       role="status"
       in:fly={{ x: 32, duration: 180 }}
       out:fade={{ duration: 150 }}
-      class="pointer-events-auto flex items-start gap-2 px-3 py-2 rounded-lg border shadow-lg backdrop-blur {classFor(t.kind)}"
+      class="pointer-events-auto flex items-start gap-2 px-3 py-2 rounded-lg border shadow-lg {classFor(t.kind)}"
     >
       <span class="text-sm font-bold w-4 text-center flex-shrink-0">{iconFor(t.kind)}</span>
       <div class="flex-1 min-w-0">

@@ -411,10 +411,10 @@
     onclick={() => (drawerOpen = false)}
     title={isCompact ? (badge ? `${item.label} — ${badge.label}` : item.label) : undefined}
     aria-label={badge ? `${item.label}, ${badge.label}` : item.label}
-    class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm border border-transparent transition-colors
+    class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm transition-colors
       {active
-        ? 'text-primary bg-surface1/60 border-surface1'
-        : 'text-subtext hover:bg-surface0 hover:text-text hover:border-surface1/50 focus-visible:bg-surface0 focus-visible:text-text focus-visible:border-primary/40 focus-visible:outline-none'}"
+        ? 'text-primary bg-surface1 font-medium'
+        : 'text-subtext hover:bg-surface0 hover:text-text focus-visible:bg-surface0 focus-visible:text-text focus-visible:outline-none'}"
   >
     <!-- Active rail: a 3px accent strip on the left edge replaces
          the heavier full-row fill, so scanning down the sidebar
@@ -433,11 +433,11 @@
              a dot since the count is informational, not urgent. -->
         {#if badge.tone === 'error'}
           <span
-            class="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-error text-on-primary text-[9px] font-bold leading-4 text-center ring-1 ring-mantle"
+            class="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-error text-on-primary text-[9px] font-bold leading-4 text-center"
             aria-hidden="true"
           >{badge.count > 9 ? '9+' : badge.count}</span>
         {:else}
-          <span class="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-primary/70 ring-1 ring-mantle" aria-hidden="true"></span>
+          <span class="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-primary" aria-hidden="true"></span>
         {/if}
       {/if}
     </span>
@@ -446,12 +446,12 @@
       {#if badge}
         {#if badge.tone === 'error'}
           <span
-            class="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-error/15 text-error text-[10px] font-semibold leading-none ring-1 ring-error/30"
+            class="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-error text-on-primary text-[10px] font-semibold leading-none"
             aria-hidden="true"
           >{badge.count > 99 ? '99+' : badge.count}</span>
         {:else}
           <span
-            class="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-surface1/70 text-subtext text-[10px] font-medium leading-none"
+            class="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-surface1 text-subtext text-[10px] font-medium leading-none"
             aria-hidden="true"
           >{badge.count > 99 ? '99+' : badge.count}</span>
         {/if}
@@ -486,12 +486,12 @@
          full text. -->
     <div class="border-b border-surface1 {isCompact ? 'px-2 py-3 flex justify-center' : 'px-4 py-3'}">
       {#if isCompact}
-        <div class="w-9 h-9 rounded bg-primary/15 text-primary flex items-center justify-center" aria-label="Granit">
+        <div class="w-9 h-9 rounded bg-surface1 text-primary flex items-center justify-center" aria-label="Granit">
           <Logo class="w-5 h-5" label="" />
         </div>
       {:else}
         <div class="flex items-center gap-2">
-          <div class="w-7 h-7 rounded bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">
+          <div class="w-7 h-7 rounded bg-surface1 text-primary flex items-center justify-center flex-shrink-0">
             <Logo class="w-4 h-4" label="" />
           </div>
           <div class="min-w-0">
@@ -529,27 +529,24 @@
       <button
         onclick={() => { openAIOverlay(); drawerOpen = false; }}
         title={isCompact ? ($sabbath ? 'AI paused — Sabbath' : 'Ask AI (⌘J)') : undefined}
-        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm hover:text-text mb-2 transition-colors group {$sabbath ? 'text-dim bg-surface0/40 border border-surface1' : 'text-subtext bg-gradient-to-r from-primary/10 via-secondary/10 to-primary/10 hover:from-primary/15 hover:via-secondary/15 hover:to-primary/15 border border-primary/20 hover:border-primary/40'}"
+        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm mb-2 transition-colors {$sabbath ? 'bg-surface0 text-dim' : 'bg-primary text-on-primary hover:opacity-90 font-medium'}"
       >
         <span class="relative flex-shrink-0">
-          <svg viewBox="0 0 24 24" class="w-5 h-5 {$sabbath ? 'text-dim' : 'text-primary'}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>
-            <circle cx="12" cy="12" r="3.5" fill="currentColor" fill-opacity="0.15"/>
+            <circle cx="12" cy="12" r="3.5" fill="currentColor"/>
           </svg>
           {#if $sabbath}
-            <!-- Tiny pause-dot at the corner so compact users see the
-                 status too. The text label below carries the same hint
-                 in expanded mode. -->
-            <span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-warning ring-1 ring-mantle" aria-hidden="true"></span>
+            <span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-warning" aria-hidden="true"></span>
           {/if}
         </span>
         {#if !isCompact}
           {#if $sabbath}
-            <span class="flex-1 text-left text-dim font-medium">AI paused</span>
-            <span class="text-[10px] text-warning">Sabbath</span>
+            <span class="flex-1 text-left">AI paused</span>
+            <span class="text-[10px] text-warning font-medium">Sabbath</span>
           {:else}
-            <span class="flex-1 text-left bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent font-medium">Ask AI</span>
-            <kbd class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">⌘J</kbd>
+            <span class="flex-1 text-left">Ask AI</span>
+            <kbd class="text-[10px] font-mono px-1.5 py-0.5 bg-mantle rounded">⌘J</kbd>
           {/if}
         {/if}
       </button>
@@ -581,7 +578,7 @@
                 type="button"
                 onclick={() => runQuickAction(q)}
                 title={q.title}
-                class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-primary/8 text-subtext border border-primary/15 hover:bg-primary/15 hover:text-text transition-colors"
+                class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-surface0 text-subtext hover:bg-surface1 hover:text-text transition-colors"
               >
                 <span aria-hidden="true">{q.glyph}</span>
                 <span>{q.label}</span>
@@ -609,7 +606,7 @@
             <span class="h-px w-2 bg-surface1"></span>
           </div>
         {:else}
-          <div class="pb-1.5 mb-1.5 border-b border-surface1/60">
+          <div class="pb-1.5 mb-1.5 border-b border-surface1">
             <div class="px-3 pb-1 pt-0.5 text-[10px] uppercase tracking-wider text-dim flex items-center gap-1">
               <svg viewBox="0 0 16 16" class="w-3 h-3" fill="currentColor" aria-hidden="true">
                 <path d="M8 1.5l1.85 4.05L14 6.2l-3.1 2.85L11.7 13 8 10.85 4.3 13l.8-3.95L2 6.2l4.15-.65z"/>
@@ -706,28 +703,40 @@
         <button
           onclick={() => sabbath.toggle()}
           title={$sabbath ? 'Sabbath mode is on — tap to exit' : 'Enter sabbath mode (hides work modules for today)'}
-          class="w-full flex justify-center items-center px-2 py-2 rounded text-sm transition-colors {$sabbath ? 'bg-success/15 text-success hover:bg-success/25' : 'text-dim hover:bg-surface0 hover:text-text'}"
+          class="w-full flex justify-center items-center px-2 py-2 rounded text-sm transition-colors {$sabbath ? 'bg-success text-on-primary hover:opacity-90' : 'text-dim hover:bg-surface0 hover:text-text'}"
         >
-          <span class="w-5 text-center text-base flex-shrink-0">{$sabbath ? '🕊️' : '✦'}</span>
+          <svg viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            {#if $sabbath}
+              <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5L12 2zM12 14v8M9 22h6"/>
+            {:else}
+              <path d="M12 2l2 5h5l-4 3 1.5 5L12 12l-4.5 3L9 10 5 7h5z"/>
+            {/if}
+          </svg>
         </button>
       {:else}
-        <div class="flex items-stretch gap-1 {$sabbath ? 'bg-success/15 text-success' : 'text-dim'} rounded">
+        <div class="flex items-stretch gap-1 rounded {$sabbath ? 'bg-success text-on-primary' : ''}">
           <a
             href="/sabbath"
             onclick={() => (drawerOpen = false)}
-            class="flex-1 flex items-center gap-3 px-3 py-2 rounded-l hover:bg-surface0 hover:text-text transition-colors {$sabbath ? 'hover:bg-success/25 hover:text-success' : ''}"
+            class="flex-1 flex items-center gap-3 px-3 py-2 rounded-l transition-colors {$sabbath ? 'hover:opacity-90' : 'text-dim hover:bg-surface0 hover:text-text'}"
           >
-            <span class="w-5 text-center text-base flex-shrink-0">{$sabbath ? '🕊️' : '✦'}</span>
+            <svg viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              {#if $sabbath}
+                <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5L12 2zM12 14v8M9 22h6"/>
+              {:else}
+                <path d="M12 2l2 5h5l-4 3 1.5 5L12 12l-4.5 3L9 10 5 7h5z"/>
+              {/if}
+            </svg>
             <span class="flex-1 text-left">{$sabbath ? 'Sabbath on' : 'Sabbath'}</span>
-            <span class="text-[10px] text-dim">open</span>
+            <span class="text-[10px] {$sabbath ? 'opacity-80' : 'text-dim'}">open</span>
           </a>
           <button
             onclick={() => sabbath.toggle()}
             title={$sabbath ? 'tap to exit sabbath' : 'enter sabbath now'}
             aria-label={$sabbath ? 'exit sabbath' : 'enter sabbath'}
-            class="px-2.5 py-2 rounded-r hover:bg-surface0 hover:text-text transition-colors {$sabbath ? 'hover:bg-success/25 hover:text-success' : ''}"
+            class="px-2.5 py-2 rounded-r transition-colors {$sabbath ? 'hover:opacity-90' : 'text-dim hover:bg-surface0 hover:text-text'}"
           >
-            <span class="text-base">{$sabbath ? '✕' : '→'}</span>
+            <span class="text-base">{$sabbath ? '×' : '→'}</span>
           </button>
         </div>
       {/if}
@@ -780,7 +789,7 @@
          Settings used to live here too but it's already in the More
          drawer now, so the redundancy is gone. The bottom nav is the
          primary nav surface; this top bar is just contextual. -->
-    <header class="md:hidden flex items-center gap-1 px-3 h-12 border-b border-surface1 bg-mantle/90 backdrop-blur sticky top-0 z-30 flex-shrink-0">
+    <header class="md:hidden flex items-center gap-1 px-3 h-12 border-b border-surface1 bg-mantle sticky top-0 z-30 flex-shrink-0">
       {#if showBackToSection && activeNav}
         <a
           href={activeNav.href}
@@ -829,10 +838,10 @@
       <button
         type="button"
         onclick={() => sabbath.disable()}
-        class="flex-shrink-0 px-4 py-1.5 bg-success/10 border-b border-success/30 text-xs text-success text-center hover:bg-success/15 transition-colors"
+        class="flex-shrink-0 px-4 py-1.5 bg-success text-on-primary text-xs text-center hover:opacity-90 transition-colors"
         title="Tap to exit sabbath mode"
       >
-        🕊️ Sabbath mode is on — work modules hidden until midnight. Tap to exit.
+        Sabbath mode is on — work modules hidden until midnight. Tap to exit.
       </button>
     {/if}
     <div class="flex-1 min-h-0 overflow-hidden">
@@ -885,7 +894,7 @@
       onclick={() => openAIOverlay()}
       aria-label="Ask AI"
       title="Ask AI"
-      class="md:hidden fixed right-5 z-30 w-12 h-12 flex items-center justify-center rounded-full bg-gradient-to-br from-primary to-secondary text-on-primary shadow-lg hover:opacity-90 transition-all active:scale-95"
+      class="md:hidden fixed right-5 z-30 w-12 h-12 flex items-center justify-center rounded-full bg-primary text-on-primary shadow-lg hover:opacity-90 transition-all active:scale-95"
       style="bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px) + 0.75rem);"
     >
       <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -909,7 +918,7 @@
 {#if updateAvailable}
   <div
     role="status"
-    class="fixed inset-x-3 z-40 bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px)+0.75rem)] md:bottom-3 md:left-auto md:right-3 md:max-w-sm bg-mantle border border-primary/40 rounded-lg shadow-2xl p-3 flex items-center gap-3"
+    class="fixed inset-x-3 z-40 bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px)+0.75rem)] md:bottom-3 md:left-auto md:right-3 md:max-w-sm bg-mantle border border-primary rounded-lg shadow-2xl p-3 flex items-center gap-3"
   >
     <div class="flex-1 min-w-0">
       <div class="text-sm font-medium text-text">Update available</div>

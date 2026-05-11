@@ -191,7 +191,7 @@
     <button
       type="button"
       onclick={() => (panelOpen = !panelOpen)}
-      class="px-3 py-1.5 rounded-full border shadow-md text-xs font-mono tabular-nums inline-flex items-center gap-1.5 backdrop-blur transition-colors {pillTone} {$pomodoro.mode === 'focus' ? 'pomo-pulse' : ''}"
+      class="px-3 py-1.5 rounded-full border shadow-md text-xs font-mono tabular-nums inline-flex items-center gap-1.5 transition-colors {pillTone} {$pomodoro.mode === 'focus' ? 'pomo-pulse' : ''}"
       aria-label="Toggle Pomodoro panel"
       title={$pomodoro.mode === 'focus'
         ? 'Focus session — click to manage'

@@ -38,7 +38,7 @@
 
 <nav
   aria-label="primary"
-  class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-mantle/95 backdrop-blur border-t border-surface1 pb-safe"
+  class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-mantle border-t border-surface1 pb-safe"
 >
   <div class="flex items-stretch justify-around h-14">
     {#each tabs as t (t.href)}
