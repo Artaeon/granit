@@ -24,6 +24,10 @@
     renderProjectContext
   } from '$lib/ai/projectManagerContext';
   import {
+    loadGoalContext,
+    renderGoalContext
+  } from '$lib/ai/goalManagerContext';
+  import {
     getThread,
     upsertThread,
     deleteThread,
@@ -620,31 +624,40 @@
   // that defaults from the mode's preference but the user overrides.
   let modeId = $state<string>(loadModeId());
   let mode = $derived(findMode(modeId));
-  // Tracks whether the current mode came from auto-switching into
-  // Project Manager because the user is on a project page. When
-  // true, leaving project context reverts to the user's persisted
-  // mode; when false (user picked it explicitly), the mode stays.
-  let autoPMActive = $state(false);
+  // Tracks the context-driven auto-switch state. Three values:
+  //   - ''           : user's chosen mode is in effect (persisted)
+  //   - 'project'    : we switched into project-manager because
+  //                    the user is on a project page
+  //   - 'goal'       : we switched into goal-manager because the
+  //                    user has a focused goal on /goals
+  // Each contextual switch is NOT persisted; leaving the context
+  // reverts to loadModeId() so the user's normal preference
+  // doesn't get clobbered. Manual mode pick clears autoMode so
+  // the next exit doesn't yank the user back.
+  let autoMode = $state<'' | 'project' | 'goal'>('');
 
-  // Auto-switch to Project Manager mode when the user enters a
-  // project page. The PM system prompt + prelude assume a project
-  // is in scope, so the mode and the context shape are coupled —
-  // having to manually pick PM every time felt like busywork. The
-  // switch is NOT persisted (contextual, not a preference); when
-  // the user leaves project scope OR manually picks a different
-  // mode, we revert / yield control respectively.
   $effect(() => {
     const inProject = !!currentProjectName;
+    const inGoal = !inProject && !!currentGoalId; // project wins when both URLs co-exist (shouldn't happen)
     if (inProject) {
       if (modeId !== 'project-manager') {
-        autoPMActive = true;
+        autoMode = 'project';
         modeId = 'project-manager';
       }
-    } else if (autoPMActive && modeId === 'project-manager') {
-      autoPMActive = false;
+    } else if (inGoal) {
+      if (modeId !== 'goal-manager') {
+        autoMode = 'goal';
+        modeId = 'goal-manager';
+      }
+    } else if (autoMode && (modeId === 'project-manager' || modeId === 'goal-manager')) {
+      autoMode = '';
       modeId = loadModeId();
     }
   });
+  // Legacy alias for the picker's auto-badge — true when ANY
+  // contextual switch is in effect. Cheaper than threading the
+  // string through every template branch.
+  let autoPMActive = $derived(autoMode !== '');
 
   // Persist mode change + reset RAG default when user picks a new
   // mode, but DON'T reset on every render (that would clobber the
@@ -652,9 +665,9 @@
   // changes mode.
   function selectMode(id: string) {
     if (id === modeId) return;
-    // User is taking control — clear the auto-switch flag so a
-    // future project-page exit doesn't yank them back.
-    autoPMActive = false;
+    // User is taking control — clear the contextual auto-switch
+    // so a future project/goal-page exit doesn't yank them back.
+    autoMode = '';
     modeId = id;
     persistModeId(id);
     const m = findMode(id);
@@ -733,6 +746,16 @@
     const name = tail.split('/')[0];
     if (!name) return '';
     return decodeURIComponent(name);
+  });
+  // Goal page selection — /goals?focus=<id>. When set, the
+  // sidebar enters Goal Manager mode and injects a per-goal
+  // prelude on first turn (mirror of the project flow). The
+  // page uses ?focus rather than a path segment so there's no
+  // pathname-tail to parse — just check the searchParam.
+  const currentGoalId = $derived.by(() => {
+    const p = $page.url.pathname;
+    if (!p.startsWith('/goals')) return '';
+    return $page.url.searchParams.get('focus') ?? '';
   });
 
   function close() {
@@ -1685,6 +1708,36 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
         // let the chat run as a generic thread.
       }
     }
+    // Goal-scoped context — mirror of the project flow above.
+    // Fires only when a goal is focused (URL `?focus=<id>`) and
+    // we're not already loading project context (project wins
+    // for the rare case of an overlapping URL). Uses the shared
+    // loadGoalContext so both Goal Manager mode and the prelude
+    // see the same goal bundle.
+    if (isFirstTurn && currentGoalId && !currentProjectName) {
+      try {
+        const bundle = await loadGoalContext(currentGoalId, {
+          getGoal: async (id) => {
+            const r = await api.listGoals();
+            const g = r.goals.find((x) => x.id === id);
+            if (!g) throw new Error('goal not found');
+            return g;
+          },
+          listTasksForGoal: async (id, s) => {
+            const r = await api.listTasks({ goal: id, status: s });
+            return r.tasks;
+          }
+        });
+        prelude.push({
+          role: 'system',
+          content:
+            "The user is currently focused on this goal in Granit. Use it as the default subject of their messages — they don't need to re-state which goal they mean.\n\n" +
+            renderGoalContext(bundle)
+        });
+      } catch {
+        // Goal not found / fetch failure — skip silently.
+      }
+    }
     if (isFirstTurn && attachSnapshot && snapshotData && !currentNotePath) {
       prelude.push({
         role: 'system',
@@ -2122,6 +2175,30 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
           onclick={() => { input = `Looking at the open tasks + linked goals on ${currentProjectName}, what's the ONE thing I should do next, and why? Pick one, defend it briefly.`; }}
           class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
         >What's next?</button>
+        <span class="w-full sm:hidden"></span>
+      {:else if currentGoalId}
+        <!-- Goal Manager chips. Same shape as PM chips but
+             scoped to the focused goal (the prelude carries the
+             title + milestones + linked tasks, so the intent
+             text can keep it short — "this goal" resolves
+             unambiguously). -->
+        <span class="text-[10px] text-dim uppercase tracking-wide self-center mr-1 flex-shrink-0">Goal:</span>
+        <button
+          onclick={() => { input = `Write a goal review note for this goal — progress so far, what's working, what's stuck, what to change. 1 short paragraph each section.`; }}
+          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+        >Review note</button>
+        <button
+          onclick={() => { input = `Reframe this goal sharper — what does success look like specifically, by when, and how will I know I've hit it?`; }}
+          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+        >Reframe</button>
+        <button
+          onclick={() => { input = `Looking at the open tasks attached to this goal, which ONE moves it forward most this week? Pick one, defend it briefly.`; }}
+          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+        >Highest-leverage next step</button>
+        <button
+          onclick={() => { input = `Brainstorm 3-5 new milestones for this goal — concrete checkpoints I'd accept as proof of progress. For each: outcome statement + how I'd measure it.`; }}
+          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+        >New milestones</button>
         <span class="w-full sm:hidden"></span>
       {/if}
       <button
