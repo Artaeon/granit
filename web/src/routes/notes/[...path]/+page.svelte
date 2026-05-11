@@ -470,12 +470,28 @@
     // and the next typing wouldn't trigger a fresh save). Compare body
     // to sentBody after the await to decide whether more work remains.
     const sentBody = body;
+    // Capture the note we started saving so we can detect navigation
+    // mid-await. With the surgical-mutation strategy, mutating after
+    // the user has navigated to another note would silently corrupt
+    // the new note's modTime/size/links/title with values from the
+    // old note's save response. Identity check on the proxy survives
+    // intermediate property mutations and only fails on reassignment.
+    const savedNote = note;
     const hunting = freezeHuntOn();
     const t0 = hunting ? performance.now() : 0;
     if (hunting) console.warn('[freeze-hunt] save:start', { path: note.path, bytes: sentBody.length, silent: !!opts.silent });
     try {
       const updated = await api.putNote(note.path, { frontmatter: note.frontmatter as Record<string, unknown>, body: sentBody });
       if (hunting) console.warn('[freeze-hunt] save:put-returned', { ms: (performance.now() - t0).toFixed(1) });
+      // Navigation guard: if the user moved to another note while we
+      // were awaiting, the server-side save still succeeded for the
+      // original note — we just stop applying its response to the
+      // active state. The localStorage draft was already cleared
+      // when we entered save() with prev=sentBody (next pass), and
+      // a fresh load() ran for the new path.
+      if (!note || note !== savedNote) {
+        return true;
+      }
       // ─────────────────────────────────────────────────────────────────
       // CRITICAL: surgical property mutation instead of `note = updated`.
       //
