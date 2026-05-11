@@ -40,6 +40,7 @@
   import EditorAIMenu from '$lib/notes/EditorAIMenu.svelte';
   import ResearchPanel from '$lib/notes/ResearchPanel.svelte';
   import ReferenceNotePanel from '$lib/notes/ReferenceNotePanel.svelte';
+  import StreakBadge from '$lib/notes/StreakBadge.svelte';
   import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
   import AskThisNotePanel from '$lib/notes/AskThisNotePanel.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
@@ -1769,6 +1770,11 @@
         <span class="text-xs text-dim hidden sm:inline">
           {wordCount} words{#if wordCount >= 50} · {readingMinutes} min read{#if viewMode === 'preview' && previewProgress > 0.05 && previewProgress < 0.95} · {Math.max(1, Math.ceil(readingMinutes * (1 - previewProgress)))} left{/if}{/if}
         </span>
+        <!-- Daily-note streak badge — surfaces consecutive-day count
+             when the user has any history. Visible everywhere (not
+             just daily notes) so a streak owner can see it from any
+             page; auto-hides when there's no history to brag about. -->
+        <StreakBadge />
         <!-- view-mode toggle -->
         <div class="hidden sm:flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs">
           {#each [{m: 'edit', l: 'edit', i: '✎'}, {m: 'split', l: 'split', i: '⊟'}, {m: 'preview', l: 'preview', i: '👁'}] as v}

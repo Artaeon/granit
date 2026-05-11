@@ -253,6 +253,7 @@ func (s *Server) Handler() http.Handler {
 		// {date} wildcard branch (otherwise "context" would be parsed
 		// as a date and 400 from handleGetDaily's parser).
 		r.Get("/api/v1/daily/context", s.handleDailyContext)
+		r.Get("/api/v1/daily/streak", s.handleDailyStreak)
 		r.Get("/api/v1/daily/{date}", s.handleGetDaily)
 		r.Get("/api/v1/jots", s.handleListJots)
 		r.Get("/api/v1/calendar", s.handleCalendar)

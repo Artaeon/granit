@@ -1244,6 +1244,17 @@ export const api = {
       habits: { text: string; done: boolean }[];
     }>('/daily/context'),
 
+  // Consecutive-day daily-note streak — drives the status-bar
+  // streak badge. Cheap to call; backend just scans the vault
+  // snapshot for YYYY-MM-DD.md filenames.
+  dailyStreak: () =>
+    req<{
+      current: number;
+      longest: number;
+      lastDate?: string;
+      todayLogged: boolean;
+    }>('/daily/streak'),
+
   // Calendar
   calendar: (from: string, to: string) =>
     req<CalendarFeed>(`/calendar?from=${from}&to=${to}`),
