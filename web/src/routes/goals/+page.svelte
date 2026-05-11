@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
   import { api, type Goal, type Project, type Task , todayISO } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
@@ -9,6 +10,7 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import GoalCreate from '$lib/goals/GoalCreate.svelte';
   import GoalDetail from '$lib/goals/GoalDetail.svelte';
+  import GoalDashboardPanel from '$lib/goals/GoalDashboardPanel.svelte';
   import GoalAgent from '$lib/goals/GoalAgent.svelte';
   import { isTypingTarget } from '$lib/util/isTypingTarget';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
@@ -142,6 +144,26 @@
   // Selected goal — derived from id so live edits during a refetch find
   // the new copy without reopening the drawer at a stale state.
   let selected = $derived(goals.find((g) => g.id === selectedId) ?? null);
+
+  // Dashboard overlay — full-screen GoalDashboardPanel for the focused
+  // goal. State persists in the URL (?focus=X&dashboard=1) so a reload
+  // or shared link keeps it open. Pure presentation flag — the panel
+  // does its own data load.
+  let dashboardOpen = $derived(
+    $page.url.searchParams.get('dashboard') === '1' && !!selected
+  );
+  function openDashboard() {
+    if (!selectedId) return;
+    const params = new URLSearchParams($page.url.searchParams);
+    params.set('focus', selectedId);
+    params.set('dashboard', '1');
+    goto(`/goals?${params.toString()}`, { replaceState: true, keepFocus: true });
+  }
+  function closeDashboard() {
+    const params = new URLSearchParams($page.url.searchParams);
+    params.delete('dashboard');
+    goto(`/goals?${params.toString()}`, { replaceState: true, keepFocus: true });
+  }
 
   function openDetail(g: Goal) {
     selectedId = g.id;
@@ -1762,7 +1784,18 @@
   goal={selected}
   onUpdated={load}
   onDeleted={deleted}
+  onOpenDashboard={openDashboard}
 />
+
+{#if dashboardOpen && selected}
+  <!-- Goal Dashboard overlay — full-screen visual operating
+       picture for the focused goal. URL-persisted via
+       ?focus=X&dashboard=1 so a reload keeps it open. Sits above
+       the goals page chrome (list/cards/kanban + detail drawer)
+       without unmounting them, so closing the dashboard lands the
+       user back where they came from. -->
+  <GoalDashboardPanel goal={selected} onClose={closeDashboard} />
+{/if}
 
 <!-- Goal Agent — operates on the filtered list (whatever the
      current status / search / venture / category scope yields).

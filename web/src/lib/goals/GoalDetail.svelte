@@ -14,12 +14,19 @@
     open = $bindable(false),
     goal,
     onUpdated,
-    onDeleted
+    onDeleted,
+    onOpenDashboard
   }: {
     open?: boolean;
     goal: Goal | null;
     onUpdated: () => void | Promise<void>;
     onDeleted: (id: string) => void | Promise<void>;
+    /** Optional — when supplied, the header shows a Dashboard button
+     *  that delegates to the parent. The parent /goals page owns the
+     *  dashboard URL state (?focus=X&dashboard=1) and renders the
+     *  GoalDashboardPanel overlay, so this component stays unaware
+     *  of how the dashboard mounts. Mirrors ProjectDetail. */
+    onOpenDashboard?: () => void;
   } = $props();
 
   let saving = $state(false);
@@ -527,6 +534,27 @@
         >
           {#each statusOptions as s}<option value={s}>{s}</option>{/each}
         </select>
+        <!-- Dashboard — opens the full-screen GoalDashboardPanel
+             overlay above the goals layout. Lives behind a thin
+             delegate so the detail drawer stays unaware of how the
+             dashboard mounts; the parent /goals page owns the
+             ?focus=X&dashboard=1 URL state and renders the overlay. -->
+        {#if onOpenDashboard}
+          <button
+            onclick={onOpenDashboard}
+            title="open goal dashboard — visual operating picture"
+            aria-label="open goal dashboard"
+            class="px-2.5 py-1.5 min-h-[36px] text-xs rounded border border-surface1 bg-surface0 text-subtext hover:border-primary hover:text-primary inline-flex items-center gap-1"
+          >
+            <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="9" rx="1" />
+              <rect x="14" y="3" width="7" height="5" rx="1" />
+              <rect x="14" y="12" width="7" height="9" rx="1" />
+              <rect x="3" y="16" width="7" height="5" rx="1" />
+            </svg>
+            <span class="hidden sm:inline">Dashboard</span>
+          </button>
+        {/if}
         <a
           href={`/prayer?goal=${encodeURIComponent(goal.id)}&text=${encodeURIComponent('For: ' + goal.title)}`}
           title="add a prayer intention for this goal"
