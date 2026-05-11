@@ -2,6 +2,7 @@
   import { marked } from 'marked';
   import { api } from '$lib/api';
   import { errorMessage } from '$lib/util/errorMessage';
+  import WikilinkHoverPreview from './WikilinkHoverPreview.svelte';
 
   let { body, onWikilink }: { body: string; onWikilink?: (target: string) => void } = $props();
 
@@ -611,6 +612,12 @@
 <div class="prose-note" bind:this={mermaidContainer} onclick={onClickContainer}>
   {@html html}
 </div>
+<!-- Wikilink hover preview — listens on the prose container for
+     [data-wikilink] hover events, fetches the target note's first
+     paragraph (with a session-level cache), and floats a tooltip
+     near the link. Click-to-navigate is unchanged; this is purely
+     an additive cross-reference aid. -->
+<WikilinkHoverPreview host={mermaidContainer} />
 
 <style>
   /* Mermaid rendering — wrapper centres the diagram and lets it

@@ -28,6 +28,13 @@
     deriveThreadTitle
   } from '$lib/chat/history';
   import { retrieveForRag, type RagHit } from '$lib/chat/rag';
+  import {
+    parseFollowups,
+    parseActions,
+    stripStructuredBlocks,
+    actionKey,
+    type ParsedAction
+  } from '$lib/chat/actionParser';
   import { slugifyTitle } from '$lib/util/slug';
   import { todayISO } from '$lib/util/date';
   import {
@@ -1355,81 +1362,12 @@ VAULT ACTIONS — when you propose creating something in the user's vault, emit 
 
 Fields: task.text required; dueDate/priority/notePath optional. event.title+start required; end/location optional. note.title+body required; folder optional. remember.content required; tags optional. priority is 1 (low) to 3 (high). Dates use YYYY-MM-DD; datetimes use floating ISO (no Z). Emit zero or many; the user picks which to commit.`;
 
-  // ── Per-turn parsers: follow-ups + action chips ────────────────
-  // Each assistant message renders with the structured blocks
-  // stripped from the visible markdown and surfaced as chips below.
-  // Pure functions so the work is cheap on every render — the
-  // assistant message body is the only meaningful input.
-
-  type ActionTask = { type: 'task'; text: string; dueDate?: string; priority?: number; notePath?: string };
-  type ActionEvent = { type: 'event'; title: string; start: string; end?: string; location?: string };
-  type ActionNote = { type: 'note'; title: string; body: string; folder?: string };
-  type ActionRemember = { type: 'remember'; content: string; tags?: string[] };
-  type ParsedAction = ActionTask | ActionEvent | ActionNote | ActionRemember;
-
-  function parseFollowups(content: string): string[] {
-    const m = content.match(/<followups>([\s\S]*?)<\/followups>/i);
-    if (!m) return [];
-    return m[1]
-      .split(/\r?\n/)
-      .map((l) => l.replace(/^[-*]\s+/, '').trim())
-      .filter((l) => l.length > 0 && l.length < 200)
-      .slice(0, 3);
-  }
-
-  function parseActions(content: string): ParsedAction[] {
-    const out: ParsedAction[] = [];
-    const re = /```granit-action\s*\n([\s\S]*?)```/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(content)) !== null) {
-      try {
-        const obj = JSON.parse(m[1].trim());
-        if (!obj || typeof obj.type !== 'string') continue;
-        // Minimal field-presence validation per type. Drop malformed
-        // entries silently — the model occasionally hallucinates a
-        // half-formed JSON, no need to spam the user with errors.
-        if (obj.type === 'task' && typeof obj.text === 'string' && obj.text.trim()) {
-          out.push(obj as ActionTask);
-        } else if (obj.type === 'event' && obj.title && obj.start) {
-          out.push(obj as ActionEvent);
-        } else if (obj.type === 'note' && obj.title && obj.body !== undefined) {
-          out.push(obj as ActionNote);
-        } else if (obj.type === 'remember' && typeof obj.content === 'string' && obj.content.trim()) {
-          out.push(obj as ActionRemember);
-        }
-      } catch {
-        // Malformed JSON inside the fence — skip; the assistant
-        // sometimes streams a half-token block before completing it.
-      }
-    }
-    return out;
-  }
-
-  function stripStructuredBlocks(content: string): string {
-    // Remove both the <followups> trailing block AND any granit-action
-    // fences so the rendered markdown reads cleanly. The blocks are
-    // separately surfaced as chips below the message body.
-    let out = content.replace(/<followups>[\s\S]*?<\/followups>/gi, '');
-    out = out.replace(/```granit-action\s*\n[\s\S]*?```/g, '');
-    // Collapse the trailing whitespace the strip can leave behind.
-    return out.replace(/\n{3,}/g, '\n\n').trimEnd();
-  }
-
   // Already-committed action chips per message id — keyed by the
-  // action's stable signature so a click doesn't double-commit and
-  // a regen with the same proposal stays "fresh" until clicked.
+  // action's stable signature (see $lib/chat/actionParser.actionKey)
+  // so a click doesn't double-commit and a regen with the same
+  // proposal stays "fresh" until clicked. Parsing rules live in the
+  // dedicated module + are pinned by actionParser.test.ts.
   let committedActions = $state<Record<string, boolean>>({});
-  function actionKey(msgIdx: number, a: ParsedAction): string {
-    const sig =
-      a.type === 'task'
-        ? `${a.text}|${a.dueDate ?? ''}`
-        : a.type === 'event'
-          ? `${a.title}|${a.start}`
-          : a.type === 'note'
-            ? `${a.title}|${a.folder ?? ''}`
-            : `${a.content}`;
-    return `${msgIdx}:${a.type}:${sig}`;
-  }
 
   async function commitAction(msgIdx: number, a: ParsedAction) {
     const key = actionKey(msgIdx, a);
