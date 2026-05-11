@@ -3,7 +3,8 @@
   import { fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { page } from '$app/stores';
-  import { api, type ChatMessage } from '$lib/api';
+  import { api, type ChatMessage, type AIMemoryFact } from '$lib/api';
+  import { onWsEvent } from '$lib/ws';
   import { sabbath } from '$lib/stores/sabbath';
   import { aiOverlayOpen, takeAIOverlaySeed } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
@@ -28,6 +29,7 @@
   } from '$lib/chat/history';
   import { retrieveForRag, type RagHit } from '$lib/chat/rag';
   import { slugifyTitle } from '$lib/util/slug';
+  import { todayISO } from '$lib/util/date';
   import {
     createSpeechRecognition,
     isSpeechRecognitionSupported,
@@ -1038,6 +1040,77 @@
         input = '';
         void runDeadlines();
         return true;
+      case '/remember':
+        // Persist a fact to long-term memory. Same flow as a
+        // remember-this action chip but driven by the user — they
+        // can capture something the model said, or a fact they
+        // want recorded directly without an AI round-trip.
+        input = '';
+        if (!arg) {
+          toast.info('usage: /remember <fact about yourself>');
+          return true;
+        }
+        (async () => {
+          try {
+            const f = await api.addAIMemory(arg, []);
+            await loadAIMemory();
+            toast.success(`Remembered · ${f.content.slice(0, 60)}`);
+          } catch (err) {
+            toast.error('Memory add failed: ' + errorMessage(err));
+          }
+        })();
+        return true;
+      case '/memory':
+        // Surface the current memory inline so the user can audit
+        // what the model is being told about them, and copy fact
+        // IDs for /forget-fact. Renders as an assistant message so
+        // it ends up in the persisted thread.
+        input = '';
+        (async () => {
+          await loadAIMemory();
+          if (aiMemoryFacts.length === 0) {
+            messages = [
+              ...messages,
+              { role: 'user', content: raw },
+              { role: 'assistant', content: '_(no long-term memory recorded yet. Use `/remember <fact>` to add one.)_' }
+            ];
+            return;
+          }
+          const lines = aiMemoryFacts
+            .map((f, i) => `${i + 1}. ${f.content}${f.tags && f.tags.length > 0 ? ` _(${f.tags.join(', ')})_` : ''} · \`${f.id.slice(0, 6)}\``)
+            .join('\n');
+          messages = [
+            ...messages,
+            { role: 'user', content: raw },
+            {
+              role: 'assistant',
+              content: `**Long-term memory (${aiMemoryFacts.length} fact${aiMemoryFacts.length === 1 ? '' : 's'}):**\n\n${lines}\n\n_Use \`/forget-fact <id-prefix>\` to remove one._`
+            }
+          ];
+        })();
+        return true;
+      case '/forget-fact':
+        input = '';
+        if (!arg) {
+          toast.info('usage: /forget-fact <id-prefix>');
+          return true;
+        }
+        (async () => {
+          await loadAIMemory();
+          const match = aiMemoryFacts.find((f) => f.id.toLowerCase().startsWith(arg.toLowerCase()));
+          if (!match) {
+            toast.error(`No fact id starts with "${arg}"`);
+            return;
+          }
+          try {
+            await api.deleteAIMemory(match.id);
+            await loadAIMemory();
+            toast.success(`Forgot · ${match.content.slice(0, 50)}`);
+          } catch (err) {
+            toast.error('Forget failed: ' + errorMessage(err));
+          }
+        })();
+        return true;
       case '/mode':
       case '/persona': {
         if (!arg) {
@@ -1214,6 +1287,258 @@
     }
   }
 
+  // ── Long-term AI memory ─────────────────────────────────────────
+  // The user's persistent facts ("wife is Anna", "vegetarian", etc.)
+  // get folded into every thread's first-turn prelude so the model
+  // doesn't need them re-stated. Loaded lazily on overlay open +
+  // refreshed when the server broadcasts ai-memory.json changes.
+  let aiMemoryFacts = $state<AIMemoryFact[]>([]);
+  let aiMemoryLoaded = $state(false);
+
+  async function loadAIMemory() {
+    try {
+      const r = await api.listAIMemory();
+      aiMemoryFacts = r.facts;
+      aiMemoryLoaded = true;
+    } catch {
+      // Silent: an empty/failed memory load shouldn't block the
+      // chat. The user simply doesn't get memory-augmented replies
+      // until the next successful fetch.
+    }
+  }
+  // Refresh on WS broadcasts so a successful action-chip click on
+  // a "remember-this" proposal in one tab updates other tabs.
+  onMount(() => {
+    void loadAIMemory();
+    return onWsEvent((ev) => {
+      if (ev.type === 'state.changed' && ev.path === '.granit/ai-memory.json') {
+        void loadAIMemory();
+      }
+    });
+  });
+
+  // ── Agent-capabilities system instruction ──────────────────────
+  // One system message describing the structured-output channels
+  // (follow-ups + action chips). Injected on the FIRST turn of every
+  // new thread, like the vault snapshot — re-injecting on every turn
+  // burns tokens for instructions the model has already internalised.
+  //
+  // Kept terse: each shape gets a one-line example, no prose
+  // elaboration. The shorter this block, the lower the token cost
+  // per new thread.
+  const AGENT_CAPABILITIES_SYSTEM = `Granit gives you two structured-output channels that turn parts of your reply into one-tap UI in the user's chat overlay. Use them when they would help the user act on your answer — not speculatively.
+
+FOLLOW-UPS — at the very end of your reply (no other text after), append a single <followups>...</followups> block with up to 3 short prompts the user might naturally want next, one per line. Skip entirely when nothing useful comes to mind.
+
+<followups>
+Want me to break this into subtasks?
+Should I draft the email reply?
+</followups>
+
+VAULT ACTIONS — when you propose creating something in the user's vault, emit a fenced "granit-action" JSON block:
+
+\`\`\`granit-action
+{"type":"task","text":"Call Anna about the contract","dueDate":"2026-05-12","priority":2}
+\`\`\`
+
+\`\`\`granit-action
+{"type":"event","title":"Lunch with Sarah","start":"2026-05-12T13:00:00","end":"2026-05-12T14:00:00","location":"Centro"}
+\`\`\`
+
+\`\`\`granit-action
+{"type":"note","title":"Reading list","body":"- Meditations\\n- The Brothers Karamazov\\n","folder":"Lists"}
+\`\`\`
+
+\`\`\`granit-action
+{"type":"remember","content":"User's wife is named Anna","tags":["family"]}
+\`\`\`
+
+Fields: task.text required; dueDate/priority/notePath optional. event.title+start required; end/location optional. note.title+body required; folder optional. remember.content required; tags optional. priority is 1 (low) to 3 (high). Dates use YYYY-MM-DD; datetimes use floating ISO (no Z). Emit zero or many; the user picks which to commit.`;
+
+  // ── Per-turn parsers: follow-ups + action chips ────────────────
+  // Each assistant message renders with the structured blocks
+  // stripped from the visible markdown and surfaced as chips below.
+  // Pure functions so the work is cheap on every render — the
+  // assistant message body is the only meaningful input.
+
+  type ActionTask = { type: 'task'; text: string; dueDate?: string; priority?: number; notePath?: string };
+  type ActionEvent = { type: 'event'; title: string; start: string; end?: string; location?: string };
+  type ActionNote = { type: 'note'; title: string; body: string; folder?: string };
+  type ActionRemember = { type: 'remember'; content: string; tags?: string[] };
+  type ParsedAction = ActionTask | ActionEvent | ActionNote | ActionRemember;
+
+  function parseFollowups(content: string): string[] {
+    const m = content.match(/<followups>([\s\S]*?)<\/followups>/i);
+    if (!m) return [];
+    return m[1]
+      .split(/\r?\n/)
+      .map((l) => l.replace(/^[-*]\s+/, '').trim())
+      .filter((l) => l.length > 0 && l.length < 200)
+      .slice(0, 3);
+  }
+
+  function parseActions(content: string): ParsedAction[] {
+    const out: ParsedAction[] = [];
+    const re = /```granit-action\s*\n([\s\S]*?)```/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(content)) !== null) {
+      try {
+        const obj = JSON.parse(m[1].trim());
+        if (!obj || typeof obj.type !== 'string') continue;
+        // Minimal field-presence validation per type. Drop malformed
+        // entries silently — the model occasionally hallucinates a
+        // half-formed JSON, no need to spam the user with errors.
+        if (obj.type === 'task' && typeof obj.text === 'string' && obj.text.trim()) {
+          out.push(obj as ActionTask);
+        } else if (obj.type === 'event' && obj.title && obj.start) {
+          out.push(obj as ActionEvent);
+        } else if (obj.type === 'note' && obj.title && obj.body !== undefined) {
+          out.push(obj as ActionNote);
+        } else if (obj.type === 'remember' && typeof obj.content === 'string' && obj.content.trim()) {
+          out.push(obj as ActionRemember);
+        }
+      } catch {
+        // Malformed JSON inside the fence — skip; the assistant
+        // sometimes streams a half-token block before completing it.
+      }
+    }
+    return out;
+  }
+
+  function stripStructuredBlocks(content: string): string {
+    // Remove both the <followups> trailing block AND any granit-action
+    // fences so the rendered markdown reads cleanly. The blocks are
+    // separately surfaced as chips below the message body.
+    let out = content.replace(/<followups>[\s\S]*?<\/followups>/gi, '');
+    out = out.replace(/```granit-action\s*\n[\s\S]*?```/g, '');
+    // Collapse the trailing whitespace the strip can leave behind.
+    return out.replace(/\n{3,}/g, '\n\n').trimEnd();
+  }
+
+  // Already-committed action chips per message id — keyed by the
+  // action's stable signature so a click doesn't double-commit and
+  // a regen with the same proposal stays "fresh" until clicked.
+  let committedActions = $state<Record<string, boolean>>({});
+  function actionKey(msgIdx: number, a: ParsedAction): string {
+    const sig =
+      a.type === 'task'
+        ? `${a.text}|${a.dueDate ?? ''}`
+        : a.type === 'event'
+          ? `${a.title}|${a.start}`
+          : a.type === 'note'
+            ? `${a.title}|${a.folder ?? ''}`
+            : `${a.content}`;
+    return `${msgIdx}:${a.type}:${sig}`;
+  }
+
+  async function commitAction(msgIdx: number, a: ParsedAction) {
+    const key = actionKey(msgIdx, a);
+    if (committedActions[key]) return;
+    try {
+      if (a.type === 'task') {
+        // Default notePath: the user's current page when it's a
+        // note (so the task lives where they're working), else
+        // today's daily — same pattern QuickCaptureFab uses. The
+        // create-task endpoint auto-materialises Daily/<date>.md
+        // when it doesn't exist yet.
+        const np = a.notePath || (currentNotePath || `Daily/${todayISO()}.md`);
+        await api.createTask({
+          notePath: np,
+          text: a.text,
+          dueDate: a.dueDate || undefined,
+          priority: a.priority,
+          section: '## Tasks'
+        });
+        toast.success(`Task added · ${a.text.slice(0, 50)}`);
+      } else if (a.type === 'event') {
+        // Parse the start to derive the date + HH:MM split events.json
+        // wants. Floating ISO ("2026-05-12T13:00:00") parses cleanly
+        // as local; if the model emitted Z we strip the offset so we
+        // store the wall-clock the user typed, matching how native
+        // events round-trip.
+        const startStr = a.start.replace(/Z$/, '').replace(/[+-]\d{2}:\d{2}$/, '');
+        const startDate = startStr.slice(0, 10);
+        const startTime = startStr.slice(11, 16);
+        const endStr = (a.end ?? '').replace(/Z$/, '').replace(/[+-]\d{2}:\d{2}$/, '');
+        const endTime = endStr.slice(11, 16);
+        await api.createEvent({
+          title: a.title,
+          date: startDate,
+          start_time: startTime,
+          end_time: endTime || undefined,
+          location: a.location || undefined
+        });
+        toast.success(`Event added · ${a.title}`);
+      } else if (a.type === 'note') {
+        const folder = (a.folder ?? '').trim();
+        const slug = a.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').toLowerCase() || 'note';
+        const path = folder ? `${folder.replace(/\/+$/, '')}/${slug}.md` : `${slug}.md`;
+        await api.createNote({
+          path,
+          frontmatter: { title: a.title },
+          body: a.body
+        });
+        toast.success(`Note created · ${path}`, {
+          action: { label: 'Open', href: `/notes/${encodeURIComponent(path)}` }
+        });
+      } else if (a.type === 'remember') {
+        await api.addAIMemory(a.content, a.tags);
+        toast.success('Saved to memory');
+        await loadAIMemory();
+      }
+      committedActions = { ...committedActions, [key]: true };
+    } catch (err) {
+      toast.error('Action failed: ' + errorMessage(err));
+    }
+  }
+
+  function sendFollowup(prompt: string) {
+    input = prompt;
+    void send();
+  }
+
+  // ── Context-aware defaults ──────────────────────────────────────
+  // When the overlay opens for the first time on a route, pick a
+  // mode that fits the page so the user doesn't have to flip the
+  // mode picker themselves. Skipped if the user has explicitly
+  // chosen a non-'general' mode this session (don't undo intent).
+  let contextDefaultsApplied = $state(false);
+  function applyContextDefaults() {
+    if (contextDefaultsApplied) return;
+    if (typeof window === 'undefined') return;
+    const path = $page.url.pathname;
+    // Map routes → mode. Conservative: only flip on routes where the
+    // mode shift is obviously useful. /notes/X already has its own
+    // attach-current-note logic; the rest live here.
+    let suggested: string | null = null;
+    if (path.startsWith('/tasks')) suggested = 'analyst';
+    else if (path.startsWith('/calendar')) suggested = 'analyst';
+    else if (path.startsWith('/goals') || path.startsWith('/ventures')) suggested = 'coach';
+    else if (path.startsWith('/projects')) suggested = 'architect';
+    else if (path.startsWith('/examen')) suggested = 'examen';
+    else if (path.startsWith('/prayer') || path.startsWith('/bible') || path.startsWith('/scripture')) suggested = 'aurelius';
+    if (suggested && mode.id === 'general') {
+      const target = AGENT_MODES.find((m) => m.id === suggested);
+      if (target) {
+        selectMode(target.id);
+      }
+    }
+    contextDefaultsApplied = true;
+  }
+  // Apply on every fresh open so the user navigating /tasks → open
+  // chat → /goals → open chat gets the right mode each time. The
+  // flag resets via the open-effect chain.
+  $effect(() => {
+    if ($aiOverlayOpen) {
+      // tick() lets the open transition settle before we possibly
+      // flip the mode (avoids a single-frame flash of the wrong
+      // header label).
+      tick().then(() => applyContextDefaults());
+    } else {
+      contextDefaultsApplied = false;
+    }
+  });
+
   async function send(e?: Event) {
     e?.preventDefault();
     const text = input.trim();
@@ -1237,6 +1562,26 @@
     // Mode posture — every turn (cheap; one paragraph). Keeps the
     // mode active even after history is long.
     prelude.push({ role: 'system', content: mode.system });
+    // Agent capabilities — describes the structured-output channels
+    // (follow-ups + granit-action chips). First turn only since the
+    // model internalises it after one example; re-injecting on every
+    // turn would burn ~400 tokens per turn for no marginal lift.
+    if (isFirstTurn) {
+      prelude.push({ role: 'system', content: AGENT_CAPABILITIES_SYSTEM });
+    }
+    // Long-term memory — the user's persistent facts. First turn
+    // only for the same token-cost reason; the model carries them
+    // forward in its context after that. Skipped when the store is
+    // empty so a fresh vault doesn't pay for an empty prelude.
+    if (isFirstTurn && aiMemoryFacts.length > 0) {
+      const lines = aiMemoryFacts.map((f) => `- ${f.content}`);
+      prelude.push({
+        role: 'system',
+        content:
+          "These are persistent facts the user has told Granit to remember about themselves. Use them when relevant — don't re-ask for context they've already given.\n\n" +
+          lines.join('\n')
+      });
+    }
     // @-mentioned entity context. Strict, structured system message
     // — gives the model real fields (id, title, due date, status…)
     // rather than relying on the user's prose to convey them.
@@ -1840,9 +2185,65 @@
                   </div>
                 {/if}
               {:else}
+                {@const cleaned = stripStructuredBlocks(m.content || '')}
+                {@const followups = busy && i === messages.length - 1 ? [] : parseFollowups(m.content || '')}
+                {@const actions = busy && i === messages.length - 1 ? [] : parseActions(m.content || '')}
                 <div class="prose prose-sm max-w-none">
-                  <MarkdownRenderer body={m.content || '_…_'} />
+                  <MarkdownRenderer body={cleaned || '_…_'} />
                 </div>
+                {#if actions.length > 0}
+                  <!-- Vault action chips proposed by the assistant —
+                       one tap creates the task / event / note / memory
+                       entry, with a confirmation toast. Each chip
+                       de-dupes itself after click via committedActions
+                       so a regen with the same proposal doesn't re-fire. -->
+                  <div class="mt-2 flex flex-wrap gap-1.5">
+                    {#each actions as a, ai (actionKey(i, a) + ai)}
+                      {@const k = actionKey(i, a)}
+                      {@const committed = !!committedActions[k]}
+                      <button
+                        type="button"
+                        onclick={() => commitAction(i, a)}
+                        disabled={committed}
+                        class="tap-target inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] border transition-colors {committed
+                          ? 'bg-success/10 border-success/40 text-success cursor-default'
+                          : 'bg-surface0 border-surface1 text-text hover:border-primary hover:bg-surface1'}"
+                        title={committed ? 'Already committed' : 'Click to commit this action'}
+                      >
+                        {#if committed}✓{:else}+{/if}
+                        {#if a.type === 'task'}
+                          Task: {a.text}{a.dueDate ? ` (${a.dueDate})` : ''}
+                        {:else if a.type === 'event'}
+                          Event: {a.title} ({a.start.slice(11, 16)})
+                        {:else if a.type === 'note'}
+                          Note: {a.title}
+                        {:else if a.type === 'remember'}
+                          Remember: {a.content}
+                        {/if}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+                {#if followups.length > 0}
+                  <!-- Suggested follow-ups — one tap dispatches the
+                       prompt through send(). Cheap to render: pure
+                       text parsing of the assistant's reply suffix. -->
+                  <div class="mt-2 flex flex-wrap gap-1.5">
+                    {#each followups as fu, fi (i + ':fu:' + fi)}
+                      <button
+                        type="button"
+                        onclick={() => sendFollowup(fu)}
+                        class="tap-target inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-surface0 border border-surface1 text-subtext hover:text-text hover:border-secondary hover:bg-surface1 transition-colors"
+                        title="Send as next message"
+                      >
+                        <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                          <path d="M5 12h14M13 5l7 7-7 7"/>
+                        </svg>
+                        {fu}
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
                 {#if perTurnRagHits[i]?.length}
                   <!-- Inline Sources for this turn — a collapsible
                        strip below the assistant reply. The bottom

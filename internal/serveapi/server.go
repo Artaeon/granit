@@ -539,6 +539,12 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/ai/audit", s.handleGetAIAudit)
 		r.Delete("/api/v1/ai/audit", s.handleClearAIAudit)
 		r.Get("/api/v1/ai/status", s.handleGetAIStatus)
+		// Long-term AI memory — facts about the user the chat
+		// overlay injects into every thread's system prelude.
+		r.Get("/api/v1/ai/memory", s.handleListAIMemory)
+		r.Post("/api/v1/ai/memory", s.handleAddAIMemory)
+		r.Patch("/api/v1/ai/memory/{id}", s.handlePatchAIMemory)
+		r.Delete("/api/v1/ai/memory/{id}", s.handleDeleteAIMemory)
 		// AI features (Tier 1). Each runs through the same
 		// pipeline: consent check → snapshot → redact → chat → audit.
 		r.Post("/api/v1/ai/daily-briefing", s.handleAIDailyBriefing)

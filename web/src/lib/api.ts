@@ -2029,6 +2029,24 @@ export const api = {
   clearAIAudit: () => req<void>('/ai/audit', { method: 'DELETE' }),
   getAIStatus: () => req<AIStatus>('/ai/status'),
   getAISnapshot: () => req<{ snapshot: unknown }>('/ai/snapshot'),
+  // Long-term AI memory — facts about the user the chat overlay
+  // injects into every thread's system prelude. User-controlled:
+  // add via slash command or proposed-action chip, edit/delete via
+  // settings panel.
+  listAIMemory: () =>
+    req<{ facts: AIMemoryFact[]; total: number }>('/ai/memory'),
+  addAIMemory: (content: string, tags?: string[]) =>
+    req<AIMemoryFact>('/ai/memory', {
+      method: 'POST',
+      body: JSON.stringify({ content, tags })
+    }),
+  patchAIMemory: (id: string, content?: string, tags?: string[]) =>
+    req<AIMemoryFact>(`/ai/memory/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content, tags })
+    }),
+  deleteAIMemory: (id: string) =>
+    req<void>(`/ai/memory/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   aiDailyBriefing: (signal?: AbortSignal) =>
     req<{ markdown: string }>('/ai/daily-briefing', { method: 'POST', body: '{}', signal }),
   aiWeeklyReview: (signal?: AbortSignal) =>
@@ -2252,6 +2270,19 @@ export interface AIStatus {
   redaction: boolean;
   default_provider?: string;
   features: Record<string, AIFeatureStatus>;
+}
+
+/** Long-term AI memory fact. The chat overlay folds the list into
+ *  every thread's system prelude so the model knows the user's
+ *  cross-thread context ("user's wife is Anna", "user is vegetarian").
+ *  User-controlled — added via slash command or proposed-action chip;
+ *  removable from the settings panel. */
+export interface AIMemoryFact {
+  id: string;
+  content: string;
+  tags?: string[];
+  createdAt: string;
+  updatedAt?: string;
 }
 export interface AITriageProposal {
   id: string;

@@ -63,6 +63,9 @@
     { cmd: '/deadlines', desc: 'Detect deadlines in untimed tasks' },
     { cmd: '/mode', desc: 'Switch agent mode (general, research, writer, coach, analyst, architect)', hasArg: true },
     { cmd: '/persona', desc: 'Switch persona (lewis, aurelius, socrates, chrysostom, founder, magister, examen)', hasArg: true },
+    { cmd: '/remember', desc: 'Save a long-term fact about yourself for the AI', hasArg: true },
+    { cmd: '/memory', desc: 'List the AI\'s long-term memory of you' },
+    { cmd: '/forget-fact', desc: 'Remove a memory entry by id prefix', hasArg: true },
     { cmd: '/rag', desc: 'Toggle RAG retrieval for the next turn' },
     { cmd: '/forget', desc: 'Drop snapshot/note attachment + queued mentions' },
     { cmd: '/detach', desc: 'Drop the snapshot/note attachment (legacy alias of /forget)' }
