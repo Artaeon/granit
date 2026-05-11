@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
+  import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
   import { api, type CalendarEvent, type CalendarEventEntry, type CalendarFeed, type CalendarSource, type HabitInfo, type Project, type Task } from '$lib/api';
   import CalendarAgent from '$lib/calendar/CalendarAgent.svelte';
+  import CalendarDashboardPanel from '$lib/calendar/CalendarDashboardPanel.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -243,6 +246,22 @@
     const proj = url.searchParams.get('project');
     if (proj) projectFilter = proj;
   });
+
+  // Dashboard overlay — full-screen CalendarDashboardPanel. State
+  // persists in the URL (?dashboard=1) so a reload or shared link
+  // keeps it open. Pure presentation flag; the panel does its own
+  // data load. Mirrors how /projects and /goals wire their dashboards.
+  let dashboardOpen = $derived($page.url.searchParams.get('dashboard') === '1');
+  function openDashboard() {
+    const params = new URLSearchParams($page.url.searchParams);
+    params.set('dashboard', '1');
+    goto(`/calendar?${params.toString()}`, { replaceState: true, keepFocus: true });
+  }
+  function closeDashboard() {
+    const params = new URLSearchParams($page.url.searchParams);
+    params.delete('dashboard');
+    goto(`/calendar?${params.toString()}`, { replaceState: true, keepFocus: true });
+  }
 
   async function load() {
     if (!$auth) return;
@@ -1404,6 +1423,25 @@
         </svg>
         <span class="hidden sm:inline">Agent</span>
       </button>
+      <!-- Dashboard — opens the full-screen CalendarDashboardPanel
+           overlay. Visual companion to the Calendar Manager chat
+           prelude; shares the same context bundle so the two
+           surfaces never disagree on event/overdue/free-slot counts.
+           URL-persisted via ?dashboard=1 so a reload keeps it open. -->
+      <button
+        onclick={openDashboard}
+        title="open calendar dashboard — visual operating picture"
+        aria-label="open calendar dashboard"
+        class="inline-flex px-2 sm:px-2.5 py-1.5 text-xs sm:text-sm bg-surface0 border border-surface1 text-subtext rounded hover:border-primary hover:text-text items-center gap-1"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="9" rx="1" />
+          <rect x="14" y="3" width="7" height="5" rx="1" />
+          <rect x="14" y="12" width="7" height="9" rx="1" />
+          <rect x="3" y="16" width="7" height="5" rx="1" />
+        </svg>
+        <span class="hidden sm:inline">Dashboard</span>
+      </button>
       <!-- Find Free Time — distinct from Plan my week. Plan
            distributes pending tasks across the week; this picks
            candidate empty slots of a chosen length so the user
@@ -1779,3 +1817,12 @@
   onClose={() => (agentOpen = false)}
   onChanged={() => { void load(); void loadNativeEvents(); }}
 />
+
+{#if dashboardOpen}
+  <!-- Calendar Dashboard overlay — full-screen visual operating
+       picture for the current 14-day window. URL-persisted via
+       ?dashboard=1 so a reload keeps it open. Sits above the
+       calendar grid + sidebar without unmounting them, so closing
+       the dashboard lands the user back where they came from. -->
+  <CalendarDashboardPanel onClose={closeDashboard} />
+{/if}
