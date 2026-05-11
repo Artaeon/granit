@@ -125,6 +125,143 @@
     persistPanelWidth(next);
   }
 
+  // ── Mobile bottom-sheet snap points ────────────────────────────
+  // Three snap heights cover the common modes a mobile user wants:
+  //   - peek (~35%): read history while the page underneath stays
+  //     usefully visible. Quick glance / one-line follow-up.
+  //   - mid (~65%): default, active conversation surface.
+  //   - full (~92%): long thread, browsing history, multi-turn
+  //     scrolling without compose-cramping.
+  // The drag handle bar at the top of the sheet becomes the affordance
+  // — pull up to grow, pull down to shrink, release snaps to the
+  // nearest point. Desktop ignores all of this (the resize handle on
+  // the left edge keeps governing width as before).
+  type SheetSnap = 'peek' | 'mid' | 'full';
+  const SHEET_SNAP_KEY = 'granit.ai.sheet.snap';
+  const SHEET_SNAP_PCT: Record<SheetSnap, number> = { peek: 35, mid: 65, full: 92 };
+  function loadSheetSnap(): SheetSnap {
+    const v = loadStoredString(SHEET_SNAP_KEY, 'mid');
+    return v === 'peek' || v === 'full' ? v : 'mid';
+  }
+  let sheetSnap = $state<SheetSnap>(loadSheetSnap());
+  $effect(() => saveStoredString(SHEET_SNAP_KEY, sheetSnap));
+  // While the user drags, follow the finger 1:1. On release the
+  // pointerup handler picks the nearest snap and zeroes this out.
+  let sheetDragHeight = $state<number | null>(null);
+  let sheetDragging = $state(false);
+
+  function snapHeightPx(snap: SheetSnap): number {
+    if (typeof window === 'undefined') return 480;
+    return Math.round(window.innerHeight * SHEET_SNAP_PCT[snap] / 100);
+  }
+
+  function onSheetHandleDown(e: PointerEvent) {
+    // Desktop has its own left-edge resize handle; ignore the
+    // mobile-only drag-handle on >=md.
+    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = panelEl?.getBoundingClientRect().height ?? snapHeightPx(sheetSnap);
+    sheetDragging = true;
+    sheetDragHeight = startH;
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
+    const minPx = window.innerHeight * 0.18;
+    const maxPx = window.innerHeight * 0.95;
+    function move(ev: PointerEvent) {
+      // Pulling UP grows the sheet; clientY decreases as the finger
+      // moves up, so dy is negative and we subtract.
+      const dy = ev.clientY - startY;
+      let h = startH - dy;
+      if (h < minPx) h = minPx;
+      if (h > maxPx) h = maxPx;
+      sheetDragHeight = h;
+    }
+    function up() {
+      target.releasePointerCapture(e.pointerId);
+      target.removeEventListener('pointermove', move);
+      target.removeEventListener('pointerup', up);
+      target.removeEventListener('pointercancel', up);
+      // Snap to nearest by % distance — keeps the gesture predictable
+      // regardless of how vh the user has after a soft keyboard
+      // shows/hides between drag start and end.
+      const finalH = sheetDragHeight ?? startH;
+      const ratio = (finalH / window.innerHeight) * 100;
+      let best: SheetSnap = 'mid';
+      let bestDist = Infinity;
+      for (const s of ['peek', 'mid', 'full'] as SheetSnap[]) {
+        const d = Math.abs(SHEET_SNAP_PCT[s] - ratio);
+        if (d < bestDist) {
+          bestDist = d;
+          best = s;
+        }
+      }
+      sheetSnap = best;
+      sheetDragHeight = null;
+      sheetDragging = false;
+    }
+    target.addEventListener('pointermove', move);
+    target.addEventListener('pointerup', up);
+    target.addEventListener('pointercancel', up);
+  }
+
+  // ── iOS keyboard-safe compose ──────────────────────────────────
+  // Without this, iOS Safari floats the on-screen keyboard OVER the
+  // bottom-anchored panel, hiding the compose textarea. visualViewport
+  // shrinks when the keyboard opens; the delta against window.innerHeight
+  // is the obscured strip height. We lift the panel's `bottom` by that
+  // amount so the compose stays just above the keyboard. Also snap to
+  // full so the user gets the whole conversation visible while typing.
+  let keyboardOffset = $state(0);
+  let keyboardOpen = $state(false);
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function update() {
+      const obscured = Math.max(0, window.innerHeight - (vv?.height ?? window.innerHeight));
+      keyboardOffset = obscured;
+      // ~120px threshold = the keyboard is up (URL bar / floating UI
+      // can shrink VV by 40–80px in normal scroll without the keyboard
+      // being involved; 120 cleanly separates "keyboard" from "chrome").
+      keyboardOpen = obscured > 120;
+    }
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    update();
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  });
+
+  // Snap to full whenever the keyboard pops up — minimises the
+  // moment-of-friction where the user taps in compose and then can
+  // barely see their own conversation history. Restores to whatever
+  // they had before once the keyboard closes (we don't write back to
+  // sheetSnap during keyboard-open so the restore is implicit).
+  let savedSnapBeforeKeyboard: SheetSnap | null = $state(null);
+  $effect(() => {
+    if (keyboardOpen) {
+      if (savedSnapBeforeKeyboard === null) {
+        savedSnapBeforeKeyboard = sheetSnap;
+        sheetSnap = 'full';
+      }
+    } else if (savedSnapBeforeKeyboard !== null) {
+      sheetSnap = savedSnapBeforeKeyboard;
+      savedSnapBeforeKeyboard = null;
+    }
+  });
+
+  // The actual height we render at — drag value while a drag is in
+  // flight, otherwise the snap target. Empty string lets the desktop
+  // override class (md:h-full md:max-h-none) win unchanged.
+  let mobileSheetHeight = $derived(
+    sheetDragging && sheetDragHeight !== null
+      ? `${Math.round(sheetDragHeight)}px`
+      : `${snapHeightPx(sheetSnap)}px`
+  );
+
   let busy = $state(false);
   let abort: AbortController | null = null;
 
@@ -299,6 +436,96 @@
   // as the active thread. The original is preserved in history so a
   // user can come back to it. Useful when the user wants to ask a
   // different follow-up without losing the path they already took.
+  // ── Replay / regenerate / edit ────────────────────────────────
+  // Three closely-related affordances on individual messages:
+  //
+  //   replayFromUserMessage — the shared kernel. Truncates the
+  //     thread at the chosen user message, sets `input` to the
+  //     content, calls send(). send() then re-pushes the user
+  //     message, opens a fresh assistant slot, and streams. RAG /
+  //     mentions / snapshot all run again as on any first-class
+  //     send.
+  //
+  //   regenAssistantMessage — find the user message that produced
+  //     this assistant reply, call replay with the same content.
+  //     Same prompt, fresh attempt — covers the standard "give me
+  //     a different answer" affordance.
+  //
+  //   startEditUser / submitEditUser — inline-edit a user message
+  //     and resubmit. Truncates everything after, the same way
+  //     ChatGPT / Claude's web UIs do it.
+  function replayFromUserMessage(userIdx: number, content: string) {
+    if (busy) {
+      toast.info('Wait for the current response to finish.');
+      return;
+    }
+    if (userIdx < 0 || userIdx >= messages.length || messages[userIdx].role !== 'user') return;
+    // Truncate everything from the user message onward — send() will
+    // re-push the user message + open the assistant slot.
+    messages = messages.slice(0, userIdx);
+    // Clean per-turn data keyed by indices that no longer exist so
+    // the inline-sources block doesn't dangle pointing at gone turns.
+    perTurnRagHits = Object.fromEntries(
+      Object.entries(perTurnRagHits).filter(([k]) => Number(k) < userIdx)
+    );
+    expandedSources = Object.fromEntries(
+      Object.entries(expandedSources).filter(([k]) => Number(k) < userIdx)
+    );
+    input = content;
+    void send();
+  }
+
+  function regenAssistantMessage(assistantIdx: number) {
+    if (assistantIdx < 0 || assistantIdx >= messages.length) return;
+    if (messages[assistantIdx].role !== 'assistant') return;
+    let userIdx = -1;
+    for (let j = assistantIdx - 1; j >= 0; j--) {
+      if (messages[j].role === 'user') {
+        userIdx = j;
+        break;
+      }
+    }
+    if (userIdx === -1) return;
+    replayFromUserMessage(userIdx, messages[userIdx].content);
+  }
+
+  // Inline-edit state for user messages. Null = nobody being edited.
+  let editingUserIdx = $state<number | null>(null);
+  let editingUserDraft = $state('');
+  function startEditUser(idx: number) {
+    if (busy) {
+      toast.info('Wait for the current response to finish.');
+      return;
+    }
+    if (messages[idx]?.role !== 'user') return;
+    editingUserIdx = idx;
+    editingUserDraft = messages[idx].content;
+  }
+  function cancelEditUser() {
+    editingUserIdx = null;
+    editingUserDraft = '';
+  }
+  function submitEditUser() {
+    if (editingUserIdx === null) return;
+    const idx = editingUserIdx;
+    const content = editingUserDraft.trim();
+    // Cancel-on-empty: editing down to nothing is the same gesture
+    // as cancel — preserves the original message rather than
+    // submitting an empty turn.
+    if (!content) {
+      cancelEditUser();
+      return;
+    }
+    // No-op when the user didn't actually change the text.
+    if (content === messages[idx].content) {
+      cancelEditUser();
+      return;
+    }
+    editingUserIdx = null;
+    editingUserDraft = '';
+    replayFromUserMessage(idx, content);
+  }
+
   function branchFromMessage(idx: number) {
     if (idx < 0 || idx >= messages.length) return;
     if (messages[idx].role !== 'assistant') return;
@@ -1228,11 +1455,13 @@
     role="dialog"
     aria-label="AI assistant"
     style:--ai-panel-w="{panelWidth}px"
+    style:--ai-sheet-h={mobileSheetHeight}
+    style:--ai-sheet-lift="{keyboardOffset}px"
     in:fly={{ duration: 200, easing: cubicOut, ...panelTransitionParams() }}
     out:fly={{ duration: 150, easing: cubicOut, ...panelTransitionParams() }}
     class="ai-overlay-panel fixed z-50 flex flex-col bg-base border-surface1 shadow-2xl
-           inset-x-0 bottom-0 max-h-[85dvh] rounded-t-xl border-t pb-safe
-           md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:top-0 md:h-full md:max-h-none md:rounded-none md:border-l md:border-t-0 md:pb-0 {resizing ? 'ai-overlay-resizing' : ''}"
+           inset-x-0 rounded-t-xl border-t pb-safe
+           md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:top-0 md:h-full md:max-h-none md:rounded-none md:border-l md:border-t-0 md:pb-0 {resizing ? 'ai-overlay-resizing' : ''} {sheetDragging ? 'ai-overlay-snapping' : ''}"
   >
     <!-- Desktop-only drag handle on the LEFT edge of the panel. The
          panel is right-anchored; widening means pulling left so the
@@ -1261,10 +1490,24 @@
     <div role="status" aria-live="polite" aria-atomic="true" class="sr-only">{liveRegion}</div>
 
     <!-- Header. Mobile gets a drag-handle visual hint at the very
-         top; both layouts get title + status pill + close. -->
-    <div class="md:hidden flex justify-center pt-2 pb-1">
-      <span class="block w-10 h-1 rounded-full bg-surface2"></span>
-    </div>
+         top; both layouts get title + status pill + close. The
+         handle is now a real drag affordance: pull up to grow the
+         sheet to mid/full, pull down to shrink back to peek. Tap
+         (no drag) cycles peek→mid→full→peek so users without a
+         drag-precise hand still get all three positions. -->
+    <button
+      type="button"
+      class="md:hidden flex justify-center pt-2 pb-2 w-full touch-none"
+      onpointerdown={onSheetHandleDown}
+      onclick={() => {
+        const order: SheetSnap[] = ['peek', 'mid', 'full'];
+        const idx = order.indexOf(sheetSnap);
+        sheetSnap = order[(idx + 1) % order.length];
+      }}
+      aria-label="Resize chat sheet — drag or tap to cycle"
+    >
+      <span class="block w-10 h-1.5 rounded-full bg-surface2 transition-colors {sheetDragging ? 'bg-primary/60' : ''}"></span>
+    </button>
     <header class="px-4 py-3 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
       <!-- Mode picker — replaces the static '✨ AI assistant'
            heading. Click to open a popover of agent modes, each
@@ -1484,6 +1727,25 @@
                 <span>{m.role === 'user' ? 'you' : 'assistant'}</span>
                 {#if m.role === 'assistant' && m.content && !busy}
                   <span class="ml-auto inline-flex items-center gap-1">
+                    <!-- Regenerate — re-run the same user prompt to
+                         get a different answer. Truncates the thread
+                         at the preceding user message and re-fires
+                         send(), so RAG / mentions / snapshot all
+                         re-resolve on the fresh attempt. -->
+                    <button
+                      type="button"
+                      onclick={() => regenAssistantMessage(i)}
+                      class="tap-target inline-flex items-center justify-center w-7 h-7 rounded text-dim hover:text-primary hover:bg-surface0 active:bg-surface1 leading-none transition-colors"
+                      aria-label="Regenerate this reply"
+                      title="Re-run the prompt to get a different answer"
+                    >
+                      <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                        <path d="M21 3v5h-5"/>
+                        <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                        <path d="M3 21v-5h5"/>
+                      </svg>
+                    </button>
                     <!-- Branch — fork the conversation up to and
                          including this message into a new thread.
                          Original stays in history. -->
@@ -1518,7 +1780,65 @@
                 {/if}
               </div>
               {#if m.role === 'user'}
-                <div class="text-sm text-text whitespace-pre-wrap">{m.content}</div>
+                {#if editingUserIdx === i}
+                  <!-- Inline-edit a user message. Save truncates
+                       everything after this turn, resubmits with the
+                       edited content; cancel restores the original.
+                       Mod-Enter / Enter (without shift) submits;
+                       Esc cancels. Auto-grows up to ~10 lines, then
+                       scrolls inside the textarea. -->
+                  <div class="mt-1">
+                    <textarea
+                      bind:value={editingUserDraft}
+                      class="w-full bg-surface0 border border-primary/40 rounded p-2 text-sm text-text resize-none focus:outline-none focus:border-primary"
+                      rows={Math.min(10, Math.max(2, (editingUserDraft.match(/\n/g)?.length ?? 0) + 1))}
+                      onkeydown={(e) => {
+                        if (e.key === 'Escape') { e.preventDefault(); cancelEditUser(); return; }
+                        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+                          e.preventDefault();
+                          submitEditUser();
+                        }
+                      }}
+                      autofocus
+                    ></textarea>
+                    <div class="mt-1.5 flex items-center gap-2 text-[11px]">
+                      <button
+                        type="button"
+                        onclick={submitEditUser}
+                        class="tap-target px-2.5 py-1 rounded bg-primary text-on-primary font-medium hover:bg-primary/90"
+                      >Save & resubmit</button>
+                      <button
+                        type="button"
+                        onclick={cancelEditUser}
+                        class="tap-target px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:bg-surface1"
+                      >Cancel</button>
+                      <span class="text-dim">Enter to submit · Esc to cancel</span>
+                    </div>
+                  </div>
+                {:else}
+                  <div class="group flex items-start gap-1.5">
+                    <div class="flex-1 text-sm text-text whitespace-pre-wrap">{m.content}</div>
+                    {#if !busy}
+                      <!-- Edit pencil — visible on hover (desktop)
+                           and always visible on touch (no hover) so
+                           mobile users can still discover the
+                           affordance. Resubmits the edited message,
+                           truncating everything after this turn. -->
+                      <button
+                        type="button"
+                        onclick={() => startEditUser(i)}
+                        class="tap-target opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100 inline-flex items-center justify-center w-7 h-7 rounded text-dim hover:text-text hover:bg-surface0 active:bg-surface1 transition-opacity"
+                        aria-label="Edit and resubmit"
+                        title="Edit this message and resubmit"
+                      >
+                        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M12 20h9"/>
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+                        </svg>
+                      </button>
+                    {/if}
+                  </div>
+                {/if}
               {:else}
                 <div class="prose prose-sm max-w-none">
                   <MarkdownRenderer body={m.content || '_…_'} />
@@ -1794,6 +2114,30 @@
       transition: width 150ms ease-out;
     }
     :global(.ai-overlay-panel.ai-overlay-resizing) {
+      transition: none;
+      user-select: none;
+    }
+  }
+
+  /* Mobile bottom-sheet height + keyboard-safe lift. --ai-sheet-h is
+     written from the Svelte side as the snap-target height (or live
+     drag height while a pull is in flight); --ai-sheet-lift is the
+     visualViewport obscured strip when the iOS soft keyboard is up.
+     Bottom-positioning means lifting via `bottom` rather than padding
+     so the compose textarea genuinely sits above the keyboard, not
+     just visually padded with content overflow underneath. */
+  @media (max-width: 767px) {
+    :global(.ai-overlay-panel) {
+      height: var(--ai-sheet-h, 65dvh);
+      max-height: 100dvh;
+      bottom: var(--ai-sheet-lift, 0px);
+      /* Tween height + bottom for the snap-into-place feeling; the
+         snapping class below kills the transition during an active
+         drag so the sheet follows the finger 1:1. */
+      transition: height 220ms cubic-bezier(0.22, 1, 0.36, 1),
+                  bottom 180ms ease-out;
+    }
+    :global(.ai-overlay-panel.ai-overlay-snapping) {
       transition: none;
       user-select: none;
     }
