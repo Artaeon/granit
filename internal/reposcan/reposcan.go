@@ -116,6 +116,12 @@ var (
 //   - not contain ".." segments before resolution
 //   - point to an existing directory (not a symlink to one)
 //
+// Leading "~" / "~/" is expanded to the user's home directory so
+// the UI placeholder ("~/Projects/granit") works as a real path.
+// The traversal check runs on the ORIGINAL input (pre-expansion)
+// because filepath.Join inside expandTilde would Clean() the path
+// and silently absorb a ".." segment.
+//
 // A repo without `.git` is still scanned (IsGit=false, no commits/
 // branch); the AI can still use the README + manifest as grounding.
 // Missing files are silent — the consumer reads "what's present"
@@ -124,6 +130,7 @@ func ScanRepo(path string, allowedRoots []string) (*Context, error) {
 	if strings.Contains(path, "..") {
 		return nil, ErrPathTraversal
 	}
+	path = expandTilde(path)
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
@@ -180,6 +187,32 @@ func isInsideAny(abs string, roots []string) bool {
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
+}
+
+// expandTilde handles the "~" and "~/foo" shorthand. Shells do this
+// transparently; HTTP clients don't, so a user pasting
+// "~/Projects/granit" into the UI would otherwise hit a 404. We
+// only expand the LEADING tilde — "~user" (other-user expansion)
+// and embedded tildes are left alone (no surprises, matches POSIX
+// shell behaviour with HOME unset). When HOME isn't available the
+// input is returned unchanged; the downstream allowedRoots check
+// will then surface a clear "outside allowed roots" error.
+func expandTilde(p string) string {
+	if p == "" || p[0] != '~' {
+		return p
+	}
+	if p != "~" && !strings.HasPrefix(p, "~/") {
+		// "~user/…" — not supported; leave verbatim.
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return p
+	}
+	if p == "~" {
+		return home
+	}
+	return filepath.Join(home, p[2:])
 }
 
 // readFirstMatch tries every candidate name in order under dir.

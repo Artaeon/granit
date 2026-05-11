@@ -167,7 +167,7 @@
 		abort?.abort();
 	}
 
-	async function applyAction(idx: number) {
+	async function applyAction(idx: number, opts: { deferReload?: boolean; silent?: boolean } = {}) {
 		const p = proposals[idx];
 		if (!p || p.applied || p.applying) return;
 		// Snapshot the pre-state so undo has something to revert to.
@@ -191,8 +191,14 @@
 					{ taskId: p.taskId, summary: summariseAction(p, preTask), revert }
 				];
 			}
-			toast.success(summariseAction(p, preTask));
-			await onChanged?.();
+			// silent suppresses the per-item toast — applyAll uses
+			// this to surface ONE summary toast instead of N noisy
+			// success toasts when batch-applying.
+			if (!opts.silent) toast.success(summariseAction(p, preTask));
+			// deferReload lets applyAll batch a single onChanged call
+			// after the whole loop completes; per-item reloads would
+			// re-fetch + re-broadcast N times for an N-action batch.
+			if (!opts.deferReload) await onChanged?.();
 		} catch (err) {
 			proposals = proposals.map((x, i) => (i === idx ? { ...x, applying: false } : x));
 			toast.error('Apply failed: ' + errorMessage(err));
@@ -245,12 +251,17 @@
 	async function applyAll() {
 		if (applyingAll) return;
 		applyingAll = true;
+		const before = applied.length;
 		try {
 			for (let i = 0; i < proposals.length; i++) {
 				const p = proposals[i];
 				if (p.applied || p.rejected) continue;
-				await applyAction(i);
+				await applyAction(i, { deferReload: true, silent: true });
 			}
+			// One reload + one summary toast for the whole batch.
+			const n = applied.length - before;
+			if (n > 0) toast.success(`Applied ${n} change${n === 1 ? '' : 's'}`);
+			await onChanged?.();
 		} finally {
 			applyingAll = false;
 		}

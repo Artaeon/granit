@@ -254,6 +254,74 @@ func TestScanRepo_MissingFilesAreSilent(t *testing.T) {
 	}
 }
 
+func TestScanRepo_ExpandsLeadingTilde(t *testing.T) {
+	// Bedrock the test against a real per-test HOME so we can plant
+	// the repo under HOME and pass "~/<rel>" without depending on
+	// the test runner's actual home directory.
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	repo := filepath.Join(tmpHome, "myproj")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# X\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// allowedRoots includes the temp HOME so the expanded path
+	// passes the safety check.
+	ctx, err := ScanRepo("~/myproj", []string{tmpHome})
+	if err != nil {
+		t.Fatalf("tilde scan failed: %v", err)
+	}
+	if ctx.Name != "myproj" {
+		t.Errorf("Name = %q, want myproj", ctx.Name)
+	}
+	if ctx.ReadmeName != "README.md" {
+		t.Errorf("ReadmeName = %q, want README.md", ctx.ReadmeName)
+	}
+}
+
+func TestScanRepo_BareTildeExpandsToHome(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	// HOME itself should be a valid scan target — useful when the
+	// vault root IS the home dir.
+	ctx, err := ScanRepo("~", []string{tmpHome})
+	if err != nil {
+		t.Fatalf("bare tilde failed: %v", err)
+	}
+	if ctx.Path != tmpHome {
+		t.Errorf("expanded path = %q, want HOME %q", ctx.Path, tmpHome)
+	}
+}
+
+func TestScanRepo_TildeUserNotExpanded(t *testing.T) {
+	// "~root/etc" is left verbatim — we don't try other-user
+	// expansion. Filepath.Abs prepends the cwd, which won't be in
+	// allowedRoots → 403 (or NotExist if the resulting path is
+	// genuinely missing, which is also fine — both block the read).
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	_, err := ScanRepo("~root/etc", []string{tmpHome})
+	if err == nil {
+		t.Fatal("expected error for ~root/etc, got nil")
+	}
+	if !errors.Is(err, ErrOutsideAllowed) && !errors.Is(err, ErrPathTraversal) && !os.IsNotExist(err) {
+		t.Fatalf("expected outside/traversal/not-found, got %v", err)
+	}
+}
+
+func TestScanRepo_TildeWithTraversalStillRejected(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	// "~/../etc" expands to "<tmpHome>/../etc" — the traversal check
+	// runs AFTER expansion so the ".." segment still trips it.
+	_, err := ScanRepo("~/../etc", []string{tmpHome})
+	if !errors.Is(err, ErrPathTraversal) {
+		t.Fatalf("expected path traversal, got %v", err)
+	}
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
