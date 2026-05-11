@@ -127,7 +127,7 @@
   //    dispatched actions (Continue / Section / Selection) close
   //    the menu and let the host's existing flow handle their UX.
 
-  type Action = 'title' | 'tldr' | 'tighten' | 'study' | 'concepts' | 'gaps' | 'translate-de' | 'translate-en' | 'cite' | 'outline';
+  type Action = 'title' | 'tldr' | 'tighten' | 'study' | 'concepts' | 'gaps' | 'translate-de' | 'translate-en' | 'cite' | 'outline' | 'memory';
   let busy = $state<Action | null>(null);
   let titleSuggestions = $state<string[]>([]);
   let titleAbort: AbortController | null = null;
@@ -153,6 +153,23 @@
   type Concept = { term: string; def: string };
   let concepts = $state<Concept[]>([]);
   let conceptsAbort: AbortController | null = null;
+
+  // Memory extraction — scans the note for facts about the USER
+  // (their preferences, relationships, beliefs, life context) that
+  // would be useful for the chat overlay's long-term memory store.
+  // Distinct from concepts (which extracts ideas FROM the note);
+  // memory looks at sentences the user wrote ABOUT THEMSELVES and
+  // proposes them as cross-thread context. Each proposal is a
+  // separate +Add chip so the user picks what's kept.
+  type MemoryProposal = {
+    content: string;
+    tags?: string[];
+    /** committed flips true after a successful api.addAIMemory so
+     *  the +chip turns into a ✓chip without re-fetching. */
+    committed?: boolean;
+  };
+  let memoryProposals = $state<MemoryProposal[]>([]);
+  let memoryAbort: AbortController | null = null;
 
   function noteBodyForAI(): string {
     // Cap to ~12k chars so the prompt stays bounded for long notes.
@@ -421,6 +438,118 @@
     concepts = [];
     open = false;
     toast.success('Glossary added at the end of the note.');
+  }
+
+  // ─── Extract long-term memory from note ─────────────────────────
+  // Scans the note for sentences the user wrote ABOUT THEMSELVES —
+  // preferences, relationships, life context, beliefs that would help
+  // the assistant on future, unrelated conversations. Each proposal
+  // is rendered as a +Add chip; the user picks which to commit to
+  // the long-term memory store. We deliberately reject "fact-like"
+  // sentences that aren't about the user (entity facts belong in
+  // the note body, not memory).
+  async function extractMemoryFacts() {
+    if (busy) return;
+    if (body.trim().length < 80) {
+      toast.info('Note is too short to extract memory.');
+      return;
+    }
+    memoryAbort?.abort();
+    memoryAbort = new AbortController();
+    busy = 'memory';
+    memoryProposals = [];
+    let buf = '';
+    try {
+      await api.chatStream(
+        [
+          {
+            role: 'system',
+            content:
+              `You read the user's note and extract facts ABOUT THE USER — preferences, relationships, life context, beliefs, recurring concerns — that would help an AI assistant on FUTURE, UNRELATED conversations.
+
+Strict shape: return ONLY a JSON array, no prose, no fences:
+[{"content": "<single sentence stating the fact>", "tags": ["<1-3 lowercase tags>"]}, ...]
+
+Rules:
+- 0-6 entries. Quality over quantity. Skip if nothing about the user is in here.
+- "content" is one sentence, under 200 chars, written in third-person about the user ("User is vegetarian", NOT "I am vegetarian").
+- Skip entity facts ("The Eiffel Tower is in Paris") — those belong in the note, not memory.
+- Skip transient state ("User is tired today") — only durable facts.
+- Skip anything already obvious from the note's title or frontmatter.
+- Tags: 1-3 single-word lowercase labels for grouping (family, work, health, faith, diet, learning, ...). Omit when nothing fits.
+
+Return [] if nothing in the note rises to the bar.`
+          },
+          { role: 'user', content: noteBodyForAI() }
+        ],
+        undefined,
+        {
+          onChunk: (c) => {
+            buf += c;
+          },
+          onDone: () => {
+            let cleaned = buf.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned
+                .replace(/^```json\s*/i, '')
+                .replace(/^```\s*/, '')
+                .replace(/```\s*$/, '')
+                .trim();
+            }
+            try {
+              const arr = JSON.parse(cleaned) as MemoryProposal[];
+              if (Array.isArray(arr)) {
+                memoryProposals = arr
+                  .filter(
+                    (x) =>
+                      typeof x?.content === 'string' &&
+                      x.content.trim().length > 0 &&
+                      x.content.length < 240
+                  )
+                  .slice(0, 8)
+                  .map((x) => ({
+                    content: x.content.trim(),
+                    tags: Array.isArray(x.tags) ? x.tags.filter((t) => typeof t === 'string') : []
+                  }));
+                if (memoryProposals.length === 0) {
+                  toast.info('No memory-worthy facts in this note.');
+                }
+              }
+            } catch {
+              toast.error('Model didn\'t return parseable JSON.');
+            }
+          },
+          onError: (err) => toast.error(err.message)
+        },
+        memoryAbort.signal
+      );
+    } finally {
+      busy = null;
+      memoryAbort = null;
+    }
+  }
+
+  async function commitMemoryProposal(idx: number) {
+    const p = memoryProposals[idx];
+    if (!p || p.committed) return;
+    try {
+      await api.addAIMemory(p.content, p.tags && p.tags.length > 0 ? p.tags : undefined);
+      memoryProposals = memoryProposals.map((x, i) =>
+        i === idx ? { ...x, committed: true } : x
+      );
+      toast.success('Saved to memory');
+    } catch (err) {
+      toast.error('Memory add failed: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+  function commitAllMemoryProposals() {
+    for (let i = 0; i < memoryProposals.length; i++) {
+      if (!memoryProposals[i].committed) void commitMemoryProposal(i);
+    }
+  }
+  function dismissMemoryProposals() {
+    memoryAbort?.abort();
+    memoryProposals = [];
   }
 
   async function tightenNote() {
@@ -918,6 +1047,20 @@
         <span class="flex-1 text-left">{busy === 'gaps' ? 'Reading…' : 'Find gaps'}</span>
         <span class="text-[10px] text-dim">what's missing</span>
       </button>
+      <!-- Memory extraction. Distinct from Concepts (ideas IN the
+           note) and Self-test (comprehension probes) — this one
+           scans for facts ABOUT THE USER that the chat overlay
+           should remember across future conversations. The +chips
+           below let the user pick which facts to commit. -->
+      <button
+        role="menuitem"
+        onclick={extractMemoryFacts}
+        disabled={busy !== null}
+        class="w-full flex items-baseline gap-2 px-3 py-2 hover:bg-surface0 text-text disabled:opacity-50"
+      >
+        <span class="flex-1 text-left">{busy === 'memory' ? 'Reading…' : 'Extract to memory'}</span>
+        <span class="text-[10px] text-dim">facts about you</span>
+      </button>
 
       <div class="border-t border-surface1 my-1"></div>
 
@@ -994,6 +1137,43 @@
               {/if}
             {/each}
           </ul>
+        </div>
+      {/if}
+
+      {#if memoryProposals.length > 0}
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-primary/5 max-h-80 overflow-y-auto">
+          <div class="flex items-baseline gap-2 mb-2">
+            <span class="text-[10px] uppercase tracking-wider text-primary">long-term memory</span>
+            <span class="flex-1"></span>
+            <button type="button" onclick={commitAllMemoryProposals} class="text-[11px] text-secondary hover:underline">save all</button>
+            <button type="button" onclick={extractMemoryFacts} disabled={busy !== null} class="text-[11px] text-secondary hover:underline">regen</button>
+            <button type="button" onclick={dismissMemoryProposals} class="text-[11px] text-dim hover:text-text">dismiss</button>
+          </div>
+          <ul class="space-y-1.5">
+            {#each memoryProposals as p, i (i)}
+              <li class="flex items-start gap-2 text-xs">
+                <button
+                  type="button"
+                  onclick={() => commitMemoryProposal(i)}
+                  disabled={p.committed}
+                  class="tap-target flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded text-[11px] font-medium transition-colors {p.committed
+                    ? 'bg-success/20 text-success cursor-default'
+                    : 'bg-surface0 border border-surface1 text-text hover:border-primary hover:bg-surface1'}"
+                  aria-label={p.committed ? 'Already saved' : 'Save this fact to memory'}
+                  title={p.committed ? 'Already saved' : 'Save to long-term memory'}
+                >{p.committed ? '✓' : '+'}</button>
+                <div class="flex-1 min-w-0 leading-snug">
+                  <div class="text-text">{p.content}</div>
+                  {#if p.tags && p.tags.length > 0}
+                    <div class="text-[10px] text-dim mt-0.5">{p.tags.join(' · ')}</div>
+                  {/if}
+                </div>
+              </li>
+            {/each}
+          </ul>
+          <p class="text-[10px] text-dim mt-2 leading-snug">
+            Saved facts inject into every future chat thread so the assistant remembers them across conversations.
+          </p>
         </div>
       {/if}
 
