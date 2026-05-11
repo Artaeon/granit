@@ -39,8 +39,15 @@
 	let draggingName = $state<string | null>(null);
 	let dragOver = $state<KanbanStatus | null>(null);
 
+	// Track the source column so the same-column hover doesn't show
+	// a misleading drop-target highlight (the drop handler is a
+	// no-op there — the highlight would imply something happens).
+	let dragSource = $state<KanbanStatus | null>(null);
+
 	function onDragStart(e: DragEvent, name: string) {
 		draggingName = name;
+		const src = projects.find((p) => p.name === name);
+		dragSource = ((src?.status ?? 'active') as KanbanStatus);
 		if (e.dataTransfer) {
 			e.dataTransfer.effectAllowed = 'move';
 			// Some browsers require setData for drag to start at all.
@@ -50,12 +57,19 @@
 	function onDragEnd() {
 		draggingName = null;
 		dragOver = null;
+		dragSource = null;
 	}
 	function onColumnDragOver(e: DragEvent, status: KanbanStatus) {
 		if (!draggingName) return;
 		e.preventDefault(); // allow drop
-		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-		dragOver = status;
+		if (e.dataTransfer) {
+			// Show 'none' for same-column to make the no-op explicit
+			// (cursor reflects "you can't drop here usefully").
+			e.dataTransfer.dropEffect = dragSource === status ? 'none' : 'move';
+		}
+		// Only flip the highlight for a foreign column — same-column
+		// hovering should look untouched (a re-order would be misleading).
+		dragOver = dragSource === status ? null : status;
 	}
 	function onColumnDragLeave(status: KanbanStatus) {
 		if (dragOver === status) dragOver = null;
@@ -65,6 +79,7 @@
 		const name = draggingName ?? e.dataTransfer?.getData('text/plain') ?? '';
 		draggingName = null;
 		dragOver = null;
+		dragSource = null;
 		if (!name) return;
 		const src = projects.find((p) => p.name === name);
 		const current = (src?.status ?? 'active') as KanbanStatus;
