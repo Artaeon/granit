@@ -14,6 +14,7 @@
   import {
     AGENT_MODES,
     GENERIC_MODES,
+    CONTEXTUAL_MODES,
     PERSONAS,
     findMode,
     loadModeId,
@@ -636,38 +637,65 @@
   //   - 'calendar'   : calendar-manager (on /calendar)
   // Each contextual switch is NOT persisted; leaving the context
   // reverts to loadModeId() so the user's normal preference
-  // doesn't get clobbered. Manual mode pick clears autoMode so
-  // the next exit doesn't yank the user back.
+  // doesn't get clobbered.
   let autoMode = $state<'' | 'project' | 'goal' | 'calendar'>('');
+
+  // Tracks which page-context we already auto-switched FOR.
+  // Without this, the effect loops when the user manually picks
+  // a different mode while on a project page: selectMode clears
+  // autoMode, the effect re-runs, sees `modeId !== 'project-manager'`
+  // and yanks them right back into PM. With this guard, we only
+  // auto-switch ONCE per page-context entry — after the user has
+  // chosen (or accepted) a mode for this page, no more nagging.
+  // Cleared on context exit so re-entering still triggers the
+  // initial auto-switch.
+  let lastAutoSwitchedFor = $state<string>('');
 
   $effect(() => {
     // Precedence: most-specific entity wins. Project > goal >
-    // calendar — a "project page open with calendar in the URL
-    // somehow" stays in PM. In practice only one is ever true.
+    // calendar — only one is ever truly active in practice.
     const inProject = !!currentProjectName;
     const inGoal = !inProject && !!currentGoalId;
     const inCalendar = !inProject && !inGoal && onCalendarPage;
-    if (inProject) {
-      if (modeId !== 'project-manager') {
-        autoMode = 'project';
-        modeId = 'project-manager';
+    const key = inProject
+      ? `project:${currentProjectName}`
+      : inGoal
+      ? `goal:${currentGoalId}`
+      : inCalendar
+      ? 'calendar'
+      : '';
+
+    if (key) {
+      if (lastAutoSwitchedFor !== key) {
+        // First entry into this specific page-context. Switch
+        // mode + remember we did so for this key.
+        const targetMode = inProject
+          ? 'project-manager'
+          : inGoal
+          ? 'goal-manager'
+          : 'calendar-manager';
+        if (modeId !== targetMode) {
+          autoMode = inProject ? 'project' : inGoal ? 'goal' : 'calendar';
+          modeId = targetMode;
+        }
+        lastAutoSwitchedFor = key;
       }
-    } else if (inGoal) {
-      if (modeId !== 'goal-manager') {
-        autoMode = 'goal';
-        modeId = 'goal-manager';
+      // Otherwise: user has already engaged this page-context.
+      // Their mode choice (PM, or whatever they picked manually)
+      // sticks until they leave.
+    } else {
+      // Out of every context. Revert if we're still parked in an
+      // auto-set mode; otherwise leave the user's mode alone.
+      if (
+        autoMode &&
+        (modeId === 'project-manager' ||
+          modeId === 'goal-manager' ||
+          modeId === 'calendar-manager')
+      ) {
+        autoMode = '';
+        modeId = loadModeId();
       }
-    } else if (inCalendar) {
-      if (modeId !== 'calendar-manager') {
-        autoMode = 'calendar';
-        modeId = 'calendar-manager';
-      }
-    } else if (
-      autoMode &&
-      (modeId === 'project-manager' || modeId === 'goal-manager' || modeId === 'calendar-manager')
-    ) {
-      autoMode = '';
-      modeId = loadModeId();
+      lastAutoSwitchedFor = '';
     }
   });
   // Legacy alias for the picker's auto-badge — true when ANY
@@ -2092,6 +2120,34 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                 {/if}
               </button>
             {/each}
+            {#if CONTEXTUAL_MODES.length > 0}
+              <!-- Contextual modes — page-aware. They auto-switch
+                   when the user is on a matching URL (project /
+                   goal / calendar) and revert when the user leaves.
+                   Visually distinguished with a primary-tinted
+                   glyph background so the user reads them as
+                   "tied to a page", not generic postures. -->
+              <div class="border-t border-surface1 mt-1"></div>
+              <div class="px-3 pt-2 pb-1 text-[9px] uppercase tracking-widest text-primary">Contextual</div>
+              {#each CONTEXTUAL_MODES as m (m.id)}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={m.id === modeId}
+                  onclick={() => { selectMode(m.id); modePickerOpen = false; }}
+                  class="w-full flex items-start gap-2 px-3 py-2 hover:bg-surface0 text-left {m.id === modeId ? 'bg-primary/10' : ''}"
+                >
+                  <span class="text-base leading-tight flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/15 text-primary">{m.glyph}</span>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium text-text">{m.label}</div>
+                    <div class="text-[11px] text-dim leading-snug">{m.tagline}</div>
+                  </div>
+                  {#if m.id === modeId}
+                    <span class="text-primary text-xs flex-shrink-0">✓</span>
+                  {/if}
+                </button>
+              {/each}
+            {/if}
             {#if PERSONAS.length > 0}
               <!-- Personas group — sharper, named voices. Visually
                    distinguished by a divider, a section header, an

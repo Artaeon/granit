@@ -30,15 +30,20 @@ export interface AgentMode {
    *  Writer / General often don't (the model's prose generation
    *  should follow user voice, not vault-quotes). */
   ragDefault: boolean;
-  /** 'mode' = generic posture (General/Research/Writer/...). 'persona' =
-   *  named character with a sharper, more specific voice (Lewis the
-   *  writing critic, Socrates the tutor, an examen companion at
-   *  bedtime). Personas group separately in the picker and get a
-   *  distinguishing visual treatment, but go through the same
-   *  findMode/persistModeId/audit-log pipeline as modes — they're
-   *  just system prompts under the hood. Defaults to 'mode' when
-   *  unset to keep the interface backward-compatible. */
-  kind?: 'mode' | 'persona';
+  /** 'mode'       = generic posture (General/Research/Writer/...).
+   *  'contextual' = page-aware mode that only makes sense with a
+   *                 matching entity in scope (Project / Goal /
+   *                 Calendar manager). The picker groups these
+   *                 separately so the user reads "this only works
+   *                 with a project open" at a glance, and the
+   *                 auto-switch effect in AIOverlay drives them.
+   *  'persona'    = named character with a sharper, more specific
+   *                 voice (Lewis, Socrates, the examen companion).
+   *  All three go through the same findMode / persistModeId /
+   *  audit-log pipeline — they differ only in picker grouping +
+   *  the contextual variants' page-aware auto-switching.
+   *  Defaults to 'mode' when unset for backward compatibility. */
+  kind?: 'mode' | 'contextual' | 'persona';
 }
 
 export const AGENT_MODES: AgentMode[] = [
@@ -105,6 +110,7 @@ export const AGENT_MODES: AgentMode[] = [
     label: 'Project Manager',
     glyph: '📋',
     tagline: 'Per-project PM — drafts docs, brainstorms, knows the goals + tasks.',
+    kind: 'contextual',
     system:
       'You are a senior project manager working on ONE specific project the user has selected. The prelude carries the project facts — name, description, status, linked goals, open + recently-done tasks, linked notes. Treat that prelude as ground truth; never re-ask the user for facts already in scope. ' +
       'Mode: enterprise-grade and direct. Surface trade-offs, name decisions clearly, push back on vague intent ("ship the thing" → "by when, to whom, and what would prove success"). When the user asks for documents — charter, brief, status update, kickoff agenda, RFC — write them in clean markdown the user can paste straight into a note. When asked to brainstorm, propose 3-5 distinct directions with their main risk each, not a generic list. When the user says "what should I do next" pull from the project\'s open tasks + goals and recommend ONE thing with reasoning, not a checklist. ' +
@@ -121,6 +127,7 @@ export const AGENT_MODES: AgentMode[] = [
     label: 'Goal Manager',
     glyph: '🎯',
     tagline: 'Per-goal coach — drafts reviews, reframes, names the next leverage move.',
+    kind: 'contextual',
     system:
       'You are an enterprise-grade goal coach working on ONE specific goal the user has selected. The prelude carries the goal facts — title, status, target date, review cadence, venture, category, the goal description, its milestones, plus the open + recently-done tasks tagged against this goal. Treat that prelude as ground truth; never re-ask the user for facts already in scope. ' +
       'Mode: direct and clarity-seeking. A goal is a contract the user made with themselves — your job is to keep them honest about it. Push back on vague phrasing ("get healthier" → "by what measure, by when, observable how"). When a goal\'s target date has slipped or the milestones don\'t match the description, name the drift plainly and ask which side they want to keep. When the user asks for a review note (weekly / monthly / quarterly) write it in clean markdown they can paste straight into the goal\'s review log: progress against milestones, what moved, what stalled, one honest sentence about the gap, one named next move. ' +
@@ -138,6 +145,7 @@ export const AGENT_MODES: AgentMode[] = [
     label: 'Calendar Manager',
     glyph: '📅',
     tagline: 'Schedule strategist — reads your week, finds gaps, names trade-offs.',
+    kind: 'contextual',
     system:
       'You are a calendar / scheduling strategist working on the user\'s upcoming window. The prelude carries the date range, upcoming events (with times + recurrence flags), overdue tasks, tasks due today, and tasks scheduled inside the window. Treat that prelude as ground truth; never re-ask the user for facts already in scope. ' +
       'Mode: pragmatic and time-aware. When the user asks "what does my week look like" name the actual shape — heaviest day, lightest day, any overdue pressure, where the deep-work blocks are or aren\'t. When they ask for a free slot, propose a SPECIFIC start time on a specific day with reasoning ("Wednesday 10:00–12:00 — your only morning without a meeting and overdue tasks aren\'t fighting for it"), not a range of options. When asked to move things, name the trade-off explicitly ("moving Friday\'s sync clears your morning but pushes the design review into next week"). ' +
@@ -237,6 +245,15 @@ export function findMode(id: string): AgentMode {
 /** Generic modes — postures with broad applicability. */
 export const GENERIC_MODES: AgentMode[] = AGENT_MODES.filter(
   (m) => (m.kind ?? 'mode') === 'mode'
+);
+
+/** Contextual modes — page-aware modes that auto-activate from
+ *  URL context (Project Manager on /projects/<name>, Goal
+ *  Manager on /goals?focus=<id>, Calendar Manager on /calendar).
+ *  Grouped separately so the user reads them as a distinct class
+ *  in the picker. */
+export const CONTEXTUAL_MODES: AgentMode[] = AGENT_MODES.filter(
+  (m) => m.kind === 'contextual'
 );
 
 /** Named personas — sharper voices with specific character. */
