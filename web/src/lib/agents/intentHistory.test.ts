@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addIntentToHistory, normaliseHistory, MAX_HISTORY } from './agentHistory';
+import { addIntentToHistory, normaliseHistory, MAX_HISTORY } from './intentHistory';
 
 describe('addIntentToHistory', () => {
 	it('prepends a fresh intent', () => {

@@ -30,7 +30,7 @@
 		type TaskAction,
 		type TaskRevertPatch
 	} from './agent';
-	import { addIntentToHistory, normaliseHistory } from './agentHistory';
+	import { addIntentToHistory, normaliseHistory } from '$lib/agents/intentHistory';
 	import { loadStored, saveStored } from '$lib/util/storage';
 
 	interface Props {

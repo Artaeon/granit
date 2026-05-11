@@ -30,7 +30,7 @@
 		type ProjectProposalState,
 		type ProjectRevertPatch
 	} from './projectAgent';
-	import { addIntentToHistory, normaliseHistory } from '$lib/tasks/agentHistory';
+	import { addIntentToHistory, normaliseHistory } from '$lib/agents/intentHistory';
 	import { loadStored, saveStored } from '$lib/util/storage';
 
 	interface Props {

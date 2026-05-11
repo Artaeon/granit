@@ -28,7 +28,7 @@
 		type GoalProposalState,
 		type GoalRevertPatch
 	} from './goalAgent';
-	import { addIntentToHistory, normaliseHistory } from '$lib/tasks/agentHistory';
+	import { addIntentToHistory, normaliseHistory } from '$lib/agents/intentHistory';
 	import { loadStored, saveStored } from '$lib/util/storage';
 
 	interface Props {
