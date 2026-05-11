@@ -31,6 +31,7 @@
     loadCalendarContext,
     renderCalendarContext
   } from '$lib/ai/calendarManagerContext';
+  import { deriveDraftTitle } from '$lib/ai/draftTitle';
   import {
     getThread,
     upsertThread,
@@ -1401,7 +1402,7 @@
       return;
     }
     savingMessageIdx = idx;
-    const title = deriveSaveTitle(cleaned);
+    const title = deriveDraftTitle(cleaned, todayISO());
     const folder = currentProjectName
       ? `Projects/${slugify(currentProjectName) || currentProjectName}`
       : 'Drafts';
@@ -1427,25 +1428,8 @@
       savingMessageIdx = null;
     }
   }
-  // deriveSaveTitle — pick the best line to use as the filename.
-  // First H1 wins; first non-empty line falls back; "AI draft +
-  // today's date" is the floor so a one-line body still files
-  // under a discoverable name. Pure so vitest can pin it later.
-  function deriveSaveTitle(body: string): string {
-    const lines = body.split('\n');
-    for (const ln of lines) {
-      const m = ln.match(/^#\s+(.+?)\s*$/);
-      if (m && m[1].trim()) return m[1].trim();
-    }
-    for (const ln of lines) {
-      const t = ln.trim();
-      if (t && !t.startsWith('>') && !t.startsWith('```')) {
-        return t.length > 60 ? t.slice(0, 60).trim() : t;
-      }
-    }
-    const d = new Date();
-    return `AI draft ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
+  // deriveDraftTitle lives in $lib/ai/draftTitle (10 tests pin
+  // the precedence rules) — imported above.
 
   // ── Long-term AI memory ─────────────────────────────────────────
   // The user's persistent facts ("wife is Anna", "vegetarian", etc.)
