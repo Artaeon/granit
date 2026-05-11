@@ -823,7 +823,7 @@
               class="mt-1 w-4 h-4 accent-primary"
             />
             <div class="flex-1 min-w-0">
-              <div class="text-sm text-text">📅 Calendar events</div>
+              <div class="text-sm text-text font-medium">Calendar events</div>
               <div class="text-[11px] text-dim">Reminders fire at the configured "remind me N min before" on each event.</div>
               <label class="mt-2 flex items-center gap-2 text-[11px] text-dim">
                 Default reminder offset
@@ -853,7 +853,7 @@
               class="mt-1 w-4 h-4 accent-primary"
             />
             <div class="flex-1 min-w-0">
-              <div class="text-sm text-text">✓ Tasks due today</div>
+              <div class="text-sm text-text font-medium">Tasks due today</div>
               <div class="text-[11px] text-dim">One morning summary listing tasks whose due date is today.</div>
               <label class="mt-2 flex items-center gap-2 text-[11px] text-dim">
                 Reminder time
@@ -879,7 +879,7 @@
               class="mt-1 w-4 h-4 accent-primary"
             />
             <div class="flex-1 min-w-0">
-              <div class="text-sm text-text">⏰ Deadlines</div>
+              <div class="text-sm text-text font-medium">Deadlines</div>
               <div class="text-[11px] text-dim">Fire at each chosen offset before a deadline (one push per offset).</div>
               <div class="mt-2 flex items-center gap-1 flex-wrap">
                 {#each [14, 7, 3, 1, 0] as off}

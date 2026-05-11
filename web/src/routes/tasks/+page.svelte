@@ -1593,7 +1593,7 @@
       {#if aiFocusBusy || aiFocusResponse || aiFocusError || aiFocusPlan.length > 0}
         <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-surface1">
           <div class="flex items-baseline gap-2 mb-2 flex-wrap">
-            <span class="text-xs uppercase tracking-wider text-secondary font-semibold">✨ Plan my day</span>
+            <span class="text-xs uppercase tracking-wider text-secondary font-semibold">Plan my day</span>
             {#if aiFocusPlan.length > 0 && !aiFocusBusy}
               {@const totalEst = aiFocusPlan.reduce((s, p) => s + Math.max(15, p.estimateMinutes || 30), 0)}
               <span class="text-[11px] text-dim font-mono tabular-nums">{aiFocusPlan.length} task{aiFocusPlan.length === 1 ? '' : 's'} · {totalEst}m</span>
@@ -1697,9 +1697,11 @@
           onclick={() => void runAIFocus()}
           disabled={aiFocusBusy || tasks.filter((t) => !t.done).length === 0}
           title="AI builds a sequenced day-plan budgeted to your focus hours"
-          class="hidden sm:inline-flex px-3 py-2 text-sm bg-surface1 border border-surface2 text-primary rounded hover:border-primary disabled:opacity-50 flex-shrink-0 items-center gap-1"
+          class="hidden sm:inline-flex px-3 py-2 text-sm bg-surface1 border border-surface2 text-primary rounded hover:border-primary disabled:opacity-50 flex-shrink-0 items-center gap-1.5"
         >
-          <span>✨</span>
+          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/>
+          </svg>
           <span>{aiFocusBusy ? 'planning…' : 'Plan day'}</span>
         </button>
       </div>

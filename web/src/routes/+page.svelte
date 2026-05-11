@@ -609,8 +609,12 @@
                   <!-- Reorder buttons grow to a 44x44 hit-area on touch
                        devices since drag-to-reorder isn't reachable from
                        a phone — these chevrons are the actual touch UI. -->
-                  <button onclick={() => moveUp(w.id)} disabled={i === 0} aria-label="move up" class="w-11 h-11 sm:w-7 sm:h-7 text-dim hover:text-text disabled:opacity-30 rounded">↑</button>
-                  <button onclick={() => moveDown(w.id)} disabled={i === config.widgets.length - 1} aria-label="move down" class="w-11 h-11 sm:w-7 sm:h-7 text-dim hover:text-text disabled:opacity-30 rounded">↓</button>
+                  <button onclick={() => moveUp(w.id)} disabled={i === 0} aria-label="move up" class="w-11 h-11 sm:w-7 sm:h-7 inline-flex items-center justify-center text-dim hover:text-text disabled:opacity-30 rounded">
+                    <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                  </button>
+                  <button onclick={() => moveDown(w.id)} disabled={i === config.widgets.length - 1} aria-label="move down" class="w-11 h-11 sm:w-7 sm:h-7 inline-flex items-center justify-center text-dim hover:text-text disabled:opacity-30 rounded">
+                    <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
                 </li>
               {/if}
             {/each}

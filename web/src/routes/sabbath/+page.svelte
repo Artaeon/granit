@@ -91,7 +91,11 @@
            verse, then time remaining, then a prayer prompt. No
            dashboard chrome; the page itself is the rest. -->
       <header class="text-center mb-10">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-surface0 text-success text-3xl mb-4">🕊️</div>
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-surface0 text-success mb-4">
+          <svg viewBox="0 0 24 24" class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5L12 2zM12 14v8M9 22h6"/>
+          </svg>
+        </div>
         <h1 class="text-3xl font-light text-text">Sabbath</h1>
         <p class="text-sm text-dim mt-2">a day made for you, not the other way around</p>
       </header>

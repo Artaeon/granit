@@ -469,7 +469,10 @@
       </div>
     {:else if data && data.habits.length === 0}
       <div class="bg-surface0 border border-surface1 rounded-lg p-5 sm:p-6 leading-relaxed">
-        <div class="text-4xl mb-3 opacity-60">◈</div>
+        <svg viewBox="0 0 24 24" class="w-10 h-10 mb-3 text-dim" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 11l3 3L22 4"/>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        </svg>
         <h2 class="text-base font-medium text-text">Track habits in your daily notes</h2>
         <p class="text-sm text-dim mt-2 max-w-prose">
           Add a <code class="text-xs">## Habits</code> section to any daily note with checkbox lines.
