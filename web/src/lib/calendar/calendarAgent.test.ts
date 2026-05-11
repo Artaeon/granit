@@ -55,6 +55,38 @@ describe('buildCalendarAgentPrompt', () => {
 		const { user } = buildCalendarAgentPrompt([mk('E', 't')], 'x', today, ['Granite', 'Site']);
 		expect(user).toContain('Known projects: Granite, Site');
 	});
+
+	it('sorts the event digest chronologically — date asc, then start_time asc, untimed last per day', () => {
+		const { user } = buildCalendarAgentPrompt(
+			[
+				mk('LATE', 'Tomorrow late', { date: '2026-05-13', start_time: '15:00', end_time: '16:00' }),
+				mk('EARLY', 'Today early', { date: '2026-05-12', start_time: '08:00', end_time: '09:00' }),
+				mk('ALLDAY', 'Today all-day', { date: '2026-05-12' }),
+				mk('AFTER', 'Today after early', { date: '2026-05-12', start_time: '14:00', end_time: '15:00' })
+			],
+			'x',
+			today
+		);
+		const earlyAt = user.indexOf('id:EARLY');
+		const afterAt = user.indexOf('id:AFTER');
+		const alldayAt = user.indexOf('id:ALLDAY');
+		const lateAt = user.indexOf('id:LATE');
+		// Day 12 timed entries come first in time order, all-day last
+		// for that day, then day 13.
+		expect(earlyAt).toBeLessThan(afterAt);
+		expect(afterAt).toBeLessThan(alldayAt);
+		expect(alldayAt).toBeLessThan(lateAt);
+	});
+
+	it('does not mutate the caller\'s events array', () => {
+		const input = [
+			mk('B', 'b', { date: '2026-05-15' }),
+			mk('A', 'a', { date: '2026-05-12' })
+		];
+		buildCalendarAgentPrompt(input, 'x', today);
+		// Caller still sees the original order.
+		expect(input.map((e) => e.id)).toEqual(['B', 'A']);
+	});
 });
 
 describe('parseCalendarAgentResponse', () => {

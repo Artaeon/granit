@@ -78,7 +78,17 @@ export function buildCalendarAgentPrompt(
 	todayISO: string,
 	knownProjects: string[] = []
 ): { system: string; user: string } {
-	const lines = events
+	// Sort chronologically so the model reads events in flow order
+	// (yesterday → today → tomorrow → …). Untimed events on the
+	// same day sort to the end after timed ones. Pure local sort
+	// — caller's array isn't mutated.
+	const sorted = [...events].sort((a, b) => {
+		if (a.date !== b.date) return a.date.localeCompare(b.date);
+		const sa = a.start_time ?? '99:99';
+		const sb = b.start_time ?? '99:99';
+		return sa.localeCompare(sb);
+	});
+	const lines = sorted
 		.map((e) => {
 			const bits: string[] = [`id:${e.id} — "${e.title}"`];
 			bits.push(e.date);

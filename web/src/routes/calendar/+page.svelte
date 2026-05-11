@@ -468,6 +468,10 @@
       case 'm': view = 'month'; break;
       case 'y': view = 'year'; break;
       case 'a': view = 'agenda'; break;
+      case 'A': agentOpen = true; break; // Shift+A opens the agent
+                                         // (lowercase 'a' is already
+                                         // taken by agenda view here;
+                                         // other pages use 'a').
       case '?': showShortcutHelp = !showShortcutHelp; break;
       default: return;
     }
@@ -1384,17 +1388,21 @@
       <!-- Calendar Agent — conversational mutation engine. Same
            shape as Tasks/Projects/Goals agents; ICS events are
            excluded server-side so the agent only edits things it
-           can actually patch. -->
+           can actually patch. Visible on every viewport so mobile
+           users can reach it too. On phones the label drops away
+           and the sparkle icon stands alone next to the existing
+           toolbar buttons. -->
       <button
         onclick={() => (agentOpen = true)}
-        title="Calendar agent — describe what you want done"
-        class="hidden sm:inline-flex px-2.5 py-1.5 text-xs sm:text-sm bg-surface0 border border-surface1 text-subtext rounded hover:border-primary hover:text-text items-center gap-1"
+        title="Calendar agent — describe what you want done (Shift+A)"
+        aria-label="open calendar agent"
+        class="inline-flex px-2 sm:px-2.5 py-1.5 text-xs sm:text-sm bg-surface0 border border-surface1 text-subtext rounded hover:border-primary hover:text-text items-center gap-1"
       >
         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
           <path d="M5 21h14" />
         </svg>
-        <span>Agent</span>
+        <span class="hidden sm:inline">Agent</span>
       </button>
       <!-- Find Free Time — distinct from Plan my week. Plan
            distributes pending tasks across the week; this picks
@@ -1716,6 +1724,7 @@
         <dt class="font-mono text-primary">m</dt><dd class="text-subtext">month view</dd>
         <dt class="font-mono text-primary">y</dt><dd class="text-subtext">year view</dd>
         <dt class="font-mono text-primary">a</dt><dd class="text-subtext">agenda view</dd>
+        <dt class="font-mono text-primary">Shift+A</dt><dd class="text-subtext">open AI agent (scoped to visible window + project filter)</dd>
         <dt class="font-mono text-primary">?</dt><dd class="text-subtext">toggle this help</dd>
       </dl>
       <p class="text-[11px] text-dim italic mt-3">On mobile: swipe left/right to navigate.</p>
@@ -1753,11 +1762,18 @@
 />
 
 <!-- Calendar Agent — scoped to the currently-visible fetch
-     window so the agent sees roughly the same horizon as the
-     user, not their entire historical events file. -->
+     window AND the active project filter so the agent sees
+     roughly what the user is looking at. Without the project
+     filter intersection, asking "rename the client meetings"
+     while filtered to a venture would surprise the user by
+     proposing renames across all events. -->
 <CalendarAgent
   open={agentOpen}
-  events={nativeEvents.filter((e) => e.date >= fmtDateISO(fetchFrom) && e.date <= fmtDateISO(fetchTo))}
+  events={nativeEvents.filter((e) =>
+    e.date >= fmtDateISO(fetchFrom) &&
+    e.date <= fmtDateISO(fetchTo) &&
+    (!projectFilter || e.project_id === projectFilter)
+  )}
   todayISO={fmtDateISO(new Date())}
   knownProjects={allProjects.map((p) => p.name)}
   onClose={() => (agentOpen = false)}
