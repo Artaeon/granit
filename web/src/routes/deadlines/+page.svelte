@@ -1008,8 +1008,8 @@
             class="px-3 py-1.5 rounded-full border text-xs font-medium tabular-nums transition-colors flex items-center gap-1.5
               {active ? 'border-transparent' : 'border-surface1 hover:border-surface2'}"
             style={active
-              ? `background: var(--color-${p.tone}); color: var(--color-mantle);`
-              : `color: var(--color-${p.tone}); background: color-mix(in srgb, var(--color-${p.tone}) 8%, transparent);`}
+              ? `background: var(--color-${p.tone}); color: #ffffff;`
+              : `color: var(--color-${p.tone}); background: var(--color-surface0);`}
           >
             <span>{p.label}</span>
             <span class="text-[10px] opacity-80">{p.count}</span>
@@ -1075,7 +1075,7 @@
                             {#if d.status && d.status !== 'active'}
                               <span
                                 class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded whitespace-nowrap"
-                                style="background: color-mix(in srgb, var(--color-{st}) 18%, transparent); color: var(--color-{st});"
+                                style="background: var(--color-{st}); color: #ffffff;"
                               >{d.status}</span>
                             {/if}
                           </div>
@@ -1284,7 +1284,7 @@
                   type="button"
                   onclick={() => openEdit(d)}
                   class="text-left text-[11px] truncate px-1 py-0.5 rounded hover:opacity-80 {isMet ? 'line-through opacity-60' : ''}"
-                  style="background: color-mix(in srgb, var(--color-{tone}) 18%, transparent); color: var(--color-{tone});"
+                  style="background: var(--color-{tone}); color: #ffffff;"
                   title={d.title}
                 >{d.title}</button>
               {/each}
