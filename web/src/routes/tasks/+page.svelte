@@ -831,6 +831,14 @@
         e.preventDefault();
         return;
       }
+      // 'a' opens the Task Agent. Distinct from per-task shortcuts
+      // below — no cursor task required, the agent operates on the
+      // filtered list (or the bulk-selection if one is active).
+      if (k === 'a') {
+        agentOpen = true;
+        e.preventDefault();
+        return;
+      }
       const t = cursorIdx >= 0 ? filtered[cursorIdx] : null;
       if (!t) return;
       if (k === 'x') {
@@ -2231,6 +2239,8 @@
         <span class="text-subtext">cycle priority (P0→P3)</span>
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">esc</kbd>
         <span class="text-subtext">clear selection</span>
+        <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">a</kbd>
+        <span class="text-subtext">open AI agent (operates on filtered list or bulk-selection)</span>
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">?</kbd>
         <span class="text-subtext">toggle this overlay</span>
       </div>
