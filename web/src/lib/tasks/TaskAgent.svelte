@@ -245,6 +245,14 @@
 	}
 
 	function rejectAction(idx: number) {
+		// Guard against rejecting an already-applied row — could only
+		// happen via a race the UI doesn't expose (the buttons hide
+		// once applied), but defensive against future markup edits.
+		// An applied row marked rejected would render as "skipped"
+		// despite having mutated the backing task, which would lie
+		// about the state of the world.
+		const p = proposals[idx];
+		if (!p || p.applied) return;
 		proposals = proposals.map((x, i) => (i === idx ? { ...x, rejected: true } : x));
 	}
 
