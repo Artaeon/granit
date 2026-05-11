@@ -2066,7 +2066,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
     aria-label="close AI overlay"
     onclick={close}
     transition:fade={{ duration: 150 }}
-    class="md:hidden fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+    class="md:hidden fixed inset-0 z-40 bg-black/60"
   ></button>
 
   <div
@@ -2126,7 +2126,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
       }}
       aria-label="Resize chat sheet — drag or tap to cycle"
     >
-      <span class="block w-10 h-1.5 rounded-full bg-surface2 transition-colors {sheetDragging ? 'bg-primary/60' : ''}"></span>
+      <span class="block w-10 h-1.5 rounded-full bg-surface2 transition-colors {sheetDragging ? 'bg-primary' : ''}"></span>
     </button>
     <header class="px-4 py-3 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
       <!-- Mode picker — replaces the static '✨ AI assistant'
@@ -2145,7 +2145,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
             ? `Mode: ${mode.label} (auto — you're on a project page). Click to override.`
             : `Mode: ${mode.label} — ${mode.tagline}`}
         >
-          <span class="text-[10px] font-semibold tracking-tight leading-none inline-flex items-center justify-center w-6 h-6 rounded-md {mode.kind === 'persona' ? 'bg-secondary/15 text-secondary' : mode.kind === 'contextual' ? 'bg-primary/15 text-primary' : 'bg-surface1 text-subtext'}">{mode.glyph}</span>
+          <span class="text-[10px] font-semibold tracking-tight leading-none inline-flex items-center justify-center w-6 h-6 rounded-md {mode.kind === 'persona' ? 'bg-secondary text-on-primary' : mode.kind === 'contextual' ? 'bg-primary text-on-primary' : 'bg-surface1 text-subtext'}">{mode.glyph}</span>
           <span class="text-sm font-semibold truncate max-w-[8rem] sm:max-w-none">{mode.label}</span>
           {#if autoPMActive}
             <!-- Tiny "auto · <source>" badge. The source word makes
@@ -2153,9 +2153,9 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                  reads "auto · project" and knows where the mode
                  came from (and that picking anything else takes
                  control back). Clears the moment they pick. -->
-            <span class="text-[9px] uppercase tracking-wider px-1 rounded bg-primary/15 text-primary leading-tight whitespace-nowrap">auto · {autoMode}</span>
+            <span class="text-[9px] uppercase tracking-wider px-1 rounded bg-primary text-on-primary leading-tight whitespace-nowrap">auto · {autoMode}</span>
           {/if}
-          <svg viewBox="0 0 24 24" class="w-3 h-3 opacity-60 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" class="w-3 h-3 text-dim flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="6 9 12 15 18 9" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
@@ -2181,7 +2181,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                 role="option"
                 aria-selected={m.id === modeId}
                 onclick={() => { selectMode(m.id); modePickerOpen = false; }}
-                class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface0 text-left transition-colors {m.id === modeId ? 'bg-primary/10' : ''}"
+                class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface0 text-left transition-colors {m.id === modeId ? 'bg-surface1' : ''}"
               >
                 <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-surface1 text-subtext">{m.glyph}</span>
                 <div class="flex-1 min-w-0">
@@ -2226,12 +2226,12 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                   role="option"
                   aria-selected={m.id === modeId}
                   onclick={() => { selectMode(m.id); modePickerOpen = false; }}
-                  class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface0 text-left transition-colors {m.id === modeId ? 'bg-primary/10' : ''} {inScope ? '' : 'opacity-60'}"
+                  class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface0 text-left transition-colors {m.id === modeId ? 'bg-surface1' : ''} {inScope ? '' : 'text-dim'}"
                   title={inScope
                     ? m.tagline
                     : `Pick-able from any page, but the prelude won't carry context until you ${scopeHint}.`}
                 >
-                  <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary/15 text-primary">{m.glyph}</span>
+                  <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary text-on-primary">{m.glyph}</span>
                   <div class="flex-1 min-w-0">
                     <div class="text-[13px] font-medium text-text leading-tight inline-flex items-center gap-1.5">
                       {m.label}
@@ -2263,9 +2263,9 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                   role="option"
                   aria-selected={m.id === modeId}
                   onclick={() => { selectMode(m.id); modePickerOpen = false; }}
-                  class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface0 text-left transition-colors {m.id === modeId ? 'bg-primary/10' : ''}"
+                  class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface0 text-left transition-colors {m.id === modeId ? 'bg-surface1' : ''}"
                 >
-                  <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-secondary/15 text-secondary">{m.glyph}</span>
+                  <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-secondary text-on-primary">{m.glyph}</span>
                   <div class="flex-1 min-w-0">
                     <div class="text-[13px] font-medium text-text leading-tight">{m.label}</div>
                     <div class="text-[11px] text-dim leading-snug italic mt-0.5">{m.tagline}</div>
@@ -2312,7 +2312,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
         aria-pressed={historyOpen}
         aria-label="Chat history"
         title="Chat history (saved threads + pinned messages)"
-        class="tap-target inline-flex items-center justify-center px-1.5 py-1 rounded text-dim hover:text-text hover:bg-surface0 active:bg-surface1 transition-colors {historyOpen ? 'text-primary bg-primary/10' : ''}"
+        class="tap-target inline-flex items-center justify-center px-1.5 py-1 rounded text-dim hover:text-text hover:bg-surface0 active:bg-surface1 transition-colors {historyOpen ? 'text-primary bg-surface1' : ''}"
       >
         <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="9"/>
@@ -2338,7 +2338,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
     </header>
 
     {#if statusInfo?.sabbath || $sabbath}
-      <div class="mx-4 mt-3 px-3 py-2 text-[11px] bg-warning/10 border border-warning/30 rounded text-warning inline-flex items-center gap-2">
+      <div class="mx-4 mt-3 px-3 py-2 text-[11px] bg-warning text-on-primary rounded inline-flex items-center gap-2">
         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 3v3"/>
           <path d="M9 9c0-2 1.5-3 3-3s3 1 3 3v2H9z"/>
@@ -2365,62 +2365,62 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
             <button
               onclick={launchPageAgent}
               title="Open the agent for this page"
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-primary text-mantle border border-primary rounded font-medium hover:bg-primary/90 inline-flex items-center gap-1.5 shadow-sm"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-primary text-on-primary rounded font-medium hover:opacity-90 inline-flex items-center gap-1.5"
             >
-              <span class="text-[10px] font-bold tracking-tight inline-flex items-center justify-center w-4 h-4 rounded-sm bg-mantle/25 leading-none">{pageAgent.glyph}</span>
+              <span class="text-[10px] font-bold tracking-tight inline-flex items-center justify-center w-4 h-4 rounded-sm bg-mantle text-primary leading-none">{pageAgent.glyph}</span>
               <span>Run agent</span>
             </button>
           {/if}
           {#if currentProjectName}
             <button
               onclick={() => { input = `Draft a one-page project brief for ${currentProjectName} — Why · Scope · Out of scope · Definition of done · Stakeholders. Markdown, paste-ready.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
             >Draft brief</button>
             <button
               onclick={() => { input = `Write a crisp status update for ${currentProjectName} — what shipped, what's open, what's blocked, what's next. 1 short paragraph, no filler.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
             >Status update</button>
             <button
               onclick={() => { input = `Brainstorm 3-5 distinct directions for ${currentProjectName}'s next milestone. For each: the move, the main risk, what would prove or kill it.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
             >Brainstorm</button>
             <button
               onclick={() => { input = `Looking at the open tasks + linked goals on ${currentProjectName}, what's the ONE thing I should do next, and why? Pick one, defend it briefly.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
             >What's next?</button>
           {:else if onCalendarPage}
             <button
               onclick={() => { input = `Describe what my week looks like — heaviest day, lightest day, where the deep-work blocks are or aren't, what's the dominant theme.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
             >Week shape</button>
             <button
               onclick={() => { input = `Find me a 2-hour focus block in the next 5 days. Propose ONE specific day + start time + reasoning. Don't list options.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
             >Find focus block</button>
             <button
               onclick={() => { input = `What's overdue and worth doing vs. worth declaring dead? Walk me through it.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
             >Overdue triage</button>
             <button
               onclick={() => { input = `If I had to clear one meeting from this week to protect a deep-work block, which one and why? Name the trade-off explicitly.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
             >Clear one meeting</button>
           {:else if currentGoalId}
             <button
               onclick={() => { input = `Write a goal review note for this goal — progress so far, what's working, what's stuck, what to change. 1 short paragraph each section.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
             >Review note</button>
             <button
               onclick={() => { input = `Reframe this goal sharper — what does success look like specifically, by when, and how will I know I've hit it?`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
             >Reframe</button>
             <button
               onclick={() => { input = `Looking at the open tasks attached to this goal, which ONE moves it forward most this week? Pick one, defend it briefly.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
             >Highest-leverage next step</button>
             <button
               onclick={() => { input = `Brainstorm 3-5 new milestones for this goal — concrete checkpoints I'd accept as proof of progress. For each: outcome statement + how I'd measure it.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
             >New milestones</button>
           {/if}
         </div>
@@ -2587,7 +2587,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                   <div class="mt-1">
                     <textarea
                       bind:value={editingUserDraft}
-                      class="w-full bg-surface0 border border-primary/40 rounded p-2 text-sm text-text resize-none focus:outline-none focus:border-primary"
+                      class="w-full bg-surface0 border border-primary rounded p-2 text-sm text-text resize-none focus:outline-none focus:border-primary"
                       rows={Math.min(10, Math.max(2, (editingUserDraft.match(/\n/g)?.length ?? 0) + 1))}
                       onkeydown={(e) => {
                         if (e.key === 'Escape') { e.preventDefault(); cancelEditUser(); return; }
@@ -2602,7 +2602,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                       <button
                         type="button"
                         onclick={submitEditUser}
-                        class="tap-target px-2.5 py-1 rounded bg-primary text-on-primary font-medium hover:bg-primary/90"
+                        class="tap-target px-2.5 py-1 rounded bg-primary text-on-primary font-medium hover:opacity-90"
                       >Save & resubmit</button>
                       <button
                         type="button"
@@ -2657,9 +2657,9 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                         type="button"
                         onclick={() => commitAction(i, a)}
                         disabled={committed}
-                        class="tap-target inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] border transition-colors {committed
-                          ? 'bg-success/10 border-success/40 text-success cursor-default'
-                          : 'bg-surface0 border-surface1 text-text hover:border-primary hover:bg-surface1'}"
+                        class="tap-target inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] transition-colors {committed
+                          ? 'bg-success text-on-primary cursor-default'
+                          : 'bg-surface0 text-text hover:bg-surface1'}"
                         title={committed ? 'Already committed' : 'Click to commit this action'}
                       >
                         {#if committed}✓{:else}+{/if}
@@ -2685,7 +2685,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                       <button
                         type="button"
                         onclick={() => sendFollowup(fu)}
-                        class="tap-target inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-surface0 border border-surface1 text-subtext hover:text-text hover:border-secondary hover:bg-surface1 transition-colors"
+                        class="tap-target inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-surface0 text-subtext hover:text-text hover:bg-surface1 transition-colors"
                         title="Send as next message"
                       >
                         <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -2776,7 +2776,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
            assistant saw on the last turn so the user can verify
            grounding. Click any to open the actual note. Compact
            by default; line-truncates on mobile. -->
-      <div class="border-t border-surface1 px-4 py-1.5 flex items-center gap-1.5 flex-wrap text-[11px] flex-shrink-0 bg-mantle/40">
+      <div class="border-t border-surface1 px-4 py-1.5 flex items-center gap-1.5 flex-wrap text-[11px] flex-shrink-0">
         <span class="text-dim">retrieved:</span>
         {#each lastRagHits as h (h.path)}
           <a
@@ -2869,8 +2869,8 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
       <div class="border-t border-surface1 px-4 py-1.5 flex flex-wrap gap-1 text-[11px] flex-shrink-0">
         <span class="text-dim self-center">refs:</span>
         {#each mentionedRefs as r, i (r.kind + ':' + r.id + ':' + i)}
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary/10 text-secondary border border-secondary/30">
-            <span class="text-[9px] uppercase tracking-wider opacity-70">{r.kind}</span>
+          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary text-on-primary">
+            <span class="text-[9px] uppercase tracking-wider">{r.kind}</span>
             <span class="truncate max-w-[10rem]" title={r.title}>{r.title}</span>
             <button
               type="button"
@@ -2948,7 +2948,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
       <button
         type="submit"
         disabled={busy || !input.trim() || $sabbath}
-        class="tap-target px-3 py-2 text-sm bg-primary text-on-primary rounded font-medium disabled:opacity-40 hover:bg-primary/90 active:bg-primary/80 transition-colors"
+        class="tap-target px-3 py-2 text-sm bg-primary text-on-primary rounded font-medium disabled:opacity-40 hover:opacity-90 active:opacity-80 transition-colors"
       >Send</button>
     </form>
   </div>

@@ -98,9 +98,9 @@
        the chat body but below the header (z-50 on the resize handle)
        so the user can still see what thread they came from. -->
   <div
-    class="ai-history-panel border-surface1 bg-mantle/95 backdrop-blur-sm flex flex-col
+    class="ai-history-panel border-surface1 bg-mantle flex flex-col
            absolute inset-0 z-30 border-t
-           md:static md:bg-mantle/40 md:backdrop-blur-none md:border-b md:border-t-0 md:max-h-[40dvh]"
+           md:static md:bg-mantle md:border-b md:border-t-0 md:max-h-[40dvh]"
   >
     <div class="flex items-center gap-1 px-3 pt-3 pb-1 text-[11px] flex-shrink-0">
       <button
