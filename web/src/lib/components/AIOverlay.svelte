@@ -2266,19 +2266,19 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
         <span class="text-[10px] text-dim uppercase tracking-wide self-center mr-1 flex-shrink-0">PM:</span>
         <button
           onclick={() => { input = `Draft a one-page project brief for ${currentProjectName} — Why · Scope · Out of scope · Definition of done · Stakeholders. Markdown, paste-ready.`; }}
-          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
         >Draft brief</button>
         <button
           onclick={() => { input = `Write a crisp status update for ${currentProjectName} — what shipped, what's open, what's blocked, what's next. 1 short paragraph, no filler.`; }}
-          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
         >Status update</button>
         <button
           onclick={() => { input = `Brainstorm 3-5 distinct directions for ${currentProjectName}'s next milestone. For each: the move, the main risk, what would prove or kill it.`; }}
-          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
         >Brainstorm</button>
         <button
           onclick={() => { input = `Looking at the open tasks + linked goals on ${currentProjectName}, what's the ONE thing I should do next, and why? Pick one, defend it briefly.`; }}
-          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
         >What's next?</button>
         <span class="w-full sm:hidden"></span>
       {:else if onCalendarPage}
@@ -2289,19 +2289,19 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
         <span class="text-[10px] text-dim uppercase tracking-wide self-center mr-1 flex-shrink-0">Cal:</span>
         <button
           onclick={() => { input = `Describe what my week looks like — heaviest day, lightest day, where the deep-work blocks are or aren't, what's the dominant theme.`; }}
-          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
         >Week shape</button>
         <button
           onclick={() => { input = `Find me a 2-hour focus block in the next 5 days. Propose ONE specific day + start time + reasoning. Don't list options.`; }}
-          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
         >Find focus block</button>
         <button
           onclick={() => { input = `What's overdue and worth doing vs. worth declaring dead? Walk me through it.`; }}
-          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
         >Overdue triage</button>
         <button
           onclick={() => { input = `If I had to clear one meeting from this week to protect a deep-work block, which one and why? Name the trade-off explicitly.`; }}
-          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
         >Clear one meeting</button>
         <span class="w-full sm:hidden"></span>
       {:else if currentGoalId}
@@ -2313,41 +2313,41 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
         <span class="text-[10px] text-dim uppercase tracking-wide self-center mr-1 flex-shrink-0">Goal:</span>
         <button
           onclick={() => { input = `Write a goal review note for this goal — progress so far, what's working, what's stuck, what to change. 1 short paragraph each section.`; }}
-          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
         >Review note</button>
         <button
           onclick={() => { input = `Reframe this goal sharper — what does success look like specifically, by when, and how will I know I've hit it?`; }}
-          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
         >Reframe</button>
         <button
           onclick={() => { input = `Looking at the open tasks attached to this goal, which ONE moves it forward most this week? Pick one, defend it briefly.`; }}
-          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
         >Highest-leverage next step</button>
         <button
           onclick={() => { input = `Brainstorm 3-5 new milestones for this goal — concrete checkpoints I'd accept as proof of progress. For each: outcome statement + how I'd measure it.`; }}
-          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
         >New milestones</button>
         <span class="w-full sm:hidden"></span>
       {/if}
       <button
         onclick={runBriefing}
         disabled={busy || $sabbath}
-        class="px-2.5 py-1 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary disabled:opacity-50"
+        class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary disabled:opacity-50 inline-flex items-center"
       >Briefing</button>
       <button
         onclick={runSynopsis}
         disabled={busy || $sabbath}
-        class="px-2.5 py-1 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary disabled:opacity-50"
+        class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary disabled:opacity-50 inline-flex items-center"
       >Weekly synopsis</button>
       <button
         onclick={runTriage}
         disabled={busy || $sabbath}
-        class="px-2.5 py-1 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary disabled:opacity-50"
+        class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary disabled:opacity-50 inline-flex items-center"
       >Triage</button>
       <button
         onclick={runDeadlines}
         disabled={busy || $sabbath}
-        class="px-2.5 py-1 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary disabled:opacity-50"
+        class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary disabled:opacity-50 inline-flex items-center"
       >Deadlines</button>
       <span class="flex-1"></span>
       {#if messages.length > 0 || quickResult}
