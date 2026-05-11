@@ -269,6 +269,12 @@ func (s *Server) Handler() http.Handler {
 		r.Delete("/api/v1/calendars/{source}/events/{uid}", s.handleDeleteICSEvent)
 
 		r.Get("/api/v1/projects", s.handleListProjects)
+		// Read-only scanner: given a local git-repo path (under the
+		// user's home or vault), return README + manifest + recent
+		// commits as structured context. Frontend feeds this to the
+		// starter-pack AI prompt so the docs ground in the repo's
+		// actual contents instead of a generic template.
+		r.Post("/api/v1/reposcan", s.handleScanRepo)
 		r.Post("/api/v1/projects", s.handleCreateProject)
 		r.Get("/api/v1/projects/{name}", s.handleGetProject)
 		r.Patch("/api/v1/projects/{name}", s.handlePatchProject)

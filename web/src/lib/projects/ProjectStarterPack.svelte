@@ -20,8 +20,10 @@
 		parseStarterPackResponse,
 		defaultStarterPath,
 		type StarterDoc,
-		type StarterPackProjectInput
+		type StarterPackProjectInput,
+		type StarterPackRepoContext
 	} from './starterPack';
+	import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
 	interface Props {
 		project: StarterPackProjectInput;
@@ -37,6 +39,61 @@
 	let parseError = $state(false);
 	let savingAll = $state(false);
 
+	// Optional repo scan. The user pastes a local path; we hit the
+	// /reposcan endpoint, surface what was found, and pass it as
+	// grounding context to the AI on the next Generate. Persisted
+	// per-project in localStorage so the user doesn't re-type the
+	// path on every visit.
+	const REPO_PATH_KEY = `granit.starterpack.repo.${project.name}`;
+	let repoPath = $state(loadStoredString(REPO_PATH_KEY, ''));
+	let repoBusy = $state(false);
+	let repoError = $state('');
+	let repoContext = $state<StarterPackRepoContext | null>(null);
+	$effect(() => saveStoredString(REPO_PATH_KEY, repoPath));
+
+	async function scanRepo() {
+		const p = repoPath.trim();
+		if (!p) {
+			repoError = 'enter a path';
+			return;
+		}
+		repoBusy = true;
+		repoError = '';
+		repoContext = null;
+		try {
+			const r = await api.scanRepo(p);
+			repoContext = {
+				name: r.name,
+				branch: r.branch,
+				readmeName: r.readmeName,
+				readmeContent: r.readmeContent,
+				manifest: r.manifest,
+				manifestContent: r.manifestContent,
+				fileTree: r.fileTree,
+				recentCommits: r.recentCommits
+			};
+			toast.success(
+				`Scanned ${r.name}${r.isGit ? '' : ' (no .git)'} · ` +
+					[
+						r.readmeName ? r.readmeName : null,
+						r.manifest ? r.manifest : null,
+						r.recentCommits && r.recentCommits.length > 0
+							? `${r.recentCommits.length} commits`
+							: null
+					]
+						.filter(Boolean)
+						.join(' · ')
+			);
+		} catch (err) {
+			repoError = errorMessage(err);
+		} finally {
+			repoBusy = false;
+		}
+	}
+	function clearRepoContext() {
+		repoContext = null;
+	}
+
 	async function generate() {
 		if (busy) return;
 		open = true;
@@ -46,7 +103,7 @@
 		busy = true;
 		abort?.abort();
 		abort = new AbortController();
-		const { system, user } = buildStarterPackPrompt(project);
+		const { system, user } = buildStarterPackPrompt(project, repoContext ?? undefined);
 		let buf = '';
 		try {
 			await api.chatStream(
@@ -127,20 +184,63 @@
 	}
 </script>
 
-<div class="my-2">
-	<button
-		type="button"
-		onclick={generate}
-		disabled={busy}
-		class="text-xs px-3 py-1.5 rounded bg-surface0 border border-surface1 text-text hover:border-primary disabled:opacity-50 inline-flex items-center gap-1.5"
-		title="Generate a starter pack of project documents with AI"
-	>
-		<svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/>
-			<path d="M5 21h14"/>
-		</svg>
-		{busy ? 'Generating…' : 'Starter pack'}
-	</button>
+<div class="my-2 space-y-2">
+	<!-- Optional repo scan. When the project lives in a local git
+		 repo, the user can paste the path and pull README + manifest
+		 + recent commits as grounding context for the AI. The next
+		 Generate call passes this content to the prompt; without it,
+		 the starter pack falls back to the project's description /
+		 task list as before. -->
+	<div class="flex items-stretch gap-1.5">
+		<input
+			type="text"
+			bind:value={repoPath}
+			placeholder="Optional: local git repo path (e.g. ~/Projects/granit)"
+			class="flex-1 text-xs px-2 py-1.5 rounded bg-surface0 border border-surface1 text-text placeholder:text-dim focus:outline-none focus:border-primary"
+			autocomplete="off"
+			spellcheck="false"
+		/>
+		<button
+			type="button"
+			onclick={scanRepo}
+			disabled={repoBusy || !repoPath.trim()}
+			class="text-xs px-2.5 py-1.5 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary disabled:opacity-50"
+			title="Read README + manifest + recent commits from this local repo for grounding"
+		>{repoBusy ? 'Scanning…' : 'Scan repo'}</button>
+	</div>
+	{#if repoError}
+		<p class="text-[11px] text-error">{repoError}</p>
+	{/if}
+	{#if repoContext}
+		<div class="text-[11px] text-dim bg-surface0 border border-surface1 rounded px-2 py-1.5 flex items-baseline gap-2">
+			<span class="text-success">✓</span>
+			<span class="flex-1 truncate" title={repoContext.name}>
+				Scanned <strong class="text-text">{repoContext.name}</strong>
+				{#if repoContext.branch} · <span class="font-mono">{repoContext.branch}</span>{/if}
+				{#if repoContext.readmeName} · {repoContext.readmeName}{/if}
+				{#if repoContext.manifest} · {repoContext.manifest}{/if}
+				{#if repoContext.recentCommits && repoContext.recentCommits.length > 0} · {repoContext.recentCommits.length} commits{/if}
+			</span>
+			<button type="button" onclick={clearRepoContext} class="text-dim hover:text-text" title="Drop this scan — next Generate runs without repo context">clear</button>
+		</div>
+	{/if}
+	<div>
+		<button
+			type="button"
+			onclick={generate}
+			disabled={busy}
+			class="text-xs px-3 py-1.5 rounded bg-surface0 border border-surface1 text-text hover:border-primary disabled:opacity-50 inline-flex items-center gap-1.5"
+			title={repoContext
+				? 'Generate documents grounded in the scanned repo'
+				: 'Generate a starter pack of project documents with AI'}
+		>
+			<svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/>
+				<path d="M5 21h14"/>
+			</svg>
+			{busy ? 'Generating…' : repoContext ? 'Starter pack (with repo)' : 'Starter pack'}
+		</button>
+	</div>
 </div>
 
 {#if open}

@@ -1311,6 +1311,26 @@ export const api = {
   // Projects
   listProjects: () => req<{ projects: Project[]; total: number }>('/projects'),
   getProject: (name: string) => req<Project>(`/projects/${encodeURIComponent(name)}`),
+  // Read-only local-repo scanner. Backend enforces path lives
+  // under the user's home or vault root + refuses traversal /
+  // symlinks. Frontend uses the returned README + manifest +
+  // commits as grounding context for AI starter-pack generation.
+  scanRepo: (path: string) =>
+    req<{
+      path: string;
+      name: string;
+      isGit: boolean;
+      manifest?: string;
+      manifestContent?: string;
+      readmeName?: string;
+      readmeContent?: string;
+      fileTree?: string[];
+      recentCommits?: string[];
+      branch?: string;
+    }>('/reposcan', {
+      method: 'POST',
+      body: JSON.stringify({ path })
+    }),
   createProject: (p: Partial<Project>) =>
     req<Project>('/projects', { method: 'POST', body: JSON.stringify(p) }),
   patchProject: (name: string, p: Partial<Project>) =>

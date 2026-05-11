@@ -32,12 +32,37 @@ export interface StarterPackProjectInput {
 	next_action?: string;
 }
 
+/** Optional grounding context from a local git repo scan — the
+ *  reposcan handler produces this shape. When the user has linked
+ *  a project to a repo on disk, we fold the README / manifest /
+ *  recent commits into the user prompt so the AI grounds its
+ *  starter docs in the actual codebase instead of generic
+ *  templates. Every field is optional — a partial scan (e.g. no
+ *  manifest detected) still helps.
+ *
+ *  Per-field byte caps live on the backend (reposcan.Context); by
+ *  the time it reaches this module the content is already bounded,
+ *  so the prompt builder doesn't re-clamp. */
+export interface StarterPackRepoContext {
+	name?: string;
+	branch?: string;
+	readmeName?: string;
+	readmeContent?: string;
+	manifest?: string;
+	manifestContent?: string;
+	fileTree?: string[];
+	recentCommits?: string[];
+}
+
 /** buildStarterPackPrompt assembles the system + user pair the
  *  chatStream call submits. Pure — same inputs always produce the
  *  same prompt, easy to test for regressions ("the model gets a
  *  reasonable set of fields, in a stable order, and is told to
  *  return strict JSON"). */
-export function buildStarterPackPrompt(project: StarterPackProjectInput): {
+export function buildStarterPackPrompt(
+	project: StarterPackProjectInput,
+	repo?: StarterPackRepoContext
+): {
 	system: string;
 	user: string;
 } {
@@ -71,9 +96,54 @@ Hard rules:
 	if (project.venture) lines.push(`Venture: ${project.venture}`);
 	if (project.tags && project.tags.length > 0) lines.push(`Tags: ${project.tags.join(', ')}`);
 	if (project.next_action) lines.push(`Stated next action: ${project.next_action}`);
+
+	// When a repo scan was supplied, weave the extracted README +
+	// manifest + recent commits + file tree into the user prompt
+	// as a separate "Repository scan" block. The AI is told to
+	// PRIORITISE this content as the source of truth (it's real
+	// data) over generic templates, so the resulting charter
+	// mentions the actual tech stack, the milestones reflect what's
+	// already shipped (from recent commits), and the risks call out
+	// real dependencies / file-tree complexity.
+	if (repo && hasUsefulRepoContent(repo)) {
+		const repoLines: string[] = ['', '— Repository scan (PRIORITISE these facts over generic templates) —'];
+		if (repo.name) repoLines.push(`Repo: ${repo.name}` + (repo.branch ? ` (branch: ${repo.branch})` : ''));
+		if (repo.readmeContent) {
+			repoLines.push('', `${repo.readmeName || 'README'}:`, '```', repo.readmeContent, '```');
+		}
+		if (repo.manifestContent) {
+			repoLines.push('', `${repo.manifest || 'manifest'}:`, '```', repo.manifestContent, '```');
+		}
+		if (repo.fileTree && repo.fileTree.length > 0) {
+			repoLines.push('', 'Top-level file tree:', repo.fileTree.map((e) => `- ${e}`).join('\n'));
+		}
+		if (repo.recentCommits && repo.recentCommits.length > 0) {
+			repoLines.push(
+				'',
+				`Recent commits (newest first, ${repo.recentCommits.length}):`,
+				repo.recentCommits.map((c) => `- ${c}`).join('\n')
+			);
+		}
+		lines.push(repoLines.join('\n'));
+	}
+
 	const user = `Generate the starter pack for this project. Return the JSON array as instructed.\n\n${lines.join('\n')}`;
 
 	return { system, user };
+}
+
+// hasUsefulRepoContent — defensive check before we splice the repo
+// block into the prompt. A scan that returned only Name + IsGit
+// (no README, no manifest, no commits, no tree) adds tokens without
+// information; the model is better off going off the user-supplied
+// description alone. Keeps the prompt slim when the repo is
+// effectively empty (a freshly-init'd repo with one .gitignore).
+function hasUsefulRepoContent(repo: StarterPackRepoContext): boolean {
+	if (repo.readmeContent && repo.readmeContent.trim()) return true;
+	if (repo.manifestContent && repo.manifestContent.trim()) return true;
+	if (repo.recentCommits && repo.recentCommits.length > 0) return true;
+	if (repo.fileTree && repo.fileTree.length > 2) return true;
+	return false;
 }
 
 /** parseStarterPackResponse extracts the doc array from the model's

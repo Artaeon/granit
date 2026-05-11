@@ -47,6 +47,78 @@ describe('buildStarterPackPrompt', () => {
 		const b = buildStarterPackPrompt(input);
 		expect(a).toEqual(b);
 	});
+
+	it('weaves a repo scan into the user prompt when README content is present', () => {
+		const { user } = buildStarterPackPrompt(
+			{ name: 'Granite' },
+			{
+				name: 'granite-repo',
+				branch: 'main',
+				readmeName: 'README.md',
+				readmeContent: '# Granite\n\nA local knowledge manager.',
+				manifest: 'go.mod',
+				manifestContent: 'module granite\n',
+				fileTree: ['cmd/', 'internal/', 'web/', 'README.md'],
+				recentCommits: ['feat: ship starter pack', 'fix: tz on floating times']
+			}
+		);
+		expect(user).toContain('Repository scan');
+		expect(user).toContain('granite-repo');
+		expect(user).toContain('branch: main');
+		expect(user).toContain('README.md:');
+		expect(user).toContain('A local knowledge manager.');
+		expect(user).toContain('go.mod:');
+		expect(user).toContain('module granite');
+		expect(user).toContain('Top-level file tree:');
+		expect(user).toContain('- cmd/');
+		expect(user).toContain('Recent commits');
+		expect(user).toContain('feat: ship starter pack');
+	});
+
+	it('omits the repo block when scan returned nothing useful', () => {
+		// A barely-scanned repo (just a name + IsGit flag, no README /
+		// manifest / commits / tree) should NOT trigger the repo
+		// block — that would burn tokens for no information lift.
+		const { user } = buildStarterPackPrompt(
+			{ name: 'Granite' },
+			{ name: 'empty-repo' }
+		);
+		expect(user).not.toContain('Repository scan');
+	});
+
+	it('omits the repo block when fileTree has 1-2 entries (likely just .gitignore)', () => {
+		// A freshly-init'd repo with one .gitignore isn't a useful
+		// signal; the user-supplied description is better grounding.
+		const { user } = buildStarterPackPrompt(
+			{ name: 'X' },
+			{ name: 'fresh', fileTree: ['.gitignore'] }
+		);
+		expect(user).not.toContain('Repository scan');
+	});
+
+	it('includes the repo block when only recent commits are present', () => {
+		// Edge case: an undocumented repo with commit history. The
+		// commits alone are useful context, so the block fires.
+		const { user } = buildStarterPackPrompt(
+			{ name: 'X' },
+			{ recentCommits: ['initial commit', 'add database'] }
+		);
+		expect(user).toContain('Repository scan');
+		expect(user).toContain('initial commit');
+	});
+
+	it('handles repo context with no project optional fields cleanly', () => {
+		// The repo block should still be appended even when the
+		// project itself only has a name — common case for a brand-
+		// new project with description=empty.
+		const { user } = buildStarterPackPrompt(
+			{ name: 'X' },
+			{ name: 'rr', readmeContent: 'real readme' }
+		);
+		expect(user).toContain('Project name: X');
+		expect(user).toContain('Repository scan');
+		expect(user).toContain('real readme');
+	});
 });
 
 describe('parseStarterPackResponse', () => {
