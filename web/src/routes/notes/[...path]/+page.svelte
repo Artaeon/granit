@@ -48,6 +48,7 @@
   import ResearchPanel from '$lib/notes/ResearchPanel.svelte';
   import ReferenceNotePanel from '$lib/notes/ReferenceNotePanel.svelte';
   import StreakBadge from '$lib/notes/StreakBadge.svelte';
+  import AIDraftBadge from '$lib/notes/AIDraftBadge.svelte';
   import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
   import AskThisNotePanel from '$lib/notes/AskThisNotePanel.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
@@ -1868,6 +1869,17 @@
         <span class="text-xs text-dim hidden sm:inline">
           {wordCount} words{#if wordCount >= 50} · {readingMinutes} min read{#if viewMode === 'preview' && previewProgress > 0.05 && previewProgress < 0.95} · {Math.max(1, Math.ceil(readingMinutes * (1 - previewProgress)))} left{/if}{/if}
         </span>
+        <!-- AI-draft back-link chip — surfaces for notes saved
+             through the sidebar chat's "save as note" flow. Reads
+             frontmatter.type === 'ai-draft' + optional project /
+             goal / calendar_window to render a back-link to the
+             source context. Self-hides when the note isn't a
+             draft, so the row stays clean for hand-written notes. -->
+        {#if note}
+          <AIDraftBadge
+            frontmatter={note.frontmatter as Record<string, unknown> | undefined}
+          />
+        {/if}
         <!-- Daily-note streak badge — surfaces consecutive-day count
              when the user has any history. Auto-hides when there's no
              history to brag about. Wrapped in a hidden-on-phones span
