@@ -2117,7 +2117,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
             ? `Mode: ${mode.label} (auto — you're on a project page). Click to override.`
             : `Mode: ${mode.label} — ${mode.tagline}`}
         >
-          <span class="text-base leading-none">{mode.glyph}</span>
+          <span class="text-[10px] font-semibold tracking-tight leading-none inline-flex items-center justify-center w-6 h-6 rounded-md {mode.kind === 'persona' ? 'bg-secondary/15 text-secondary' : mode.kind === 'contextual' ? 'bg-primary/15 text-primary' : 'bg-surface1 text-subtext'}">{mode.glyph}</span>
           <span class="text-sm font-semibold truncate max-w-[8rem] sm:max-w-none">{mode.label}</span>
           {#if autoPMActive}
             <!-- Tiny "auto · <source>" badge. The source word makes
@@ -2201,7 +2201,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                     ? m.tagline
                     : `Pick-able from any page, but the prelude won't carry context until you ${scopeHint}.`}
                 >
-                  <span class="text-base leading-tight flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/15 text-primary">{m.glyph}</span>
+                  <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary/15 text-primary">{m.glyph}</span>
                   <div class="flex-1 min-w-0">
                     <div class="text-sm font-medium text-text inline-flex items-center gap-1.5">
                       {m.label}
@@ -2233,7 +2233,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                   onclick={() => { selectMode(m.id); modePickerOpen = false; }}
                   class="w-full flex items-start gap-2 px-3 py-2 hover:bg-surface0 text-left {m.id === modeId ? 'bg-primary/10' : ''}"
                 >
-                  <span class="text-base leading-tight flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-full bg-secondary/15 text-secondary">{m.glyph}</span>
+                  <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-secondary/15 text-secondary">{m.glyph}</span>
                   <div class="flex-1 min-w-0">
                     <div class="text-sm font-medium text-text">{m.label}</div>
                     <div class="text-[11px] text-dim leading-snug italic">{m.tagline}</div>

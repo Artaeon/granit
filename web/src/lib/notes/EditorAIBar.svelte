@@ -69,78 +69,68 @@
   // top row stays focused on the high-frequency five. These are
   // the tone / length / proofread / translate moves the user wants
   // less often but reaches for repeatedly when they do.
+  // Advanced action lists. Labels alone — no emoji glyphs (the
+  // bar reads as a professional control surface, not a chat
+  // app). The popover renders the labels directly.
   const SELECTION_MORE = [
     {
       id: 'formal',
       label: 'More formal',
-      glyph: '🎩',
       preset:
         'Rewrite the following in a more formal register. Preserve meaning + structure. Return only the rewritten text, no preamble.'
     },
     {
       id: 'casual',
       label: 'More casual',
-      glyph: '👋',
       preset:
         'Rewrite the following in a more casual, conversational register. Preserve meaning. Return only the rewritten text, no preamble.'
     },
     {
       id: 'grammar',
       label: 'Fix grammar',
-      glyph: '✓',
       preset:
         'Fix grammar, spelling, and punctuation in the following. Preserve voice and meaning exactly. Return only the corrected text, no preamble.'
     },
     {
       id: 'expand',
       label: 'Expand',
-      glyph: '↔',
       preset:
         'Expand the following into a fuller paragraph (2-4 sentences) without padding or repetition. Stay in the same voice. Return only the expanded text, no preamble.'
     },
     {
       id: 'shorten',
       label: 'Shorten',
-      glyph: '⇲',
       preset:
         'Tighten the following into the shortest faithful version. Drop redundancy and filler; keep meaning. Return only the shortened text, no preamble.'
     },
     {
       id: 'translate-en',
-      label: 'Translate → English',
-      glyph: '🌐',
+      label: 'Translate to English',
       preset: 'Translate the following into clear, natural English. Return only the translation, no preamble.'
     }
   ] as const;
-  // Whole-note advanced actions — surfaced when there's no
-  // selection. Different shape: outline + key concepts + a couple
-  // of writing-helper transforms applied to the whole note.
   const WHOLE_MORE = [
     {
       id: 'outline',
       label: 'Generate outline',
-      glyph: '☰',
       preset:
         'Read the following note and produce a markdown outline of its sections (H2 / H3 headings only, no body text). Use the existing section titles if any. Return only the outline.'
     },
     {
       id: 'concepts',
       label: 'Key concepts',
-      glyph: '◆',
       preset:
         'List the 5-8 key concepts from the following note as a markdown bullet list. Each bullet: bold the concept name, one short sentence after. Return only the list.'
     },
     {
       id: 'questions',
       label: 'Open questions',
-      glyph: '?',
       preset:
         'What are the 3-5 open questions this note raises but doesn\'t answer? Return a short markdown bullet list. No preamble.'
     },
     {
       id: 'tighten',
       label: 'Tighten prose',
-      glyph: '⇲',
       preset:
         'Tighten the prose of the following note — drop filler, sharpen verbs, prefer concrete nouns. Preserve the structure and meaning. Return the full tightened note, ready to paste back.'
     }
@@ -496,10 +486,9 @@
           else askWholeNotePreset(item.preset);
           moreOpen = false;
         }}
-        class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface0 text-text"
+        class="w-full flex items-center px-3 py-2 text-left text-sm text-text hover:bg-surface0"
       >
-        <span class="text-base leading-none w-5 text-center flex-shrink-0">{item.glyph}</span>
-        <span class="text-sm">{item.label}</span>
+        {item.label}
       </button>
     {/each}
   </div>
