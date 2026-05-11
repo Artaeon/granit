@@ -9,6 +9,7 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import GoalCreate from '$lib/goals/GoalCreate.svelte';
   import GoalDetail from '$lib/goals/GoalDetail.svelte';
+  import GoalAgent from '$lib/goals/GoalAgent.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
@@ -28,6 +29,10 @@
   $effect(() => saveStoredString(VIEW_KEY, viewMode));
 
   let goals = $state<Goal[]>([]);
+  // Goal Agent — conversational mutation engine for /goals.
+  // Mirrors Task/Project agents; lives on the same audit-gated
+  // chatStream pipeline. Operates on the filtered list.
+  let agentOpen = $state(false);
   // Linked tasks + projects power the roll-up chips on each goal —
   // "X open tasks · Y projects" so the user can see at a glance
   // which goals have momentum behind them and which are floating
@@ -955,6 +960,18 @@
           title="Surface tasks that don't advance any stated goal"
         >{auditOpen ? '✕ audit' : '🔍 Alignment audit'}</button>
         <button
+          type="button"
+          onclick={() => (agentOpen = true)}
+          class="px-3 py-1.5 border border-surface1 text-subtext rounded text-sm hover:border-primary hover:text-primary inline-flex items-center gap-1"
+          title="Goal agent — describe what you want done"
+        >
+          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
+            <path d="M5 21h14" />
+          </svg>
+          Agent
+        </button>
+        <button
           onclick={() => (createOpen = true)}
           class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
         >+ New goal</button>
@@ -1731,4 +1748,16 @@
   goal={selected}
   onUpdated={load}
   onDeleted={deleted}
+/>
+
+<!-- Goal Agent — operates on the filtered list (whatever the
+     current status / search / venture / category scope yields).
+     parent's load() reconciles every goal page surface. -->
+<GoalAgent
+  open={agentOpen}
+  goals={filtered}
+  todayISO={todayISO()}
+  knownVentures={ventures}
+  onClose={() => (agentOpen = false)}
+  onChanged={load}
 />
