@@ -558,6 +558,53 @@ func TestParseICSTime_TZIDUnknown_FallsBackToUTC(t *testing.T) {
 	}
 }
 
+func TestExpandRRULE_PreservesSourceWritableFloating(t *testing.T) {
+	// These three icsEvent fields are quietly load-bearing for the
+	// calendar UX:
+	//   - Source drives the per-calendar colouring on the grid.
+	//   - Writable drives the editable-flag the frontend uses to
+	//     show/hide drag handles. A regression that drops it leaks
+	//     "this event is editable" on read-only sources, leading
+	//     straight back to the "event not found" UX bug.
+	//   - Floating tells the feed which times to emit without an
+	//     offset so wall-clock display works in any timezone. A
+	//     regression here re-introduces the {server-tz - client-tz}
+	//     drift on every recurring floating event.
+	// The expansion is a value-copy today (`inst := ev`), but pinning
+	// it explicitly catches any future refactor that builds the
+	// instance struct field-by-field and forgets one of these.
+	base := icsEvent{
+		Title:    "Weekly meet",
+		Start:    time.Date(2026, 5, 11, 14, 0, 0, 0, time.UTC),
+		End:      time.Date(2026, 5, 11, 15, 0, 0, 0, time.UTC),
+		UID:      "weekly@cal",
+		RRule:    "FREQ=WEEKLY;COUNT=4",
+		Source:   "work.ics",
+		Writable: true,
+		Floating: true,
+	}
+	from := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC)
+	occs := expandRRULE(base, from, to)
+	if len(occs) == 0 {
+		t.Fatal("expected at least one occurrence")
+	}
+	for i, occ := range occs {
+		if occ.Source != "work.ics" {
+			t.Errorf("occ[%d].Source = %q, want work.ics", i, occ.Source)
+		}
+		if !occ.Writable {
+			t.Errorf("occ[%d].Writable lost — frontend would mis-classify as read-only", i)
+		}
+		if !occ.Floating {
+			t.Errorf("occ[%d].Floating lost — tz drift would re-appear on this occurrence", i)
+		}
+		if occ.UID != "weekly@cal" {
+			t.Errorf("occ[%d].UID = %q, want weekly@cal", i, occ.UID)
+		}
+	}
+}
+
 func TestParseICSFile_TagsFloatingFlag(t *testing.T) {
 	// End-to-end: a file with a mix of UTC/zoned/floating timestamps
 	// gets correctly tagged so the calendar feed knows which to emit
