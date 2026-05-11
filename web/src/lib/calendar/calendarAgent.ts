@@ -255,28 +255,56 @@ export function computeCalendarRevertPatch(
 	}
 }
 
+/** summariseCalendarAction — human-readable proposal label.
+ *  Shows the BEFORE → AFTER delta when the pre-state event is
+ *  available; otherwise the verb + new value alone. Seeing the
+ *  current value next to the proposed change cuts a lot of
+ *  "wait, what's actually moving?" friction in the accept flow. */
 export function summariseCalendarAction(
 	a: CalendarAction,
 	e: CalendarEventEntry | undefined
 ): string {
-	const t = e?.title ?? a.eventId;
+	const t = truncate(e?.title ?? a.eventId, 28);
 	switch (a.kind) {
-		case 'rename_event':
-			return `Rename "${truncate(t, 28)}" → "${truncate(a.title ?? '', 32)}"`;
+		case 'rename_event': {
+			const from = e?.title ? `"${truncate(e.title, 24)}"` : '';
+			return from
+				? `Rename ${from} → "${truncate(a.title ?? '', 28)}"`
+				: `Rename "${t}" → "${truncate(a.title ?? '', 28)}"`;
+		}
 		case 'move_event_to_date':
-			return `Move "${truncate(t, 28)}" to ${a.date}`;
-		case 'set_event_time':
-			return `Reschedule "${truncate(t, 28)}" to ${a.start_time}–${a.end_time}`;
+			return e?.date
+				? `Move "${t}" ${e.date} → ${a.date}`
+				: `Move "${t}" to ${a.date}`;
+		case 'set_event_time': {
+			const current =
+				e?.start_time && e?.end_time
+					? `${e.start_time}–${e.end_time}`
+					: e?.start_time
+					? `${e.start_time}–?`
+					: 'all-day';
+			return `Reschedule "${t}" ${current} → ${a.start_time}–${a.end_time}`;
+		}
 		case 'set_event_color':
-			return `Tint "${truncate(t, 28)}" ${a.color}`;
+			return e?.color
+				? `Tint "${t}" ${e.color} → ${a.color}`
+				: `Tint "${t}" ${a.color}`;
 		case 'set_event_location':
-			return `Set location on "${truncate(t, 28)}" → "${truncate(a.location ?? '', 28)}"`;
+			return e?.location
+				? `Location on "${t}" "${truncate(e.location, 20)}" → "${truncate(a.location ?? '', 20)}"`
+				: `Set location on "${t}" → "${truncate(a.location ?? '', 28)}"`;
 		case 'clear_event_location':
-			return `Clear location on "${truncate(t, 28)}"`;
+			return e?.location
+				? `Clear location on "${t}" (was "${truncate(e.location, 24)}")`
+				: `Clear location on "${t}"`;
 		case 'set_event_project':
-			return `Link "${truncate(t, 28)}" to project "${a.project}"`;
+			return e?.project_id
+				? `Move "${t}" project ${e.project_id} → ${a.project}`
+				: `Link "${t}" to project "${a.project}"`;
 		case 'clear_event_project':
-			return `Unlink "${truncate(t, 28)}" from its project`;
+			return e?.project_id
+				? `Unlink "${t}" (was project "${e.project_id}")`
+				: `Unlink "${t}" from its project`;
 	}
 }
 

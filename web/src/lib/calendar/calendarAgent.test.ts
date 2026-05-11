@@ -327,26 +327,68 @@ describe('computeCalendarRevertPatch', () => {
 });
 
 describe('summariseCalendarAction', () => {
-	const e = mk('E1', 'Daily team standup');
-	it('formats per-kind with the event title', () => {
+	it('shows a before → after delta for move_event_to_date when pre-state is known', () => {
+		const out = summariseCalendarAction(
+			{ eventId: 'E1', kind: 'move_event_to_date', date: '2026-06-01', rationale: '' },
+			mk('E1', 'Standup', { date: '2026-05-12' })
+		);
+		expect(out).toContain('2026-05-12');
+		expect(out).toContain('2026-06-01');
+		expect(out).toContain('→');
+	});
+
+	it('shows current time range alongside the new one for set_event_time', () => {
+		const out = summariseCalendarAction(
+			{
+				eventId: 'E1',
+				kind: 'set_event_time',
+				start_time: '10:00',
+				end_time: '11:00',
+				rationale: ''
+			},
+			mk('E1', 'Standup', { start_time: '09:00', end_time: '09:30' })
+		);
+		expect(out).toContain('09:00–09:30');
+		expect(out).toContain('10:00–11:00');
+	});
+
+	it('says "all-day" when pre-state is all-day and the action would add a time', () => {
+		const out = summariseCalendarAction(
+			{
+				eventId: 'E1',
+				kind: 'set_event_time',
+				start_time: '10:00',
+				end_time: '11:00',
+				rationale: ''
+			},
+			mk('E1', 'Holiday')
+		);
+		expect(out).toContain('all-day');
+		expect(out).toContain('10:00–11:00');
+	});
+
+	it('shows prior color when present, omits "from" when absent', () => {
 		expect(
 			summariseCalendarAction(
-				{ eventId: 'E1', kind: 'move_event_to_date', date: '2026-06-01', rationale: '' },
-				e
+				{ eventId: 'E1', kind: 'set_event_color', color: 'blue', rationale: '' },
+				mk('E1', 't', { color: 'red' })
 			)
-		).toMatch(/2026-06-01/);
+		).toMatch(/red.*→.*blue/);
 		expect(
 			summariseCalendarAction(
-				{
-					eventId: 'E1',
-					kind: 'set_event_time',
-					start_time: '10:00',
-					end_time: '11:00',
-					rationale: ''
-				},
-				e
+				{ eventId: 'E1', kind: 'set_event_color', color: 'blue', rationale: '' },
+				mk('E1', 't')
 			)
-		).toMatch(/10:00–11:00/);
+		).toMatch(/Tint .* blue/);
+	});
+
+	it('includes the prior location in clear_event_location when it existed', () => {
+		expect(
+			summariseCalendarAction(
+				{ eventId: 'E1', kind: 'clear_event_location', rationale: '' },
+				mk('E1', 't', { location: 'home office' })
+			)
+		).toContain('was "home office"');
 	});
 
 	it('falls back to eventId when event is undefined', () => {
