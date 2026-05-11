@@ -103,9 +103,10 @@
 {#if variant === 'icon'}
   <span class="inline-block flex-shrink-0" aria-label={importance} title={importance}>{importanceIcon(importance)}</span>
 {:else}
+  {@const fg = tone === 'subtext' || tone === 'secondary' ? 'var(--color-on-primary)' : '#ffffff'}
   <span
-    class="inline-flex items-center {pad} rounded font-medium tabular-nums whitespace-nowrap uppercase tracking-wider"
-    style="background: color-mix(in srgb, var(--color-{tone}) 14%, transparent); color: var(--color-{tone}); border: 1px solid color-mix(in srgb, var(--color-{tone}) 30%, transparent);"
+    class="inline-flex items-center {pad} rounded font-semibold tabular-nums whitespace-nowrap uppercase tracking-wider"
+    style="background: var(--color-{tone}); color: {fg};"
   >
     {label}
   </span>

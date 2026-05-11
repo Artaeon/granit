@@ -546,7 +546,7 @@
             <span class="text-[10px] text-warning font-medium">Sabbath</span>
           {:else}
             <span class="flex-1 text-left">Ask AI</span>
-            <kbd class="text-[10px] font-mono px-1.5 py-0.5 bg-mantle rounded">⌘J</kbd>
+            <kbd class="text-[10px] font-mono px-1.5 py-0.5 rounded border border-on-primary text-on-primary opacity-70">⌘J</kbd>
           {/if}
         {/if}
       </button>
