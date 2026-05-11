@@ -9,6 +9,8 @@
   import ProjectCreate from '$lib/projects/ProjectCreate.svelte';
   import ProjectTimeline from '$lib/projects/ProjectTimeline.svelte';
   import ProjectHeatmap from '$lib/projects/ProjectHeatmap.svelte';
+  import ProjectKanban from '$lib/projects/ProjectKanban.svelte';
+  import type { KanbanStatus } from '$lib/projects/kanbanGroup';
   import ProjectStatusBar from '$lib/projects/ProjectStatusBar.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
 
@@ -318,6 +320,24 @@
     }
   }
 
+  // Kanban drag handler. Patches the project's status and refreshes
+  // optimistically. Distinct from archiveProject because the kanban
+  // is a fluent reclassification surface — no confirm() in the
+  // middle of a drag (the user just dragged it, the intent is
+  // unambiguous). Failures revert via load().
+  async function handleKanbanStatusChange(name: string, status: KanbanStatus) {
+    // Optimistic local update so the card "lands" in the new column
+    // before the network roundtrip completes.
+    projects = projects.map((p) => (p.name === name ? { ...p, status } : p));
+    try {
+      await api.patchProject(name, { status });
+      toast.success(`"${name}" → ${status}`);
+    } catch (e) {
+      toast.error('status change failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+    await load();
+  }
+
   async function load() {
     loading = true;
     try {
@@ -370,11 +390,11 @@
   // the project plan" link is shareable. When in timeline mode the
   // sidebar collapses (timeline takes the full surface) and clicking
   // a bar opens the detail drawer-style on top.
-  type ViewMode = 'list' | 'timeline' | 'heatmap';
+  type ViewMode = 'list' | 'kanban' | 'timeline' | 'heatmap';
   let viewMode = $derived<ViewMode>(
     (() => {
       const v = $page.url.searchParams.get('view');
-      if (v === 'timeline' || v === 'heatmap') return v;
+      if (v === 'kanban' || v === 'timeline' || v === 'heatmap') return v;
       return 'list';
     })()
   );
@@ -410,6 +430,33 @@
     params.delete('venture');
     goto(`/projects?${params.toString()}`, { replaceState: true, keepFocus: true });
   }
+
+  // Kanban feed: all four status columns must always render, so we
+  // skip the statusFilter here — venture + search still apply.
+  // The sort matches `filtered` so a project's column position is
+  // deterministic across views.
+  let kanbanFeed = $derived.by(() => {
+    let list = projects;
+    if (ventureFilter) list = list.filter((p) => (p.venture ?? '') === ventureFilter);
+    const term = q.trim().toLowerCase();
+    if (term) {
+      list = list.filter((p) =>
+        p.name.toLowerCase().includes(term) ||
+        (p.description ?? '').toLowerCase().includes(term) ||
+        (p.tags ?? []).some((t) => t.toLowerCase().includes(term)) ||
+        (p.kind ?? '').toLowerCase().includes(term) ||
+        (p.venture ?? '').toLowerCase().includes(term)
+      );
+    }
+    // Within a column: priority desc, then name. Status is encoded
+    // by the column itself so no status tier needed here.
+    return [...list].sort((a, b) => {
+      const pa = a.priority ?? 0;
+      const pb = b.priority ?? 0;
+      if (pa !== pb) return pb - pa;
+      return a.name.localeCompare(b.name);
+    });
+  });
 
   let filtered = $derived.by(() => {
     let list = projects;
@@ -531,6 +578,13 @@
       >☰ List</button>
       <button
         role="tab"
+        aria-selected={viewMode === 'kanban'}
+        onclick={() => setViewMode('kanban')}
+        class="px-2.5 py-1.5 sm:py-1 min-h-[32px] border-l border-surface1 {viewMode === 'kanban' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
+        title="Kanban — drag cards to change status"
+      >▤ Board</button>
+      <button
+        role="tab"
         aria-selected={viewMode === 'timeline'}
         onclick={() => setViewMode('timeline')}
         class="px-2.5 py-1.5 sm:py-1 min-h-[32px] border-l border-surface1 {viewMode === 'timeline' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
@@ -544,19 +598,34 @@
         title="Per-project completion volume by week"
       >▦ Heatmap</button>
     </div>
-    {#if viewMode === 'timeline' || viewMode === 'heatmap'}
-      <select
-        value={statusFilter}
-        onchange={(e) => (statusFilter = (e.target as HTMLSelectElement).value as typeof statusFilter)}
-        class="text-xs px-2 py-1 bg-surface0 border border-surface1 rounded text-subtext min-h-[32px]"
-        aria-label="filter by status"
-      >
-        <option value="active">active</option>
-        <option value="paused">paused</option>
-        <option value="completed">completed</option>
-        <option value="archived">archived</option>
-        <option value="all">all</option>
-      </select>
+    {#if viewMode === 'timeline' || viewMode === 'heatmap' || viewMode === 'kanban'}
+      <!-- The list view's sidebar carries the search box; the chart
+           and board views hide the sidebar, so a compact mirror sits
+           in the toolbar so the user isn't search-blind here. -->
+      <input
+        bind:value={q}
+        placeholder="filter…"
+        class="text-xs px-2 py-1 bg-surface0 border border-surface1 rounded text-text placeholder:text-dim focus:outline-none focus:border-primary min-h-[32px] w-32 sm:w-40"
+        aria-label="filter projects"
+      />
+      <!-- Kanban already splits by status (one column per state),
+           so the status select would just empty three columns —
+           hide it there. Timeline/heatmap still need it because
+           those views show every project on a single canvas. -->
+      {#if viewMode !== 'kanban'}
+        <select
+          value={statusFilter}
+          onchange={(e) => (statusFilter = (e.target as HTMLSelectElement).value as typeof statusFilter)}
+          class="text-xs px-2 py-1 bg-surface0 border border-surface1 rounded text-subtext min-h-[32px]"
+          aria-label="filter by status"
+        >
+          <option value="active">active</option>
+          <option value="paused">paused</option>
+          <option value="completed">completed</option>
+          <option value="archived">archived</option>
+          <option value="all">all</option>
+        </select>
+      {/if}
       {#if ventureFilter}
         <button
           onclick={clearVentureFilter}
@@ -820,6 +889,32 @@
       </div>
     {/if}
   </main>
+  {:else if viewMode === 'kanban'}
+    <!-- Kanban — drag-to-change-status board. Sidebar collapses
+         (the four columns ARE the navigation). Detail pane opens
+         in the same drawer pattern as timeline so clicking a card
+         doesn't leave the board. -->
+    <main class="flex-1 min-w-0 flex flex-col {selectedName ? 'hidden md:flex' : ''}">
+      <ProjectKanban
+        projects={kanbanFeed}
+        tasks={tasks}
+        onSelect={selectProject}
+        onStatusChange={handleKanbanStatusChange}
+        colorVar={colorVar}
+        statusTone={statusTone}
+        selectedName={selectedName}
+      />
+    </main>
+    {#if selected}
+      <aside class="w-full md:w-[28rem] lg:w-[32rem] flex-shrink-0 border-l border-surface1 bg-base">
+        <ProjectDetail
+          project={selected}
+          onClose={() => selectProject('')}
+          onUpdated={load}
+          onDeleted={deleted}
+        />
+      </aside>
+    {/if}
   {:else if viewMode === 'timeline'}
     <!-- Timeline view — full-width Gantt-ish chart. Clicking a bar
          flips the URL to ?p=<name>, which keeps the project drawer
