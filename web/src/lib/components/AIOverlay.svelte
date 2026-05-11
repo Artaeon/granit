@@ -1431,8 +1431,17 @@
     }
     savingMessageIdx = idx;
     const title = deriveDraftTitle(cleaned, todayISO());
+    // Folder picked by context. Project takes precedence (the
+    // Projects/<name> folder is where its notes tab looks);
+    // goal-mode drafts land in a goal-scoped subfolder so they're
+    // discoverable per goal; calendar drafts go to Calendar/.
+    // Everything else lands under Drafts/.
     const folder = currentProjectName
       ? `Projects/${slugify(currentProjectName) || currentProjectName}`
+      : currentGoalId
+      ? `Goals/${slugify(currentGoalId) || currentGoalId}`
+      : onCalendarPage
+      ? 'Calendar/Drafts'
       : 'Drafts';
     const baseSlug = slugify(title) || 'draft';
     const basePath = `${folder}/${baseSlug}.md`;
@@ -1441,13 +1450,23 @@
     // and doesn't silently overwrite the first note. The suffix
     // is "HHmm" from the current time — short, sortable, and
     // unique enough for a single user.
-    const frontmatter = {
+    // Cross-link frontmatter — carries the source context so the
+    // saved note can render a "from chat about X" badge AND so
+    // the project's notes tab (or future goal/calendar notes
+    // surfaces) can list AI drafts even when they live outside
+    // the entity's natural folder. project / goal / calendar are
+    // mutually exclusive in autoMode but the user might also be
+    // in a contextual mode manually — capture what's actually
+    // in scope, not what autoMode says.
+    const frontmatter: Record<string, unknown> = {
       type: 'ai-draft',
       mode: mode.id,
-      project: currentProjectName || undefined,
       captured_at: new Date().toISOString(),
       tags: ['ai-draft', mode.id]
     };
+    if (currentProjectName) frontmatter.project = currentProjectName;
+    if (currentGoalId) frontmatter.goal = currentGoalId;
+    if (onCalendarPage) frontmatter.calendar_window = true;
     try {
       let finalPath = basePath;
       try {
