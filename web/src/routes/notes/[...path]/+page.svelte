@@ -1655,7 +1655,7 @@
       <div class="px-4 py-2 text-sm text-error border-b border-error/30 bg-error/10 flex-shrink-0">{error}</div>
     {/if}
     {#if note}
-      <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md sticky top-0 z-20">
+      <header class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md sticky top-0 z-20">
         <!-- Hidden on mobile: the layout's top-bar already shows a back
              arrow to /notes for any subpath, so a second one here pushes
              the view-mode toggle (and save button) off the right edge on
@@ -1710,7 +1710,7 @@
                toggle so the bar stays one-line even on
                work/projects/2026/q1/notes/foo.md. Tag chips render
                beside the trail when present. -->
-          <div class="text-[11px] text-dim flex items-center gap-1 min-w-0 flex-nowrap">
+          <div class="text-[11px] text-dim flex items-center gap-1 min-w-0 flex-nowrap overflow-hidden">
             <a href="/notes" class="hover:text-primary flex-shrink-0">vault</a>
             {#each visibleCrumbs as c, i}
               <span class="text-dim/60 flex-shrink-0">/</span>
@@ -1771,10 +1771,14 @@
           {wordCount} words{#if wordCount >= 50} · {readingMinutes} min read{#if viewMode === 'preview' && previewProgress > 0.05 && previewProgress < 0.95} · {Math.max(1, Math.ceil(readingMinutes * (1 - previewProgress)))} left{/if}{/if}
         </span>
         <!-- Daily-note streak badge — surfaces consecutive-day count
-             when the user has any history. Visible everywhere (not
-             just daily notes) so a streak owner can see it from any
-             page; auto-hides when there's no history to brag about. -->
-        <StreakBadge />
+             when the user has any history. Auto-hides when there's no
+             history to brag about. Wrapped in a hidden-on-phones span
+             so the streak chip doesn't squeeze the title row on narrow
+             viewports; the badge still renders on the dashboard and
+             at sm+. -->
+        <span class="hidden sm:inline-flex">
+          <StreakBadge />
+        </span>
         <!-- view-mode toggle -->
         <div class="hidden sm:flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs">
           {#each [{m: 'edit', l: 'edit', i: '✎'}, {m: 'split', l: 'split', i: '⊟'}, {m: 'preview', l: 'preview', i: '👁'}] as v}
@@ -1947,12 +1951,14 @@
              prior saved versions of this note with one-click
              restore. Snapshot is taken automatically on every save
              (with content-hash dedup, so autosave bursts don't
-             pollute the list). The promise: nothing is ever lost. -->
+             pollute the list). The promise: nothing is ever lost.
+             Hidden on phones to keep the header tight; surfaced via
+             the mobile overflow menu instead. -->
         <button
           onclick={() => (historyOpen = true)}
           title="Version history — every save creates a backup. Nothing is ever lost."
           aria-label="Version history"
-          class="flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+          class="hidden sm:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
             <circle cx="12" cy="12" r="9"/>
@@ -1965,7 +1971,7 @@
           onclick={() => save()}
           disabled={(!dirty && !saveFailed) || saving}
           title={saveStatus}
-          class="px-3 sm:px-4 py-2 rounded text-sm font-medium disabled:opacity-60 transition-shadow
+          class="px-3 sm:px-4 py-2.5 sm:py-2 min-h-[40px] sm:min-h-0 rounded text-sm font-medium disabled:opacity-60 transition-shadow flex-shrink-0
             {saveFailed ? 'bg-error text-mantle' : dirty || saving ? 'bg-primary text-on-primary' : 'bg-surface1 text-subtext'}
             {saveFlash ? 'save-flash' : ''}"
         >
@@ -2267,6 +2273,20 @@
     <button
       type="button"
       role="menuitem"
+      onclick={() => { overflowOpen = false; historyOpen = true; }}
+      class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem]"
+    >
+      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M12 7v5l3 2" stroke-linecap="round"/>
+        <path d="M3 12a9 9 0 0114-7.5l1 1" stroke-linecap="round"/>
+        <path d="M3 4v4h4" stroke-linecap="round"/>
+      </svg>
+      <span>Version history</span>
+    </button>
+    <button
+      type="button"
+      role="menuitem"
       onclick={() => { overflowOpen = false; printOpen = true; }}
       class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem]"
     >
@@ -2371,13 +2391,14 @@
   }
   /* Touch tap-target floor — on coarse-pointer devices (phones /
      tablets without a precise mouse) every header button needs at
-     least 36px tall so the interactive surface meets the WCAG
-     pointer-target guidance. Desktop with a fine pointer keeps the
-     denser 28-32px sizes the toolbar was designed around. */
+     least 40px tall so the interactive surface meets the WCAG
+     2.5.5 minimum-target guideline (44×44 ideal, 40×40 acceptable
+     for inline toolbar density). Desktop with a fine pointer keeps
+     the denser 28-32px sizes the toolbar was designed around. */
   @media (pointer: coarse) {
     :global(header button),
     :global(header a) {
-      min-height: 2.25rem;
+      min-height: 2.5rem;
     }
   }
   /* Reading mode: serif typography + narrower max-width on the
