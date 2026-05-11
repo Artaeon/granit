@@ -2091,11 +2091,12 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
           <span class="text-base leading-none">{mode.glyph}</span>
           <span class="text-sm font-semibold truncate max-w-[8rem] sm:max-w-none">{mode.label}</span>
           {#if autoPMActive}
-            <!-- Tiny "auto" badge — surfaces that the mode was
-                 contextually selected by the project page, not the
-                 user's persistent preference. Clears the moment
-                 they pick anything else. -->
-            <span class="text-[9px] uppercase tracking-wider px-1 rounded bg-primary/15 text-primary leading-tight">auto</span>
+            <!-- Tiny "auto · <source>" badge. The source word makes
+                 the contextual switch self-explanatory — the user
+                 reads "auto · project" and knows where the mode
+                 came from (and that picking anything else takes
+                 control back). Clears the moment they pick. -->
+            <span class="text-[9px] uppercase tracking-wider px-1 rounded bg-primary/15 text-primary leading-tight whitespace-nowrap">auto · {autoMode}</span>
           {/if}
           <svg viewBox="0 0 24 24" class="w-3 h-3 opacity-60 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="6 9 12 15 18 9" stroke-linecap="round" stroke-linejoin="round"/>
