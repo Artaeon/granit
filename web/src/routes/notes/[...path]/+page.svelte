@@ -9,9 +9,6 @@
   import Outline from '$lib/notes/Outline.svelte';
   import BacklinksPanel from '$lib/notes/BacklinksPanel.svelte';
   import AnnotationsPanel from '$lib/notes/AnnotationsPanel.svelte';
-  import ConcordancePanel from '$lib/notes/ConcordancePanel.svelte';
-  import SentenceStatsPanel from '$lib/notes/SentenceStatsPanel.svelte';
-  import LocalGraph from '$lib/notes/LocalGraph.svelte';
   import FrontmatterEditor from '$lib/notes/FrontmatterEditor.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import DailyQuickAdd from '$lib/notes/DailyQuickAdd.svelte';
@@ -50,10 +47,8 @@
   import StreakBadge from '$lib/notes/StreakBadge.svelte';
   import AIDraftBadge from '$lib/notes/AIDraftBadge.svelte';
   import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
-  import AskThisNotePanel from '$lib/notes/AskThisNotePanel.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
   import NotePresentation from '$lib/notes/NotePresentation.svelte';
-  import SectionQuestionsPanel from '$lib/notes/SectionQuestionsPanel.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
 
@@ -1318,51 +1313,6 @@
     infoDrawerOpen = false;
   }
 
-  // jumpToWord — find the first line containing the (case-
-  // insensitive) word and scroll the editor to it. Used by the
-  // concordance panel: clicking a frequent term audits its usage
-  // in context. We scan body lines rather than calling editor.find
-  // because the editor exposes a generic openFind() but not
-  // "select this word at first occurrence" — a one-time linear
-  // scan is cheaper than rebuilding that surface.
-  //
-  // Whole-word matching is done manually rather than with `\b`
-  // because `\b` is defined as a transition between word and
-  // non-word chars (`[A-Za-z0-9_]`), which mishandles tokens with
-  // apostrophes ("don't" boundaries between `'` and `t`). Manual
-  // adjacent-char check uses our own definition of "letter" so the
-  // tokens the concordance generates round-trip cleanly. Falls
-  // back to substring match if no whole-word hit — better to land
-  // somewhere than nowhere when the needle was a partial.
-  function jumpToWord(word: string) {
-    if (!body || !word) return;
-    const needle = word.toLowerCase();
-    if (!needle) return;
-    const isWordChar = (c: string) => /[a-z0-9]/.test(c);
-    const lines = body.split('\n');
-    // Pass 1: whole-word match.
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].toLowerCase();
-      let pos = 0;
-      while ((pos = line.indexOf(needle, pos)) !== -1) {
-        const before = pos > 0 ? line[pos - 1] : '';
-        const after = pos + needle.length < line.length ? line[pos + needle.length] : '';
-        if (!isWordChar(before) && !isWordChar(after)) {
-          jumpToLine(i + 1);
-          return;
-        }
-        pos += needle.length;
-      }
-    }
-    // Pass 2: substring fallback.
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].toLowerCase().includes(needle)) {
-        jumpToLine(i + 1);
-        return;
-      }
-    }
-  }
-
   async function saveFrontmatter(next: Record<string, unknown>) {
     if (!note) return;
     try {
@@ -1540,6 +1490,20 @@
 {/snippet}
 
 {#snippet infoContent()}
+  <!-- Right rail — pruned from 12 sections to 6. Removed surfaces
+       that duplicated features available elsewhere:
+         * Local graph    → Backlinks already lists what's relevant
+         * Ask this note  → AIOverlay covers single-note Q&A via the
+                            "attach note" toggle on the composer
+         * Section questions → EditorAIBar's More menu has Outline +
+                               Open questions verbs
+         * Word frequencies + Sentence rhythm → niche editorial tools;
+                               EditorAIBar covers tighten/critique
+       The kept set is the active-reading + navigation kernel: where
+       am I in the note (Outline), my marginalia (Margin notes),
+       what else links here (Backlinks), and three collapsible
+       advanced surfaces under details/summary so they don't crowd
+       the rail until the user reaches for them. -->
   <div class="p-3 space-y-4 overflow-y-auto h-full">
     <section>
       <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5">
@@ -1551,7 +1515,7 @@
             class="ml-auto text-[9px] tracking-normal normal-case text-dim hover:text-error"
             title="clear visited-section ticks for this note"
             aria-label="reset reading progress"
-          >reset ✓</button>
+          >reset</button>
         {/if}
       </h3>
       <Outline
@@ -1563,22 +1527,11 @@
       />
     </section>
     {#if note}
-      <!-- Margin annotations — user-authored marginalia anchored
-           to a specific line. Sits near the top of the rail because
-           it's an active-reading surface (the user wants their
-           comments visible while skimming the source text). -->
       <section>
         <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
-            <path d="M14 4h6v6"/>
-            <path d="M10 20H4v-6"/>
-            <path d="M14 4l-4 4M4 20l6-6"/>
-          </svg>
           <span>Margin notes</span>
           {#if annotationCount > 0}
-            <span class="ml-auto normal-case tracking-normal text-[10px] px-1.5 py-0.5 rounded-full bg-surface1 text-primary tabular-nums">
-              {annotationCount}
-            </span>
+            <span class="ml-auto normal-case tracking-normal text-[10px] px-1.5 py-0.5 rounded-full bg-surface1 text-text tabular-nums">{annotationCount}</span>
           {/if}
         </h3>
         <AnnotationsPanel
@@ -1589,111 +1542,50 @@
         />
       </section>
       <section>
-        <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Local graph</h3>
-        <LocalGraph path={note.path} onNavigate={navigateWikilink} />
-      </section>
-      <section>
         <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Backlinks</h3>
         <BacklinksPanel path={note.path} onNavigate={navigateWikilink} />
       </section>
-      <!-- Ask-this-note: multi-turn Q&A scoped to ONLY this note.
-           Distinct from the broader AI overlay (which has vault
-           RAG); this surface is the "explain section 3 / what's
-           the contradiction here" companion. Conversation resets
-           on note change so context never bleeds across notes. -->
-      <section>
-        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-          </svg>
-          Ask this note
-        </h3>
-        <AskThisNotePanel notePath={note.path} title={note.title ?? note.path} body={body} />
-      </section>
-      <!-- Active-reading study questions, scoped to ONE section.
-           Distinct from a whole-note question prompt: per-section
-           is tighter and produces sharper questions because the
-           AI isn't averaging over 4000 words. -->
-      <section>
-        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
-            <circle cx="12" cy="12" r="9"/>
-            <path d="M9.1 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" stroke-linecap="round"/>
-          </svg>
-          Section questions
-        </h3>
-        <SectionQuestionsPanel notePath={note.path} body={body} />
-      </section>
-      <!-- Research panel: derives highlights / footnotes / outbound
-           URLs from the body so a research-style note becomes a
-           navigable index. Renders nothing if the note has none of
-           those — saves rail space on a fresh note. -->
-      <section>
-        <ResearchPanel body={body} onJump={jumpToLine} />
-      </section>
-      <!-- Concordance: top-N most-frequent content words in the
-           note. Editing tool ("am I overusing 'really'?") + reading
-           tool ("what does this note keep returning to?"). Clicking
-           a term jumps to the first occurrence in context. -->
-      <section>
-        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
-            <path d="M3 6h18M3 12h12M3 18h6"/>
-          </svg>
-          Word frequencies
-        </h3>
-        <ConcordancePanel body={body} onJumpToWord={jumpToWord} />
-      </section>
-      <!-- Sentence rhythm — diagnostic for prose music. Surfaces
-           the average sentence length, distribution across five
-           literary bands (terse / medium / long / heavy / run-on),
-           and a "rhythm" signal flagging monotone writing. Long-
-           sentence offenders are clickable for in-place revision. -->
-      <section>
-        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
-            <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            <path d="M8 12h2M12 12h2M16 12h2"/>
-          </svg>
-          Sentence rhythm
-        </h3>
-        <SentenceStatsPanel body={body} onJumpToLine={jumpToLine} />
-      </section>
-      <!-- Reference note: pin any note to read alongside while
-           writing. The classic research move — paper open in one
-           pane, summary growing in the other. Persists per-current
-           note so reopening picks up where you left off. -->
-      <section>
-        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
-            <path d="M4 4h12a4 4 0 014 4v12H8a4 4 0 01-4-4V4z"/>
-            <path d="M8 8h8M8 12h8M8 16h6"/>
-          </svg>
-          Reference
-        </h3>
-        <ReferenceNotePanel currentPath={note.path} currentBody={body} currentTitle={note.title ?? ''} />
-      </section>
-      <section>
-        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
-            <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
-          </svg>
-          AI link suggester
-        </h3>
-        <LinkSuggestPanel
-          notePath={note.path}
-          body={body}
-          existingTags={existingTagList}
-          onAddTag={addSuggestedTag}
-          onInsertLink={insertSuggestedLink}
-        />
-      </section>
-    {/if}
-    {#if note}
-      <section>
-        <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Properties</h3>
-        <FrontmatterEditor frontmatter={note.frontmatter ?? {}} onChange={saveFrontmatter} />
-      </section>
+      <!-- Research panel auto-hides when the body has no highlights /
+           footnotes / outbound URLs. Keep visible (no wrapping
+           details) so it just appears the moment the note picks up
+           any of those affordances. -->
+      <ResearchPanel body={body} onJump={jumpToLine} />
+      <!-- Advanced surfaces — collapsed by default. Each `<details>`
+           opens independently and remembers nothing across reloads
+           on purpose; defaulting closed is the whole point. -->
+      <details class="group">
+        <summary class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5 cursor-pointer hover:text-text select-none">
+          <svg viewBox="0 0 24 24" class="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          <span>AI link suggester</span>
+        </summary>
+        <div class="mt-2">
+          <LinkSuggestPanel
+            notePath={note.path}
+            body={body}
+            existingTags={existingTagList}
+            onAddTag={addSuggestedTag}
+            onInsertLink={insertSuggestedLink}
+          />
+        </div>
+      </details>
+      <details class="group">
+        <summary class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5 cursor-pointer hover:text-text select-none">
+          <svg viewBox="0 0 24 24" class="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          <span>Reference note</span>
+        </summary>
+        <div class="mt-2">
+          <ReferenceNotePanel currentPath={note.path} currentBody={body} currentTitle={note.title ?? ''} />
+        </div>
+      </details>
+      <details class="group">
+        <summary class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5 cursor-pointer hover:text-text select-none">
+          <svg viewBox="0 0 24 24" class="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+          <span>Properties</span>
+        </summary>
+        <div class="mt-2">
+          <FrontmatterEditor frontmatter={note.frontmatter ?? {}} onChange={saveFrontmatter} />
+        </div>
+      </details>
     {/if}
   </div>
 {/snippet}
