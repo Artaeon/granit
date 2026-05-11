@@ -5,8 +5,6 @@
   import { auth } from '$lib/stores/auth';
   import { api, type CalendarEvent, type CalendarEventEntry, type CalendarFeed, type CalendarSource, type HabitInfo, type Project, type Task } from '$lib/api';
   import CalendarAgent from '$lib/calendar/CalendarAgent.svelte';
-  import CalendarDashboardPanel from '$lib/calendar/CalendarDashboardPanel.svelte';
-  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { mediaQuery } from '$lib/util/mediaQuery';
@@ -36,7 +34,7 @@
   import { dragStore } from '$lib/calendar/dragStore';
   import { onDestroy } from 'svelte';
 
-  type View = 'day' | '3day' | 'week' | 'month' | 'year' | 'agenda';
+  type View = 'day' | 'week' | 'month' | 'year';
 
   // Persisted last-used view (per device). On a fresh visit (no
   // saved preference) we default to 'day' on small screens because
@@ -257,22 +255,6 @@
     }
   });
 
-  // Dashboard overlay — full-screen CalendarDashboardPanel. State
-  // persists in the URL (?dashboard=1) so a reload or shared link
-  // keeps it open. Pure presentation flag; the panel does its own
-  // data load. Mirrors how /projects and /goals wire their dashboards.
-  let dashboardOpen = $derived($page.url.searchParams.get('dashboard') === '1');
-  function openDashboard() {
-    const params = new URLSearchParams($page.url.searchParams);
-    params.set('dashboard', '1');
-    goto(`/calendar?${params.toString()}`, { replaceState: true, keepFocus: true });
-  }
-  function closeDashboard() {
-    const params = new URLSearchParams($page.url.searchParams);
-    params.delete('dashboard');
-    goto(`/calendar?${params.toString()}`, { replaceState: true, keepFocus: true });
-  }
-
   async function load() {
     if (!$auth) return;
     loading = true;
@@ -433,7 +415,6 @@
 
   let viewDays = $derived.by(() => {
     if (view === 'day') return [cursor];
-    if (view === '3day') return Array.from({ length: 3 }, (_, i) => addDays(cursor, i));
     if (view === 'week') {
       const s = startOfWeek(cursor);
       return Array.from({ length: 7 }, (_, i) => addDays(s, i));
@@ -453,19 +434,15 @@
 
   function prev() {
     if (view === 'day') cursor = addDays(cursor, -1);
-    else if (view === '3day') cursor = addDays(cursor, -3);
     else if (view === 'week') cursor = addDays(cursor, -7);
     else if (view === 'month') cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
     else if (view === 'year') cursor = new Date(cursor.getFullYear() - 1, cursor.getMonth(), 1);
-    else cursor = addDays(cursor, -7);
   }
   function next() {
     if (view === 'day') cursor = addDays(cursor, 1);
-    else if (view === '3day') cursor = addDays(cursor, 3);
     else if (view === 'week') cursor = addDays(cursor, 7);
     else if (view === 'month') cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
     else if (view === 'year') cursor = new Date(cursor.getFullYear() + 1, cursor.getMonth(), 1);
-    else cursor = addDays(cursor, 7);
   }
   function gotoToday() { cursor = new Date(); }
 
@@ -493,14 +470,12 @@
       case 'k': case 'p': prev(); break;
       case 'd': view = 'day'; break;
       case 'w': view = 'week'; break;
-      case 'x': view = '3day'; break; // m is taken by month
       case 'm': view = 'month'; break;
       case 'y': view = 'year'; break;
-      case 'a': view = 'agenda'; break;
-      case 'A': agentOpen = true; break; // Shift+A opens the agent
-                                         // (lowercase 'a' is already
-                                         // taken by agenda view here;
-                                         // other pages use 'a').
+      case 'a': case 'A': agentOpen = true; break; // 'a' opens the agent
+                                                   // (matches other pages
+                                                   // now that the agenda
+                                                   // view is gone).
       case '?': showShortcutHelp = !showShortcutHelp; break;
       default: return;
     }
@@ -848,320 +823,15 @@
   // so the user can scroll the calendar while reading the plan.
   // Cap: at most 30 unscheduled tasks fed in, to keep prompt size
   // predictable on long backlogs.
-  let aiBusy = $state(false);
-  let aiResponse = $state('');
-  let aiError = $state('');
-  let aiAbort: AbortController | null = null;
-
-  // ── AI: Find Free Time ────────────────────────────────────────
-  // Complement to Plan my week. Plan-my-week distributes pending
-  // tasks across 7 days; this picks N candidate empty slots of a
-  // requested length so the user can stake out 'a 90-min focus
-  // block' or 'a 30-min walk' without scrolling the grid hunting
-  // for gaps. AI receives the events list + the user's
-  // constraints and returns 3 slots with one-line rationales.
-  // Click a slot to open the create-event modal pre-filled.
-  type SlotPick = { startISO: string; endISO: string; reason: string };
-  let findOpen = $state(false);
-  let findDuration = $state(60); // minutes
-  let findHorizonDays = $state(7);
-  let findTimeOfDay = $state<'any' | 'morning' | 'afternoon' | 'evening'>('any');
-  // Project-aware Find Free Time: when set, the AI is told the slot is
-  // FOR this project, and busy ranges from OTHER active projects are
-  // tagged as hard conflicts. Empty value = "any project" (the
-  // original behaviour). Defaults to whatever the calendar's project
-  // filter is on, so a user already viewing the project board gets
-  // project-aware slots out of the box.
-  let findForProject = $state('');
-  $effect(() => {
-    if (projectFilter && !findForProject) findForProject = projectFilter;
-  });
-  let findBusy = $state(false);
-  let findError = $state('');
-  let findRaw = $state('');
-  let findPicks = $state<SlotPick[]>([]);
-  let findAbort: AbortController | null = null;
-
-  async function findFreeTime() {
-    if (findBusy) return;
-    findAbort?.abort();
-    findAbort = new AbortController();
-    findBusy = true;
-    findError = '';
-    findPicks = [];
-    findRaw = '';
-    const today = new Date();
-    const horizonEnd = new Date(today);
-    horizonEnd.setDate(today.getDate() + findHorizonDays);
-    // Compact event list within the horizon — start/end in local
-    // ISO so the model and the user share the same time mental
-    // model. Skip events without start (all-day events block the
-    // whole day for our purposes; mark with start-of-day).
-    //
-    // Project tag goes in the busy summary so the model can tell which
-    // events tie to which project and avoid scheduling on top of an
-    // OTHER project's commitments. We use `allEvents` here (not the
-    // already-filtered `events`) so a project board view still
-    // considers cross-project conflicts when looking for free slots.
-    const items = allEvents
-      .filter((e) => {
-        const k = e.date ?? (e.start ? e.start.slice(0, 10) : '');
-        if (!k) return false;
-        return k >= fmtDateISO(today) && k <= fmtDateISO(horizonEnd);
-      })
-      .map((e) => {
-        const start = e.start ?? (e.date ? `${e.date}T00:00:00` : '');
-        const end = e.end ?? (e.start ? e.start : `${e.date ?? ''}T23:59:59`);
-        return { title: e.title, start, end, allDay: !e.start, project: e.project_id ?? '' };
-      })
-      .filter((x) => x.start);
-    const constraints: string[] = [
-      `Duration: ${findDuration} minutes.`,
-      `Horizon: today through ${fmtDateISO(horizonEnd)} (${findHorizonDays} days).`,
-      `Time of day: ${findTimeOfDay === 'any' ? 'any working hours' : findTimeOfDay}.`,
-      'Working hours: 08:00 to 20:00 local. Avoid 12:00–13:00 (lunch) unless the user said otherwise.',
-      'Pick 3 candidate slots. Spread them across different days when possible.'
-    ];
-    if (findForProject) {
-      constraints.push(
-        `Slot is FOR project "${findForProject}". Treat events tagged with a DIFFERENT project as hard conflicts — don't schedule on top of another project's commitments.`,
-        `Prefer slots adjacent to existing "${findForProject}" blocks (batch project work together when possible).`
-      );
-    }
-    const sys =
-      'You find empty time slots in the user\'s calendar that match constraints. Return STRICTLY a JSON array, no fences, no prose: [{"startISO": "<RFC3339 local>", "endISO": "<RFC3339 local>", "reason": "<under 14 words why this slot>"}]. The startISO MUST not collide with any of the busy ranges supplied. Pick slots ON THE HOUR or HALF-HOUR for human-friendly times. Different days when there\'s room.';
-    const userMsg =
-      `Today: ${today.toISOString()}.\n\nConstraints:\n${constraints.join('\n')}\n\n` +
-      `Busy ranges (${items.length} events) — local time:\n` +
-      items.map((x) => `- ${x.title}: ${x.start} → ${x.end}${x.allDay ? ' (all-day)' : ''}${x.project ? ` [project: ${x.project}]` : ''}`).join('\n');
-    let buf = '';
-    try {
-      await api.chatStream(
-        [
-          { role: 'system', content: sys },
-          { role: 'user', content: userMsg }
-        ],
-        undefined,
-        {
-          onChunk: (c) => { buf += c; findRaw = buf; },
-          onDone: () => {
-            let cleaned = buf.trim();
-            if (cleaned.startsWith('```')) {
-              cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
-            }
-            try {
-              const arr = JSON.parse(cleaned) as SlotPick[];
-              if (Array.isArray(arr)) findPicks = arr.filter((x) => x.startISO && x.endISO);
-            } catch {
-              findError = 'Model didn\'t return parseable JSON.';
-            }
-          },
-          onError: (err) => { findError = err.message; }
-        },
-        findAbort.signal
-      );
-    } finally {
-      findBusy = false;
-      findAbort = null;
-    }
-  }
-  function dismissFind() {
-    findAbort?.abort();
-    findBusy = false;
-    findOpen = false;
-    findPicks = [];
-    findError = '';
-    findRaw = '';
-  }
-  function pickFindSlot(p: SlotPick) {
-    // Open the create-event modal with the slot pre-filled. We re-
-    // use the unified create surface so the user gets the full
-    // event/task choice + recurrence picker etc.
-    const start = new Date(p.startISO);
-    const end = new Date(p.endISO);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      toast.error('Slot has an invalid time.');
-      return;
-    }
-    unifiedStart = start;
-    unifiedEnd = end;
-    unifiedKind = 'event';
-    unifiedOpen = true;
-    findOpen = false;
-  }
-
-  async function planMyWeek() {
-    if (aiBusy) return;
-    aiBusy = true;
-    aiError = '';
-    aiResponse = '';
-    aiAbort = new AbortController();
-    // Tasks aren't kept in calendar state — fetch them on demand so
-    // the page stays lean for users who never click this button.
-    let openTasks: Task[] = [];
-    try {
-      const r = await api.listTasks({ status: 'open' });
-      openTasks = r.tasks ?? [];
-    } catch (e) {
-      aiError = 'Could not load tasks: ' + (errorMessage(e));
-      aiBusy = false;
-      aiAbort = null;
-      return;
-    }
-    const unscheduled = openTasks
-      .filter((t) => !t.done && !t.scheduledStart)
-      .slice(0, 30);
-    if (unscheduled.length === 0) {
-      aiError = 'No unscheduled open tasks to plan. All your tasks already have a slot, or there are none.';
-      aiBusy = false;
-      aiAbort = null;
-      return;
-    }
-    const today = new Date();
-    const todayISO = fmtDateISO(today);
-    // 7-day load summary: count of events landing on each of the
-    // next 7 days (including today). Uses the same date-key shape
-    // as monthEvents — `date` if set, else first 10 chars of start.
-    const dayKeys: string[] = Array.from({ length: 7 }, (_, i) =>
-      fmtDateISO(addDays(today, i))
-    );
-    const counts: Record<string, number> = Object.fromEntries(dayKeys.map((k) => [k, 0]));
-    for (const e of events) {
-      const key = e.date ?? (e.start ? e.start.slice(0, 10) : '');
-      if (key && key in counts) counts[key]++;
-    }
-    const loadLines = dayKeys.map((k) => {
-      const d = new Date(k + 'T00:00:00');
-      const wd = d.toLocaleDateString(undefined, { weekday: 'short' });
-      return `- ${wd} ${k}: ${counts[k]} events`;
-    }).join('\n');
-    const taskLines = unscheduled.map((t) => {
-      const bits: string[] = [`- ${t.text}`];
-      if (t.priority) bits.push(`p${t.priority}`);
-      if (t.dueDate) bits.push(`due ${t.dueDate}`);
-      if (t.durationMinutes) bits.push(`${t.durationMinutes}m`);
-      else if (t.estimatedMinutes) bits.push(`~${t.estimatedMinutes}m est`);
-      return bits.join(' · ');
-    }).join('\n');
-    const userMessage =
-      `Today is ${todayISO}. Help the user plan their week. ` +
-      'Below is a list of OPEN UNSCHEDULED tasks, plus a snapshot of how loaded each of the next 7 days already is (event count). ' +
-      'For each task, suggest a single day + rough time-of-day bucket (morning/afternoon/evening) within the next 7 days. ' +
-      'Spread tasks toward lighter days, respect due dates, and front-load anything overdue or due soon. ' +
-      'Format your reply as a strict markdown bulleted list, one bullet per task:\n\n' +
-      '- **<task title>** → <Weekday YYYY-MM-DD> <morning|afternoon|evening> — one short sentence rationale.\n\n' +
-      `Next 7 days load:\n${loadLines}\n\n` +
-      `Unscheduled tasks (${unscheduled.length}${unscheduled.length === 30 ? ', capped' : ''}):\n${taskLines}`;
-    try {
-      await api.chatStream(
-        [{ role: 'user', content: userMessage }],
-        undefined,
-        {
-          onChunk: (c) => { aiResponse += c; },
-          onError: (err) => { aiError = err.message; }
-        },
-        aiAbort.signal
-      );
-    } finally {
-      aiBusy = false;
-      aiAbort = null;
-    }
-  }
-  function cancelAI() { aiAbort?.abort(); }
-
-  // ── AI: Day insight ─────────────────────────────────────────────
-  // Honest, short read on the shape of a single day's schedule. Three
-  // deep-work blocks? Two meetings? Light afternoon? Or back-to-back
-  // 9-to-6 with no lunch — flag it. The user is using the calendar to
-  // plan a real life; a 2-line take from an outsider's view helps spot
-  // the bad pattern (no breaks, fragmented mornings) before it lands.
-  // Streams under the same chatStream pipeline as Plan-my-week so
-  // audit + cost + redaction all apply.
-  let insightBusy = $state(false);
-  let insightText = $state('');
-  let insightError = $state('');
-  let insightAbort: AbortController | null = null;
-  let insightForDay = $state<string>(''); // YYYY-MM-DD this insight is for
-
-  async function dayInsight(target: Date) {
-    if (insightBusy) return;
-    insightAbort?.abort();
-    insightAbort = new AbortController();
-    insightBusy = true;
-    insightError = '';
-    insightText = '';
-    insightForDay = fmtDateISO(target);
-    // Pull just the events on the target day (events array already
-    // honours the project filter + per-source colour overrides).
-    // Sort by start so the prompt's chronology matches the grid.
-    const dayEvents = events
-      .filter((e) => {
-        const k = e.date ?? (e.start ? e.start.slice(0, 10) : '');
-        return k === insightForDay;
-      })
-      .map((e) => ({
-        title: e.title,
-        start: e.start ?? '',
-        end: e.end ?? '',
-        allDay: !e.start,
-        type: e.type,
-        project: e.project_id ?? ''
-      }))
-      .sort((a, b) => (a.start || '0').localeCompare(b.start || '0'));
-    if (dayEvents.length === 0) {
-      insightText = '_No events on this day. Wide open — pick what matters most._';
-      insightBusy = false;
-      insightAbort = null;
-      return;
-    }
-    const lines = dayEvents.map((e) => {
-      if (e.allDay) return `- (all-day) ${e.title}${e.project ? ` [project: ${e.project}]` : ''}`;
-      const s = e.start ? new Date(e.start) : null;
-      const en = e.end ? new Date(e.end) : null;
-      const stStr = s ? `${String(s.getHours()).padStart(2, '0')}:${String(s.getMinutes()).padStart(2, '0')}` : '';
-      const enStr = en ? `${String(en.getHours()).padStart(2, '0')}:${String(en.getMinutes()).padStart(2, '0')}` : '';
-      return `- ${stStr}${enStr ? `–${enStr}` : ''} ${e.title} (${e.type})${e.project ? ` [project: ${e.project}]` : ''}`;
-    }).join('\n');
-    const sys =
-      'You give an honest, short take on the shape of one day\'s schedule. ' +
-      'Two to four lines max. Plain English, no fluff. ' +
-      'Call out the structural pattern (deep-work blocks, meetings, gaps), ' +
-      'and FLAG anything obviously bad: back-to-back without breaks, no lunch, ' +
-      'fragmented mornings, sole big block destroyed by one 30-min meeting in the middle. ' +
-      'If the day looks well-designed, say so briefly. Don\'t suggest alternatives ' +
-      'unless you spot a clear problem; the user is asking for a sanity check, not a planner.';
-    const user =
-      `Day: ${target.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}\n\n` +
-      `Schedule (${dayEvents.length} entries):\n${lines}`;
-    try {
-      await api.chatStream(
-        [{ role: 'system', content: sys }, { role: 'user', content: user }],
-        undefined,
-        {
-          onChunk: (c) => { insightText += c; },
-          onError: (err) => { insightError = err.message; }
-        },
-        insightAbort.signal
-      );
-    } finally {
-      insightBusy = false;
-      insightAbort = null;
-    }
-  }
-  function dismissInsight() {
-    insightAbort?.abort();
-    insightBusy = false;
-    insightText = '';
-    insightError = '';
-    insightForDay = '';
-  }
+  // AI page-local helpers (Plan my week, Find free time, Day
+  // insight) used to live inline here as long fetch-and-render
+  // blocks. All three prompts now run through the chat sidebar's
+  // Calendar Agent (Run agent → Find focus block / Week shape /
+  // Clear one meeting), which shares the same chatStream pipeline.
+  // The 300-odd lines they used to take have been retired.
 
   let headline = $derived.by(() => {
     if (view === 'day') return cursor.toLocaleDateString(undefined, { weekday: $isMobile ? 'short' : 'long', month: 'short', day: 'numeric' });
-    if (view === '3day') {
-      const e = addDays(cursor, 2);
-      return `${cursor.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
-    }
     if (view === 'week') {
       const s = startOfWeek(cursor);
       const e = endOfWeek(cursor);
@@ -1172,7 +842,7 @@
     }
     if (view === 'month') return cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     if (view === 'year') return String(cursor.getFullYear());
-    return 'Agenda';
+    return '';
   });
 </script>
 
@@ -1341,25 +1011,6 @@
       <button onclick={prev} aria-label="prev" class="w-8 h-8 flex items-center justify-center text-sm bg-surface0 border border-surface1 rounded hover:border-primary">‹</button>
       <button onclick={next} aria-label="next" class="w-8 h-8 flex items-center justify-center text-sm bg-surface0 border border-surface1 rounded hover:border-primary">›</button>
       <h2 class="text-sm sm:text-base text-text font-medium truncate">{headline}</h2>
-      <!-- Day insight: an honest 2-4 line take on the shape of a
-           single day. Only meaningful in day/3day views; in week
-           and beyond the user is looking at a structure too coarse
-           for the take to land. AI calls are server-side
-           Sabbath-gated already, so no client-side check needed. -->
-      {#if view === 'day' || view === '3day'}
-        <button
-          type="button"
-          onclick={() => void dayInsight(cursor)}
-          disabled={insightBusy}
-          title="AI take on this day's schedule"
-          class="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border bg-surface1 text-primary border-surface2 hover:bg-surface2 disabled:opacity-50"
-        >
-          <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" />
-          </svg>
-          {insightBusy ? '…' : 'insight'}
-        </button>
-      {/if}
       <!-- Jump to a specific date. Hidden on the smallest screens
            where the header is already crowded; the prev/next +
            "today" buttons cover the common case. The input is
@@ -1397,71 +1048,18 @@
         </svg>
         Plan
       </button>
-      {#if planMode}
-        <span class="hidden sm:inline-block text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface1 text-secondary border border-surface2">Plan mode</span>
-      {/if}
-      <!-- AI: Plan my week. Visible on sm+ to keep mobile lean —
-           mobile already has the global Mod+J overlay via the
-           floating sparkle FAB. Renders its panel between the
-           header and the grid container, not in a popup, so the
-           user can scroll/click the calendar while reading. -->
-      <button
-        onclick={() => void planMyWeek()}
-        disabled={aiBusy}
-        title="Suggest a slot for each unscheduled open task across the next 7 days"
-        class="hidden sm:inline-flex px-2.5 py-1.5 text-xs sm:text-sm bg-surface1 border border-surface2 text-primary rounded hover:border-primary disabled:opacity-50 items-center gap-1"
-      >
-        <span aria-hidden="true">✨</span>
-        <span>{aiBusy ? 'thinking…' : 'Plan my week'}</span>
-      </button>
-      <!-- Calendar Agent button removed; launches from the chat
-           sidebar via ?agent=1 (Shift+A still works via hotkey). -->
-      <!-- Dashboard — opens the full-screen CalendarDashboardPanel
-           overlay. Visual companion to the Calendar Manager chat
-           prelude; shares the same context bundle so the two
-           surfaces never disagree on event/overdue/free-slot counts.
-           URL-persisted via ?dashboard=1 so a reload keeps it open. -->
-      <button
-        onclick={openDashboard}
-        title="open calendar dashboard — visual operating picture"
-        aria-label="open calendar dashboard"
-        class="inline-flex px-2 sm:px-2.5 py-1.5 text-xs sm:text-sm bg-surface0 border border-surface1 text-subtext rounded hover:border-primary hover:text-text items-center gap-1"
-      >
-        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="7" height="9" rx="1" />
-          <rect x="14" y="3" width="7" height="5" rx="1" />
-          <rect x="14" y="12" width="7" height="9" rx="1" />
-          <rect x="3" y="16" width="7" height="5" rx="1" />
-        </svg>
-        <span class="hidden sm:inline">Dashboard</span>
-      </button>
-      <!-- Find Free Time — distinct from Plan my week. Plan
-           distributes pending tasks across the week; this picks
-           candidate empty slots of a chosen length so the user
-           can stake out 'a 90-min focus block' without scrolling
-           the grid hunting for gaps. -->
-      <button
-        onclick={() => (findOpen = !findOpen)}
-        aria-pressed={findOpen}
-        title="AI finds empty slots that match your duration + time-of-day"
-        class="hidden sm:inline-flex px-2.5 py-1.5 text-xs sm:text-sm rounded items-center gap-1 {findOpen ? 'bg-primary text-on-primary' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary'}"
-      >
-        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="9"/>
-          <path d="M12 7v5l3 2" stroke-linecap="round"/>
-        </svg>
-        <span>Find time</span>
-      </button>
+      <!-- Calendar Agent (Plan my week, Find free time, Day insight,
+           Dashboard) lives in the chat sidebar — Run agent on
+           /calendar. Header stays minimal: nav + view switcher. -->
+      <!-- View switcher — Apple Calendar set: Day / Week / Month / Year.
+           3-day and Agenda were retired alongside the AI toolbar
+           cleanup; Agenda's content lives in /tasks + the chat
+           sidebar's "what's coming up" prompts. -->
       <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm">
         <button
           class="px-2 sm:px-3 py-1.5 {view === 'day' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (view = 'day')}
         >Day</button>
-        <button
-          class="px-2 sm:px-3 py-1.5 {view === '3day' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-          onclick={() => (view = '3day')}
-          title="3-day view"
-        >3d</button>
         <button
           class="px-2 sm:px-3 py-1.5 {view === 'week' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (view = 'week')}
@@ -1474,10 +1072,6 @@
           class="px-2 sm:px-3 py-1.5 {view === 'year' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'} hidden sm:inline-block"
           onclick={() => (view = 'year')}
         >Year</button>
-        <button
-          class="px-2 sm:px-3 py-1.5 {view === 'agenda' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-          onclick={() => (view = 'agenda')}
-        >Agenda</button>
       </div>
       <button
         onclick={() => (showShortcutHelp = true)}
@@ -1487,159 +1081,10 @@
       >?</button>
     </header>
 
-    <!-- AI Find Free Time panel — sister surface to Plan-my-week.
-         Toggleable form (duration / horizon / time-of-day) at the
-         top, AI-returned slot candidates below. Click a slot to
-         pre-fill the create-event modal at that time. -->
-    {#if findOpen}
-      <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-mantle">
-        <div class="flex items-baseline gap-2 mb-2 flex-wrap">
-          <span class="text-xs uppercase tracking-wider text-secondary font-semibold">✨ Find free time</span>
-          <span class="flex-1"></span>
-          {#if findBusy}
-            <button onclick={() => findAbort?.abort()} class="text-[11px] text-warning hover:underline">cancel</button>
-          {/if}
-          <button onclick={dismissFind} class="text-[11px] text-dim hover:text-text">dismiss</button>
-        </div>
-        <div class="flex items-center gap-2 flex-wrap text-xs">
-          <label class="text-dim flex items-center gap-1.5">
-            duration
-            <input
-              type="number"
-              bind:value={findDuration}
-              min="15"
-              max="480"
-              step="15"
-              class="w-16 px-1.5 py-1 bg-surface0 border border-surface1 rounded text-text text-right tabular-nums"
-            />
-            min
-          </label>
-          <label class="text-dim flex items-center gap-1.5">
-            within
-            <select bind:value={findHorizonDays} class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text">
-              <option value={3}>3 days</option>
-              <option value={7}>7 days</option>
-              <option value={14}>14 days</option>
-            </select>
-          </label>
-          <label class="text-dim flex items-center gap-1.5">
-            when
-            <select bind:value={findTimeOfDay} class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text">
-              <option value="any">any time</option>
-              <option value="morning">morning</option>
-              <option value="afternoon">afternoon</option>
-              <option value="evening">evening</option>
-            </select>
-          </label>
-          {#if allProjects.length > 0}
-            <!-- Project-aware Find Free Time. When set, the AI
-                 treats events tied to OTHER projects as hard
-                 conflicts so a "find time for project X" doesn't
-                 land on top of a different project's commitments,
-                 and prefers slots adjacent to existing project-X
-                 work (batch into focused blocks). -->
-            <label class="text-dim flex items-center gap-1.5">
-              for project
-              <select bind:value={findForProject} class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text">
-                <option value="">any</option>
-                {#each allProjects as p (p.name)}
-                  <option value={p.name}>{p.name}</option>
-                {/each}
-              </select>
-            </label>
-          {/if}
-          <button
-            onclick={() => void findFreeTime()}
-            disabled={findBusy}
-            class="px-3 py-1 bg-primary text-on-primary rounded text-xs font-medium disabled:opacity-50"
-          >
-            {findBusy ? 'searching…' : 'Find slots'}
-          </button>
-        </div>
-        {#if findError}
-          <p class="text-[11px] text-error mt-2">{findError}</p>
-        {/if}
-        {#if findPicks.length > 0}
-          <ul class="mt-2 space-y-1">
-            {#each findPicks as p (p.startISO)}
-              {@const startD = new Date(p.startISO)}
-              {@const endD = new Date(p.endISO)}
-              <li>
-                <button
-                  type="button"
-                  onclick={() => pickFindSlot(p)}
-                  class="w-full text-left px-2.5 py-1.5 rounded bg-surface0 border border-surface1 hover:border-primary text-xs flex items-baseline gap-2 group"
-                >
-                  <span class="font-mono tabular-nums text-text flex-shrink-0">
-                    {startD.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                    · {String(startD.getHours()).padStart(2, '0')}:{String(startD.getMinutes()).padStart(2, '0')}
-                    – {String(endD.getHours()).padStart(2, '0')}:{String(endD.getMinutes()).padStart(2, '0')}
-                  </span>
-                  <span class="flex-1 text-dim group-hover:text-subtext truncate">{p.reason}</span>
-                  <span class="text-[10px] text-secondary opacity-0 group-hover:opacity-100">create →</span>
-                </button>
-              </li>
-            {/each}
-          </ul>
-        {:else if findBusy}
-          <p class="text-[11px] text-dim italic mt-2">checking the next {findHorizonDays} days…</p>
-        {/if}
-      </div>
-    {/if}
-
-    <!-- AI day insight panel. A 2-4 line read on the shape of the
-         day. Renders below the FFT panel + above the grid so the
-         user keeps the calendar visible. Self-dismisses when the
-         user clicks Plan or navigates away (insightForDay
-         comparison handles the latter). -->
-    {#if (insightText || insightBusy || insightError) && (view === 'day' || view === '3day') && insightForDay === fmtDateISO(cursor)}
-      <div class="px-3 py-2.5 border-b border-surface1 flex-shrink-0 bg-surface1">
-        <div class="flex items-baseline gap-2 mb-1">
-          <span class="text-[10px] uppercase tracking-wider text-primary font-semibold">✦ Day insight</span>
-          <span class="flex-1"></span>
-          {#if insightBusy}
-            <button onclick={() => insightAbort?.abort()} class="text-[10px] text-warning hover:underline">cancel</button>
-          {:else if insightText}
-            <button onclick={() => void dayInsight(cursor)} class="text-[10px] text-secondary hover:underline">regenerate</button>
-          {/if}
-          <button onclick={dismissInsight} class="text-[10px] text-dim hover:text-text">dismiss</button>
-        </div>
-        {#if insightError}
-          <p class="text-xs text-error">{insightError}</p>
-        {:else if insightText}
-          <p class="text-xs text-text leading-relaxed whitespace-pre-line">{insightText}</p>
-        {:else if insightBusy}
-          <p class="text-[11px] text-dim italic">reading the shape of the day…</p>
-        {/if}
-      </div>
-    {/if}
-
-    <!-- AI "Plan my week" panel. Sits between the header and the
-         quick-create bar so the suggestions stay visible above the
-         calendar grid — the user can scroll into a day or click an
-         existing event without dismissing the plan. Same gradient
-         tint as the other AI surfaces (vision/goals/tasks) so the
-         visual category is consistent across pages. -->
-    {#if aiBusy || aiResponse || aiError}
-      <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-surface1">
-        <div class="flex items-baseline gap-2 mb-2">
-          <span class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">✨ Plan my week</span>
-          {#if aiBusy}
-            <button onclick={cancelAI} class="text-[11px] text-warning hover:underline">cancel</button>
-          {:else}
-            <button onclick={() => void planMyWeek()} class="text-[11px] text-secondary hover:underline">↻ regenerate</button>
-            <button onclick={() => { aiResponse = ''; aiError = ''; }} class="text-[11px] text-dim hover:text-error">dismiss</button>
-          {/if}
-        </div>
-        {#if aiError}
-          <div class="text-xs text-error">{aiError}</div>
-        {:else}
-          <div class="prose prose-sm max-w-none text-sm">
-            <MarkdownRenderer body={aiResponse || '_thinking…_'} />
-          </div>
-        {/if}
-      </div>
-    {/if}
+    <!-- AI inline panels (Find Free Time / Day Insight / Plan My Week)
+         retired alongside their header buttons. Same prompts now live
+         in the chat sidebar's Calendar Agent — runnable from any page
+         with the Run-Agent chip. -->
 
     <!-- Quick-create bar. Sits between the toolbar and the grid so
          it's always visible without crowding the controls row. The
@@ -1683,7 +1128,7 @@
       ontouchstart={onTouchStart}
       ontouchend={onTouchEnd}
     >
-      {#if planMode && (view === 'day' || view === '3day' || view === 'week')}
+      {#if planMode && (view === 'day' || view === 'week')}
         <!-- Plan layout: backlog on the left (desktop) / top
              (mobile horizontal scroller). The grid takes the rest.
              onTaskDrop is what wires backlog → grid drop semantics;
@@ -1708,7 +1153,7 @@
             />
           </div>
         </div>
-      {:else if view === 'day' || view === '3day' || view === 'week'}
+      {:else if view === 'day' || view === 'week'}
         <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} />
       {:else if view === 'month'}
         <div class="h-full overflow-auto">
@@ -1811,11 +1256,3 @@
   onChanged={() => { void load(); void loadNativeEvents(); }}
 />
 
-{#if dashboardOpen}
-  <!-- Calendar Dashboard overlay — full-screen visual operating
-       picture for the current 14-day window. URL-persisted via
-       ?dashboard=1 so a reload keeps it open. Sits above the
-       calendar grid + sidebar without unmounting them, so closing
-       the dashboard lands the user back where they came from. -->
-  <CalendarDashboardPanel onClose={closeDashboard} />
-{/if}
