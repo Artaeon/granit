@@ -620,12 +620,41 @@
   // that defaults from the mode's preference but the user overrides.
   let modeId = $state<string>(loadModeId());
   let mode = $derived(findMode(modeId));
+  // Tracks whether the current mode came from auto-switching into
+  // Project Manager because the user is on a project page. When
+  // true, leaving project context reverts to the user's persisted
+  // mode; when false (user picked it explicitly), the mode stays.
+  let autoPMActive = $state(false);
+
+  // Auto-switch to Project Manager mode when the user enters a
+  // project page. The PM system prompt + prelude assume a project
+  // is in scope, so the mode and the context shape are coupled —
+  // having to manually pick PM every time felt like busywork. The
+  // switch is NOT persisted (contextual, not a preference); when
+  // the user leaves project scope OR manually picks a different
+  // mode, we revert / yield control respectively.
+  $effect(() => {
+    const inProject = !!currentProjectName;
+    if (inProject) {
+      if (modeId !== 'project-manager') {
+        autoPMActive = true;
+        modeId = 'project-manager';
+      }
+    } else if (autoPMActive && modeId === 'project-manager') {
+      autoPMActive = false;
+      modeId = loadModeId();
+    }
+  });
+
   // Persist mode change + reset RAG default when user picks a new
   // mode, but DON'T reset on every render (that would clobber the
   // user's explicit override). Only seed when the user actively
   // changes mode.
   function selectMode(id: string) {
     if (id === modeId) return;
+    // User is taking control — clear the auto-switch flag so a
+    // future project-page exit doesn't yank them back.
+    autoPMActive = false;
     modeId = id;
     persistModeId(id);
     const m = findMode(id);
@@ -1313,6 +1342,69 @@
     }
   }
 
+  // ── Save one assistant reply as a vault note ───────────────────
+  // Cuts the "draft a brief → copy-paste into a new note" loop.
+  // Common path: PM mode drafts a brief, user accepts, saves under
+  // Projects/<name>/<derived-title>.md. When not in a project the
+  // file lands under Drafts/. The path is exposed via the toast's
+  // "open" action so the user can verify what got written.
+  let savingMessageIdx = $state<number | null>(null);
+  async function saveAssistantAsNote(idx: number) {
+    const m = messages[idx];
+    if (!m || m.role !== 'assistant') return;
+    if (savingMessageIdx !== null) return;
+    const cleaned = stripStructuredBlocks(m.content || '').trim();
+    if (!cleaned) {
+      toast.info('Nothing to save in this reply.');
+      return;
+    }
+    savingMessageIdx = idx;
+    const title = deriveSaveTitle(cleaned);
+    const folder = currentProjectName
+      ? `Projects/${slugify(currentProjectName) || currentProjectName}`
+      : 'Drafts';
+    const path = `${folder}/${slugify(title) || 'draft'}.md`;
+    try {
+      await api.createNote({
+        path,
+        frontmatter: {
+          type: 'ai-draft',
+          mode: mode.id,
+          project: currentProjectName || undefined,
+          captured_at: new Date().toISOString(),
+          tags: ['ai-draft', mode.id]
+        },
+        body: cleaned
+      });
+      toast.success(`Saved · ${path}`, {
+        action: { label: 'Open', href: `/notes/${encodeURIComponent(path)}` }
+      });
+    } catch (e) {
+      toast.error('Save failed: ' + errorMessage(e));
+    } finally {
+      savingMessageIdx = null;
+    }
+  }
+  // deriveSaveTitle — pick the best line to use as the filename.
+  // First H1 wins; first non-empty line falls back; "AI draft +
+  // today's date" is the floor so a one-line body still files
+  // under a discoverable name. Pure so vitest can pin it later.
+  function deriveSaveTitle(body: string): string {
+    const lines = body.split('\n');
+    for (const ln of lines) {
+      const m = ln.match(/^#\s+(.+?)\s*$/);
+      if (m && m[1].trim()) return m[1].trim();
+    }
+    for (const ln of lines) {
+      const t = ln.trim();
+      if (t && !t.startsWith('>') && !t.startsWith('```')) {
+        return t.length > 60 ? t.slice(0, 60).trim() : t;
+      }
+    }
+    const d = new Date();
+    return `AI draft ${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   // ── Long-term AI memory ─────────────────────────────────────────
   // The user's persistent facts ("wife is Anna", "vegetarian", etc.)
   // get folded into every thread's first-turn prelude so the model
@@ -1863,10 +1955,19 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
           aria-haspopup="listbox"
           aria-expanded={modePickerOpen}
           class="tap-target inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-surface0 active:bg-surface1 text-text transition-colors"
-          title={`Mode: ${mode.label} — ${mode.tagline}`}
+          title={autoPMActive
+            ? `Mode: ${mode.label} (auto — you're on a project page). Click to override.`
+            : `Mode: ${mode.label} — ${mode.tagline}`}
         >
           <span class="text-base leading-none">{mode.glyph}</span>
           <span class="text-sm font-semibold truncate max-w-[8rem] sm:max-w-none">{mode.label}</span>
+          {#if autoPMActive}
+            <!-- Tiny "auto" badge — surfaces that the mode was
+                 contextually selected by the project page, not the
+                 user's persistent preference. Clears the moment
+                 they pick anything else. -->
+            <span class="text-[9px] uppercase tracking-wider px-1 rounded bg-primary/15 text-primary leading-tight">auto</span>
+          {/if}
           <svg viewBox="0 0 24 24" class="w-3 h-3 opacity-60 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="6 9 12 15 18 9" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -2127,6 +2228,30 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                         <circle cx="6" cy="18" r="2"/>
                         <path d="M6 8v8M6 12h6a4 4 0 004-4V8" stroke-linecap="round"/>
                       </svg>
+                    </button>
+                    <!-- Save as note — cuts the draft → copy → new
+                         note loop. PM-drafted briefs / status reports
+                         file under Projects/<name>/ when in project
+                         scope, Drafts/ otherwise. The toast surfaces
+                         the resulting path with an Open action. -->
+                    <button
+                      type="button"
+                      onclick={() => void saveAssistantAsNote(i)}
+                      disabled={savingMessageIdx !== null}
+                      class="tap-target inline-flex items-center justify-center w-7 h-7 rounded text-dim hover:text-success hover:bg-surface0 active:bg-surface1 leading-none transition-colors disabled:opacity-50"
+                      aria-label="Save this reply as a vault note"
+                      title={currentProjectName
+                        ? `Save under Projects/${currentProjectName}/`
+                        : 'Save under Drafts/'}
+                    >
+                      {#if savingMessageIdx === i}
+                        <span class="text-[10px]">…</span>
+                      {:else}
+                        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M5 4h11l3 3v13H5z"/>
+                          <path d="M9 4v5h6V4M8 14h8M8 18h6"/>
+                        </svg>
+                      {/if}
                     </button>
                     <!-- Pin star — toggles a per-message pin so the
                          reply can be retrieved from the Pinned tab.
