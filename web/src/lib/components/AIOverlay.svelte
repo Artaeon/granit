@@ -2174,22 +2174,24 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                  (the picker opens with them; no need to label what
                  the user is already looking at). The "personas"
                  header below makes the second group obvious. -->
-            <div class="px-3 pt-1 pb-1 text-[9px] uppercase tracking-widest text-dim">Modes</div>
+            <div class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-dim">Modes</div>
             {#each GENERIC_MODES as m (m.id)}
               <button
                 type="button"
                 role="option"
                 aria-selected={m.id === modeId}
                 onclick={() => { selectMode(m.id); modePickerOpen = false; }}
-                class="w-full flex items-start gap-2 px-3 py-2 hover:bg-surface0 text-left {m.id === modeId ? 'bg-primary/10' : ''}"
+                class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface0 text-left transition-colors {m.id === modeId ? 'bg-primary/10' : ''}"
               >
-                <span class="text-base leading-tight flex-shrink-0">{m.glyph}</span>
+                <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-surface1 text-subtext">{m.glyph}</span>
                 <div class="flex-1 min-w-0">
-                  <div class="text-sm font-medium text-text">{m.label}</div>
-                  <div class="text-[11px] text-dim leading-snug">{m.tagline}</div>
+                  <div class="text-[13px] font-medium text-text leading-tight">{m.label}</div>
+                  <div class="text-[11px] text-dim leading-snug mt-0.5">{m.tagline}</div>
                 </div>
                 {#if m.id === modeId}
-                  <span class="text-primary text-xs flex-shrink-0">✓</span>
+                  <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
                 {/if}
               </button>
             {/each}
@@ -2207,7 +2209,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                    it just won't be the full PM/Goal/Calendar
                    manager experience. -->
               <div class="border-t border-surface1 mt-1"></div>
-              <div class="px-3 pt-2 pb-1 text-[9px] uppercase tracking-widest text-primary">Contextual</div>
+              <div class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">Contextual</div>
               {#each CONTEXTUAL_MODES as m (m.id)}
                 {@const inScope =
                   (m.id === 'project-manager' && !!currentProjectName) ||
@@ -2224,23 +2226,25 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                   role="option"
                   aria-selected={m.id === modeId}
                   onclick={() => { selectMode(m.id); modePickerOpen = false; }}
-                  class="w-full flex items-start gap-2 px-3 py-2 hover:bg-surface0 text-left {m.id === modeId ? 'bg-primary/10' : ''} {inScope ? '' : 'opacity-60'}"
+                  class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface0 text-left transition-colors {m.id === modeId ? 'bg-primary/10' : ''} {inScope ? '' : 'opacity-60'}"
                   title={inScope
                     ? m.tagline
                     : `Pick-able from any page, but the prelude won't carry context until you ${scopeHint}.`}
                 >
                   <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary/15 text-primary">{m.glyph}</span>
                   <div class="flex-1 min-w-0">
-                    <div class="text-sm font-medium text-text inline-flex items-center gap-1.5">
+                    <div class="text-[13px] font-medium text-text leading-tight inline-flex items-center gap-1.5">
                       {m.label}
                       {#if !inScope}
-                        <span class="text-[9px] uppercase tracking-wider text-dim font-normal bg-surface1 px-1 rounded">needs {scopeHint}</span>
+                        <span class="text-[9px] uppercase tracking-wider text-dim font-normal bg-surface1 px-1 py-0.5 rounded">needs {scopeHint}</span>
                       {/if}
                     </div>
-                    <div class="text-[11px] text-dim leading-snug">{m.tagline}</div>
+                    <div class="text-[11px] text-dim leading-snug mt-0.5">{m.tagline}</div>
                   </div>
                   {#if m.id === modeId}
-                    <span class="text-primary text-xs flex-shrink-0">✓</span>
+                    <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
                   {/if}
                 </button>
               {/each}
@@ -2252,22 +2256,24 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                    tagline so the user reads "this is a character,
                    not a generic posture" at a glance. -->
               <div class="border-t border-surface1 mt-1"></div>
-              <div class="px-3 pt-2 pb-1 text-[9px] uppercase tracking-widest text-secondary">Personas</div>
+              <div class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-secondary">Personas</div>
               {#each PERSONAS as m (m.id)}
                 <button
                   type="button"
                   role="option"
                   aria-selected={m.id === modeId}
                   onclick={() => { selectMode(m.id); modePickerOpen = false; }}
-                  class="w-full flex items-start gap-2 px-3 py-2 hover:bg-surface0 text-left {m.id === modeId ? 'bg-primary/10' : ''}"
+                  class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface0 text-left transition-colors {m.id === modeId ? 'bg-primary/10' : ''}"
                 >
                   <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-secondary/15 text-secondary">{m.glyph}</span>
                   <div class="flex-1 min-w-0">
-                    <div class="text-sm font-medium text-text">{m.label}</div>
-                    <div class="text-[11px] text-dim leading-snug italic">{m.tagline}</div>
+                    <div class="text-[13px] font-medium text-text leading-tight">{m.label}</div>
+                    <div class="text-[11px] text-dim leading-snug italic mt-0.5">{m.tagline}</div>
                   </div>
                   {#if m.id === modeId}
-                    <span class="text-primary text-xs flex-shrink-0">✓</span>
+                    <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
                   {/if}
                 </button>
               {/each}
@@ -2332,139 +2338,139 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
     </header>
 
     {#if statusInfo?.sabbath || $sabbath}
-      <div class="mx-4 mt-3 px-3 py-2 text-[11px] bg-warning/10 border border-warning/30 rounded text-warning">
-        🕯️ Sabbath mode — AI requests are paused today.
+      <div class="mx-4 mt-3 px-3 py-2 text-[11px] bg-warning/10 border border-warning/30 rounded text-warning inline-flex items-center gap-2">
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3v3"/>
+          <path d="M9 9c0-2 1.5-3 3-3s3 1 3 3v2H9z"/>
+          <rect x="8" y="11" width="8" height="9" rx="1"/>
+        </svg>
+        <span>Sabbath mode — AI requests are paused today.</span>
       </div>
     {/if}
 
-    <!-- Quick actions row. Wraps on small viewports so it never
-         pushes the body off-screen. Project-Manager chips surface
-         when the user has a project in scope; they pre-fill the
-         composer with high-leverage PM intents instead of
-         hitting a separate endpoint. -->
-    <div class="px-4 py-3 border-b border-surface1 flex flex-wrap gap-1.5 flex-shrink-0">
-      {#if pageAgent}
-        <!-- Run page-scoped Agent — replaces the per-page "Agent"
-             toolbar buttons that used to live on /tasks /projects
-             /goals /calendar. Navigates with ?agent=1 so the host
-             page hydrates and opens its own AgentDialog. -->
-        <button
-          onclick={launchPageAgent}
-          title="Open the agent for this page"
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-gradient-to-r from-primary/20 to-secondary/15 border border-primary/50 rounded text-primary hover:from-primary/30 hover:to-secondary/25 inline-flex items-center gap-1.5 font-medium"
-        >
-          <span class="text-[10px] font-semibold tracking-tight inline-flex items-center justify-center w-5 h-5 rounded-sm bg-primary/25 text-primary leading-none">{pageAgent.glyph}</span>
-          Run {pageAgent.label}
-        </button>
-        <span class="hidden sm:inline-block w-px h-5 self-center bg-surface1 mx-1"></span>
+    <!-- Quick actions row. Two semantic groups separated by a hairline
+         divider — context-scoped actions on top (page agent + PM/Cal/
+         Goal chips), global utilities below (briefing/synopsis/triage/
+         deadlines). Section labels stay subtle but enterprise-grade:
+         tight uppercase caps with letter-spacing instead of bracketed
+         "PM:" notation. -->
+    <div class="px-4 py-2.5 border-b border-surface1 flex-shrink-0 space-y-2">
+      {#if pageAgent || currentProjectName || onCalendarPage || currentGoalId}
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-[10px] font-semibold uppercase tracking-[0.14em] text-dim flex-shrink-0">{currentProjectName ? 'Project' : onCalendarPage ? 'Calendar' : currentGoalId ? 'Goal' : 'Context'}</span>
+          {#if pageAgent}
+            <!-- Run page-scoped Agent — replaces the per-page "Agent"
+                 toolbar buttons. Navigates with ?agent=1 so the host
+                 page hydrates and opens its own AgentDialog. -->
+            <button
+              onclick={launchPageAgent}
+              title="Open the agent for this page"
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-primary text-mantle border border-primary rounded font-medium hover:bg-primary/90 inline-flex items-center gap-1.5 shadow-sm"
+            >
+              <span class="text-[10px] font-bold tracking-tight inline-flex items-center justify-center w-4 h-4 rounded-sm bg-mantle/25 leading-none">{pageAgent.glyph}</span>
+              <span>Run agent</span>
+            </button>
+          {/if}
+          {#if currentProjectName}
+            <button
+              onclick={() => { input = `Draft a one-page project brief for ${currentProjectName} — Why · Scope · Out of scope · Definition of done · Stakeholders. Markdown, paste-ready.`; }}
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+            >Draft brief</button>
+            <button
+              onclick={() => { input = `Write a crisp status update for ${currentProjectName} — what shipped, what's open, what's blocked, what's next. 1 short paragraph, no filler.`; }}
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+            >Status update</button>
+            <button
+              onclick={() => { input = `Brainstorm 3-5 distinct directions for ${currentProjectName}'s next milestone. For each: the move, the main risk, what would prove or kill it.`; }}
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+            >Brainstorm</button>
+            <button
+              onclick={() => { input = `Looking at the open tasks + linked goals on ${currentProjectName}, what's the ONE thing I should do next, and why? Pick one, defend it briefly.`; }}
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+            >What's next?</button>
+          {:else if onCalendarPage}
+            <button
+              onclick={() => { input = `Describe what my week looks like — heaviest day, lightest day, where the deep-work blocks are or aren't, what's the dominant theme.`; }}
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+            >Week shape</button>
+            <button
+              onclick={() => { input = `Find me a 2-hour focus block in the next 5 days. Propose ONE specific day + start time + reasoning. Don't list options.`; }}
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+            >Find focus block</button>
+            <button
+              onclick={() => { input = `What's overdue and worth doing vs. worth declaring dead? Walk me through it.`; }}
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+            >Overdue triage</button>
+            <button
+              onclick={() => { input = `If I had to clear one meeting from this week to protect a deep-work block, which one and why? Name the trade-off explicitly.`; }}
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+            >Clear one meeting</button>
+          {:else if currentGoalId}
+            <button
+              onclick={() => { input = `Write a goal review note for this goal — progress so far, what's working, what's stuck, what to change. 1 short paragraph each section.`; }}
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+            >Review note</button>
+            <button
+              onclick={() => { input = `Reframe this goal sharper — what does success look like specifically, by when, and how will I know I've hit it?`; }}
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+            >Reframe</button>
+            <button
+              onclick={() => { input = `Looking at the open tasks attached to this goal, which ONE moves it forward most this week? Pick one, defend it briefly.`; }}
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+            >Highest-leverage next step</button>
+            <button
+              onclick={() => { input = `Brainstorm 3-5 new milestones for this goal — concrete checkpoints I'd accept as proof of progress. For each: outcome statement + how I'd measure it.`; }}
+              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-primary/30 rounded text-primary hover:bg-primary/10 hover:border-primary/50 inline-flex items-center transition-colors"
+            >New milestones</button>
+          {/if}
+        </div>
       {/if}
-      {#if currentProjectName}
-        <span class="text-[10px] text-dim uppercase tracking-wide self-center mr-1 flex-shrink-0">PM:</span>
+      <!-- Global utilities row — always present, separated from
+           context chips above. Stays plain so context actions read
+           as the headline. -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-[10px] font-semibold uppercase tracking-[0.14em] text-dim flex-shrink-0">Quick</span>
         <button
-          onclick={() => { input = `Draft a one-page project brief for ${currentProjectName} — Why · Scope · Out of scope · Definition of done · Stakeholders. Markdown, paste-ready.`; }}
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
-        >Draft brief</button>
+          onclick={runBriefing}
+          disabled={busy || $sabbath}
+          class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-text disabled:opacity-50 inline-flex items-center transition-colors"
+        >Briefing</button>
         <button
-          onclick={() => { input = `Write a crisp status update for ${currentProjectName} — what shipped, what's open, what's blocked, what's next. 1 short paragraph, no filler.`; }}
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
-        >Status update</button>
+          onclick={runSynopsis}
+          disabled={busy || $sabbath}
+          class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-text disabled:opacity-50 inline-flex items-center transition-colors"
+        >Weekly synopsis</button>
         <button
-          onclick={() => { input = `Brainstorm 3-5 distinct directions for ${currentProjectName}'s next milestone. For each: the move, the main risk, what would prove or kill it.`; }}
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
-        >Brainstorm</button>
+          onclick={runTriage}
+          disabled={busy || $sabbath}
+          class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-text disabled:opacity-50 inline-flex items-center transition-colors"
+        >Triage</button>
         <button
-          onclick={() => { input = `Looking at the open tasks + linked goals on ${currentProjectName}, what's the ONE thing I should do next, and why? Pick one, defend it briefly.`; }}
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
-        >What's next?</button>
-        <span class="w-full sm:hidden"></span>
-      {:else if onCalendarPage}
-        <!-- Calendar Manager chips. The prelude carries the
-             14-day date window, upcoming events, overdue +
-             due-today + scheduled-this-week tasks, so the
-             intent text can keep it short. -->
-        <span class="text-[10px] text-dim uppercase tracking-wide self-center mr-1 flex-shrink-0">Cal:</span>
-        <button
-          onclick={() => { input = `Describe what my week looks like — heaviest day, lightest day, where the deep-work blocks are or aren't, what's the dominant theme.`; }}
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
-        >Week shape</button>
-        <button
-          onclick={() => { input = `Find me a 2-hour focus block in the next 5 days. Propose ONE specific day + start time + reasoning. Don't list options.`; }}
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
-        >Find focus block</button>
-        <button
-          onclick={() => { input = `What's overdue and worth doing vs. worth declaring dead? Walk me through it.`; }}
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
-        >Overdue triage</button>
-        <button
-          onclick={() => { input = `If I had to clear one meeting from this week to protect a deep-work block, which one and why? Name the trade-off explicitly.`; }}
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
-        >Clear one meeting</button>
-        <span class="w-full sm:hidden"></span>
-      {:else if currentGoalId}
-        <!-- Goal Manager chips. Same shape as PM chips but
-             scoped to the focused goal (the prelude carries the
-             title + milestones + linked tasks, so the intent
-             text can keep it short — "this goal" resolves
-             unambiguously). -->
-        <span class="text-[10px] text-dim uppercase tracking-wide self-center mr-1 flex-shrink-0">Goal:</span>
-        <button
-          onclick={() => { input = `Write a goal review note for this goal — progress so far, what's working, what's stuck, what to change. 1 short paragraph each section.`; }}
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
-        >Review note</button>
-        <button
-          onclick={() => { input = `Reframe this goal sharper — what does success look like specifically, by when, and how will I know I've hit it?`; }}
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
-        >Reframe</button>
-        <button
-          onclick={() => { input = `Looking at the open tasks attached to this goal, which ONE moves it forward most this week? Pick one, defend it briefly.`; }}
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
-        >Highest-leverage next step</button>
-        <button
-          onclick={() => { input = `Brainstorm 3-5 new milestones for this goal — concrete checkpoints I'd accept as proof of progress. For each: outcome statement + how I'd measure it.`; }}
-          class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20 inline-flex items-center"
-        >New milestones</button>
-        <span class="w-full sm:hidden"></span>
-      {/if}
-      <button
-        onclick={runBriefing}
-        disabled={busy || $sabbath}
-        class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary disabled:opacity-50 inline-flex items-center"
-      >Briefing</button>
-      <button
-        onclick={runSynopsis}
-        disabled={busy || $sabbath}
-        class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary disabled:opacity-50 inline-flex items-center"
-      >Weekly synopsis</button>
-      <button
-        onclick={runTriage}
-        disabled={busy || $sabbath}
-        class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary disabled:opacity-50 inline-flex items-center"
-      >Triage</button>
-      <button
-        onclick={runDeadlines}
-        disabled={busy || $sabbath}
-        class="px-2.5 py-1 min-h-[40px] sm:min-h-0 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary disabled:opacity-50 inline-flex items-center"
-      >Deadlines</button>
-      <span class="flex-1"></span>
-      {#if messages.length > 0 || quickResult}
-        <button
-          onclick={() => void saveThreadAsNote()}
-          disabled={saving}
-          class="px-2 py-1 text-[11px] text-secondary hover:underline disabled:opacity-50 inline-flex items-center gap-1"
-          title="Save this thread as a markdown note under chat-history/"
-        >
-          <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M5 4h11l3 3v13H5z"/>
-            <path d="M9 4v5h6V4M8 14h8M8 18h6" stroke-linecap="round"/>
-          </svg>
-          {saving ? 'saving…' : 'save'}
-        </button>
-        <button
-          onclick={clearChat}
-          class="px-2 py-1 text-[11px] text-dim hover:text-error"
-          title="Clear the overlay"
-        >clear</button>
-      {/if}
+          onclick={runDeadlines}
+          disabled={busy || $sabbath}
+          class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-text disabled:opacity-50 inline-flex items-center transition-colors"
+        >Deadlines</button>
+        <span class="flex-1"></span>
+        {#if messages.length > 0 || quickResult}
+          <button
+            onclick={() => void saveThreadAsNote()}
+            disabled={saving}
+            class="px-2 py-1 text-[11px] text-secondary hover:text-secondary/80 hover:underline disabled:opacity-50 inline-flex items-center gap-1"
+            title="Save this thread as a markdown note under chat-history/"
+          >
+            <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 4h11l3 3v13H5z"/>
+              <path d="M9 4v5h6V4M8 14h8M8 18h6" stroke-linecap="round"/>
+            </svg>
+            {saving ? 'saving…' : 'save'}
+          </button>
+          <button
+            onclick={clearChat}
+            class="px-2 py-1 text-[11px] text-dim hover:text-error transition-colors"
+            title="Clear the overlay"
+          >clear</button>
+        {/if}
+      </div>
     </div>
 
     <ChatHistoryRail
