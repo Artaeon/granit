@@ -96,7 +96,19 @@
     { group: 'Translate', id: 'translate-en', label: 'Translate to English',
       preset: 'Translate the following into clear, natural English. Return only the translation, no preamble.' },
     { group: 'Translate', id: 'translate-de', label: 'Translate to German',
-      preset: 'Translate the following into clear, natural German. Return only the translation, no preamble.' }
+      preset: 'Translate the following into clear, natural German. Return only the translation, no preamble.' },
+    { group: 'Critic', id: 'critique', label: 'Critique',
+      preset: 'Critique the following as a sharp editor. Name the 3 biggest weaknesses (clarity, evidence, structure, or logic) in priority order. Be specific — quote the problem and suggest the fix. Return a short markdown bullet list. No preamble.' },
+    { group: 'Critic', id: 'steelman', label: 'Steelman',
+      preset: 'Steelman the argument in the following — restate it in its strongest, most charitable form. Preserve the original claim; sharpen the reasoning; cut weak phrasing. Return only the steelmanned version, no preamble.' },
+    { group: 'Critic', id: 'devils', label: "Devil's advocate",
+      preset: 'Play devil\'s advocate against the following. List 3-5 sharp objections an intelligent skeptic would raise, each phrased as a single pointed sentence. Return a markdown bullet list, no preamble.' },
+    { group: 'Examples', id: 'examples', label: 'Add examples',
+      preset: 'Add 2-3 concrete examples that illustrate the point in the following. Keep examples vivid and specific (named people, real numbers, tangible scenarios — not generic placeholders). Return the original text with examples woven in inline. No preamble.' },
+    { group: 'Examples', id: 'analogy', label: 'Add analogy',
+      preset: 'Add a single clarifying analogy that makes the point in the following click for a smart non-expert. Append it after the original, in 1-2 sentences, prefixed with "Analogy:". Return the original + the appended analogy. No preamble.' },
+    { group: 'Examples', id: 'eli5', label: 'Explain like I\'m 5',
+      preset: 'Explain the idea in the following the way you would to a curious 8-year-old. Keep it accurate but simple — short sentences, concrete words, one analogy if useful. Return only the simplified explanation, no preamble.' }
   ];
   const WHOLE_MORE: readonly MoreItem[] = [
     { group: 'Inspect', id: 'outline', label: 'Generate outline',
@@ -118,7 +130,23 @@
     { group: 'Build', id: 'frontmatter', label: 'Suggest frontmatter',
       preset: 'Suggest YAML frontmatter for the following note: a 1-line `title`, 3-6 `tags` (lowercase, hyphenated), and a 1-sentence `summary`. Return only the frontmatter block enclosed in `---` fences, nothing else.' },
     { group: 'Build', id: 'next', label: 'Suggested next steps',
-      preset: 'Based on the following note, what are the 3-5 most useful next steps for the author? Concrete actions, not vague advice. Return a short markdown bullet list. No preamble.' }
+      preset: 'Based on the following note, what are the 3-5 most useful next steps for the author? Concrete actions, not vague advice. Return a short markdown bullet list. No preamble.' },
+    { group: 'Build', id: 'faq', label: 'Generate FAQ',
+      preset: 'Generate a short FAQ for the following note — 4-6 questions a reader would plausibly ask, each with a 1-2 sentence answer drawn from (or extrapolated from) the note. Return only the markdown Q/A list, no preamble.' },
+    { group: 'Build', id: 'tldr', label: 'TL;DR',
+      preset: 'Write a single-paragraph TL;DR of the following note — at most 50 words. Lead with the main point. Return only the TL;DR, no preamble.' },
+    { group: 'Critic', id: 'critique-note', label: 'Critique',
+      preset: 'Critique the following note as a sharp editor. Name the 3 biggest weaknesses (clarity, evidence, structure, or logic) in priority order. Be specific — quote the problem and suggest the fix. Return a short markdown bullet list. No preamble.' },
+    { group: 'Critic', id: 'devils-note', label: "Devil's advocate",
+      preset: 'Play devil\'s advocate against the central thesis of the following note. List 4-6 sharp objections an intelligent skeptic would raise. Each: a single pointed sentence. Return a markdown bullet list, no preamble.' },
+    { group: 'Critic', id: 'audience', label: 'Audience check',
+      preset: 'Read the following note as 3 different readers (a novice, a peer, a skeptical expert). For each: name one thing that lands and one thing that misses. Return a short markdown table or bullet list. No preamble.' },
+    { group: 'Reframe', id: 'eli5-note', label: 'Explain like I\'m 5',
+      preset: 'Rewrite the following note for an intelligent 12-year-old. Keep it accurate but accessible — short sentences, concrete words, analogies welcome. Return the full rewritten note.' },
+    { group: 'Reframe', id: 'tweet', label: 'Distill to tweet',
+      preset: 'Distill the central insight of the following note into a single tweet (max 280 characters). Make it stand on its own — no setup required. Return only the tweet text, no preamble.' },
+    { group: 'Reframe', id: 'memo', label: 'Convert to memo',
+      preset: 'Rewrite the following note as a 1-page corporate memo: header (To/From/Date/Subject), 1-paragraph summary, 3-5 bullet findings, recommended next steps. Return the full memo in markdown, no preamble.' }
   ];
 
   // Distinct group labels in their original order — used by the
@@ -240,19 +268,13 @@
   property via a ResizeObserver, so every breakpoint and mobile
   tap-target bump is accounted for without hardcoding.
 
-  Backdrop-blur composition: `bg-mantle/85` is the fallback for
-  browsers without backdrop-filter; `supports-[backdrop-filter]`
-  upgrades to a translucent + blurred surface. position:sticky
-  doesn't affect either layer — the bar's painted background still
-  composites with what scrolls underneath when it's pinned.
-
   Catppuccin palette tokens (surface0 / surface1 / text / subtext /
   dim / primary) are wired through the global CSS variables — the
   bar inherits whatever theme the user has selected without any
   extra plumbing.
 -->
 <div
-  class="editor-ai-bar sticky z-10 flex flex-wrap items-center gap-1 px-2 sm:px-3 py-1.5 border-b border-surface1 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md text-xs"
+  class="editor-ai-bar sticky z-10 flex flex-wrap items-center gap-1 px-2 sm:px-3 py-1.5 border-b border-surface1 bg-mantle text-xs"
   style="top: var(--editor-header-height, 0px);"
   role="toolbar"
   aria-label="AI actions for {hasSelection ? 'selection' : 'note'}"
@@ -362,7 +384,7 @@
          a status anchor the user can glance at without scanning. Tab-
          ular nums so the digits don't jitter as the count grows. -->
     <span
-      class="text-[10px] text-dim font-mono tabular-nums px-1.5 py-0.5 rounded bg-surface0/60 select-none ai-bar-sel-chip"
+      class="text-[10px] text-dim font-mono tabular-nums px-1.5 py-0.5 rounded bg-surface0 select-none ai-bar-sel-chip"
       aria-live="polite"
       title={selLabel}
     >
