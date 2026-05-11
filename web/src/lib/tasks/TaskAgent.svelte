@@ -26,6 +26,7 @@
 		validateActions,
 		summariseAction,
 		computeRevertPatch,
+		mergeProposals,
 		type TaskAction,
 		type TaskRevertPatch
 	} from './agent';
@@ -82,11 +83,19 @@
 	$effect(() => {
 		// When the parent closes the dialog, drop any in-flight
 		// stream so we don't keep burning tokens / arriving stale
-		// proposals after the user moved on.
+		// proposals after the user moved on. Also clear the per-
+		// run UI state (proposals / raw / error) so reopening
+		// doesn't surface ghost rows from the previous run. We
+		// DELIBERATELY keep the `applied` log so the user can
+		// still undo a closed-dialog run on reopen — closing
+		// shouldn't strand changes.
 		if (!open) {
 			abort?.abort();
 			abort = null;
 			busy = false;
+			proposals = [];
+			raw = '';
+			error = '';
 		}
 	});
 
@@ -134,14 +143,12 @@
 						const parsed = parseAgentResponse(block);
 						if (parsed.length > 0) {
 							const valid = validateActions(parsed, tasks);
-							// Preserve existing applied/rejected state by id+kind
-							// when the stream re-parses with more data.
-							const prev = new Map<string, ProposalRow>();
-							for (const r of proposals) prev.set(`${r.taskId}::${r.kind}`, r);
-							proposals = valid.map((a) => {
-								const old = prev.get(`${a.taskId}::${a.kind}`);
-								return { ...a, applied: old?.applied, rejected: old?.rejected };
-							});
+							// mergeProposals preserves applied/rejected rows even
+							// if the new parse no longer mentions them — protects
+							// the audit trail from disappearing when an accept
+							// triggers a parent reload that filters the task out
+							// of scope. Pure helper, see agent.ts tests.
+							proposals = mergeProposals(proposals, valid) as ProposalRow[];
 						}
 					},
 					onError: (err) => {
@@ -411,6 +418,24 @@
 			<div class="flex-1 min-h-0 overflow-y-auto px-4 py-3">
 				{#if error}
 					<p class="text-xs text-error mb-2">{error}</p>
+				{/if}
+
+				<!-- Standalone undo banner. Surfaces whenever the user
+					 has applied changes but the proposal list is empty
+					 (closed-and-reopened the dialog, or a re-stream
+					 dropped pending rows). Without this the undo
+					 button only lives inside the proposals header and
+					 disappears with the rows. -->
+				{#if applied.length > 0 && proposals.length === 0}
+					<div class="mb-3 flex items-baseline gap-2 p-2 rounded bg-success/5 border border-success/30 text-[11px]">
+						<span class="text-success">✓ {applied.length} change{applied.length === 1 ? '' : 's'} applied</span>
+						<button
+							onclick={() => void undoRun()}
+							disabled={undoBusy}
+							class="ml-auto text-xs text-warning hover:underline disabled:opacity-50"
+							title="Revert every change applied in this run"
+						>{undoBusy ? 'undoing…' : `↶ undo`}</button>
+					</div>
 				{/if}
 
 				{#if busy && proposals.length === 0}

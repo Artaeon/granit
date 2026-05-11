@@ -219,6 +219,59 @@ export function validateActions(actions: TaskAction[], liveTasks: Task[]): TaskA
 	return out;
 }
 
+/** ProposalState — minimal shape used by mergeProposals to track
+ *  whether a row has been engaged (applied / rejected). The
+ *  TaskAgent dialog extends this with `applying` (transient
+ *  in-flight flag) but that's not needed for merge semantics. */
+export interface ProposalState extends TaskAction {
+	applied?: boolean;
+	rejected?: boolean;
+}
+
+/** mergeProposals — re-stream merge for the agent dialog.
+ *  When the model streams JSON we re-parse on every chunk; the
+ *  validated action list grows as more arrives. We want two
+ *  guarantees the naive "replace proposals" does NOT give:
+ *
+ *  1. A row the user already accepted/rejected must STAY visible,
+ *     even if a later chunk no longer mentions it (validateActions
+ *     might drop it because the task left the parent's filtered
+ *     scope after apply, or the model retracted the suggestion).
+ *  2. The action data for an already-engaged row is FROZEN — the
+ *     accepted patch went out with the old args; re-displaying
+ *     the row with new args would lie about what was applied.
+ *
+ *  Pure helper so vitest can pin both guarantees. */
+export function mergeProposals(prev: ProposalState[], next: TaskAction[]): ProposalState[] {
+	const prevMap = new Map<string, ProposalState>();
+	for (const r of prev) prevMap.set(`${r.taskId}::${r.kind}`, r);
+
+	const seen = new Set<string>();
+	const merged: ProposalState[] = [];
+	for (const a of next) {
+		const k = `${a.taskId}::${a.kind}`;
+		seen.add(k);
+		const old = prevMap.get(k);
+		if (old && (old.applied || old.rejected)) {
+			// Frozen — keep the old row verbatim, including its
+			// recorded args. Don't overwrite with the new parse.
+			merged.push(old);
+		} else {
+			merged.push({ ...a, applied: old?.applied, rejected: old?.rejected });
+		}
+	}
+	// Preserve engaged rows the new parse no longer surfaces. Pending
+	// rows that vanished from the new parse are intentional drops by
+	// the model — let them go (less list churn for the user).
+	for (const r of prev) {
+		const k = `${r.taskId}::${r.kind}`;
+		if (!seen.has(k) && (r.applied || r.rejected)) {
+			merged.push(r);
+		}
+	}
+	return merged;
+}
+
 /** Human-readable summary of an action — for the proposal card UI.
  *  Centralised so labels stay consistent and we can reuse the
  *  formatter in tests. */

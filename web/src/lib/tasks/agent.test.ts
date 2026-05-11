@@ -6,7 +6,9 @@ import {
 	validateActions,
 	summariseAction,
 	computeRevertPatch,
-	type TaskAction
+	mergeProposals,
+	type TaskAction,
+	type ProposalState
 } from './agent';
 
 function mk(id: string, text: string, extra: Partial<Task> = {}): Task {
@@ -266,6 +268,81 @@ describe('summariseAction', () => {
 		expect(summariseAction({ taskId: 'ghost', kind: 'archive', rationale: '' }, undefined)).toMatch(
 			/Archive ghost/
 		);
+	});
+});
+
+describe('mergeProposals', () => {
+	const a = (taskId: string, kind: TaskAction['kind'], extra: Partial<TaskAction> = {}): TaskAction => ({
+		taskId,
+		kind,
+		rationale: 'r',
+		...extra
+	});
+
+	it('preserves applied state across a re-parse with the same row', () => {
+		const prev: ProposalState[] = [{ ...a('t1', 'archive'), applied: true }];
+		const out = mergeProposals(prev, [a('t1', 'archive')]);
+		expect(out).toHaveLength(1);
+		expect(out[0].applied).toBe(true);
+	});
+
+	it('keeps a previously-applied row even when the new parse drops it', () => {
+		// Common case: user accepted, parent reloaded, task left the
+		// filtered scope, validateActions filtered the row out. The
+		// row must stay visible so the user keeps the audit trail.
+		const prev: ProposalState[] = [{ ...a('t1', 'archive'), applied: true }];
+		const out = mergeProposals(prev, []);
+		expect(out).toHaveLength(1);
+		expect(out[0].taskId).toBe('t1');
+		expect(out[0].applied).toBe(true);
+	});
+
+	it('keeps a previously-rejected row even when the new parse drops it', () => {
+		const prev: ProposalState[] = [{ ...a('t1', 'archive'), rejected: true }];
+		const out = mergeProposals(prev, []);
+		expect(out).toHaveLength(1);
+		expect(out[0].rejected).toBe(true);
+	});
+
+	it('drops PENDING rows that the new parse no longer mentions', () => {
+		// Model retracted — fine, less churn for the user.
+		const prev: ProposalState[] = [a('t1', 'archive') as ProposalState];
+		const out = mergeProposals(prev, []);
+		expect(out).toEqual([]);
+	});
+
+	it('uses the NEW action args for pending rows', () => {
+		const prev: ProposalState[] = [a('t1', 'set_priority', { priority: 1 }) as ProposalState];
+		const out = mergeProposals(prev, [a('t1', 'set_priority', { priority: 3 })]);
+		expect(out).toHaveLength(1);
+		expect(out[0].priority).toBe(3);
+	});
+
+	it('FREEZES the action args for applied rows (do not lie about what was applied)', () => {
+		const prev: ProposalState[] = [
+			{ ...a('t1', 'set_priority', { priority: 1 }), applied: true }
+		];
+		const out = mergeProposals(prev, [a('t1', 'set_priority', { priority: 3 })]);
+		expect(out).toHaveLength(1);
+		expect(out[0].priority).toBe(1); // not 3 — the user accepted priority=1
+		expect(out[0].applied).toBe(true);
+	});
+
+	it('appends new rows the previous parse did not have', () => {
+		const prev: ProposalState[] = [a('t1', 'archive') as ProposalState];
+		const out = mergeProposals(prev, [a('t1', 'archive'), a('t2', 'snooze')]);
+		expect(out.map((p) => p.taskId)).toEqual(['t1', 't2']);
+	});
+
+	it('orders applied-but-dropped rows after the new parse output', () => {
+		// Visual sanity: live (newly-parsed) rows on top, frozen rows
+		// from past chunks underneath so they don't move around.
+		const prev: ProposalState[] = [
+			{ ...a('t1', 'archive'), applied: true },
+			a('t2', 'snooze') as ProposalState
+		];
+		const out = mergeProposals(prev, [a('t3', 'set_priority', { priority: 2 })]);
+		expect(out.map((p) => p.taskId)).toEqual(['t3', 't1']); // t2 was pending, dropped
 	});
 });
 
