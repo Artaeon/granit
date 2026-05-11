@@ -10,6 +10,7 @@
 
   import { theme, mdHighlight } from './theme';
   import { wikilinkDecoration, wikilinkClickHandler, wikilinkComplete } from './wikilinks';
+  import WikilinkHoverPreview from '$lib/notes/WikilinkHoverPreview.svelte';
   import { snippetComplete } from './snippets';
   import { tagComplete } from './tags';
   import { markdownShortcuts, smartPaste } from './markdown-shortcuts';
@@ -69,6 +70,12 @@
 
   let containerEl: HTMLDivElement | undefined = $state();
   let view: EditorView | undefined;
+  // Reactive handle to the CodeMirror contentDOM — lets the
+  // WikilinkHoverPreview below mount its mouseover delegation on
+  // the editor surface as soon as the view is constructed. Without
+  // this, the preview component would attach to undefined on first
+  // render and never recover when setupView populated `view`.
+  let editorContentDOM: HTMLElement | undefined = $state();
   let internalChange = false;
   // Watermark of the last `value` we synced into the CodeMirror state.
   // Used by both the updateListener (user typing) and the external
@@ -195,6 +202,9 @@
       ]
     });
     view = new EditorView({ state, parent: containerEl });
+    // Expose contentDOM reactively so the hover-preview component
+    // mounts its listeners now that the view is alive.
+    editorContentDOM = view.contentDOM;
     // rAF-throttled scroll fanout to the host. Native 'scroll'
     // events can fire 60+×/s on a fast wheel; collapsing to one
     // emit per animation frame keeps the host's progress bar
@@ -409,6 +419,13 @@
 </script>
 
 <div bind:this={containerEl} class="cm-host h-full overflow-hidden bg-surface0 border border-surface1 rounded"></div>
+<!-- Wikilink hover preview on the editor surface — same component
+     the markdown preview pane mounts, sharing the session-level
+     fetch cache so hovering [[Note]] in editor mode and then
+     switching to preview mode re-uses the result without a second
+     round-trip. The decoration now emits data-wikilink on each
+     [[…]] span so the existing component's delegation works. -->
+<WikilinkHoverPreview host={editorContentDOM} />
 
 <style>
   .cm-host :global(.cm-editor) { height: 100%; }

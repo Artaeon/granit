@@ -1,5 +1,6 @@
 import { EditorView, Decoration, ViewPlugin } from '@codemirror/view';
 import type { DecorationSet, ViewUpdate } from '@codemirror/view';
+import type { Range } from '@codemirror/state';
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import { api } from '$lib/api';
 
@@ -11,7 +12,18 @@ const openWikilinkRe = /\[\[([^\]\n]*)$/;
 // 2) the heading-fragment query the user has typed so far.
 const openHeadingRe = /\[\[([^\]\n#|]+)#([^\]\n|]*)$/;
 
-const wikilinkMark = Decoration.mark({ class: 'cm-wikilink' });
+// Per-occurrence decoration so the rendered span can carry the
+// wikilink target as a data-wikilink attribute. WikilinkHoverPreview
+// listens for that attribute on its host element, so emitting it on
+// the editor surface gives us hover previews in the editor for free
+// — same component, same fetch cache, same tooltip UI as the preview
+// pane. The class stays for the existing :hover styling rule.
+function markFor(target: string) {
+  return Decoration.mark({
+    class: 'cm-wikilink',
+    attributes: { 'data-wikilink': target }
+  });
+}
 
 export const wikilinkDecoration = ViewPlugin.fromClass(
   class {
@@ -23,7 +35,7 @@ export const wikilinkDecoration = ViewPlugin.fromClass(
       if (u.docChanged || u.viewportChanged) this.decorations = this.build(u.view);
     }
     build(view: EditorView): DecorationSet {
-      const ranges: ReturnType<typeof wikilinkMark.range>[] = [];
+      const ranges: Range<Decoration>[] = [];
       for (const { from, to } of view.visibleRanges) {
         const text = view.state.doc.sliceString(from, to);
         wikilinkRe.lastIndex = 0;
@@ -31,7 +43,12 @@ export const wikilinkDecoration = ViewPlugin.fromClass(
         while ((m = wikilinkRe.exec(text)) !== null) {
           const start = from + m.index;
           const end = start + m[0].length;
-          ranges.push(wikilinkMark.range(start, end));
+          // Inner: strip alias (|alias) + block anchor (#Heading) so
+          // the hover preview's fetch and the click navigation
+          // target identical titles. ([[Note|Alias]] → "Note";
+          // [[Note#Heading]] → "Note".)
+          const target = m[1].split('|')[0].split('#')[0].trim();
+          ranges.push(markFor(target).range(start, end));
         }
       }
       return Decoration.set(ranges, true);
