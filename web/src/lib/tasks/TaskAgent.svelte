@@ -99,6 +99,21 @@
 		}
 	});
 
+	// Auto-focus the intent textarea when the dialog opens. Makes
+	// the keyboard shortcut ('a') feel responsive — the user hits
+	// 'a' and is immediately typing. Bound to the textarea element
+	// below; we trigger focus only on the open→true edge so
+	// re-renders during streaming don't keep stealing focus from
+	// the accept/skip buttons.
+	let inputEl: HTMLTextAreaElement | null = $state(null);
+	$effect(() => {
+		if (open && inputEl) {
+			// Defer to next microtask so the textarea is in the DOM
+			// before we ask the browser to focus it.
+			queueMicrotask(() => inputEl?.focus());
+		}
+	});
+
 	function reset() {
 		raw = '';
 		error = '';
@@ -373,6 +388,7 @@
 			<div class="px-4 py-3 border-b border-surface1 flex-shrink-0 space-y-2">
 				<textarea
 					bind:value={intent}
+					bind:this={inputEl}
 					placeholder="Tell the agent what to do — &quot;archive anything obviously stale&quot;, &quot;raise priority on blockers&quot;, &quot;schedule the report for Friday morning&quot;"
 					class="w-full text-sm px-3 py-2 rounded bg-surface0 border border-surface1 text-text placeholder:text-dim focus:outline-none focus:border-primary resize-none min-h-[64px]"
 					rows="2"
@@ -420,14 +436,23 @@
 					{/each}
 				</div>
 				<div class="flex items-baseline gap-2">
-					<p class="text-[10px] text-dim flex-1">⌘↵ to submit · esc to close. Every action is your call — nothing applies until you accept.</p>
+					<p class="text-[10px] text-dim flex-1">
+						{#if tasks.length === 0}
+							No tasks in scope — pick a non-empty filter or clear your bulk-selection.
+						{:else}
+							⌘↵ to submit · esc to close. Every action is your call — nothing applies until you accept.
+						{/if}
+					</p>
 					{#if busy}
 						<button onclick={cancel} class="text-xs text-warning hover:underline">cancel</button>
 					{:else}
 						<button
 							onclick={() => void run()}
-							disabled={!intent.trim()}
+							disabled={!intent.trim() || tasks.length === 0}
 							class="text-xs px-3 py-1 rounded bg-primary text-on-primary hover:opacity-90 disabled:opacity-50"
+							title={tasks.length === 0
+								? 'Agent needs at least one task in scope'
+								: 'Submit the intent'}
 						>Run</button>
 					{/if}
 				</div>
