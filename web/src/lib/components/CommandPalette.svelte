@@ -6,6 +6,7 @@
   import { fuzzyScoreMulti } from '$lib/util/fuzzy';
   import { loadStored, saveStored } from '$lib/util/storage';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
+  import NavIcon from './NavIcon.svelte';
 
   // ── Surface name & history ──────────────────────────────────────────
   // Originally a notes-only quick switcher. As of this iteration the
@@ -124,37 +125,37 @@
   // the list scannable. The icon's job here is recognition, not
   // pixel-perfect parity with the sidebar.
   const PAGES: { path: string; label: string; icon: string }[] = [
-    { path: '/', label: 'Today', icon: '◐' },
-    { path: '/morning', label: 'Morning', icon: '☀' },
-    { path: '/tasks', label: 'Tasks', icon: '✓' },
-    { path: '/calendar', label: 'Calendar', icon: '▦' },
-    { path: '/jots', label: 'Jots', icon: '✎' },
-    { path: '/habits', label: 'Habits', icon: '◈' },
-    { path: '/examen', label: 'Examen', icon: '☾' },
-    { path: '/vision', label: 'Vision', icon: '◉' },
-    { path: '/review', label: 'Review', icon: '↻' },
-    { path: '/goals', label: 'Goals', icon: '◎' },
-    { path: '/deadlines', label: 'Deadlines', icon: '⏰' },
-    { path: '/projects', label: 'Projects', icon: '◆' },
-    { path: '/ventures', label: 'Ventures', icon: '⬢' },
-    { path: '/finance', label: 'Finance', icon: '€' },
-    { path: '/shopping', label: 'Shopping', icon: '🛒' },
-    { path: '/hub', label: 'Hub', icon: '✦' },
-    { path: '/people', label: 'People', icon: '☻' },
-    { path: '/measurements', label: 'Metrics', icon: '📏' },
-    { path: '/prayer', label: 'Prayer', icon: '🕊' },
-    { path: '/scripture', label: 'Scripture', icon: '✝' },
-    { path: '/notes', label: 'Notes', icon: '📝' },
-    { path: '/search', label: 'Search', icon: '⌕' },
-    { path: '/books', label: 'Books', icon: '📚' },
-    { path: '/templates', label: 'Templates', icon: '📋' },
-    { path: '/objects', label: 'Objects', icon: '◇' },
-    { path: '/tags', label: 'Tags', icon: '#' },
-    { path: '/agents', label: 'Agents', icon: '✨' },
-    { path: '/chat', label: 'Chat', icon: '💬' },
-    { path: '/sabbath', label: 'Sabbath', icon: '🕊' },
-    { path: '/stats', label: 'Stats', icon: '📊' },
-    { path: '/settings', label: 'Settings', icon: '⚙' }
+    { path: '/', label: 'Today', icon: 'today' },
+    { path: '/morning', label: 'Morning', icon: 'morning' },
+    { path: '/tasks', label: 'Tasks', icon: 'tasks' },
+    { path: '/calendar', label: 'Calendar', icon: 'calendar' },
+    { path: '/jots', label: 'Jots', icon: 'jots' },
+    { path: '/habits', label: 'Habits', icon: 'habits' },
+    { path: '/examen', label: 'Examen', icon: 'examen' },
+    { path: '/vision', label: 'Vision', icon: 'vision' },
+    { path: '/review', label: 'Review', icon: 'review' },
+    { path: '/goals', label: 'Goals', icon: 'goals' },
+    { path: '/deadlines', label: 'Deadlines', icon: 'deadline' },
+    { path: '/projects', label: 'Projects', icon: 'projects' },
+    { path: '/ventures', label: 'Ventures', icon: 'ventures' },
+    { path: '/finance', label: 'Finance', icon: 'finance' },
+    { path: '/shopping', label: 'Shopping', icon: 'shopping' },
+    { path: '/hub', label: 'Hub', icon: 'hub' },
+    { path: '/people', label: 'People', icon: 'people' },
+    { path: '/measurements', label: 'Metrics', icon: 'measurements' },
+    { path: '/prayer', label: 'Prayer', icon: 'prayer' },
+    { path: '/scripture', label: 'Scripture', icon: 'scripture' },
+    { path: '/notes', label: 'Notes', icon: 'notes' },
+    { path: '/search', label: 'Search', icon: 'search' },
+    { path: '/books', label: 'Books', icon: 'books' },
+    { path: '/templates', label: 'Templates', icon: 'templates' },
+    { path: '/objects', label: 'Objects', icon: 'objects' },
+    { path: '/tags', label: 'Tags', icon: 'tags' },
+    { path: '/agents', label: 'Agents', icon: 'agents' },
+    { path: '/chat', label: 'Chat', icon: 'chat' },
+    { path: '/sabbath', label: 'Sabbath', icon: 'prayer' },
+    { path: '/stats', label: 'Stats', icon: 'stats' },
+    { path: '/settings', label: 'Settings', icon: 'settings' }
   ];
 
   // ── Agent commands ─────────────────────────────────────────────────
@@ -182,7 +183,7 @@
       slug: 'briefing',
       label: 'Run daily briefing',
       detail: 'Top 3 focus items + one thing you might forget',
-      icon: '☀',
+      icon: 'morning',
       run: () =>
         openAIOverlay({
           text: 'Give me a short morning briefing — top three things I should focus on today and one thing I might be forgetting.',
@@ -193,7 +194,7 @@
       slug: 'triage',
       label: 'Triage open tasks',
       detail: 'Pick 3 for today, defer or delete the rest',
-      icon: '⚖',
+      icon: 'tasks',
       run: () =>
         openAIOverlay({
           text: 'Help me triage my open tasks — which 3 should I do today, and what should I defer or delete?',
@@ -204,7 +205,7 @@
       slug: 'find-time',
       label: 'Find time for deep work',
       detail: '60-minute slots in the next 3 days',
-      icon: '⏱',
+      icon: 'calendar',
       run: () =>
         openAIOverlay({
           modeId: 'analyst',
@@ -216,7 +217,7 @@
       slug: 'project-manager',
       label: 'Open Project Manager mode',
       detail: 'PM coach — go to /projects',
-      icon: '📋',
+      icon: 'projects',
       run: async () => {
         await goto('/projects');
         openAIOverlay({ modeId: 'project-manager', text: '' });
@@ -226,7 +227,7 @@
       slug: 'goal-manager',
       label: 'Open Goal Manager mode',
       detail: 'Goal coach — go to /goals',
-      icon: '🎯',
+      icon: 'goals',
       run: async () => {
         await goto('/goals');
         openAIOverlay({ modeId: 'goal-manager', text: '' });
@@ -236,7 +237,7 @@
       slug: 'calendar-manager',
       label: 'Open Calendar Manager mode',
       detail: 'Schedule strategist — go to /calendar',
-      icon: '📅',
+      icon: 'calendar',
       run: async () => {
         await goto('/calendar');
         openAIOverlay({ modeId: 'calendar-manager', text: '' });
@@ -246,7 +247,7 @@
       slug: 'task-agent',
       label: 'Open Task Agent on /tasks',
       detail: 'Bulk task ops — press ‘a’ on the tasks page',
-      icon: '✓',
+      icon: 'tasks',
       hint: 'a',
       run: () => goto('/tasks')
     },
@@ -256,35 +257,35 @@
       slug: 'mode-coach',
       label: 'Switch chat to Coach mode',
       detail: 'Socratic — questions over answers',
-      icon: '🌱',
+      icon: 'chat',
       run: () => openAIOverlay({ modeId: 'coach', text: '' })
     },
     {
       slug: 'mode-research',
       label: 'Switch chat to Research mode',
       detail: 'Grounded answers from your vault',
-      icon: '🔬',
+      icon: 'search',
       run: () => openAIOverlay({ modeId: 'research', text: '' })
     },
     {
       slug: 'mode-writer',
       label: 'Switch chat to Writer mode',
       detail: 'Drafting partner that matches your voice',
-      icon: '✍',
+      icon: 'jots',
       run: () => openAIOverlay({ modeId: 'writer', text: '' })
     },
     {
       slug: 'mode-analyst',
       label: 'Switch chat to Analyst mode',
       detail: 'Evidence-first — what does the data say',
-      icon: '📊',
+      icon: 'stats',
       run: () => openAIOverlay({ modeId: 'analyst', text: '' })
     },
     {
       slug: 'mode-architect',
       label: 'Switch chat to Architect mode',
       detail: 'System design with named trade-offs',
-      icon: '🏗',
+      icon: 'objects',
       run: () => openAIOverlay({ modeId: 'architect', text: '' })
     }
   ];
@@ -462,7 +463,7 @@
         id,
         label: pr.name,
         detail: pr.description?.slice(0, 80),
-        icon: '◆',
+        icon: 'projects',
         group: 'Projects',
         run: () => goto('/projects/' + encodeURIComponent(pr.name))
       });
@@ -478,7 +479,7 @@
         id,
         label: g.title,
         detail: g.category ?? g.status,
-        icon: '◎',
+        icon: 'goals',
         group: 'Goals',
         run: () => goto('/goals?focus=' + encodeURIComponent(g.id))
       });
@@ -496,7 +497,7 @@
         id,
         label: n.title,
         detail: n.path,
-        icon: '✎',
+        icon: 'notes',
         group: 'Notes',
         run: () => goto('/notes/' + encodeURIComponent(n.path))
       });
@@ -536,7 +537,7 @@
         id,
         label: h.title,
         detail: h.matchLine,
-        icon: '⌕',
+        icon: 'search',
         group: 'Content',
         run: () => goto('/notes/' + encodeURIComponent(h.path))
       });
@@ -640,7 +641,9 @@
                   onmouseenter={() => (selected = flat)}
                   class="w-full text-left px-4 py-2 flex items-baseline gap-3 {selected === flat ? 'bg-surface1' : ''}"
                 >
-                  <span class="w-5 text-center text-base">{it.icon}</span>
+                  <span class="w-5 flex items-center justify-center text-dim">
+                    <NavIcon name={it.icon} class="w-4 h-4" />
+                  </span>
                   <span class="flex-1 min-w-0 truncate text-text">{it.label}</span>
                   {#if it.hint}
                     <kbd class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded flex-shrink-0">{it.hint}</kbd>
