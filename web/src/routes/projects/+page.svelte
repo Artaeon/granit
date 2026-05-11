@@ -10,9 +10,16 @@
   import ProjectTimeline from '$lib/projects/ProjectTimeline.svelte';
   import ProjectHeatmap from '$lib/projects/ProjectHeatmap.svelte';
   import ProjectKanban from '$lib/projects/ProjectKanban.svelte';
+  import ProjectAgent from '$lib/projects/ProjectAgent.svelte';
   import type { KanbanStatus } from '$lib/projects/kanbanGroup';
   import ProjectStatusBar from '$lib/projects/ProjectStatusBar.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
+
+  // Project Agent — conversational mutation engine for /projects.
+  // Same architecture as TaskAgent: free-text intent → streamed
+  // typed actions → accept per row → run-scoped undo. Shared
+  // re-stream merge logic lives in $lib/agents/core.
+  let agentOpen = $state(false);
 
   let projects = $state<Project[]>([]);
   let tasks = $state<Task[]>([]);
@@ -634,6 +641,17 @@
         >🏢 {ventureFilter} ×</button>
       {/if}
       <button
+        onclick={() => (agentOpen = true)}
+        title="Project agent — describe what you want done in plain words"
+        class="text-xs px-2.5 py-1 min-h-[32px] rounded border border-surface1 bg-surface0 text-text hover:border-primary inline-flex items-center gap-1"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
+          <path d="M5 21h14" />
+        </svg>
+        <span class="hidden sm:inline">Agent</span>
+      </button>
+      <button
         onclick={() => (createOpen = true)}
         class="ml-auto px-2.5 py-1.5 sm:py-1 min-h-[32px] text-xs bg-primary text-on-primary rounded hover:opacity-90"
       >+ new</button>
@@ -646,6 +664,18 @@
   <aside class="w-full md:w-72 lg:w-80 xl:w-96 flex-shrink-0 border-r border-surface1 bg-mantle/40 flex flex-col {selectedName ? 'hidden md:flex' : ''}">
     <header class="px-3 py-2.5 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
       <h2 class="text-sm font-medium text-text flex-1">Projects</h2>
+      <button
+        onclick={() => (agentOpen = true)}
+        title="Project agent — describe what you want done"
+        aria-label="open project agent"
+        class="px-2 py-1 text-xs rounded border border-surface1 bg-surface0 text-text hover:border-primary inline-flex items-center gap-1"
+      >
+        <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
+          <path d="M5 21h14" />
+        </svg>
+        <span class="hidden sm:inline">AI</span>
+      </button>
       <button
         onclick={() => (createOpen = true)}
         class="px-2.5 py-1 text-xs bg-primary text-on-primary rounded hover:opacity-90"
@@ -968,3 +998,16 @@
 </div>
 
 <ProjectCreate bind:open={createOpen} ventures={ventures} onCreated={created} />
+
+<!-- Project Agent — operates on whatever's currently visible
+     (filtered list, including venture/search/status scope). The
+     parent reloads via load() so the kanban + list + timeline
+     all reflect the agent's changes immediately. -->
+<ProjectAgent
+  open={agentOpen}
+  projects={filtered}
+  todayISO={todayISO()}
+  knownVentures={ventures}
+  onClose={() => (agentOpen = false)}
+  onChanged={load}
+/>

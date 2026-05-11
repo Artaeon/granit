@@ -19,6 +19,11 @@
 // supports, so applying an action is a single PATCH.
 
 import type { Task } from '$lib/api';
+import {
+	mergeProposals as coreMerge,
+	extractActions,
+	type ProposalFlags
+} from '$lib/agents/core';
 
 /** The action enum the AI is allowed to propose. Keep this in
  *  sync with the apply() helper below — adding a new action means
@@ -124,28 +129,11 @@ export function buildAgentPrompt(
 }
 
 /** parseAgentResponse — extracts the actions array from the
- *  model reply. Same tolerance contract as starter-pack: strip
- *  fences, slice JSON from prose, drop malformed entries. Never
- *  throws — empty array means "couldn't parse anything sensible". */
+ *  model reply. Shape-level extraction is shared via
+ *  $lib/agents/core.extractActions; this function adds the
+ *  task-specific schema check (taskId + kind enum + rationale). */
 export function parseAgentResponse(raw: string): TaskAction[] {
-	let s = (raw ?? '').trim();
-	if (s.startsWith('```')) {
-		s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-	}
-	const firstBrace = s.indexOf('{');
-	const lastBrace = s.lastIndexOf('}');
-	if (firstBrace >= 0 && lastBrace > firstBrace) {
-		s = s.slice(firstBrace, lastBrace + 1);
-	}
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(s);
-	} catch {
-		return [];
-	}
-	if (!parsed || typeof parsed !== 'object') return [];
-	const arr = (parsed as { actions?: unknown }).actions;
-	if (!Array.isArray(arr)) return [];
+	const arr = extractActions(raw);
 	const out: TaskAction[] = [];
 	for (const entry of arr) {
 		if (!entry || typeof entry !== 'object') continue;
@@ -219,57 +207,19 @@ export function validateActions(actions: TaskAction[], liveTasks: Task[]): TaskA
 	return out;
 }
 
-/** ProposalState — minimal shape used by mergeProposals to track
- *  whether a row has been engaged (applied / rejected). The
- *  TaskAgent dialog extends this with `applying` (transient
- *  in-flight flag) but that's not needed for merge semantics. */
-export interface ProposalState extends TaskAction {
-	applied?: boolean;
-	rejected?: boolean;
-}
+/** ProposalState — the row state the TaskAgent dialog tracks per
+ *  action: the action itself plus dialog-side flags. Shape lives
+ *  here because the dialog imports it; merge semantics live in
+ *  $lib/agents/core. */
+export type ProposalState = TaskAction & ProposalFlags;
 
-/** mergeProposals — re-stream merge for the agent dialog.
- *  When the model streams JSON we re-parse on every chunk; the
- *  validated action list grows as more arrives. We want two
- *  guarantees the naive "replace proposals" does NOT give:
- *
- *  1. A row the user already accepted/rejected must STAY visible,
- *     even if a later chunk no longer mentions it (validateActions
- *     might drop it because the task left the parent's filtered
- *     scope after apply, or the model retracted the suggestion).
- *  2. The action data for an already-engaged row is FROZEN — the
- *     accepted patch went out with the old args; re-displaying
- *     the row with new args would lie about what was applied.
- *
- *  Pure helper so vitest can pin both guarantees. */
+/** mergeProposals — thin wrapper that supplies the task-specific
+ *  identity key (`taskId::kind`) to the generic merger. All the
+ *  re-stream semantics (freeze applied args, preserve engaged
+ *  rows when the new parse drops them) live in $lib/agents/core
+ *  and are tested there. */
 export function mergeProposals(prev: ProposalState[], next: TaskAction[]): ProposalState[] {
-	const prevMap = new Map<string, ProposalState>();
-	for (const r of prev) prevMap.set(`${r.taskId}::${r.kind}`, r);
-
-	const seen = new Set<string>();
-	const merged: ProposalState[] = [];
-	for (const a of next) {
-		const k = `${a.taskId}::${a.kind}`;
-		seen.add(k);
-		const old = prevMap.get(k);
-		if (old && (old.applied || old.rejected)) {
-			// Frozen — keep the old row verbatim, including its
-			// recorded args. Don't overwrite with the new parse.
-			merged.push(old);
-		} else {
-			merged.push({ ...a, applied: old?.applied, rejected: old?.rejected });
-		}
-	}
-	// Preserve engaged rows the new parse no longer surfaces. Pending
-	// rows that vanished from the new parse are intentional drops by
-	// the model — let them go (less list churn for the user).
-	for (const r of prev) {
-		const k = `${r.taskId}::${r.kind}`;
-		if (!seen.has(k) && (r.applied || r.rejected)) {
-			merged.push(r);
-		}
-	}
-	return merged;
+	return coreMerge(prev, next, (a) => `${a.taskId}::${a.kind}`);
 }
 
 /** Human-readable summary of an action — for the proposal card UI.
