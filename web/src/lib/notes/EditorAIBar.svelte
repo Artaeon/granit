@@ -148,6 +148,38 @@
 
   let moreOpen = $state(false);
 
+  // Trigger refs + computed popover coordinates. The popover used
+  // to be an `absolute` child of the bar — which gave it the
+  // bar's stacking context (a position:sticky parent with
+  // z-index). When the bar dropped DOWN past the editor body the
+  // menu inherited the bar's z-stack and slid behind anything
+  // the editor (or Tailwind containers around it) painted later.
+  // Switching to position:fixed + computed coords escapes every
+  // ancestor stacking context so the menu always paints on top,
+  // regardless of what the editor decides to do with z-index.
+  let selTriggerEl: HTMLButtonElement | null = $state(null);
+  let noteTriggerEl: HTMLButtonElement | null = $state(null);
+  let popoverTop = $state(0);
+  let popoverRight = $state(0);
+  const POPOVER_WIDTH = 224; // matches w-56 in Tailwind (14rem * 16px)
+
+  function openMore(which: 'selection' | 'note') {
+    const trigger = which === 'selection' ? selTriggerEl : noteTriggerEl;
+    if (!trigger) {
+      moreOpen = !moreOpen;
+      return;
+    }
+    const rect = trigger.getBoundingClientRect();
+    popoverTop = rect.bottom + 4; // 4px gap below the trigger
+    // Right-anchor — distance from right viewport edge to the
+    // right edge of the trigger button. Keeps the popover from
+    // overflowing the screen on narrow viewports because we
+    // clamp at POPOVER_WIDTH below.
+    const desiredRight = window.innerWidth - rect.right;
+    popoverRight = Math.max(8, desiredRight);
+    moreOpen = true;
+  }
+
   interface Props {
     /** Current selection snapshot, updated by the host via the
      *  selectionStateExtension ViewPlugin. */
@@ -317,48 +349,26 @@
     <!-- More — overflow menu of advanced selection verbs (tone /
          grammar / length / translate). Keeps the top row focused
          on the high-frequency five; power moves live one click
-         deeper but with explicit labels (not a mystery menu). -->
-    <div class="relative inline-block">
-      <button
-        type="button"
-        onclick={() => (moreOpen = !moreOpen)}
-        aria-haspopup="menu"
-        aria-expanded={moreOpen}
-        title="More AI actions for the selection"
-        class="ai-bar-btn"
-      >
-        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-          <circle cx="6" cy="12" r="1.2" fill="currentColor"/>
-          <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
-          <circle cx="18" cy="12" r="1.2" fill="currentColor"/>
-        </svg>
-        <span class="ai-bar-label">More</span>
-      </button>
-      {#if moreOpen}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div
-          role="presentation"
-          class="fixed inset-0 z-30"
-          onclick={() => (moreOpen = false)}
-        ></div>
-        <div
-          role="menu"
-          class="absolute right-0 top-full mt-1 w-56 bg-mantle border border-surface1 rounded-md shadow-xl z-40 py-1"
-        >
-          {#each SELECTION_MORE as item (item.id)}
-            <button
-              type="button"
-              role="menuitem"
-              onclick={() => { askRangePreset(item.preset); moreOpen = false; }}
-              class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface0 text-text"
-            >
-              <span class="text-base leading-none w-5 text-center flex-shrink-0">{item.glyph}</span>
-              <span class="text-sm">{item.label}</span>
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </div>
+         deeper but with explicit labels (not a mystery menu).
+         Popover is rendered at the document root via fixed
+         positioning so the sticky bar's stacking context can't
+         hide it behind editor content. -->
+    <button
+      type="button"
+      bind:this={selTriggerEl}
+      onclick={() => openMore('selection')}
+      aria-haspopup="menu"
+      aria-expanded={moreOpen}
+      title="More AI actions for the selection"
+      class="ai-bar-btn"
+    >
+      <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <circle cx="6" cy="12" r="1.2" fill="currentColor"/>
+        <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
+        <circle cx="18" cy="12" r="1.2" fill="currentColor"/>
+      </svg>
+      <span class="ai-bar-label">More</span>
+    </button>
 
     <span class="flex-1" aria-hidden="true"></span>
     <!-- Selection length chip. Lives at the right edge so it acts as
@@ -439,50 +449,61 @@
     </button>
     <!-- More — whole-note advanced verbs (outline, concepts,
          questions, tighten). Same shape as the selection-mode
-         More menu so the user learns one pattern. -->
-    <div class="relative inline-block">
-      <button
-        type="button"
-        onclick={() => (moreOpen = !moreOpen)}
-        aria-haspopup="menu"
-        aria-expanded={moreOpen}
-        title="More AI actions for this note"
-        class="ai-bar-btn"
-      >
-        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-          <circle cx="6" cy="12" r="1.2" fill="currentColor"/>
-          <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
-          <circle cx="18" cy="12" r="1.2" fill="currentColor"/>
-        </svg>
-        <span class="ai-bar-label">More</span>
-      </button>
-      {#if moreOpen}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div
-          role="presentation"
-          class="fixed inset-0 z-30"
-          onclick={() => (moreOpen = false)}
-        ></div>
-        <div
-          role="menu"
-          class="absolute right-0 top-full mt-1 w-56 bg-mantle border border-surface1 rounded-md shadow-xl z-40 py-1"
-        >
-          {#each WHOLE_MORE as item (item.id)}
-            <button
-              type="button"
-              role="menuitem"
-              onclick={() => { askWholeNotePreset(item.preset); moreOpen = false; }}
-              class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface0 text-text"
-            >
-              <span class="text-base leading-none w-5 text-center flex-shrink-0">{item.glyph}</span>
-              <span class="text-sm">{item.label}</span>
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </div>
+         More menu. Same fixed-position popover so it can't hide
+         behind editor content. -->
+    <button
+      type="button"
+      bind:this={noteTriggerEl}
+      onclick={() => openMore('note')}
+      aria-haspopup="menu"
+      aria-expanded={moreOpen}
+      title="More AI actions for this note"
+      class="ai-bar-btn"
+    >
+      <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <circle cx="6" cy="12" r="1.2" fill="currentColor"/>
+        <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
+        <circle cx="18" cy="12" r="1.2" fill="currentColor"/>
+      </svg>
+      <span class="ai-bar-label">More</span>
+    </button>
   {/if}
 </div>
+
+<!-- Fixed-position popover. Lives OUTSIDE the bar's stacking
+     context (root-of-document) so editor z-index / transforms
+     can't paint over it. Two action sets share one popover:
+     which list to render is driven by hasSelection at the time
+     the user opened the menu. -->
+{#if moreOpen}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div
+    role="presentation"
+    class="fixed inset-0 z-[60]"
+    onclick={() => (moreOpen = false)}
+  ></div>
+  <div
+    role="menu"
+    class="fixed bg-mantle border border-surface1 rounded-md shadow-xl py-1 z-[61]"
+    style="top: {popoverTop}px; right: {popoverRight}px; width: {POPOVER_WIDTH}px;"
+  >
+    {#each hasSelection ? SELECTION_MORE : WHOLE_MORE as item (item.id)}
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() => {
+          if (hasSelection) askRangePreset(item.preset);
+          else askWholeNotePreset(item.preset);
+          moreOpen = false;
+        }}
+        class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface0 text-text"
+      >
+        <span class="text-base leading-none w-5 text-center flex-shrink-0">{item.glyph}</span>
+        <span class="text-sm">{item.label}</span>
+      </button>
+    {/each}
+  </div>
+{/if}
 
 <style>
   /* Tailwind doesn't ship an `xs` breakpoint by default; project's

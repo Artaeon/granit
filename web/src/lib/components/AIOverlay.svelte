@@ -782,14 +782,24 @@
   // user re-explaining what project they're talking about.
   const currentProjectName = $derived.by(() => {
     const p = $page.url.pathname;
-    if (!p.startsWith('/projects/')) return '';
-    const tail = p.slice('/projects/'.length);
-    // Strip any trailing path (e.g. /projects/X/edit) so we only
-    // resolve when on the detail page itself; the list view
-    // (/projects with no name) returns '' which the prelude skips.
-    const name = tail.split('/')[0];
-    if (!name) return '';
-    return decodeURIComponent(name);
+    // /projects (list view) selects a project via the ?p=<name>
+    // query param — that's the canonical "I'm looking at project X"
+    // signal because the project detail opens as a drawer, not a
+    // separate route. Without this, PM mode never auto-fired on
+    // the most common path users actually use.
+    if (p === '/projects' || p.startsWith('/projects?')) {
+      const q = $page.url.searchParams.get('p');
+      return q ? decodeURIComponent(q) : '';
+    }
+    // Older /projects/<name>/ deep links (if anything still routes
+    // there) also count. Strip any trailing path so /projects/X/edit
+    // still resolves to X.
+    if (p.startsWith('/projects/')) {
+      const tail = p.slice('/projects/'.length);
+      const name = tail.split('/')[0];
+      if (name) return decodeURIComponent(name);
+    }
+    return '';
   });
   // Goal page selection — /goals?focus=<id>. When set, the
   // sidebar enters Goal Manager mode and injects a per-goal
