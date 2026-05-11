@@ -14,6 +14,16 @@
   // the chrome. Once they have any history, the badge stays visible
   // so the streak doesn't pop in/out as today's logged toggles.
 
+  // Parametric source so the same badge surfaces either streak —
+  // daily notes (the editor status bar) OR bible reading (the
+  // scripture page). Both endpoints return identical shapes so a
+  // single fetch+render path works for either; the only per-source
+  // difference is which fetch function + which WS path to listen on.
+  interface Props {
+    source?: 'daily' | 'bible';
+  }
+  let { source = 'daily' }: Props = $props();
+
   let current = $state(0);
   let longest = $state(0);
   let lastDate = $state<string | null>(null);
@@ -22,7 +32,7 @@
 
   async function refresh() {
     try {
-      const r = await api.dailyStreak();
+      const r = source === 'bible' ? await api.bibleStreak() : await api.dailyStreak();
       current = r.current;
       longest = r.longest;
       lastDate = r.lastDate ?? null;
@@ -40,6 +50,9 @@
   // folder-prefixed ones (daily/2026-05-11.md, journal/2026-05-11.md).
   // Matches the regex shape the backend's jotPathRegex uses.
   const dailyPathRe = /\d{4}-\d{2}-\d{2}\.md$/;
+  // The bible-reading log lives at a fixed sidecar path; any
+  // state.changed on it means the streak number may have moved.
+  const bibleLogPath = '.granit/bible-reading-log.json';
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   function scheduleRefresh() {
@@ -58,8 +71,12 @@
   onMount(() => {
     void refresh();
     off = onWsEvent((ev) => {
-      if (ev.type !== 'note.changed' && ev.type !== 'note.removed') return;
-      if (!ev.path || !dailyPathRe.test(ev.path)) return;
+      if (source === 'bible') {
+        if (ev.type !== 'state.changed' || ev.path !== bibleLogPath) return;
+      } else {
+        if (ev.type !== 'note.changed' && ev.type !== 'note.removed') return;
+        if (!ev.path || !dailyPathRe.test(ev.path)) return;
+      }
       scheduleRefresh();
     });
   });

@@ -15,6 +15,7 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import StreakBadge from '$lib/notes/StreakBadge.svelte';
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
   import type { AgentPreset } from '$lib/api';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
@@ -137,6 +138,17 @@
 
   onMount(() => {
     load();
+    // Reading-habit streak: fire-and-forget on every page mount.
+    // Idempotent server-side (RecordRead dedupes by date), so the
+    // 50ms call is harmless on a re-visit and only matters the
+    // first time the user opens scripture each calendar day. We
+    // don't show a toast — the StreakBadge re-fetch via the
+    // .granit/bible-reading-log.json WS broadcast surfaces the
+    // updated count instead.
+    void api.recordBibleRead().catch(() => {
+      // Silent: a streak-tracking failure must never block the
+      // user from reading scripture.
+    });
     return onWsEvent((ev) => {
       if (ev.type !== 'state.changed') return;
       if (ev.path === '.granit/bible-bookmarks.json' && bookmarksLoaded) {
@@ -787,12 +799,14 @@
       <div class="flex-1 min-w-0">
         <PageHeader title="Scripture" subtitle="Verse of the day, memorization drill, full bible (WEB)" />
       </div>
-      {#if streak.streak > 0}
-        <span
-          class="text-xs px-2 py-1 rounded bg-success/15 text-success font-medium flex-shrink-0"
-          title="Days in a row you've opened a chapter (per device)"
-        >🔥 {streak.streak}-day streak</span>
-      {/if}
+      <!-- Vault-backed reading streak. Same component the notes
+           editor uses, parameterised on source so a fresh open
+           hits /bible/streak (server-side, durable across devices)
+           instead of the localStorage-only counter the inline
+           span used to read. -->
+      <div class="flex-shrink-0">
+        <StreakBadge source="bible" />
+      </div>
     </div>
 
     <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-6 flex-wrap">

@@ -686,6 +686,21 @@
     if (!p.startsWith('/notes/')) return '';
     return decodeURIComponent(p.slice('/notes/'.length));
   });
+  // Same shape for the projects route. When set, the first turn of
+  // a new thread pulls the project's description + open-task list
+  // into a system message so the assistant is grounded without the
+  // user re-explaining what project they're talking about.
+  const currentProjectName = $derived.by(() => {
+    const p = $page.url.pathname;
+    if (!p.startsWith('/projects/')) return '';
+    const tail = p.slice('/projects/'.length);
+    // Strip any trailing path (e.g. /projects/X/edit) so we only
+    // resolve when on the detail page itself; the list view
+    // (/projects with no name) returns '' which the prelude skips.
+    const name = tail.split('/')[0];
+    if (!name) return '';
+    return decodeURIComponent(name);
+  });
 
   function close() {
     abort?.abort();
@@ -1533,6 +1548,54 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
           'The user has explicitly referenced these vault entities in their message. Use these fields when answering — do not invent ids or dates.\n\n' +
           lines.join('\n')
       });
+    }
+    // Project-scoped context — when the user opens chat from
+    // /projects/<name>, grab the project's description + open-task
+    // list and inject as a system message on the first turn. Saves
+    // the user from re-explaining "I'm asking about the Granite
+    // project" on every fresh thread. Skipped after first turn so
+    // a long thread doesn't burn tokens re-asserting the context.
+    if (isFirstTurn && currentProjectName) {
+      try {
+        const proj = await api.getProject(currentProjectName);
+        // Pull open tasks scoped to this project. The listTasks
+        // endpoint filters by `project` (the schema's project field,
+        // not project_id) + `status=open`, returning the list pre-
+        // filtered so we can inject without post-processing. Cap at
+        // 20 client-side — a project with hundreds of open tasks
+        // would otherwise burn the token budget on the prelude.
+        let taskLines = '';
+        try {
+          const tr = await api.listTasks({ project: proj.name, status: 'open' });
+          const open = tr.tasks.slice(0, 20);
+          if (open.length > 0) {
+            const more = tr.tasks.length > 20 ? ` (showing first 20 of ${tr.tasks.length})` : '';
+            taskLines =
+              `\n\nOpen tasks on this project${more}:\n` +
+              open.map((t) => `- ${t.text}`).join('\n');
+          }
+        } catch {
+          // Task fetch failure shouldn't block the chat — fall
+          // through with description-only context.
+        }
+        const facts: string[] = [`Project name: ${proj.name}`];
+        if (proj.description) facts.push(`Description: ${proj.description}`);
+        if (proj.kind) facts.push(`Kind: ${proj.kind}`);
+        if (proj.venture) facts.push(`Venture: ${proj.venture}`);
+        if (proj.status) facts.push(`Status: ${proj.status}`);
+        if (proj.next_action) facts.push(`Stated next action: ${proj.next_action}`);
+        if (proj.due_date) facts.push(`Target date: ${proj.due_date}`);
+        prelude.push({
+          role: 'system',
+          content:
+            "The user is currently looking at this project in Granit. Use it as the default subject of their messages — they don't need to re-state which project they mean.\n\n" +
+            facts.join('\n') +
+            taskLines
+        });
+      } catch {
+        // Project fetch failure — skip the injection silently and
+        // let the chat run as a generic thread.
+      }
     }
     if (isFirstTurn && attachSnapshot && snapshotData && !currentNotePath) {
       prelude.push({

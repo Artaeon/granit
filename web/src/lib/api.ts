@@ -1260,6 +1260,22 @@ export const api = {
       lastDate?: string;
       todayLogged: boolean;
     }>('/daily/streak'),
+  // Bible reading streak — parallel surface to dailyStreak. Same
+  // shape so the StreakBadge component can render either without
+  // a per-source branch. recordBibleRead is idempotent on date so
+  // the bible page can fire-and-forget on every passage open.
+  bibleStreak: () =>
+    req<{
+      current: number;
+      longest: number;
+      lastDate?: string;
+      todayLogged: boolean;
+    }>('/bible/streak'),
+  recordBibleRead: (date?: string) =>
+    req<{ added: boolean; date: string }>('/bible/read', {
+      method: 'POST',
+      body: JSON.stringify(date ? { date } : {})
+    }),
 
   // Calendar
   calendar: (from: string, to: string) =>

@@ -623,6 +623,9 @@ func (s *Server) Handler() http.Handler {
 		// as a reader + random-passage source. Backed by
 		// internal/scripture/bible (loaded once from a go:embed JSON).
 		r.Get("/api/v1/bible/books", s.handleBibleBooks)
+		// Reading-habit streak — parallel surface to /api/v1/daily/streak.
+		r.Get("/api/v1/bible/streak", s.handleBibleStreak)
+		r.Post("/api/v1/bible/read", s.handleBibleReadRecord)
 		r.Get("/api/v1/bible/random", s.handleBibleRandom)
 		r.Get("/api/v1/bible/search", s.handleBibleSearch)
 		// Specific routes BEFORE the wildcard so /bible/bookmarks
