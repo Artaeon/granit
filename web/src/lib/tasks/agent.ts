@@ -254,6 +254,67 @@ export function summariseAction(a: TaskAction, task: Task | undefined): string {
 	}
 }
 
+/** Patch shape accepted by api.patchTask — duplicated narrowly
+ *  here so undo can be computed in a pure module without a runtime
+ *  dependency on $lib/api. Keep in sync with api.ts patchTask
+ *  signature. */
+export type TaskRevertPatch = {
+	done?: boolean;
+	priority?: number;
+	dueDate?: string;
+	text?: string;
+	scheduledStart?: string;
+	durationMinutes?: number;
+	projectId?: string;
+	snoozedUntil?: string;
+	triage?: 'inbox' | 'triaged' | 'scheduled' | 'done' | 'dropped' | 'snoozed';
+	clearSchedule?: boolean;
+};
+
+/** computeRevertPatch — given an action that's ABOUT to apply and
+ *  the task's pre-state, build the patch that would undo it. Used
+ *  by the dialog's "Undo run" button: each applied action stashes
+ *  its revert patch, undo plays them back via patchTask.
+ *
+ *  Returns null when there's nothing to revert (e.g. clear_schedule
+ *  on a task that already had no schedule). Pure — no API calls,
+ *  so vitest can pin every case. */
+export function computeRevertPatch(action: TaskAction, preTask: Task): TaskRevertPatch | null {
+	switch (action.kind) {
+		case 'set_priority':
+			return { priority: preTask.priority ?? 0 };
+		case 'set_due':
+		case 'clear_due':
+			return { dueDate: preTask.dueDate ?? '' };
+		case 'schedule':
+			if (preTask.scheduledStart) {
+				const r: TaskRevertPatch = { scheduledStart: preTask.scheduledStart };
+				if (preTask.durationMinutes) r.durationMinutes = preTask.durationMinutes;
+				return r;
+			}
+			return { clearSchedule: true };
+		case 'clear_schedule':
+			if (preTask.scheduledStart) {
+				const r: TaskRevertPatch = { scheduledStart: preTask.scheduledStart };
+				if (preTask.durationMinutes) r.durationMinutes = preTask.durationMinutes;
+				return r;
+			}
+			return null;
+		case 'mark_done':
+			return { done: preTask.done ?? false };
+		case 'archive':
+			return { done: preTask.done ?? false, triage: preTask.triage ?? 'inbox' };
+		case 'unarchive':
+			return { done: preTask.done ?? false, triage: preTask.triage ?? 'inbox' };
+		case 'snooze':
+			return { snoozedUntil: preTask.snoozedUntil ?? '' };
+		case 'set_project':
+			return { projectId: preTask.projectId ?? '' };
+		case 'change_text':
+			return { text: preTask.text ?? '' };
+	}
+}
+
 function clamp(n: number, lo: number, hi: number): number {
 	return Math.max(lo, Math.min(hi, n));
 }

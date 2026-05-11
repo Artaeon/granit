@@ -25,8 +25,12 @@
 		parseAgentResponse,
 		validateActions,
 		summariseAction,
-		type TaskAction
+		computeRevertPatch,
+		type TaskAction,
+		type TaskRevertPatch
 	} from './agent';
+	import { addIntentToHistory, normaliseHistory } from './agentHistory';
+	import { loadStored, saveStored } from '$lib/util/storage';
 
 	interface Props {
 		open: boolean;
@@ -40,6 +44,13 @@
 
 	type ProposalRow = TaskAction & { applied?: boolean; applying?: boolean; rejected?: boolean };
 
+	// Each applied action stashes its revert patch + the original
+	// task id, so the dialog can offer a single "Undo run" button
+	// that walks the list backwards. Session-scoped (resets on
+	// close) — long-term undo would conflict with edits the user
+	// made manually after the agent run.
+	type AppliedLog = { taskId: string; summary: string; revert: TaskRevertPatch };
+
 	let intent = $state('');
 	let busy = $state(false);
 	let raw = $state('');
@@ -47,6 +58,14 @@
 	let proposals = $state<ProposalRow[]>([]);
 	let applyingAll = $state(false);
 	let abort: AbortController | null = null;
+	let applied = $state<AppliedLog[]>([]);
+	let undoBusy = $state(false);
+
+	// Persisted intent history. Loaded once when the dialog first
+	// mounts (we don't reload on every open — would stomp on the
+	// in-memory dedup). Saved on every successful run().
+	const HISTORY_KEY = 'granit.tasks.agent.history';
+	let history = $state<string[]>(normaliseHistory(loadStored(HISTORY_KEY, []) as unknown));
 
 	// Suggestion chips so the user doesn't stare at a blank box.
 	// Curated for the high-leverage cases: cleanup, scheduling,
@@ -75,10 +94,21 @@
 		raw = '';
 		error = '';
 		proposals = [];
+		// Reset undo log on a fresh run — undoing after a new run
+		// would be confusing (which set of changes is being
+		// reverted?). User has to undo BEFORE running the next
+		// intent.
+		applied = [];
 	}
 
 	async function run() {
 		if (busy || !intent.trim()) return;
+		// Persist the intent BEFORE we start the stream — even a
+		// cancelled run is a valid history entry the user might
+		// want to retry. Computed via the pure helper, then
+		// flushed to localStorage.
+		history = addIntentToHistory(history, intent);
+		saveStored(HISTORY_KEY, history);
 		busy = true;
 		reset();
 		abort?.abort();
@@ -133,18 +163,72 @@
 	async function applyAction(idx: number) {
 		const p = proposals[idx];
 		if (!p || p.applied || p.applying) return;
+		// Snapshot the pre-state so undo has something to revert to.
+		// If the task isn't on the current list any more (raced with
+		// a delete), skip — we wouldn't be able to revert anyway.
+		const preTask = tasks.find((t) => t.id === p.taskId);
+		if (!preTask) {
+			toast.error('Task no longer in scope; refresh and retry.');
+			return;
+		}
+		const revert = computeRevertPatch(p, preTask);
 		proposals = proposals.map((x, i) => (i === idx ? { ...x, applying: true } : x));
 		try {
 			await applyOne(p);
 			proposals = proposals.map((x, i) =>
 				i === idx ? { ...x, applied: true, applying: false } : x
 			);
-			toast.success(summariseAction(p, tasks.find((t) => t.id === p.taskId)));
+			if (revert) {
+				applied = [
+					...applied,
+					{ taskId: p.taskId, summary: summariseAction(p, preTask), revert }
+				];
+			}
+			toast.success(summariseAction(p, preTask));
 			await onChanged?.();
 		} catch (err) {
 			proposals = proposals.map((x, i) => (i === idx ? { ...x, applying: false } : x));
 			toast.error('Apply failed: ' + errorMessage(err));
 		}
+	}
+
+	// Undo every action applied since the last run() / dialog open.
+	// Walks backwards so re-application order matches reverse order
+	// of original application — important for paired operations
+	// like "set priority then schedule" where the schedule lookup
+	// might want the original priority back first.
+	async function undoRun() {
+		if (undoBusy || applied.length === 0) return;
+		undoBusy = true;
+		let undone = 0;
+		try {
+			for (let i = applied.length - 1; i >= 0; i--) {
+				const log = applied[i];
+				try {
+					await api.patchTask(log.taskId, log.revert);
+					undone++;
+				} catch (err) {
+					toast.error(`Undo failed for one task: ${errorMessage(err)}`);
+				}
+			}
+			applied = [];
+			// Reset the proposal flags so the cards become re-acceptable
+			// (the user might want to redo a subset they just undid).
+			proposals = proposals.map((p) => ({ ...p, applied: false }));
+			toast.success(`Reverted ${undone} change${undone === 1 ? '' : 's'}`);
+			await onChanged?.();
+		} finally {
+			undoBusy = false;
+		}
+	}
+
+	function useHistory(intent_: string) {
+		intent = intent_;
+	}
+
+	function clearHistory() {
+		history = [];
+		saveStored(HISTORY_KEY, []);
 	}
 
 	function rejectAction(idx: number) {
@@ -269,6 +353,34 @@
 					autocomplete="off"
 					spellcheck="true"
 				></textarea>
+
+				<!-- Recent intents — one-click reuse. Distinct from the
+					 starter prompts so the user knows what's theirs vs.
+					 what's a template. Shown only when there's actual
+					 history; otherwise the starter chips below carry the
+					 first-run onboarding load. -->
+				{#if history.length > 0}
+					<div class="flex items-baseline gap-1.5 flex-wrap">
+						<span class="text-[10px] text-dim uppercase tracking-wide flex-shrink-0">recent:</span>
+						{#each history as h, hi (hi + '::' + h)}
+							<button
+								type="button"
+								onclick={() => useHistory(h)}
+								class="text-[10px] px-2 py-0.5 rounded bg-secondary/10 border border-secondary/30 text-secondary hover:bg-secondary/20"
+								title={h}
+							>
+								{h.length > 40 ? h.slice(0, 39) + '…' : h}
+							</button>
+						{/each}
+						<button
+							type="button"
+							onclick={clearHistory}
+							class="text-[10px] text-dim hover:text-error ml-1"
+							title="clear history"
+						>clear</button>
+					</div>
+				{/if}
+
 				<div class="flex items-center gap-1.5 flex-wrap">
 					{#each PROMPTS as p}
 						<button
@@ -316,11 +428,19 @@
 					<div class="mb-2 flex items-baseline gap-2 text-[11px] text-dim">
 						<span>{pendingCount} pending</span>
 						{#if appliedCount > 0}<span class="text-success">· {appliedCount} applied</span>{/if}
+						{#if applied.length > 0}
+							<button
+								onclick={() => void undoRun()}
+								disabled={undoBusy}
+								class="ml-auto text-xs text-warning hover:underline disabled:opacity-50"
+								title="Revert every change applied in this run"
+							>{undoBusy ? 'undoing…' : `↶ undo (${applied.length})`}</button>
+						{/if}
 						{#if pendingCount > 0}
 							<button
 								onclick={() => void applyAll()}
 								disabled={applyingAll}
-								class="ml-auto text-xs text-secondary hover:underline disabled:opacity-50"
+								class="{applied.length > 0 ? '' : 'ml-auto'} text-xs text-secondary hover:underline disabled:opacity-50"
 							>{applyingAll ? 'applying all…' : 'apply all'}</button>
 						{/if}
 					</div>

@@ -5,6 +5,7 @@ import {
 	parseAgentResponse,
 	validateActions,
 	summariseAction,
+	computeRevertPatch,
 	type TaskAction
 } from './agent';
 
@@ -265,5 +266,113 @@ describe('summariseAction', () => {
 		expect(summariseAction({ taskId: 'ghost', kind: 'archive', rationale: '' }, undefined)).toMatch(
 			/Archive ghost/
 		);
+	});
+});
+
+describe('computeRevertPatch', () => {
+	it('reverts set_priority to the pre-state priority', () => {
+		const pre = mk('a', 'x', { priority: 1 });
+		const rev = computeRevertPatch(
+			{ taskId: 'a', kind: 'set_priority', priority: 3, rationale: '' },
+			pre
+		);
+		expect(rev).toEqual({ priority: 1 });
+	});
+
+	it('reverts set_priority when there was no prior priority (→ 0)', () => {
+		const pre = mk('a', 'x');
+		const rev = computeRevertPatch(
+			{ taskId: 'a', kind: 'set_priority', priority: 2, rationale: '' },
+			pre
+		);
+		expect(rev).toEqual({ priority: 0 });
+	});
+
+	it('reverts set_due AND clear_due to the prior due date (empty if none)', () => {
+		const pre1 = mk('a', 'x', { dueDate: '2026-05-15' });
+		expect(
+			computeRevertPatch({ taskId: 'a', kind: 'set_due', dueDate: '2026-06-01', rationale: '' }, pre1)
+		).toEqual({ dueDate: '2026-05-15' });
+		expect(
+			computeRevertPatch({ taskId: 'a', kind: 'clear_due', rationale: '' }, pre1)
+		).toEqual({ dueDate: '2026-05-15' });
+
+		const pre2 = mk('a', 'x');
+		expect(
+			computeRevertPatch({ taskId: 'a', kind: 'set_due', dueDate: '2026-06-01', rationale: '' }, pre2)
+		).toEqual({ dueDate: '' });
+	});
+
+	it('reverts schedule: restores prior schedule when present, else clearSchedule', () => {
+		const had = mk('a', 'x', { scheduledStart: '2026-05-12T09:00', durationMinutes: 60 });
+		expect(
+			computeRevertPatch(
+				{ taskId: 'a', kind: 'schedule', scheduledStart: '2026-05-13T14:00', rationale: '' },
+				had
+			)
+		).toEqual({ scheduledStart: '2026-05-12T09:00', durationMinutes: 60 });
+
+		const free = mk('a', 'x');
+		expect(
+			computeRevertPatch(
+				{ taskId: 'a', kind: 'schedule', scheduledStart: '2026-05-13T14:00', rationale: '' },
+				free
+			)
+		).toEqual({ clearSchedule: true });
+	});
+
+	it('reverts clear_schedule to the prior schedule, or null if there was none', () => {
+		const had = mk('a', 'x', { scheduledStart: '2026-05-12T09:00' });
+		expect(
+			computeRevertPatch({ taskId: 'a', kind: 'clear_schedule', rationale: '' }, had)
+		).toEqual({ scheduledStart: '2026-05-12T09:00' });
+
+		const free = mk('a', 'x');
+		expect(computeRevertPatch({ taskId: 'a', kind: 'clear_schedule', rationale: '' }, free)).toBeNull();
+	});
+
+	it('reverts mark_done to the prior done flag', () => {
+		const open = mk('a', 'x', { done: false });
+		expect(computeRevertPatch({ taskId: 'a', kind: 'mark_done', rationale: '' }, open)).toEqual({
+			done: false
+		});
+	});
+
+	it('reverts archive AND unarchive to the prior done + triage', () => {
+		const pre = mk('a', 'x', { done: false, triage: 'inbox' });
+		expect(computeRevertPatch({ taskId: 'a', kind: 'archive', rationale: '' }, pre)).toEqual({
+			done: false,
+			triage: 'inbox'
+		});
+		const archived = mk('a', 'x', { done: true, triage: 'dropped' });
+		expect(computeRevertPatch({ taskId: 'a', kind: 'unarchive', rationale: '' }, archived)).toEqual({
+			done: true,
+			triage: 'dropped'
+		});
+	});
+
+	it('reverts snooze / set_project / change_text to prior values', () => {
+		const pre = mk('a', 'old text', {
+			snoozedUntil: '2026-09-01',
+			projectId: 'Granite'
+		});
+		expect(
+			computeRevertPatch(
+				{ taskId: 'a', kind: 'snooze', snoozedUntil: '2026-12-01', rationale: '' },
+				pre
+			)
+		).toEqual({ snoozedUntil: '2026-09-01' });
+		expect(
+			computeRevertPatch(
+				{ taskId: 'a', kind: 'set_project', projectId: 'Other', rationale: '' },
+				pre
+			)
+		).toEqual({ projectId: 'Granite' });
+		expect(
+			computeRevertPatch(
+				{ taskId: 'a', kind: 'change_text', text: 'new text', rationale: '' },
+				pre
+			)
+		).toEqual({ text: 'old text' });
 	});
 });
