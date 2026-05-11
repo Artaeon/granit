@@ -276,6 +276,63 @@ button.bg-primary, a.bg-primary {
   color-scheme: light;
 }
 
+/* Pure Black — true #000 OLED minimalism. Greyscale surfaces, white
+   primary, and status colors muted to the bare minimum needed to
+   read distinct semantics (warnings yellowish, errors reddish — no
+   purple/blue noise). Forces color-scheme: dark so native scrollbars
+   and form controls match, regardless of the dark/light axis toggle.
+
+   "Just enough color" is a deliberate restraint: a fully achromatic
+   error indicator (light grey) would be readable but indistinguishable
+   from a success / info. The minimum chroma below preserves semantic
+   contrast without breaking the monochrome aesthetic. */
+[data-palette='pure-black'] {
+  --color-base: #000000;
+  --color-mantle: #050505;
+  --color-crust: #000000;
+  --color-surface0: #0c0c0c;
+  --color-surface1: #1a1a1a;
+  --color-surface2: #262626;
+  --color-text: #ffffff;
+  --color-subtext: #c8c8c8;
+  --color-dim: #6e6e6e;
+  --color-primary: #ffffff;
+  --color-secondary: #b0b0b0;
+  --color-accent: #d0d0d0;
+  --color-success: #9ccc9c;
+  --color-warning: #d8c080;
+  --color-error: #e89090;
+  --color-info: #a0c0d0;
+  --color-on-primary: #000000;
+  color-scheme: dark;
+}
+
+/* Pure White — paper-clean #fff inverse of Pure Black. Same restraint:
+   monochrome surfaces with the smallest possible chroma on status
+   tokens. Reads like a well-set hardcover; ideal for reviewing /
+   printing / long-form reading sessions where palette colors are
+   visual noise rather than navigation aids. */
+[data-palette='pure-white'] {
+  --color-base: #ffffff;
+  --color-mantle: #fafafa;
+  --color-crust: #ffffff;
+  --color-surface0: #f4f4f4;
+  --color-surface1: #e8e8e8;
+  --color-surface2: #d8d8d8;
+  --color-text: #000000;
+  --color-subtext: #3a3a3a;
+  --color-dim: #8c8c8c;
+  --color-primary: #000000;
+  --color-secondary: #404040;
+  --color-accent: #2a2a2a;
+  --color-success: #2f7a2f;
+  --color-warning: #a06a00;
+  --color-error: #b62828;
+  --color-info: #1d6a8a;
+  --color-on-primary: #ffffff;
+  color-scheme: light;
+}
+
 html,
 body {
   height: 100%;

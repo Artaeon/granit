@@ -8,10 +8,22 @@ export type Theme = 'dark' | 'light' | 'system';
 // pair built into app.css's :root. The named palettes set their
 // own CSS-variable values via [data-palette='<name>'] selectors
 // also in app.css.
-export type Palette = 'default' | 'rose-pine' | 'gruvbox' | 'nord' | 'solarized';
+export type Palette =
+  | 'default'
+  | 'rose-pine'
+  | 'gruvbox'
+  | 'nord'
+  | 'solarized'
+  | 'pure-black'
+  | 'pure-white';
 
 export const PALETTES: { id: Palette; label: string; hint: string; swatch: string }[] = [
   { id: 'default',    label: 'Default',    hint: 'Tokyo Night / Catppuccin Latte', swatch: '#bb9af7' },
+  // Minimalist monochrome pair — true #000 / #fff with grey scale
+  // surfaces, status colors only where contrast demands it. Forces
+  // its own color-scheme so the choice survives any dark/light toggle.
+  { id: 'pure-black', label: 'Pure Black', hint: 'OLED black, monochrome',         swatch: '#000000' },
+  { id: 'pure-white', label: 'Pure White', hint: 'Paper white, monochrome',        swatch: '#ffffff' },
   { id: 'rose-pine',  label: 'Rosé Pine',  hint: 'Soft, low-saturation pinks',     swatch: '#c4a7e7' },
   { id: 'gruvbox',    label: 'Gruvbox',    hint: 'High-contrast retro',            swatch: '#d3869b' },
   { id: 'nord',       label: 'Nord',       hint: 'Cool arctic blues',              swatch: '#88c0d0' },
