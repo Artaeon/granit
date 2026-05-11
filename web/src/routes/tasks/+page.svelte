@@ -18,6 +18,7 @@
   import Drawer from '$lib/components/Drawer.svelte';
   import EisenhowerView from '$lib/tasks/EisenhowerView.svelte';
   import TaskAgent from '$lib/tasks/TaskAgent.svelte';
+  import { isTypingTarget } from '$lib/util/isTypingTarget';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { saveProposals, loadProposals } from '$lib/util/proposalCache';
   import { extractJsonBlock } from '$lib/util/jsonExtract';
@@ -778,13 +779,8 @@
     if (cursorIdx >= filtered.length) cursorIdx = filtered.length - 1;
   });
 
-  function isTypingTarget(el: EventTarget | null): boolean {
-    if (!(el instanceof HTMLElement)) return false;
-    const tag = el.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-    if (el.isContentEditable) return true;
-    return false;
-  }
+  // isTypingTarget lives in $lib/util/isTypingTarget — shared with
+  // /projects and /goals page-level hotkey handlers.
 
   async function cyclePriorityOf(t: Task) {
     const next = ((t.priority || 0) + 1) % 4; // 0,1,2,3 cycle

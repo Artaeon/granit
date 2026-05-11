@@ -10,6 +10,7 @@
   import GoalCreate from '$lib/goals/GoalCreate.svelte';
   import GoalDetail from '$lib/goals/GoalDetail.svelte';
   import GoalAgent from '$lib/goals/GoalAgent.svelte';
+  import { isTypingTarget } from '$lib/util/isTypingTarget';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
@@ -102,10 +103,23 @@
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
+    // 'a' opens the Goal Agent — same hotkey contract as /tasks
+    // and /projects. isTypingTarget guard suppresses while the
+    // user is typing anywhere on the page.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isTypingTarget(e.target)) return;
+      if (e.key === 'a') {
+        agentOpen = true;
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', onKey);
     return () => {
       unsub();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
+      window.removeEventListener('keydown', onKey);
     };
   });
 

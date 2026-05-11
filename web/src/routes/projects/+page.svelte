@@ -12,6 +12,7 @@
   import ProjectKanban from '$lib/projects/ProjectKanban.svelte';
   import ProjectAgent from '$lib/projects/ProjectAgent.svelte';
   import type { KanbanStatus } from '$lib/projects/kanbanGroup';
+  import { isTypingTarget } from '$lib/util/isTypingTarget';
   import ProjectStatusBar from '$lib/projects/ProjectStatusBar.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
 
@@ -381,10 +382,23 @@
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
+    // 'a' opens the Project Agent — same hotkey contract as
+    // /tasks. isTypingTarget guard suppresses while the user is
+    // typing in inputs / textareas anywhere on the page.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isTypingTarget(e.target)) return;
+      if (e.key === 'a') {
+        agentOpen = true;
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', onKey);
     return () => {
       unsub();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
+      window.removeEventListener('keydown', onKey);
     };
   });
 
