@@ -543,8 +543,8 @@
               {@const c = eventTypeColor(ev)}
               <button
                 onclick={() => onClickEvent(ev)}
-                class="block w-full text-left text-[10px] leading-tight px-1.5 py-0.5 rounded truncate"
-                style="background: {c.bg}; color: {c.fg}; border-left: 2px solid {c.border}; {ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}"
+                class="block w-full text-left text-[10px] leading-tight px-1.5 py-0.5 rounded truncate font-medium"
+                style="background: {c.bg}; color: {c.fg}; {ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}"
               >
                 {ev.title}
               </button>
@@ -613,7 +613,7 @@
           {@const dayEvents = (eventsByDay.get(fmtDateISO(d)) ?? []).filter((e) => !isAllDay(e))}
           {@const layout = layoutDay(dayEvents)}
           <div
-            class="relative border-l border-surface1 cursor-cell {isToday ? 'bg-primary/5' : ''}"
+            class="relative border-l border-surface1 cursor-cell {isToday ? 'bg-surface0' : ''}"
             role="button"
             tabindex="0"
             data-day-idx={dayIdx}
@@ -691,8 +691,8 @@
                   onpointercancel={onEventPointerCancel}
                   onclick={(e) => { e.stopPropagation(); if (!drag && !draggable) onClickEvent(item.ev); }}
                   title={draggable ? 'Drag to move · drag bottom edge to resize' : item.ev.type === 'ics_event' ? 'Read-only ICS event (subscribed feed)' : 'Click to view'}
-                  class="absolute inset-0 rounded text-left text-[11px] overflow-hidden hover:brightness-125 transition {draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} {isDragging ? 'opacity-30' : ''} {isResizing ? 'ring-1 ring-primary' : ''}"
-                  style="background: {c.bg}; color: {c.fg}; border-left: 3px solid {c.border}; padding: 2px 4px; touch-action: none;"
+                  class="absolute inset-0 rounded-md text-left text-[11px] overflow-hidden hover:brightness-110 transition shadow-sm {draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} {isDragging ? 'opacity-30' : ''} {isResizing ? 'ring-2 ring-primary ring-offset-1' : ''}"
+                  style="background: {c.bg}; color: {c.fg}; padding: 3px 6px; touch-action: none;"
                 >
                   <div class="font-medium truncate {item.ev.done ? 'line-through opacity-70' : ''}">{item.ev.title}</div>
                   {#if height > 30}
@@ -728,8 +728,8 @@
           {@const top = drag.ghostMinutes * (HOUR_PX / 60)}
           {@const height = Math.max(drag.durationMinutes * (HOUR_PX / 60), 18)}
           <div
-            class="absolute rounded text-left text-[11px] overflow-hidden z-30 pointer-events-none ring-2 ring-primary"
-            style="top: {top}px; height: {height}px; left: calc({railPx}px + {drag.ghostDayIdx} * (100% - {railPx}px) / {days.length}); width: calc((100% - {railPx}px) / {days.length} - 4px); background: {c.bg}; color: {c.fg}; border-left: 3px solid {c.border}; padding: 2px 4px; margin-left: 1px;"
+            class="absolute rounded-md text-left text-[11px] overflow-hidden z-30 pointer-events-none ring-2 ring-primary shadow-lg"
+            style="top: {top}px; height: {height}px; left: calc({railPx}px + {drag.ghostDayIdx} * (100% - {railPx}px) / {days.length}); width: calc((100% - {railPx}px) / {days.length} - 4px); background: {c.bg}; color: {c.fg}; padding: 3px 6px; margin-left: 1px;"
           >
             <div class="font-medium truncate">{drag.ev.title}</div>
             <div class="text-[10px] opacity-80">
