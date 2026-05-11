@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { EditorState } from '@codemirror/state';
+  import { EditorState, type Extension } from '@codemirror/state';
   import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor } from '@codemirror/view';
   import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
   import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
@@ -30,6 +30,7 @@
     onAskAI,
     onCursor,
     onScroll,
+    extraExtensions,
     placeholder = ''
   }: {
     value?: string;
@@ -65,6 +66,17 @@
      * a reading-progress bar without polling. Idle by default.
      */
     onScroll?: (info: { top: number; height: number; viewport: number }) => void;
+    /**
+     * Extra CodeMirror extensions the host wants installed into the
+     * initial state. Appended to the built-in extension list once,
+     * at view construction, so they participate in every dispatch
+     * with no reactive re-creation. Used by the host page's
+     * EditorAIBar to install a selection-state ViewPlugin without
+     * having to fork the Editor wrapper. Keep the array stable;
+     * passing a fresh reference per render would NOT rebuild the
+     * view (we only read this at setupView time).
+     */
+    extraExtensions?: Extension[];
     placeholder?: string;
   } = $props();
 
@@ -170,6 +182,11 @@
         // Smart paste: URL-while-selected → markdown link. Falls
         // through to default paste otherwise.
         smartPaste,
+        // Host-supplied extensions go BEFORE the updateListener so a
+        // selection-state plugin sees the state at the same point in
+        // the dispatch lifecycle as the host's onCursor callback —
+        // both observe a single coherent snapshot of the state.
+        ...(extraExtensions ?? []),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
             internalChange = true;
@@ -406,6 +423,17 @@
    *  editor instead of the whole document. */
   export function getDOM(): HTMLElement | undefined {
     return view?.contentDOM;
+  }
+
+  /** The live CodeMirror EditorView — exposed so an overlay (like
+   *  EditorAIBar) can dispatch range-scoped edits or read selection
+   *  state directly. Returns undefined until setupView has run.
+   *  Prefer the higher-level helpers (insertAtCursor, scrollToLine,
+   *  dispatchChord, getContent) when they cover the use case;
+   *  reach for the raw view only when the host needs to splice
+   *  edits at an arbitrary range. */
+  export function getView(): EditorView | undefined {
+    return view;
   }
 
   /** Open CodeMirror's built-in find/replace panel. Same panel as

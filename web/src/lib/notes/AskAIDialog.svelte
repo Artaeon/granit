@@ -113,14 +113,33 @@
   $effect(() => {
     if (request) {
       response = '';
-      // Pre-fill with last-used instruction so a "summarise this"
-      // workflow becomes one click on subsequent selections. The
-      // user can still clear or change before sending.
-      instruction = loadLastInstruction();
-      error = '';
-      pending = false;
-      viewMode = 'preview';
-      tick().then(() => inputEl?.focus());
+      // When the bar (or any host) passed a presetInstruction, honour
+      // it AND auto-fire so the user gets the response without an
+      // extra "Ask" click — they already picked the action on the
+      // bar. The selection preview still renders above so they can
+      // see what's being sent. Falls back to last-used when not set.
+      if (request.presetInstruction && request.presetInstruction.trim()) {
+        instruction = request.presetInstruction.trim();
+        viewMode = request.presetView ?? (isRewriteInstruction(instruction) ? 'diff' : 'preview');
+        error = '';
+        pending = false;
+        // Wait a tick so the dialog mounts before we kick off the
+        // stream — otherwise the spinner can flash in a half-rendered
+        // panel on very slow devices.
+        tick().then(() => {
+          inputEl?.focus();
+          void ask();
+        });
+      } else {
+        // Pre-fill with last-used instruction so a "summarise this"
+        // workflow becomes one click on subsequent selections. The
+        // user can still clear or change before sending.
+        instruction = loadLastInstruction();
+        error = '';
+        pending = false;
+        viewMode = 'preview';
+        tick().then(() => inputEl?.focus());
+      }
     }
   });
 

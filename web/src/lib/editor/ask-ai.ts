@@ -31,6 +31,24 @@ export interface AskAIRequest {
   insertAfter: (addition: string) => void;
   /** Cancel — restore focus, no document edits. */
   cancel: () => void;
+  /**
+   * Optional pre-filled instruction. When set, the AskAIDialog opens
+   * with this instruction in the prompt field and auto-fires the AI
+   * call so the user goes straight to the response. Used by the
+   * EditorAIBar's preset actions (Rewrite / Explain / Summarise /
+   * Extract tasks / …) — the bar is the one-click entry point;
+   * the dialog still gives the user the audit trail + apply options.
+   * When omitted, the dialog opens with the last-used instruction
+   * (or empty) and waits for the user to pick a preset / type.
+   */
+  presetInstruction?: string;
+  /**
+   * Optional preferred initial view for the response panel.
+   * 'diff' suits rewrite-style presets (the user wants to see what
+   * changed); 'preview' suits generative ones (summary, tasks, tags).
+   * Defaults inside the dialog otherwise.
+   */
+  presetView?: 'preview' | 'diff';
 }
 
 export function askAIKeymap(

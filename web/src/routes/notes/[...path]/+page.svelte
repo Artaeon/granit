@@ -38,6 +38,13 @@
   import SelectionToolbar from '$lib/editor/SelectionToolbar.svelte';
   import LinkSuggestPanel from '$lib/notes/LinkSuggestPanel.svelte';
   import EditorAIMenu from '$lib/notes/EditorAIMenu.svelte';
+  import EditorAIBar from '$lib/notes/EditorAIBar.svelte';
+  import {
+    selectionStateExtension,
+    type SelectionState
+  } from '$lib/notes/selectionState';
+  import { EditorSelection } from '@codemirror/state';
+  import type { EditorView } from '@codemirror/view';
   import ResearchPanel from '$lib/notes/ResearchPanel.svelte';
   import ReferenceNotePanel from '$lib/notes/ReferenceNotePanel.svelte';
   import StreakBadge from '$lib/notes/StreakBadge.svelte';
@@ -211,6 +218,7 @@
         isCompletionActive: () => boolean;
         dispatchChord: (chord: string) => void;
         getDOM: () => HTMLElement | undefined;
+        getView: () => EditorView | undefined;
         openFind: () => void;
         insertAtCursor: (text: string) => void;
         getContent: () => string;
@@ -879,8 +887,9 @@
   // without having to select-all first. The replace/insertAfter
   // callbacks splice into the document at the start (replace = whole
   // body) or after the end (insertAfter = append). The user picks
-  // the apply mode in the dialog.
-  function askAIWholeNote() {
+  // the apply mode in the dialog — unless the bar passed a preset,
+  // in which case the dialog auto-fires that instruction.
+  function askAIWholeNote(preset?: string) {
     askAIRequest = {
       text: body,
       replace: (replacement: string) => { body = replacement; dirty = true; },
@@ -888,7 +897,66 @@
         body = body.replace(/\n*$/, '') + '\n\n' + addition + '\n';
         dirty = true;
       },
-      cancel: () => {}
+      cancel: () => {},
+      presetInstruction: preset
+    };
+  }
+
+  // ── Selection-aware AI bar ──────────────────────────────────────
+  // Bar sits between the header and the editor body. It mirrors the
+  // CodeMirror selection via the selectionStateExtension ViewPlugin
+  // — every selection / doc change fires the callback below with the
+  // updated from/to/text snapshot. The bar then re-renders to switch
+  // between "no selection" verbs (whole-note) and "has selection"
+  // verbs (range-scoped).
+  let aiBarSelection = $state<SelectionState>({ from: 0, to: 0, text: '' });
+  // Stable reference — Editor.svelte reads extraExtensions ONCE at
+  // setupView time, so the array must not be re-created on every
+  // render or the change would be ignored anyway. The callback
+  // closes over the `aiBarSelection` setter via Svelte's reactive
+  // box, so even though the closure is created once, every selection
+  // change reaches the rune.
+  const aiBarSelectionExtensions = [
+    selectionStateExtension((s) => {
+      aiBarSelection = s;
+    })
+  ];
+
+  // Bar's "Ask AI about a range" entry point. Mirrors the apply
+  // shape of ask-ai's fireForRange so the dialog's Replace / Insert
+  // below buttons splice into the original range (not wherever the
+  // cursor wandered while the user read the response). When a
+  // presetInstruction is supplied, the dialog opens already running
+  // that prompt — the bar is "one-click action", the dialog is
+  // "see what came back + decide what to do".
+  function askAIRange(from: number, to: number, preset?: string) {
+    const view = editor?.getView?.();
+    if (!view) return;
+    const text = view.state.sliceDoc(from, to);
+    if (!text) return;
+    askAIRequest = {
+      text,
+      replace: (replacement: string) => {
+        view.dispatch({
+          changes: { from, to, insert: replacement },
+          selection: EditorSelection.cursor(from + replacement.length)
+        });
+        view.focus();
+      },
+      insertAfter: (addition: string) => {
+        const line = view.state.doc.lineAt(to);
+        const atLineEnd = to === line.to;
+        const insert = '\n\n' + addition + (atLineEnd ? '' : '\n');
+        view.dispatch({
+          changes: { from: to, to: to, insert },
+          selection: EditorSelection.cursor(to + insert.length)
+        });
+        view.focus();
+      },
+      cancel: () => {
+        view.focus();
+      },
+      presetInstruction: preset
     };
   }
 
@@ -2056,9 +2124,26 @@
           aria-hidden="true"
         ></div>
       {/if}
+      <!-- Selection-aware AI bar. Sits BELOW the polished header (we
+           don't touch that markup) and ABOVE the editor body. Reads
+           selection state through the selectionStateExtension wired
+           into the Editor's extraExtensions, and re-renders whenever
+           the user expands or shrinks the selection. Hidden in
+           preview mode — the bar is only meaningful for active
+           editing. Reuses the host's askAIWholeNote / askAIRange /
+           chord dispatchers, so every action stays on the audit-
+           gated chatStream path. -->
+      {#if note && viewMode !== 'preview'}
+        <EditorAIBar
+          selection={aiBarSelection}
+          onAskWholeNote={askAIWholeNote}
+          onAskRange={askAIRange}
+          onChord={(chord) => editor?.dispatchChord(chord)}
+        />
+      {/if}
       <div class="flex-1 min-h-0 p-2 sm:p-3">
         {#if viewMode === 'edit'}
-          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} />
+          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={aiBarSelectionExtensions} />
         {:else if viewMode === 'preview'}
           <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4" bind:this={previewContainer}>
             <div class="max-w-3xl mx-auto">
@@ -2078,7 +2163,7 @@
         {:else}
           <!-- split (desktop only) -->
           <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} />
+            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={aiBarSelectionExtensions} />
             <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block" bind:this={previewContainer}>
               <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
             </div>
