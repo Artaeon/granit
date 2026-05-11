@@ -399,7 +399,7 @@
       </div>
       <Skeleton class="h-2 w-full rounded-full" />
     {:else if notFound}
-      <div class="bg-surface0 border border-error/30 rounded-lg p-6 text-center">
+      <div class="bg-surface0 border border-error rounded-lg p-6 text-center">
         <p class="text-sm text-text mb-2">No venture named <strong>{name}</strong> found.</p>
         <a href="/ventures" class="text-sm text-secondary hover:underline">← back to ventures</a>
       </div>
@@ -480,7 +480,7 @@
           <button
             onclick={summarize}
             disabled={aiBusy}
-            class="hidden sm:inline-flex flex-shrink-0 items-center gap-1.5 px-2.5 py-1.5 text-xs bg-surface0 border border-surface1 hover:border-primary/40 rounded text-subtext hover:text-primary disabled:opacity-50"
+            class="hidden sm:inline-flex flex-shrink-0 items-center gap-1.5 px-2.5 py-1.5 text-xs bg-surface0 border border-surface1 hover:border-primary rounded text-subtext hover:text-primary disabled:opacity-50"
             title="AI status summary"
           >
             <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
@@ -496,14 +496,14 @@
       <section class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
         <a
           href={`/projects?venture=${encodeURIComponent(venture.name)}`}
-          class="block px-3 py-3 bg-surface0 border border-surface1 rounded hover:border-primary/40 transition-colors"
+          class="block px-3 py-3 bg-surface0 border border-surface1 rounded hover:border-primary transition-colors"
         >
           <div class="text-2xl font-semibold text-text tabular-nums leading-none">{activeProjects.length}</div>
           <div class="text-[11px] text-dim mt-1">Active projects</div>
         </a>
         <a
           href="/goals"
-          class="block px-3 py-3 bg-surface0 border border-surface1 rounded hover:border-primary/40 transition-colors"
+          class="block px-3 py-3 bg-surface0 border border-surface1 rounded hover:border-primary transition-colors"
         >
           <div class="text-2xl font-semibold text-text tabular-nums leading-none">{activeGoals.length}</div>
           <div class="text-[11px] text-dim mt-1">Active goals</div>
@@ -512,7 +512,7 @@
           {@const tone = deadlineTone(nextDeadline)}
           <a
             href={`/deadlines?venture=${encodeURIComponent(venture.name)}`}
-            class="block px-3 py-3 bg-surface0 border border-surface1 rounded hover:border-primary/40 transition-colors"
+            class="block px-3 py-3 bg-surface0 border border-surface1 rounded hover:border-primary transition-colors"
             title={nextDeadline.title}
           >
             <div
@@ -524,7 +524,7 @@
         {:else}
           <a
             href={`/deadlines?venture=${encodeURIComponent(venture.name)}&new=1`}
-            class="block px-3 py-3 bg-surface0 border border-surface1 rounded hover:border-primary/40 transition-colors"
+            class="block px-3 py-3 bg-surface0 border border-surface1 rounded hover:border-primary transition-colors"
           >
             <div class="text-2xl font-semibold text-text tabular-nums leading-none">—</div>
             <div class="text-[11px] text-dim mt-1">No deadlines</div>
@@ -532,7 +532,7 @@
         {/if}
         <a
           href={`/prayer?venture=${encodeURIComponent(venture.name)}`}
-          class="block px-3 py-3 bg-surface0 border border-surface1 rounded hover:border-primary/40 transition-colors"
+          class="block px-3 py-3 bg-surface0 border border-surface1 rounded hover:border-primary transition-colors"
         >
           <div
             class="text-2xl font-semibold tabular-nums leading-none"
@@ -646,13 +646,13 @@
                   <li>
                     <a
                       href={`/projects?p=${encodeURIComponent(p.name)}`}
-                      class="block px-3 py-2 bg-surface0 border border-surface1 rounded hover:border-primary/40 transition-colors group"
+                      class="block px-3 py-2 bg-surface0 border border-surface1 rounded hover:border-primary transition-colors group"
                     >
                       <div class="flex items-baseline gap-2">
                         <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: {colorVar(p.color)}"></span>
                         <span class="text-sm text-text flex-1 min-w-0 truncate group-hover:text-primary">{p.name}</span>
                         {#if p.kind}
-                          <span class="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/10 text-primary flex-shrink-0">{p.kind}</span>
+                          <span class="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface1 text-primary flex-shrink-0">{p.kind}</span>
                         {/if}
                       </div>
                       <div class="flex items-center gap-2 mt-1.5">
@@ -702,7 +702,7 @@
                   <li>
                     <a
                       href={`/goals?focus=${encodeURIComponent(g.id)}`}
-                      class="block px-3 py-2 bg-surface0 border border-surface1 rounded hover:border-primary/40 transition-colors group"
+                      class="block px-3 py-2 bg-surface0 border border-surface1 rounded hover:border-primary transition-colors group"
                     >
                       <div class="flex items-baseline gap-2">
                         <span class="text-sm text-text flex-1 min-w-0 truncate group-hover:text-primary">{g.title}</span>
@@ -761,9 +761,9 @@
                     >
                       <span class="text-sm text-text flex-1 truncate group-hover:text-primary">{d.title}</span>
                       {#if d.importance === 'critical'}
-                        <span class="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-error/15 text-error flex-shrink-0">crit</span>
+                        <span class="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-surface0 text-error flex-shrink-0">crit</span>
                       {:else if d.importance === 'high'}
-                        <span class="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-warning/15 text-warning flex-shrink-0">high</span>
+                        <span class="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-surface0 text-warning flex-shrink-0">high</span>
                       {/if}
                       <span class="text-xs tabular-nums flex-shrink-0" style="color: var(--color-{tone});">{countdown(d)}</span>
                     </a>
@@ -844,7 +844,7 @@
               <li>
                 <a
                   href={`/projects?p=${encodeURIComponent(p.name)}`}
-                  class="block px-4 py-3 bg-surface0 border border-surface1 rounded-lg hover:border-primary/40 transition-colors group"
+                  class="block px-4 py-3 bg-surface0 border border-surface1 rounded-lg hover:border-primary transition-colors group"
                 >
                   <div class="flex items-start gap-2">
                     <span class="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style="background: {colorVar(p.color)}"></span>
@@ -852,7 +852,7 @@
                       <div class="flex items-baseline gap-2 flex-wrap">
                         <span class="text-sm font-medium text-text group-hover:text-primary truncate">{p.name}</span>
                         {#if p.kind}
-                          <span class="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/10 text-primary">{p.kind}</span>
+                          <span class="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface1 text-primary">{p.kind}</span>
                         {/if}
                         <span
                           class="text-[10px] uppercase tracking-wider"
@@ -904,7 +904,7 @@
               <li>
                 <a
                   href={`/goals?focus=${encodeURIComponent(g.id)}`}
-                  class="block px-4 py-3 bg-surface0 border border-surface1 rounded-lg hover:border-primary/40 transition-colors group"
+                  class="block px-4 py-3 bg-surface0 border border-surface1 rounded-lg hover:border-primary transition-colors group"
                 >
                   <div class="flex items-baseline gap-2 flex-wrap">
                     <span class="text-sm font-medium text-text group-hover:text-primary flex-1 min-w-0 truncate">{g.title}</span>
@@ -973,9 +973,9 @@
                     >
                       <span class="text-sm text-text flex-1 truncate group-hover:text-primary">{d.title}</span>
                       {#if d.importance === 'critical'}
-                        <span class="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-error/15 text-error flex-shrink-0">crit</span>
+                        <span class="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-surface0 text-error flex-shrink-0">crit</span>
                       {:else if d.importance === 'high'}
-                        <span class="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-warning/15 text-warning flex-shrink-0">high</span>
+                        <span class="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-surface0 text-warning flex-shrink-0">high</span>
                       {/if}
                       <span class="text-xs tabular-nums flex-shrink-0" style="color: var(--color-{tone});">{countdown(d)}</span>
                     </a>
@@ -1030,7 +1030,7 @@
               <li>
                 <a
                   href={`/notes/${encodeURI(n.path)}`}
-                  class="block px-4 py-3 bg-surface0 border border-surface1 rounded-lg hover:border-primary/40 transition-colors group"
+                  class="block px-4 py-3 bg-surface0 border border-surface1 rounded-lg hover:border-primary transition-colors group"
                 >
                   <div class="flex items-baseline gap-2">
                     <span class="text-sm font-medium text-text group-hover:text-primary truncate flex-1 min-w-0">{noteTitle(n)}</span>

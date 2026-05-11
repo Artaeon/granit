@@ -588,14 +588,14 @@
             {#if goal.project}
               <a
                 href="/projects?p={encodeURIComponent(goal.project)}"
-                class="px-2 py-0.5 rounded-full bg-secondary/10 text-secondary border border-secondary/20 hover:border-secondary/40 hover:bg-secondary/15 transition-colors"
+                class="px-2 py-0.5 rounded-full bg-surface1 text-secondary border border-surface2 hover:border-surface2 hover:bg-surface1 transition-colors"
                 title="Open the linked project"
               >📁 {goal.project}</a>
             {/if}
             {#if goal.venture}
               <a
                 href="/ventures/{encodeURIComponent(goal.venture)}"
-                class="px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 hover:border-primary/40 hover:bg-primary/15 transition-colors"
+                class="px-2 py-0.5 rounded-full bg-surface1 text-primary border border-surface2 hover:border-primary hover:bg-surface1 transition-colors"
                 title="Open the linked venture"
               >🏢 {goal.venture}</a>
             {/if}
@@ -633,7 +633,7 @@
                     {@const pct = burnupMax === 0 ? 0 : Math.max(2, Math.round((b.count / burnupMax) * 100))}
                     <div class="flex-1 flex flex-col items-center justify-end gap-0.5" title="{b.label}: {b.count}">
                       <div
-                        class="w-full rounded-t {b.isThisWeek ? 'bg-primary' : 'bg-secondary/40'} transition-all"
+                        class="w-full rounded-t {b.isThisWeek ? 'bg-primary' : 'bg-surface2'} transition-all"
                         style="height: {pct}%"
                       ></div>
                       <div class="text-[9px] text-dim font-mono leading-none">{b.label}</div>
@@ -684,7 +684,7 @@
           </div>
 
           {#if aiMilestoneError}
-            <div class="mb-2 px-3 py-2 text-xs text-error border border-error/30 bg-error/5 rounded">
+            <div class="mb-2 px-3 py-2 text-xs text-error border border-error bg-surface0 rounded">
               {aiMilestoneError}
             </div>
           {/if}
@@ -694,7 +694,7 @@
                  date. Skip just dismisses. Same shape as the inbox-
                  triage proposals on /tasks so the muscle memory carries
                  over. -->
-            <div class="mb-3 px-3 py-2 bg-secondary/5 border border-secondary/30 rounded">
+            <div class="mb-3 px-3 py-2 bg-surface1 border border-surface2 rounded">
               <div class="text-[10px] uppercase tracking-wider text-secondary font-semibold mb-1.5">AI suggestions ({aiMilestoneProposals.length})</div>
               <ul class="space-y-1.5">
                 {#each aiMilestoneProposals as p (p.text)}
@@ -707,7 +707,7 @@
                     </div>
                     <button
                       onclick={() => void acceptMilestone(p)}
-                      class="px-2 py-0.5 bg-success/15 text-success rounded hover:bg-success/25"
+                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface0"
                     >accept</button>
                     <button
                       onclick={() => skipMilestone(p)}
@@ -826,7 +826,7 @@
           </div>
 
           {#if aiTaskError}
-            <div class="mb-2 px-3 py-2 text-xs text-error border border-error/30 bg-error/5 rounded">
+            <div class="mb-2 px-3 py-2 text-xs text-error border border-error bg-surface0 rounded">
               {aiTaskError}
             </div>
           {/if}
@@ -839,7 +839,7 @@
           {/if}
 
           {#if aiTaskProposals.length > 0}
-            <div class="px-3 py-2 bg-primary/5 border border-primary/30 rounded">
+            <div class="px-3 py-2 bg-surface1 border border-surface2 rounded">
               <div class="flex items-baseline gap-2 mb-2">
                 <span class="text-[10px] uppercase tracking-wider text-primary font-semibold">AI proposals ({aiTaskProposals.length})</span>
                 <span class="flex-1"></span>
@@ -885,7 +885,7 @@
                     {/if}
                     <button
                       onclick={() => void acceptTaskProposal(p)}
-                      class="px-2 py-0.5 bg-success/15 text-success rounded hover:bg-success/25"
+                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface0"
                       title="Create as a task linked to this goal"
                     >accept</button>
                     <button

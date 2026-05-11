@@ -304,7 +304,7 @@
     </div>
   </header>
 
-  <form onsubmit={submit} class="flex items-center gap-2 bg-mantle border border-surface1 rounded-lg px-3 py-2 focus-within:border-primary/60 transition-colors">
+  <form onsubmit={submit} class="flex items-center gap-2 bg-mantle border border-surface1 rounded-lg px-3 py-2 focus-within:border-primary transition-colors">
     <span class="text-base leading-none flex-shrink-0 {activeMode.tone}" aria-hidden="true">{activeMode.glyph}</span>
     <input
       bind:this={inputEl}
@@ -322,7 +322,7 @@
         type="button"
         onclick={toggleVoice}
         title={recording ? 'Stop dictation' : 'Dictate'}
-        class="w-8 h-8 inline-flex items-center justify-center rounded {recording ? 'bg-error/15 text-error' : 'text-dim hover:text-text hover:bg-surface1'} flex-shrink-0"
+        class="w-8 h-8 inline-flex items-center justify-center rounded {recording ? 'bg-surface0 text-error' : 'text-dim hover:text-text hover:bg-surface1'} flex-shrink-0"
       >
         {#if recording}
           <svg viewBox="0 0 24 24" class="w-4 h-4 animate-pulse" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
@@ -350,10 +350,10 @@
       <span class="text-dim text-[10px] uppercase tracking-wider">parsed</span>
       {#if parsedTask.priority > 0}
         {@const pc = parsedTask.priority === 1
-          ? 'bg-error/20 text-error border-error/30'
+          ? 'bg-surface0 text-error border-error'
           : parsedTask.priority === 2
-            ? 'bg-warning/20 text-warning border-warning/30'
-            : 'bg-info/20 text-info border-info/30'}
+            ? 'bg-surface0 text-warning border-warning'
+            : 'bg-surface0 text-info border-info'}
         <span class="px-2 py-0.5 rounded border {pc}">P{parsedTask.priority}</span>
       {/if}
       {#if parsedTask.dueDate}

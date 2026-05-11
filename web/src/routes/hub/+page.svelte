@@ -440,7 +440,7 @@
                   ondragend={onDragEnd}
                   class="bg-surface0 border rounded-lg overflow-hidden transition-colors group
                     {isDragSource ? 'opacity-40 border-surface1' : ''}
-                    {isDragTarget ? 'border-primary ring-1 ring-primary' : 'border-surface1 hover:border-primary/40'}"
+                    {isDragTarget ? 'border-primary ring-1 ring-primary' : 'border-surface1 hover:border-primary'}"
                 >
                   <div class="p-3">
                     <div class="flex items-start gap-2.5">
@@ -666,7 +666,7 @@
             <span class="text-dim/60 normal-case">— for low-risk values only</span>
           </summary>
           <div class="p-3 space-y-3 border-t border-surface1">
-            <div class="text-[11px] text-warning bg-warning/5 border border-warning/30 rounded px-2 py-1.5">
+            <div class="text-[11px] text-warning bg-surface0 border border-warning rounded px-2 py-1.5">
               ⚠ Stored as plain text. Use <a href="https://bitwarden.com" target="_blank" rel="noopener noreferrer" class="underline">Bitwarden</a> or 1Password for real secrets.
             </div>
             <div>
@@ -704,7 +704,7 @@
           <button
             type="button"
             onclick={() => { remove(editing!); modalOpen = false; }}
-            class="px-3 py-1.5 text-sm text-error hover:bg-error/10 rounded mr-auto"
+            class="px-3 py-1.5 text-sm text-error hover:bg-surface0 rounded mr-auto"
           >Delete</button>
         {/if}
         <button

@@ -483,7 +483,7 @@
             type="button"
             onclick={detectThemes}
             disabled={aiBusy}
-            class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 disabled:opacity-50"
+            class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-surface1 text-primary border border-surface2 hover:bg-surface1 disabled:opacity-50"
             title="Ask AI to find recurring themes in your jots"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
@@ -500,7 +500,7 @@
       </div>
 
       {#if aiBusy || aiThemes.length > 0 || aiError}
-        <div class="mt-2 p-2 bg-primary/5 border border-primary/20 rounded">
+        <div class="mt-2 p-2 bg-surface1 border border-surface2 rounded">
           <div class="flex items-baseline gap-2 mb-1.5">
             <h3 class="text-[10px] uppercase tracking-wider text-primary font-medium">Recurring themes</h3>
             <span class="flex-1"></span>
@@ -608,7 +608,7 @@
     </div>
 
     {#if error}
-      <div class="text-sm text-error mb-4 p-3 bg-error/10 border border-error/30 rounded">
+      <div class="text-sm text-error mb-4 p-3 bg-surface0 border border-error rounded">
         {error}
       </div>
     {/if}
@@ -660,7 +660,7 @@
                 <span class="text-xs text-dim sm:hidden">{jot.date}</span>
                 {#if jot.openTasks > 0}
                   <span
-                    class="text-[10px] px-1.5 py-0.5 rounded bg-warning/15 text-warning font-medium"
+                    class="text-[10px] px-1.5 py-0.5 rounded bg-surface0 text-warning font-medium"
                   >
                     {jot.openTasks} open task{jot.openTasks === 1 ? '' : 's'}
                   </span>

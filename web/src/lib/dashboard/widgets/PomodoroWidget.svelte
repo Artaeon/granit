@@ -137,7 +137,7 @@
 
   <div class="h-1.5 bg-mantle rounded-full overflow-hidden mb-4">
     <div
-      class="h-full transition-all {phase === 'break' ? 'bg-success' : 'bg-error/70'}"
+      class="h-full transition-all {phase === 'break' ? 'bg-success' : 'bg-surface0'}"
       style="width: {pct}%"
     ></div>
   </div>

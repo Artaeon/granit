@@ -284,7 +284,7 @@
         <li class="group">
           <a
             href={`/notes/${encodeURI(n.path)}`}
-            class="block px-3 py-2 bg-surface0 border border-surface1 rounded hover:border-primary/40 transition-colors"
+            class="block px-3 py-2 bg-surface0 border border-surface1 rounded hover:border-primary transition-colors"
           >
             <div class="flex items-baseline gap-2">
               <span class="text-sm font-medium text-text group-hover:text-primary truncate flex-1 min-w-0">{noteTitle(n)}</span>

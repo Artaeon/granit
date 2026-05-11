@@ -171,7 +171,7 @@
                  any scroll position (otherwise it disappears as the
                  user scrolls vertically away from the axis). -->
             {#if todayPct >= 0}
-              <div class="absolute top-0 bottom-0 border-l border-primary/30 z-[2]" style="left: {todayPct}%"></div>
+              <div class="absolute top-0 bottom-0 border-l border-surface2 z-[2]" style="left: {todayPct}%"></div>
             {/if}
             {#if bar}
               <button

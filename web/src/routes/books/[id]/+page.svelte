@@ -506,7 +506,7 @@
 {#if !$auth}
   <div class="p-6 text-dim">Sign in to read.</div>
 {:else if error}
-  <div class="bg-error/10 border border-error/30 text-error rounded p-4 m-4 text-sm">
+  <div class="bg-surface0 border border-error text-error rounded p-4 m-4 text-sm">
     {error}
   </div>
 {:else if !detail}

@@ -229,13 +229,13 @@
       <button
         type="button"
         onclick={() => (notesOpen = !notesOpen)}
-        class="px-2 py-1 rounded text-[11px] {notesOpen ? 'bg-secondary/15 text-secondary' : 'text-subtext hover:bg-surface0'}"
+        class="px-2 py-1 rounded text-[11px] {notesOpen ? 'bg-surface1 text-secondary' : 'text-subtext hover:bg-surface0'}"
         title="Toggle speaker notes (N)"
       >notes</button>
       <button
         type="button"
         onclick={toggleFullscreen}
-        class="px-2 py-1 rounded text-[11px] {isFullscreen ? 'bg-primary/15 text-primary' : 'text-subtext hover:bg-surface0'}"
+        class="px-2 py-1 rounded text-[11px] {isFullscreen ? 'bg-surface1 text-primary' : 'text-subtext hover:bg-surface0'}"
         title="Fullscreen (F)"
       >{isFullscreen ? 'exit fullscreen' : 'fullscreen'}</button>
       <button

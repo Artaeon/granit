@@ -397,7 +397,7 @@
       <div class="text-xs text-dim">{dateLine}</div>
 
       {#if activeScripture.text}
-        <blockquote class="mt-4 border-l-2 border-primary/60 pl-3 py-1.5 italic text-subtext text-sm">
+        <blockquote class="mt-4 border-l-2 border-primary pl-3 py-1.5 italic text-subtext text-sm">
           "{activeScripture.text}"
           {#if activeScripture.source}
             <span class="not-italic text-[11px] text-dim ml-2">— {activeScripture.source}</span>
@@ -422,7 +422,7 @@
                   type="button"
                   onclick={() => { scripture = s; customScripture = ''; customSource = ''; }}
                   class="text-[11px] px-2 py-0.5 rounded border
-                    {scripture === s && !customScripture ? 'border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary/40'}"
+                    {scripture === s && !customScripture ? 'border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary'}"
                 >{s.source}</button>
               {/each}
             </div>
@@ -439,7 +439,7 @@
     </header>
 
     {#if error}
-      <div class="mb-5 text-sm text-error p-3 bg-error/10 border border-error/30 rounded">{error}</div>
+      <div class="mb-5 text-sm text-error p-3 bg-surface0 border border-error rounded">{error}</div>
     {/if}
 
     <!-- Anchors strip — passive context. Active goals + nearest
@@ -508,7 +508,7 @@
         class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded text-text placeholder-dim focus:outline-none focus:border-primary"
       />
       {#if suggestion}
-        <div class="mt-2 p-2.5 bg-primary/8 border-l-2 border-primary rounded text-sm">
+        <div class="mt-2 p-2.5 bg-surface1 border-l-2 border-primary rounded text-sm">
           <div class="text-text mb-1.5">{suggestion}</div>
           <div class="flex items-center gap-2">
             <button onclick={acceptSuggestion} class="px-2 py-0.5 text-[11px] rounded bg-primary text-on-primary font-medium">use this</button>
@@ -526,7 +526,7 @@
               type="button"
               onclick={() => pickGoalLink(g)}
               class="px-2 py-0.5 text-[11px] rounded-full border transition-colors
-                {sel ? 'bg-primary/15 border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary/40'}"
+                {sel ? 'bg-surface1 border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary'}"
             >
               {sel ? '✓ ' : ''}{g.title}
             </button>
@@ -563,15 +563,15 @@
                   {#if sel}<svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>{/if}
                 </span>
                 {#if overdueImp}
-                  <span class="text-[10px] font-mono px-1 rounded bg-error/20 text-error">!OVERDUE</span>
+                  <span class="text-[10px] font-mono px-1 rounded bg-surface0 text-error">!OVERDUE</span>
                 {:else if dueToday}
-                  <span class="text-[10px] font-mono px-1 rounded bg-primary/20 text-primary">TODAY</span>
+                  <span class="text-[10px] font-mono px-1 rounded bg-surface1 text-primary">TODAY</span>
                 {/if}
                 {#if t.priority > 0}
                   <span class="text-[10px] font-mono px-1 rounded
-                    {t.priority === 1 ? 'bg-error/20 text-error' : ''}
-                    {t.priority === 2 ? 'bg-warning/20 text-warning' : ''}
-                    {t.priority === 3 ? 'bg-info/20 text-info' : ''}">P{t.priority}</span>
+                    {t.priority === 1 ? 'bg-surface0 text-error' : ''}
+                    {t.priority === 2 ? 'bg-surface0 text-warning' : ''}
+                    {t.priority === 3 ? 'bg-surface0 text-info' : ''}">P{t.priority}</span>
                 {/if}
                 <span class="flex-1 text-sm text-text">{@html inlineMd(t.text)}</span>
                 {#if t.estimatedMinutes}<span class="text-[10px] text-dim">⏱ {t.estimatedMinutes}m</span>{/if}
@@ -611,7 +611,7 @@
                 type="button"
                 onclick={() => toggleHabit(h.name)}
                 class="px-2.5 py-1 text-[11px] rounded-full border transition-colors inline-flex items-center gap-1.5
-                  {sel ? 'bg-primary/15 border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary/40'}"
+                  {sel ? 'bg-surface1 border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary'}"
               >
                 <span>{sel ? '☑' : '☐'}</span>
                 <span>{h.name}</span>

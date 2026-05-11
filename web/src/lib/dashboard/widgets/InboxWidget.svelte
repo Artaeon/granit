@@ -109,7 +109,7 @@
     <h2 class="text-xs uppercase tracking-wider text-dim font-medium">
       Inbox
       {#if inbox.length > 0}
-        <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary tabular-nums">{inbox.length} to triage</span>
+        <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-surface1 text-primary tabular-nums">{inbox.length} to triage</span>
       {/if}
     </h2>
     <a href="/tasks" class="text-xs text-secondary hover:underline">triage →</a>

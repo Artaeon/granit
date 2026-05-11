@@ -124,7 +124,7 @@
             {#if g.milestones && g.milestones.length > 0}
               <div class="h-1.5 bg-mantle rounded-full overflow-hidden mt-1.5">
                 <div
-                  class="h-full transition-all duration-300 {p === 100 ? 'bg-success' : overdue ? 'bg-error/70' : 'bg-primary'}"
+                  class="h-full transition-all duration-300 {p === 100 ? 'bg-success' : overdue ? 'bg-surface0' : 'bg-primary'}"
                   style="width: {p}%"
                 ></div>
               </div>

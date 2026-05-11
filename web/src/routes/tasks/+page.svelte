@@ -1358,9 +1358,9 @@
       <div class="text-xs uppercase tracking-wider text-dim mb-2">Priority</div>
       <div class="flex flex-col gap-1 text-sm">
         <button class="text-left px-3 py-2 rounded {priorityFilter === '' ? 'bg-surface1' : 'hover:bg-surface0'} text-subtext" onclick={() => (priorityFilter = '')}>any</button>
-        <button class="text-left px-3 py-2 rounded {priorityFilter === 1 ? 'bg-error/20 text-error' : 'hover:bg-surface0 text-error'}" onclick={() => (priorityFilter = 1)}>P1 high</button>
-        <button class="text-left px-3 py-2 rounded {priorityFilter === 2 ? 'bg-warning/20 text-warning' : 'hover:bg-surface0 text-warning'}" onclick={() => (priorityFilter = 2)}>P2 medium</button>
-        <button class="text-left px-3 py-2 rounded {priorityFilter === 3 ? 'bg-info/20 text-info' : 'hover:bg-surface0 text-info'}" onclick={() => (priorityFilter = 3)}>P3 low</button>
+        <button class="text-left px-3 py-2 rounded {priorityFilter === 1 ? 'bg-surface0 text-error' : 'hover:bg-surface0 text-error'}" onclick={() => (priorityFilter = 1)}>P1 high</button>
+        <button class="text-left px-3 py-2 rounded {priorityFilter === 2 ? 'bg-surface0 text-warning' : 'hover:bg-surface0 text-warning'}" onclick={() => (priorityFilter = 2)}>P2 medium</button>
+        <button class="text-left px-3 py-2 rounded {priorityFilter === 3 ? 'bg-surface0 text-info' : 'hover:bg-surface0 text-info'}" onclick={() => (priorityFilter = 3)}>P3 low</button>
       </div>
     </div>
 
@@ -1388,7 +1388,7 @@
         <div class="flex flex-wrap gap-1">
           {#each allTags.slice(0, 24) as t}
             <button
-              class="text-xs px-2 py-1 rounded {tagFilter === t ? 'bg-primary/30 text-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+              class="text-xs px-2 py-1 rounded {tagFilter === t ? 'bg-primary text-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
               onclick={() => (tagFilter = tagFilter === t ? '' : t)}
             >
               #{t}
@@ -1408,7 +1408,7 @@
           >all</button>
           {#each goals.slice(0, 12) as g}
             <button
-              class="text-left px-3 py-2 rounded text-sm truncate {goalFilter === g.id ? 'bg-info/20 text-info' : 'text-subtext hover:bg-surface0'}"
+              class="text-left px-3 py-2 rounded text-sm truncate {goalFilter === g.id ? 'bg-surface0 text-info' : 'text-subtext hover:bg-surface0'}"
               onclick={() => (goalFilter = goalFilter === g.id ? '' : g.id)}
               title={g.description}
             >
@@ -1430,7 +1430,7 @@
           >all</button>
           {#each deadlines.slice(0, 12) as d}
             <button
-              class="text-left px-3 py-2 rounded text-sm truncate {deadlineFilter === d.id ? 'bg-warning/20 text-warning' : 'text-subtext hover:bg-surface0'}"
+              class="text-left px-3 py-2 rounded text-sm truncate {deadlineFilter === d.id ? 'bg-surface0 text-warning' : 'text-subtext hover:bg-surface0'}"
               onclick={() => (deadlineFilter = deadlineFilter === d.id ? '' : d.id)}
               title={d.description}
             >
@@ -1591,7 +1591,7 @@
            regardless of view so it's reachable from any task
            context. -->
       {#if aiFocusBusy || aiFocusResponse || aiFocusError || aiFocusPlan.length > 0}
-        <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-gradient-to-r from-primary/5 via-secondary/5 to-primary/5">
+        <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-surface1">
           <div class="flex items-baseline gap-2 mb-2 flex-wrap">
             <span class="text-xs uppercase tracking-wider text-secondary font-semibold">✨ Plan my day</span>
             {#if aiFocusPlan.length > 0 && !aiFocusBusy}
@@ -1632,7 +1632,7 @@
                     </div>
                     <button
                       onclick={() => void acceptPlanItem(p)}
-                      class="px-2 py-0.5 bg-success/15 text-success rounded hover:bg-success/25 flex-shrink-0"
+                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface0 flex-shrink-0"
                       title="Pin this task into a time slot today"
                     >accept</button>
                     <button
@@ -1697,7 +1697,7 @@
           onclick={() => void runAIFocus()}
           disabled={aiFocusBusy || tasks.filter((t) => !t.done).length === 0}
           title="AI builds a sequenced day-plan budgeted to your focus hours"
-          class="hidden sm:inline-flex px-3 py-2 text-sm bg-gradient-to-r from-primary/15 to-secondary/15 border border-primary/30 text-primary rounded hover:border-primary/60 disabled:opacity-50 flex-shrink-0 items-center gap-1"
+          class="hidden sm:inline-flex px-3 py-2 text-sm bg-surface1 border border-surface2 text-primary rounded hover:border-primary disabled:opacity-50 flex-shrink-0 items-center gap-1"
         >
           <span>✨</span>
           <span>{aiFocusBusy ? 'planning…' : 'Plan day'}</span>
@@ -1715,7 +1715,7 @@
             {@const active = presetMatches(p)}
             <span
               class="inline-flex items-center rounded overflow-hidden border
-                {active ? 'border-primary bg-primary/10 text-primary' : 'border-surface1 bg-surface0 text-subtext hover:border-primary/40'}"
+                {active ? 'border-primary bg-surface1 text-primary' : 'border-surface1 bg-surface0 text-subtext hover:border-primary'}"
             >
               <button
                 onclick={() => applyPreset(p)}
@@ -1746,17 +1746,17 @@
           <span class="text-text font-semibold">{stats.open}</span> open
         </span>
         {#if stats.overdue > 0}
-          <span class="px-2 py-1 rounded bg-error/15 text-error font-mono tabular-nums" title="Tasks past their due date">
+          <span class="px-2 py-1 rounded bg-surface0 text-error font-mono tabular-nums" title="Tasks past their due date">
             <span class="font-semibold">{stats.overdue}</span> overdue
           </span>
         {/if}
         {#if stats.todayCount > 0}
-          <span class="px-2 py-1 rounded bg-warning/15 text-warning font-mono tabular-nums" title="Tasks due today">
+          <span class="px-2 py-1 rounded bg-surface0 text-warning font-mono tabular-nums" title="Tasks due today">
             <span class="font-semibold">{stats.todayCount}</span> today
           </span>
         {/if}
         {#if stats.doneToday > 0}
-          <span class="px-2 py-1 rounded bg-success/15 text-success font-mono tabular-nums" title="Completed today">
+          <span class="px-2 py-1 rounded bg-surface0 text-success font-mono tabular-nums" title="Completed today">
             ✓ <span class="font-semibold">{stats.doneToday}</span>
           </span>
         {/if}
@@ -1882,27 +1882,27 @@
             {#if aiTriageBusy}
               <button
                 onclick={cancelAITriage}
-                class="px-3 py-1.5 text-xs bg-warning/15 text-warning rounded hover:bg-warning/25 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface0 text-warning rounded hover:bg-surface0 flex-shrink-0"
                 title="Cancel the in-flight triage call"
               >✨ thinking… cancel</button>
             {:else}
               <button
                 onclick={() => void runAITriage()}
                 disabled={filtered.length === 0}
-                class="px-3 py-1.5 text-xs bg-secondary/15 text-secondary rounded hover:bg-secondary/25 disabled:opacity-50 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface1 disabled:opacity-50 flex-shrink-0"
                 title="Ask AI to suggest priority + schedule for each untriaged task"
               >✨ AI triage</button>
             {/if}
             {#if aiDeadlineBusy}
               <button
                 onclick={cancelAIDeadline}
-                class="px-3 py-1.5 text-xs bg-warning/15 text-warning rounded hover:bg-warning/25 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface0 text-warning rounded hover:bg-surface0 flex-shrink-0"
                 title="Cancel the in-flight deadline scan"
               >✨ thinking… cancel</button>
             {:else}
               <button
                 onclick={() => void runAIDeadlineDetect()}
-                class="px-3 py-1.5 text-xs bg-secondary/15 text-secondary rounded hover:bg-secondary/25 disabled:opacity-50 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface1 disabled:opacity-50 flex-shrink-0"
                 title="Scan all open tasks without a due date — propose ones whose title implies a clear deadline"
               >✨ Detect deadlines</button>
             {/if}
@@ -1913,7 +1913,7 @@
                  without a due_date, not just inbox. Server already
                  filtered out blanks, so every row is a confident
                  suggestion. Apply patches dueDate; skip just dismisses. -->
-            <div class="mb-5 p-3 bg-warning/5 border border-warning/30 rounded">
+            <div class="mb-5 p-3 bg-surface0 border border-warning rounded">
               <div class="flex items-center mb-2">
                 <div class="text-xs uppercase tracking-wider text-warning font-semibold flex-1">Detected deadlines ({aiDeadlineProposals.length})</div>
                 <button
@@ -1937,7 +1937,7 @@
                       <button
                         onclick={() => void applyDeadlineProposal(p)}
                         disabled={aiDeadlineBusy}
-                        class="px-2 py-0.5 bg-success/15 text-success rounded hover:bg-success/25"
+                        class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface0"
                       >accept</button>
                       <button
                         onclick={() => skipDeadlineProposal(p.id)}
@@ -1954,7 +1954,7 @@
             <!-- AI suggestions panel. Each proposal has Accept /
                  Skip; accepting applies the suggested priority +
                  schedule to the matching task. -->
-            <div class="mb-5 p-3 bg-secondary/5 border border-secondary/30 rounded">
+            <div class="mb-5 p-3 bg-surface1 border border-surface2 rounded">
               <div class="flex items-center mb-2">
                 <div class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">AI suggestions ({aiTriageProposals.length})</div>
                 <button
@@ -1978,7 +1978,7 @@
                       <button
                         onclick={() => void applyTriageProposal(p)}
                         disabled={aiTriageBusy}
-                        class="px-2 py-0.5 bg-success/15 text-success rounded hover:bg-success/25"
+                        class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface0"
                       >accept</button>
                       <button
                         onclick={() => skipTriageProposal(p.id)}
@@ -2006,13 +2006,13 @@
             {#if aiStaleBusy}
               <button
                 onclick={cancelAIStale}
-                class="px-3 py-1.5 text-xs bg-warning/15 text-warning rounded hover:bg-warning/25 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface0 text-warning rounded hover:bg-surface0 flex-shrink-0"
                 title="Cancel the in-flight verdict scan"
               >✨ thinking… cancel</button>
             {:else if aiStaleVerdicts.length > 0 || aiStaleError || aiStaleRaw}
               <button
                 onclick={() => void runAIStaleVerdict()}
-                class="px-3 py-1.5 text-xs bg-secondary/15 text-secondary rounded hover:bg-secondary/25 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface1 flex-shrink-0"
                 title="Re-evaluate stale tasks"
               >↻ re-scan</button>
               <button
@@ -2023,14 +2023,14 @@
               <button
                 onclick={() => void runAIStaleVerdict()}
                 disabled={filtered.filter(isStale).length === 0}
-                class="px-3 py-1.5 text-xs bg-secondary/15 text-secondary rounded hover:bg-secondary/25 disabled:opacity-50 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface1 disabled:opacity-50 flex-shrink-0"
                 title="AI verdict on each stale task: keep, defer 2 weeks, or archive"
               >✨ AI verdicts</button>
             {/if}
           </div>
 
           {#if aiStaleError}
-            <div class="mb-5 p-3 bg-error/5 border border-error/30 rounded text-xs text-error">
+            <div class="mb-5 p-3 bg-surface0 border border-error rounded text-xs text-error">
               {aiStaleError}
             </div>
           {/if}
@@ -2042,7 +2042,7 @@
                  is a no-op (just dismisses the row). User stays in
                  control — every action goes through applyStaleVerdict
                  which round-trips through patchTask + load. -->
-            <div class="mb-5 p-3 bg-secondary/5 border border-secondary/30 rounded">
+            <div class="mb-5 p-3 bg-surface1 border border-surface2 rounded">
               <div class="flex items-center mb-2">
                 <div class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">AI verdicts ({aiStaleVerdicts.length})</div>
                 {#if staleArchiveCount > 1}
@@ -2079,9 +2079,9 @@
                         onclick={() => void applyStaleVerdict(v)}
                         disabled={aiStaleApplyingId === v.taskId}
                         class="px-2 py-0.5 rounded flex-shrink-0
-                          {v.verdict === 'archive' ? 'bg-error/15 text-error hover:bg-error/25' :
-                           v.verdict === 'defer' ? 'bg-warning/15 text-warning hover:bg-warning/25' :
-                           'bg-success/15 text-success hover:bg-success/25'}
+                          {v.verdict === 'archive' ? 'bg-surface0 text-error hover:bg-surface0' :
+                           v.verdict === 'defer' ? 'bg-surface0 text-warning hover:bg-surface0' :
+                           'bg-surface0 text-success hover:bg-surface0'}
                           disabled:opacity-50"
                         title={v.verdict === 'archive'
                           ? 'Drop the task — done=true, triage=dropped'
@@ -2160,7 +2160,7 @@
                 <span class={labelColor}>{g.label}</span>
                 <span class="text-dim font-mono tabular-nums text-[11px]">{g.tasks.length}</span>
                 {#if g.key === 'overdue' && g.tasks.length > 0}
-                  <span class="ml-1 px-1.5 py-0.5 bg-error/15 text-error text-[10px] tracking-wider rounded uppercase font-bold animate-pulse" title="These tasks are past their due date">
+                  <span class="ml-1 px-1.5 py-0.5 bg-surface0 text-error text-[10px] tracking-wider rounded uppercase font-bold animate-pulse" title="These tasks are past their due date">
                     overdue
                   </span>
                 {/if}

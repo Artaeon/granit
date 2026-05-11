@@ -315,7 +315,7 @@
           </div>
 
           {#if phase === 'error'}
-            <div class="rounded p-3 bg-error/10 border border-error/30 text-sm text-text">
+            <div class="rounded p-3 bg-surface0 border border-error text-sm text-text">
               The AI couldn't run — see the toast for details.
               <button
                 onclick={fallbackToManual}
@@ -436,7 +436,7 @@
                     <button
                       onclick={() => createTaskFromUnmatched(i, line)}
                       disabled={creatingFromUnmatched === i}
-                      class="px-2 py-1 text-[11px] rounded bg-secondary/15 text-secondary border border-secondary/30 hover:bg-secondary/25 disabled:opacity-50 flex-shrink-0"
+                      class="px-2 py-1 text-[11px] rounded bg-surface1 text-secondary border border-surface2 hover:bg-surface1 disabled:opacity-50 flex-shrink-0"
                     >
                       {creatingFromUnmatched === i ? '…' : '+ create'}
                     </button>

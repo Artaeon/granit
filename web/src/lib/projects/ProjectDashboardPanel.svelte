@@ -164,7 +164,7 @@
           {/each}
         </div>
       {:else if loadError && !bundle}
-        <div class="text-sm text-error border border-error/30 bg-error/5 rounded px-4 py-3">
+        <div class="text-sm text-error border border-error bg-surface0 rounded px-4 py-3">
           Could not load dashboard: {loadError}
           <button onclick={() => void load()} class="ml-3 underline text-secondary">retry</button>
         </div>
@@ -187,16 +187,16 @@
                 >{p.status}</span>
               {/if}
               {#if p.kind}
-                <span class="px-2 py-0.5 rounded bg-primary/15 text-primary uppercase tracking-wider text-[10px] font-medium">{p.kind}</span>
+                <span class="px-2 py-0.5 rounded bg-surface1 text-primary uppercase tracking-wider text-[10px] font-medium">{p.kind}</span>
               {/if}
               {#if p.venture}
                 <a
                   href={`/projects?venture=${encodeURIComponent(p.venture)}`}
-                  class="px-2 py-0.5 rounded bg-secondary/15 text-secondary hover:bg-secondary/25 text-[11px]"
+                  class="px-2 py-0.5 rounded bg-surface1 text-secondary hover:bg-surface1 text-[11px]"
                 >🏢 {p.venture}</a>
               {/if}
               {#if typeof p.priority === 'number' && p.priority > 0}
-                <span class="px-2 py-0.5 rounded bg-warning/15 text-warning text-[10px] uppercase tracking-wider">P{p.priority} · {priorityLabels[p.priority] ?? ''}</span>
+                <span class="px-2 py-0.5 rounded bg-surface0 text-warning text-[10px] uppercase tracking-wider">P{p.priority} · {priorityLabels[p.priority] ?? ''}</span>
               {/if}
               {#if p.due_date}
                 <span class="text-[11px] text-dim font-mono">due {p.due_date}</span>
@@ -212,7 +212,7 @@
                    ProjectDetail — same visual cue across surfaces. -->
               <div>
                 <div class="text-[10px] uppercase tracking-wider text-dim mb-1">Next action</div>
-                <div class="px-3 py-2.5 rounded text-sm border border-warning/30 bg-warning/10 text-warning font-medium">
+                <div class="px-3 py-2.5 rounded text-sm border border-warning bg-surface0 text-warning font-medium">
                   → {p.next_action}
                 </div>
               </div>
@@ -288,7 +288,7 @@
                     <span class="text-sm text-text flex-1 leading-snug">{t.text}</span>
                     <span class="flex items-baseline gap-1 flex-shrink-0">
                       {#if t.priority && t.priority > 0}
-                        <span class="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning font-mono">P{t.priority}</span>
+                        <span class="text-[10px] px-1 py-0.5 rounded bg-surface0 text-warning font-mono">P{t.priority}</span>
                       {/if}
                       {#if t.dueDate}
                         <span class="text-[10px] text-dim font-mono">{t.dueDate}</span>
@@ -377,7 +377,7 @@
                   <div class="flex-1 flex flex-col items-center justify-end gap-1" title="{b.label}: {b.count} completed">
                     <div class="text-[10px] text-subtext font-mono leading-none">{b.count}</div>
                     <div
-                      class="w-full rounded-t {b.isThisWeek ? 'bg-primary' : 'bg-secondary/40'} transition-all"
+                      class="w-full rounded-t {b.isThisWeek ? 'bg-primary' : 'bg-surface2'} transition-all"
                       style="height: {pct}%"
                     ></div>
                     <div class="text-[10px] {b.isThisWeek ? 'text-primary' : 'text-dim'} font-mono leading-none">{b.label}</div>

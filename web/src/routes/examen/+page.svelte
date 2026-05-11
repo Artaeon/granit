@@ -301,7 +301,7 @@
     {/if}
 
     {#if error}
-      <div class="text-sm text-error mb-4 p-3 bg-error/10 border border-error/30 rounded">{error}</div>
+      <div class="text-sm text-error mb-4 p-3 bg-surface0 border border-error rounded">{error}</div>
     {/if}
 
     <form
@@ -310,7 +310,7 @@
     >
       {#snippet promptPanel(scope: PromptScope)}
         {#if aiPrompts && aiPrompts.scope === scope}
-          <div class="mt-2 p-2.5 bg-primary/8 border-l-2 border-primary rounded space-y-1.5">
+          <div class="mt-2 p-2.5 bg-surface1 border-l-2 border-primary rounded space-y-1.5">
             {#if aiBusy && aiPrompts.lines.length === 0}
               <div class="text-xs text-dim italic">listening…</div>
             {/if}
@@ -320,7 +320,7 @@
                 <button
                   type="button"
                   onclick={() => usePromptInScope(line)}
-                  class="w-full text-left text-sm text-text hover:text-primary px-2 py-1 rounded hover:bg-primary/10"
+                  class="w-full text-left text-sm text-text hover:text-primary px-2 py-1 rounded hover:bg-surface1"
                   title="use this prompt as a starter"
                 >
                   {cleaned}
@@ -351,7 +351,7 @@
       {/snippet}
 
       {#if aiError}
-        <div class="text-xs text-error bg-error/10 border border-error/20 rounded px-2 py-1.5">{aiError}</div>
+        <div class="text-xs text-error bg-surface0 border border-error rounded px-2 py-1.5">{aiError}</div>
       {/if}
 
       <!-- Where did I see God? -->

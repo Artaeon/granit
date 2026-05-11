@@ -268,7 +268,7 @@
 
   <!-- Now line: current event if any, otherwise current time. -->
   {#if nowEvent}
-    <div class="flex items-baseline gap-2 mb-3 px-3 py-2 rounded bg-success/10 border border-success/25">
+    <div class="flex items-baseline gap-2 mb-3 px-3 py-2 rounded bg-surface0 border border-success">
       <span class="text-success text-sm">●</span>
       <span class="text-xs uppercase tracking-wider text-success font-semibold">Now</span>
       <a href="/calendar" class="text-sm text-text font-medium truncate flex-1 hover:underline">

@@ -196,7 +196,7 @@
         <span class="w-12 text-right tabular-nums text-dim">{BUCKET_LABELS[i]}</span>
         <div class="flex-1 h-2 bg-surface1 rounded-full overflow-hidden">
           <div
-            class="h-full bg-primary/40"
+            class="h-full bg-primary"
             style="width: {pct(count, stats.count)}%"
           ></div>
         </div>
@@ -218,7 +218,7 @@
             <button
               type="button"
               onclick={() => onJumpToLine?.(s.line)}
-              class="w-full text-left px-2 py-1.5 rounded bg-warning/5 border border-warning/20 hover:border-warning/50 text-[11px]"
+              class="w-full text-left px-2 py-1.5 rounded bg-surface0 border border-warning hover:border-warning text-[11px]"
               title="Jump to this sentence"
             >
               <div class="flex items-baseline justify-between mb-0.5">

@@ -283,7 +283,7 @@
 								onclick={() => saveOne(i)}
 								disabled={!!p.committed}
 								class="tap-target inline-flex items-center justify-center w-6 h-6 rounded text-[12px] font-medium {p.committed
-									? 'bg-success/20 text-success cursor-default'
+									? 'bg-surface0 text-success cursor-default'
 									: 'bg-surface1 hover:bg-surface2 text-text'}"
 								aria-label={p.committed ? 'Saved' : `Save ${p.title}`}
 								title={p.committed ? `Saved at ${p.savedPath}` : 'Save this document'}

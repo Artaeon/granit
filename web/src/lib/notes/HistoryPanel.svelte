@@ -304,7 +304,7 @@
                 <button
                   onclick={() => selectVersion(v.timestamp)}
                   class="w-full text-left px-3 py-2.5 flex flex-col gap-0.5 transition-colors
-                    {sel ? 'bg-primary/15 text-text' : 'hover:bg-surface0 text-subtext'}"
+                    {sel ? 'bg-surface1 text-text' : 'hover:bg-surface0 text-subtext'}"
                   aria-current={sel ? 'true' : undefined}
                 >
                   <span class="text-sm font-medium">{fmtRelativeTime(v.timestamp)}</span>
@@ -344,7 +344,7 @@
               {:else}
                 <pre class="text-[12px] font-mono leading-5 whitespace-pre-wrap break-words m-0"><!--
                -->{#each diffLines as l, i (i)}<!--
-                 -->{#if l.type === 'add'}<span class="block bg-success/10 text-success"><span class="inline-block w-4 text-right pr-2 select-none opacity-60">+</span>{l.text || ' '}</span>{:else if l.type === 'del'}<span class="block bg-error/10 text-error line-through opacity-90"><span class="inline-block w-4 text-right pr-2 select-none opacity-60 no-underline">−</span>{l.text || ' '}</span>{:else}<span class="block text-dim"><span class="inline-block w-4 text-right pr-2 select-none opacity-50">·</span>{l.text || ' '}</span>{/if}<!--
+                 -->{#if l.type === 'add'}<span class="block bg-surface0 text-success"><span class="inline-block w-4 text-right pr-2 select-none opacity-60">+</span>{l.text || ' '}</span>{:else if l.type === 'del'}<span class="block bg-surface0 text-error line-through opacity-90"><span class="inline-block w-4 text-right pr-2 select-none opacity-60 no-underline">−</span>{l.text || ' '}</span>{:else}<span class="block text-dim"><span class="inline-block w-4 text-right pr-2 select-none opacity-50">·</span>{l.text || ' '}</span>{/if}<!--
                -->{/each}<!--
              --></pre>
               {/if}

@@ -377,7 +377,7 @@
           <span class="text-[10px] text-dim italic" aria-live="polite">saving…</span>
         {/if}
         {#if snoozeActive}
-          <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/25" title={`snoozed until ${task?.snoozedUntil}`}>snoozed</span>
+          <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface0 text-info border border-info" title={`snoozed until ${task?.snoozedUntil}`}>snoozed</span>
         {/if}
         <button onclick={close} aria-label="close" class="text-dim hover:text-text text-xl leading-none">×</button>
       </header>
@@ -462,7 +462,7 @@
             {:else}
               <button
                 onclick={() => void runAIDecompose()}
-                class="text-[11px] px-2 py-0.5 bg-secondary/15 text-secondary rounded hover:bg-secondary/25"
+                class="text-[11px] px-2 py-0.5 bg-surface1 text-secondary rounded hover:bg-surface1"
                 title="AI proposes 3-7 concrete sub-tasks"
               >✨ break it down</button>
             {/if}
@@ -470,7 +470,7 @@
           {#if aiDecompError}
             <p class="text-xs text-error">{aiDecompError}</p>
           {:else if aiDecompSubtasks.length > 0}
-            <div class="bg-secondary/5 border border-secondary/30 rounded p-2 space-y-1.5">
+            <div class="bg-surface1 border border-surface2 rounded p-2 space-y-1.5">
               <div class="flex items-center mb-0.5">
                 <span class="text-[10px] uppercase tracking-wider text-secondary font-semibold flex-1">{aiDecompSubtasks.length} proposed</span>
                 {#if aiDecompSubtasks.length > 1}
@@ -499,7 +499,7 @@
                     <button
                       onclick={() => void acceptSubtask(idx)}
                       disabled={aiDecompAcceptingIdx >= 0}
-                      class="px-2 py-0.5 bg-success/15 text-success rounded hover:bg-success/25 disabled:opacity-50 flex-shrink-0"
+                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface0 disabled:opacity-50 flex-shrink-0"
                     >{aiDecompAcceptingIdx === idx ? '…' : 'add'}</button>
                     <button
                       onclick={() => skipSubtask(idx)}
@@ -578,7 +578,7 @@
         <section>
           <h4 class="text-[11px] uppercase tracking-wider text-dim mb-1.5">Snooze</h4>
           {#if snoozeActive && task.snoozedUntil}
-            <div class="flex items-baseline gap-2 mb-2 px-2 py-1.5 bg-info/10 border border-info/20 rounded">
+            <div class="flex items-baseline gap-2 mb-2 px-2 py-1.5 bg-surface0 border border-info rounded">
               <span class="text-xs text-info flex-1">until {fmtDate(task.snoozedUntil)}</span>
               <button onclick={unsnooze} disabled={busy} class="text-[11px] text-warning hover:underline">unsnooze</button>
             </div>

@@ -303,7 +303,7 @@
        items below so the user can accept or skip a batch without
        confusing them with already-saved annotations. -->
   {#if aiBusy && aiSuggestions.length === 0}
-    <div class="border border-primary/30 bg-primary/5 rounded-lg p-3 text-xs text-subtext flex items-center gap-2">
+    <div class="border border-surface2 bg-surface1 rounded-lg p-3 text-xs text-subtext flex items-center gap-2">
       <svg viewBox="0 0 24 24" class="w-3 h-3 animate-spin text-primary" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="9" stroke-opacity="0.25"/>
         <path d="M21 12a9 9 0 0 0-9-9" stroke-linecap="round"/>
@@ -312,13 +312,13 @@
     </div>
   {/if}
   {#if aiError}
-    <div class="border border-warning/30 bg-warning/5 rounded-lg p-2 text-xs text-warning flex items-baseline gap-2">
+    <div class="border border-warning bg-surface0 rounded-lg p-2 text-xs text-warning flex items-baseline gap-2">
       <span class="flex-1">{aiError}</span>
       <button onclick={dismissSuggestions} class="text-dim hover:text-text">×</button>
     </div>
   {/if}
   {#if aiSuggestions.length > 0}
-    <div class="border border-primary/30 bg-primary/5 rounded-lg p-2">
+    <div class="border border-surface2 bg-surface1 rounded-lg p-2">
       <div class="flex items-baseline justify-between mb-2">
         <span class="text-[10px] uppercase tracking-wider text-primary">
           {aiSuggestions.length} AI suggestion{aiSuggestions.length === 1 ? '' : 's'}
@@ -363,7 +363,7 @@
     </div>
   {/if}
     {#if composing}
-      <form onsubmit={saveNew} class="border border-primary/50 rounded-lg p-2 bg-surface0">
+      <form onsubmit={saveNew} class="border border-primary rounded-lg p-2 bg-surface0">
         <div class="text-[10px] uppercase tracking-wider text-dim mb-1">Line {composerLine}</div>
         {#if composerAnchor}
           <p class="text-xs text-dim italic mb-2 line-clamp-2">"{composerAnchor}"</p>

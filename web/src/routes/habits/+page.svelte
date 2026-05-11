@@ -340,7 +340,7 @@
             onclick={tickAllToday}
             disabled={bulkBusy}
             title="mark every undone habit as done today"
-            class="px-3 py-1.5 bg-success/15 text-success border border-success/30 rounded text-sm font-medium hover:bg-success/25 disabled:opacity-50"
+            class="px-3 py-1.5 bg-surface0 text-success border border-success rounded text-sm font-medium hover:bg-surface0 disabled:opacity-50"
           >
             {bulkBusy ? '…' : `Tick all (${undoneToday.length})`}
           </button>
@@ -377,7 +377,7 @@
     {/if}
 
     {#if data && data.habits.length >= 2 && (aiInsights.length > 0 || aiBusy || aiError)}
-      <section class="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+      <section class="mb-4 p-3 bg-surface1 border border-surface2 rounded-lg">
         <div class="flex items-baseline gap-2 mb-2">
           <h3 class="text-xs uppercase tracking-wider text-primary font-medium">Pattern insight</h3>
           <span class="flex-1"></span>
@@ -427,7 +427,7 @@
           <button
             type="button"
             onclick={aiInsight}
-            class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15"
+            class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-surface1 text-primary border border-surface2 hover:bg-surface1"
             title="Ask AI for pattern observations"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
@@ -496,8 +496,8 @@
           <div
             class="relative text-left p-4 bg-surface0 border rounded-lg transition-colors flex items-start gap-3
               {h.doneToday
-                ? 'border-success/40 bg-success/5'
-                : 'border-surface1 hover:border-primary/40'}"
+                ? 'border-success bg-surface0'
+                : 'border-surface1 hover:border-primary'}"
           >
             <button
               type="button"
@@ -530,8 +530,8 @@
                     onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
                     class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border transition-colors
                       {hit
-                        ? 'bg-success/15 text-success border-success/30 hover:bg-success/25'
-                        : 'bg-warning/10 text-warning border-warning/25 hover:bg-warning/20'}"
+                        ? 'bg-surface0 text-success border-success hover:bg-surface0'
+                        : 'bg-surface0 text-warning border-warning hover:bg-surface0'}"
                     title="weekly target — click to edit"
                   >🎯 {tgt.done}/{tgt.target}/wk</button>
                 {:else}
@@ -653,8 +653,8 @@
                       onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
                       class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border transition-colors
                         {hit
-                          ? 'bg-success/15 text-success border-success/30 hover:bg-success/25'
-                          : 'bg-warning/10 text-warning border-warning/25 hover:bg-warning/20'}"
+                          ? 'bg-surface0 text-success border-success hover:bg-surface0'
+                          : 'bg-surface0 text-warning border-warning hover:bg-surface0'}"
                       title="weekly target — click to edit"
                     >🎯 {tgt.done}/{tgt.target}/wk</button>
                   {:else}

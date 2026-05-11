@@ -32,7 +32,7 @@
   );
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-4 hover:border-primary/40 transition-colors">
+<section class="bg-surface0 border border-surface1 rounded-lg p-4 hover:border-primary transition-colors">
   {#if isEmpty}
     <!-- Empty state: single sentence + single CTA. The dashboard
          widget shouldn't be a teaching surface; the /vision page

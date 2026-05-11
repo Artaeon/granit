@@ -145,7 +145,7 @@
           <!-- Inline bar — width relative to topCount so the leading
                row spans the bar fully, every other row scales down. -->
           <span
-            class="block h-1 bg-primary/30 rounded-full flex-shrink-0"
+            class="block h-1 bg-primary rounded-full flex-shrink-0"
             style="width: {Math.max(8, (e.count / topCount) * 56)}px"
           ></span>
         </button>

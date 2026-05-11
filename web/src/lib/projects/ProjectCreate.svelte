@@ -139,8 +139,8 @@
             onclick={() => (kind = kind === k.value ? '' : k.value)}
             class="text-left px-2.5 py-2 rounded border text-sm transition-colors
               {kind === k.value
-                ? 'bg-primary/15 border-primary text-primary'
-                : 'bg-surface0 border-surface1 text-subtext hover:border-primary/40 hover:text-text'}"
+                ? 'bg-surface1 border-primary text-primary'
+                : 'bg-surface0 border-surface1 text-subtext hover:border-primary hover:text-text'}"
           >
             <div class="font-medium">{k.label}</div>
             <div class="text-[10px] text-dim mt-0.5">{k.hint}</div>

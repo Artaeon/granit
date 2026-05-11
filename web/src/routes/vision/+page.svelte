@@ -311,12 +311,12 @@
             <button
               onclick={() => void hardenVision()}
               disabled={aiBusy || isEmpty}
-              class="text-[11px] px-2 py-1 rounded bg-gradient-to-r from-primary/15 to-secondary/15 border border-primary/30 text-primary hover:border-primary/60 disabled:opacity-50"
+              class="text-[11px] px-2 py-1 rounded bg-surface1 border border-surface2 text-primary hover:border-primary disabled:opacity-50"
               title="Ask the AI to critique your vision and suggest sharper alternatives"
             >{aiBusy ? '✨ thinking…' : aiResponse ? '✨ regenerate' : '✨ Harden'}</button>
           </div>
           {#if aiError}
-            <div class="text-xs text-error border border-error/30 bg-error/5 rounded px-3 py-2">{aiError}</div>
+            <div class="text-xs text-error border border-error bg-surface0 rounded px-3 py-2">{aiError}</div>
           {:else if aiResponse || aiBusy}
             <div class="bg-surface0 border border-surface1 rounded-lg px-4 py-3 text-sm text-text">
               <div class="prose prose-sm max-w-none">

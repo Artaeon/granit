@@ -103,7 +103,7 @@
 {#if visible}
   <span
     class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] tabular-nums {todayLogged
-      ? 'text-success bg-success/10'
+      ? 'text-success bg-surface0'
       : 'text-subtext bg-surface1'}"
     {title}
     aria-label={title}

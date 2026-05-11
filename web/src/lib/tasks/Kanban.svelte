@@ -434,7 +434,7 @@
 <div class="flex items-center gap-3 mb-3 text-xs text-dim flex-wrap">
   {#if hasConfigMode}
     <button
-      class="px-2 py-1 rounded {mode === 'config' ? 'bg-primary/20 text-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+      class="px-2 py-1 rounded {mode === 'config' ? 'bg-surface1 text-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
       onclick={() => (mode = 'config')}
       title="use {config!.kanban_columns?.length ?? 0} columns from .granit.json"
     >config columns</button>
@@ -468,7 +468,7 @@
       {@const isDropTarget = dragOverCol === col.key + ':' + lane.key}
       <div
         class="bg-mantle border rounded flex flex-col md:flex-shrink-0 md:w-72
-          {isDropTarget ? 'border-primary/60 bg-primary/5' : 'border-surface1'}
+          {isDropTarget ? 'border-primary bg-primary/5' : 'border-surface1'}
           {overWip ? 'ring-1 ring-error/40' : ''}"
         ondragover={(e) => onDragOver(e, col.key + ':' + lane.key)}
         ondragleave={() => onDragLeave(col.key + ':' + lane.key)}

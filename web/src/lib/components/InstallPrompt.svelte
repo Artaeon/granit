@@ -102,7 +102,7 @@
 
 {#if mode === 'chromium'}
   <div class="fixed bottom-4 right-4 z-40 max-w-xs bg-mantle border border-surface1 rounded-lg shadow-xl p-3 flex items-start gap-3">
-    <div class="w-8 h-8 rounded bg-primary/15 flex items-center justify-center flex-shrink-0">
+    <div class="w-8 h-8 rounded bg-surface1 flex items-center justify-center flex-shrink-0">
       <svg viewBox="0 0 24 24" class="w-4 h-4 text-primary" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M12 4v12M6 10l6 6 6-6M4 20h16"/>
       </svg>
@@ -124,7 +124,7 @@
   </div>
 {:else if mode === 'ios'}
   <div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-xs bg-mantle border border-surface1 rounded-lg shadow-xl p-3 flex items-start gap-3">
-    <div class="w-8 h-8 rounded bg-primary/15 flex items-center justify-center flex-shrink-0">
+    <div class="w-8 h-8 rounded bg-surface1 flex items-center justify-center flex-shrink-0">
       <svg viewBox="0 0 24 24" class="w-4 h-4 text-primary" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M12 4v12M8 8l4-4 4 4M5 14v5a1 1 0 001 1h12a1 1 0 001-1v-5"/>
       </svg>

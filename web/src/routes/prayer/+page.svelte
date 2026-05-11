@@ -465,7 +465,7 @@
               class="w-full px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm text-text"
             />
             {#if aiPicks.length > 0 || aiError}
-              <div class="mt-1.5 p-2 bg-primary/5 border border-primary/20 rounded text-xs space-y-1">
+              <div class="mt-1.5 p-2 bg-surface1 border border-surface2 rounded text-xs space-y-1">
                 {#if aiError}
                   <p class="text-error">{aiError}</p>
                 {/if}
@@ -473,7 +473,7 @@
                   <button
                     type="button"
                     onclick={() => applyVerse(p)}
-                    class="block w-full text-left px-1.5 py-1 rounded hover:bg-primary/10"
+                    class="block w-full text-left px-1.5 py-1 rounded hover:bg-surface1"
                     title="use this passage"
                   >
                     <span class="font-medium text-text">📖 {p.ref}</span>
@@ -583,7 +583,7 @@
         <section class="mt-8">
           <button
             onclick={() => (showAnswered = !showAnswered)}
-            class="w-full flex items-baseline gap-2 pb-1 border-b border-success/30 text-left"
+            class="w-full flex items-baseline gap-2 pb-1 border-b border-success text-left"
           >
             <span class="text-base">🙌</span>
             <span class="text-sm font-medium text-success">Answered</span>
@@ -593,7 +593,7 @@
           {#if showAnswered}
             <ul class="space-y-2 mt-2">
               {#each answered as p (p.id)}
-                <li class="bg-success/5 border border-success/20 rounded p-3">
+                <li class="bg-surface0 border border-success rounded p-3">
                   <p class="text-sm text-text">{p.text}</p>
                   {#if p.answer}
                     <p class="text-xs text-success mt-1.5 italic">{p.answer}</p>

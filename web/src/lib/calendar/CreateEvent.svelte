@@ -311,7 +311,7 @@
              always reviews + clicks Save; we never auto-create. The
              input lives at the top because the parse populates the
              whole form, so it's the natural starting point. -->
-        <div class="rounded-lg bg-gradient-to-r from-primary/10 via-secondary/10 to-primary/10 border border-primary/20 p-2.5">
+        <div class="rounded-lg bg-surface1 border border-surface2 p-2.5">
           <label class="block text-[10px] uppercase tracking-wider text-primary mb-1.5 inline-flex items-center gap-1" for="ev-ai">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
               <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
@@ -395,7 +395,7 @@
                sometimes intentional (back-to-back meetings the user
                wants flagged but not refused), so we surface the clash
                and let the user decide. -->
-          <div class="px-3 py-2 bg-warning/10 border border-warning/30 rounded-lg text-xs">
+          <div class="px-3 py-2 bg-surface0 border border-warning rounded-lg text-xs">
             <div class="text-warning font-semibold mb-1">⚠ Overlaps {conflicts.length} existing event{conflicts.length === 1 ? '' : 's'}</div>
             <ul class="space-y-0.5">
               {#each conflicts as c}

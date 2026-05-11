@@ -333,7 +333,7 @@
   let activeVoice = $derived(voices.find((v) => v.voiceURI === voiceURI) ?? null);
 </script>
 
-<div class="audio-player border-t border-b border-secondary/20 bg-secondary/5 px-3 py-1.5 flex items-center gap-2 text-xs flex-wrap">
+<div class="audio-player border-t border-b border-surface2 bg-surface1 px-3 py-1.5 flex items-center gap-2 text-xs flex-wrap">
   {#if !supported}
     <span class="text-dim italic">browser doesn't support speech synthesis</span>
     <button

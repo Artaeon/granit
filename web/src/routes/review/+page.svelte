@@ -445,7 +445,7 @@
             <button
               type="button"
               onclick={cancelQuickAI}
-              class="text-xs px-3 py-1.5 rounded bg-warning/15 text-warning border border-warning/30"
+              class="text-xs px-3 py-1.5 rounded bg-surface0 text-warning border border-warning"
               title="Cancel the in-flight quick draft"
             >✨ thinking… cancel</button>
           {:else}
@@ -471,7 +471,7 @@
       </form>
 
       {#if aiQuickError}
-        <div class="mt-4 px-3 py-2 bg-error/10 border border-error/30 rounded text-xs text-error">
+        <div class="mt-4 px-3 py-2 bg-surface0 border border-error rounded text-xs text-error">
           {aiQuickError}
         </div>
       {/if}
@@ -481,7 +481,7 @@
              deliberately don't auto-fill the form fields (the model
              often picks the wrong section per answer); leaving it as
              a side-by-side reference is simpler + harder to mis-route. -->
-        <div class="mt-6 p-4 bg-secondary/5 border border-secondary/30 rounded">
+        <div class="mt-6 p-4 bg-surface1 border border-surface2 rounded">
           <div class="flex items-center gap-2 mb-3">
             <span class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">AI synopsis</span>
             <button
@@ -536,9 +536,9 @@
               >{wkSlug}</button>
               <span class="text-sm text-text flex-1 min-w-0 truncate">{summary.preview}</span>
               {#if summary.complete}
-                <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-success/15 text-success">complete</span>
+                <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface0 text-success">complete</span>
               {:else}
-                <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-warning/15 text-warning">partial</span>
+                <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface0 text-warning">partial</span>
               {/if}
             </li>
           {/each}

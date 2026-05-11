@@ -206,7 +206,7 @@
         title={isSaved ? 'Remove from saved' : 'Save this search'}
         aria-label={isSaved ? 'Unsave search' : 'Save search'}
         class="w-8 h-8 flex items-center justify-center rounded transition-colors
-          {isSaved ? 'text-warning hover:bg-warning/10' : 'text-dim hover:text-warning hover:bg-surface0'}"
+          {isSaved ? 'text-warning hover:bg-surface0' : 'text-dim hover:text-warning hover:bg-surface0'}"
       >
         <span class="text-base">{isSaved ? '★' : '☆'}</span>
       </button>
@@ -220,7 +220,7 @@
           Search across every note in your vault. Matches are scored by relevance and ranked across all notes.
         </div>
         {#if !ready}
-          <div class="px-3 py-2 bg-warning/10 border border-warning/30 text-warning text-sm rounded mb-4">
+          <div class="px-3 py-2 bg-surface0 border border-warning text-warning text-sm rounded mb-4">
             Search index is still building. Recent edits may not show up for a few seconds.
           </div>
         {/if}
@@ -306,7 +306,7 @@
                     <span class="text-[10px] text-dim font-mono tabular-nums w-10 flex-shrink-0">L{h.line}</span>
                     <span class="text-sm text-subtext font-mono break-all">
                       {#if hl}
-                        <span class="text-dim">{hl.before}</span><mark class="bg-primary/30 text-text px-0.5 rounded">{hl.match}</mark><span class="text-dim">{hl.after}</span>
+                        <span class="text-dim">{hl.before}</span><mark class="bg-primary text-text px-0.5 rounded">{hl.match}</mark><span class="text-dim">{hl.after}</span>
                       {:else}
                         <span class="text-dim">{h.matchLine || '—'}</span>
                       {/if}

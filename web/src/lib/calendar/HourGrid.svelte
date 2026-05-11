@@ -709,7 +709,7 @@
                   <div
                     role="separator"
                     aria-label="resize event"
-                    class="absolute left-0 right-0 bottom-0 h-1.5 cursor-ns-resize hover:bg-primary/40"
+                    class="absolute left-0 right-0 bottom-0 h-1.5 cursor-ns-resize hover:bg-primary"
                     onpointerdown={(e) => onResizePointerDown(e, item.ev, item.startMin, item.endMin - item.startMin)}
                     onpointermove={onResizePointerMove}
                     onpointerup={onResizePointerUp}

@@ -415,13 +415,13 @@
           <span class="block text-xs uppercase tracking-wider text-dim mb-1">Tags</span>
           <div class="w-full px-2 py-1.5 bg-surface0 border border-surface1 rounded flex flex-wrap items-center gap-1.5 focus-within:border-primary">
             {#each tags as tag, i (tag + ':' + i)}
-              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-secondary/15 text-secondary rounded text-[11px]">
+              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-surface1 text-secondary rounded text-[11px]">
                 <span>#{tag}</span>
                 <button
                   type="button"
                   onclick={() => removeTag(i)}
                   aria-label="remove tag {tag}"
-                  class="text-secondary/70 hover:text-error leading-none"
+                  class="text-subtext hover:text-error leading-none"
                 >×</button>
               </span>
             {/each}

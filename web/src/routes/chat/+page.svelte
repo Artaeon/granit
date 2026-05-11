@@ -162,7 +162,7 @@
         {#each messages as m, i (i)}
           <li class="flex gap-3 {m.role === 'user' ? 'justify-end' : ''}">
             {#if m.role !== 'user'}
-              <div class="w-8 h-8 rounded-full bg-primary/15 text-primary flex items-center justify-center flex-shrink-0 text-xs font-mono mt-1">AI</div>
+              <div class="w-8 h-8 rounded-full bg-surface1 text-primary flex items-center justify-center flex-shrink-0 text-xs font-mono mt-1">AI</div>
             {/if}
             <div
               class="max-w-[85%] sm:max-w-[75%] px-4 py-2.5 rounded-lg whitespace-pre-wrap break-words text-sm leading-relaxed
@@ -175,7 +175,7 @@
         {/each}
         {#if busy}
           <li class="flex gap-3">
-            <div class="w-8 h-8 rounded-full bg-primary/15 text-primary flex items-center justify-center flex-shrink-0 text-xs font-mono mt-1">AI</div>
+            <div class="w-8 h-8 rounded-full bg-surface1 text-primary flex items-center justify-center flex-shrink-0 text-xs font-mono mt-1">AI</div>
             <div class="px-4 py-2.5 rounded-lg bg-surface0 border border-surface1">
               <div class="flex gap-1 items-center text-dim">
                 <span class="w-1.5 h-1.5 rounded-full bg-current animate-bounce"></span>

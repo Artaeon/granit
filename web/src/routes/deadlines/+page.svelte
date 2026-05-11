@@ -758,7 +758,7 @@
     </PageHeader>
 
     {#if scopeProject || scopeGoalId || scopeVenture}
-      <div class="mb-4 flex items-center gap-2 text-xs px-3 py-2 bg-secondary/10 border border-secondary/30 rounded">
+      <div class="mb-4 flex items-center gap-2 text-xs px-3 py-2 bg-surface1 border border-surface2 rounded">
         <span class="text-secondary">
           {#if scopeProject}📁 Scope: project <strong>{scopeProject}</strong>{/if}
           {#if scopeGoalId}🎯 Scope: goal <strong>{goalTitle(scopeGoalId)}</strong>{/if}
@@ -1058,7 +1058,7 @@
                         tabindex="0"
                         onclick={() => openEdit(d)}
                         onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(d); } }}
-                        class="group w-full text-left bg-surface0 border border-surface1 rounded-lg p-3 hover:border-primary/50 transition-colors flex flex-col gap-1.5 cursor-pointer
+                        class="group w-full text-left bg-surface0 border border-surface1 rounded-lg p-3 hover:border-primary transition-colors flex flex-col gap-1.5 cursor-pointer
                           {isDone ? 'opacity-60' : ''}"
                       >
                         <!-- Title row — title takes the lead, importance
@@ -1116,21 +1116,21 @@
                               <button
                                 type="button"
                                 onclick={(e) => markMet(d, e)}
-                                class="px-1.5 py-0.5 text-success hover:bg-success/15 rounded"
+                                class="px-1.5 py-0.5 text-success hover:bg-surface0 rounded"
                                 title="Mark met"
                                 aria-label="Mark {d.title} as met"
                               >✓</button>
                               <button
                                 type="button"
                                 onclick={(e) => snooze(d, 1, e)}
-                                class="px-1.5 py-0.5 text-info hover:bg-info/15 rounded"
+                                class="px-1.5 py-0.5 text-info hover:bg-surface0 rounded"
                                 title="Snooze 1 day"
                                 aria-label="Snooze {d.title} 1 day"
                               >+1d</button>
                               <button
                                 type="button"
                                 onclick={(e) => snooze(d, 7, e)}
-                                class="px-1.5 py-0.5 text-info hover:bg-info/15 rounded"
+                                class="px-1.5 py-0.5 text-info hover:bg-surface0 rounded"
                                 title="Snooze 1 week"
                                 aria-label="Snooze {d.title} 1 week"
                               >+7d</button>
@@ -1138,7 +1138,7 @@
                               <button
                                 type="button"
                                 onclick={(e) => reopen(d, e)}
-                                class="px-1.5 py-0.5 text-warning hover:bg-warning/15 rounded"
+                                class="px-1.5 py-0.5 text-warning hover:bg-surface0 rounded"
                                 title="Reopen"
                                 aria-label="Reopen {d.title}"
                               >↺</button>
@@ -1212,7 +1212,7 @@
                   tabindex="0"
                   onclick={() => openEdit(d)}
                   onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(d); } }}
-                  class="bg-surface0 border border-surface1 hover:border-primary/50 rounded-lg p-3 transition-colors cursor-pointer {isDone ? 'opacity-60' : ''}"
+                  class="bg-surface0 border border-surface1 hover:border-primary rounded-lg p-3 transition-colors cursor-pointer {isDone ? 'opacity-60' : ''}"
                 >
                   <div class="flex items-baseline gap-2">
                     <span class="font-mono text-xs text-subtext tabular-nums w-20 flex-shrink-0">{d.date}</span>
@@ -1450,7 +1450,7 @@
         <button
           onclick={remove}
           disabled={busy}
-          class="px-3 py-1.5 text-xs text-error hover:bg-error/10 rounded disabled:opacity-50"
+          class="px-3 py-1.5 text-xs text-error hover:bg-surface0 rounded disabled:opacity-50"
         >Delete</button>
       {/if}
       <span class="flex-1"></span>

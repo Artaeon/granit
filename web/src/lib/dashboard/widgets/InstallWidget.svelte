@@ -61,7 +61,7 @@
       <li>
         <button
           onclick={() => copy(c.cmd, c.label)}
-          class="w-full text-left bg-mantle border border-surface1 rounded p-2 hover:border-primary/40 transition-colors group"
+          class="w-full text-left bg-mantle border border-surface1 rounded p-2 hover:border-primary transition-colors group"
         >
           <div class="flex items-baseline justify-between mb-1">
             <span class="text-xs text-text font-medium">{c.label}</span>

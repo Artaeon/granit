@@ -111,7 +111,7 @@
               onclick={() => markDone(d)}
               aria-label="mark done"
               title="mark done"
-              class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded text-dim hover:text-success hover:bg-success/10 transition-colors"
+              class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded text-dim hover:text-success hover:bg-surface0 transition-colors"
             >
               <svg viewBox="0 0 12 12" class="w-3.5 h-3.5"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
             </button>

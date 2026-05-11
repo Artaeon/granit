@@ -273,7 +273,7 @@
       >×</button>
     </div>
     {#if cmpOpen}
-      <div class="mb-2 p-2 bg-primary/5 border border-primary/20 rounded">
+      <div class="mb-2 p-2 bg-surface1 border border-surface2 rounded">
         <div class="flex items-baseline gap-2 mb-1.5">
           <span class="text-[10px] uppercase tracking-wider text-primary font-medium">comparison</span>
           <span class="flex-1"></span>
@@ -299,7 +299,7 @@
       {#if activeLoading}
         <div class="text-[11px] text-dim italic">loading…</div>
       {:else if activeError}
-        <div class="text-[11px] text-error bg-error/10 rounded px-2 py-1">{activeError}</div>
+        <div class="text-[11px] text-error bg-surface0 rounded px-2 py-1">{activeError}</div>
       {:else}
         <!-- Read-only preview. Constrained max-height so a long
              reference doesn't push the rest of the rail off-screen.
@@ -348,7 +348,7 @@
     <button
       type="button"
       onclick={() => (pickerOpen = true)}
-      class="w-full text-left text-xs text-dim hover:text-primary px-2 py-1.5 rounded border border-dashed border-surface1 hover:border-primary/40"
+      class="w-full text-left text-xs text-dim hover:text-primary px-2 py-1.5 rounded border border-dashed border-surface1 hover:border-primary"
       title="pick a note to read alongside this one"
     >
       + pin a reference note

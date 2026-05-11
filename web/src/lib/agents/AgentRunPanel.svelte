@@ -316,7 +316,7 @@
             {#if resultPath}
               <button
                 onclick={viewTranscript}
-                class="text-xs text-secondary hover:underline px-2 py-1 -mr-1 rounded hover:bg-secondary/10"
+                class="text-xs text-secondary hover:underline px-2 py-1 -mr-1 rounded hover:bg-surface1"
               >view transcript →</button>
             {/if}
           </div>
@@ -330,7 +330,7 @@
           {/if}
 
           {#if finalAnswer}
-            <div class="rounded p-3 bg-success/10 border-l-3 border-success mt-2">
+            <div class="rounded p-3 bg-surface0 border-l-3 border-success mt-2">
               <div class="text-[10px] uppercase tracking-wider text-success mb-1">Answer</div>
               <p class="text-sm text-text whitespace-pre-wrap">{finalAnswer}</p>
             </div>

@@ -231,13 +231,13 @@
                since chips are the obvious UX. -->
           <div class="flex-1 min-w-0 flex flex-wrap items-center gap-1">
             {#each chips as chip, idx (chip + ':' + idx)}
-              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-secondary/15 text-secondary rounded text-[11px]">
+              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-surface1 text-secondary rounded text-[11px]">
                 <span>{chip}</span>
                 <button
                   onclick={() => removeChip(k, idx)}
                   disabled={saving}
                   aria-label="remove {chip}"
-                  class="text-secondary/70 hover:text-error leading-none disabled:opacity-50"
+                  class="text-subtext hover:text-error leading-none disabled:opacity-50"
                 >×</button>
               </span>
             {/each}

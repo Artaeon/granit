@@ -159,7 +159,7 @@
       {/each}
     </div>
   {:else if error}
-    <div class="bg-error/10 border border-error/30 text-error rounded p-4 mt-4 text-sm">
+    <div class="bg-surface0 border border-error text-error rounded p-4 mt-4 text-sm">
       Couldn't load shelf: {error}
     </div>
   {:else if books.length === 0}

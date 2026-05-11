@@ -215,7 +215,7 @@
           <button
             type="button"
             onclick={() => loadDetail(s.id)}
-            class="bg-surface0 border rounded-lg p-3 text-left transition-colors hover:border-primary/40 {isSelected ? 'border-primary' : 'border-surface1'}"
+            class="bg-surface0 border rounded-lg p-3 text-left transition-colors hover:border-primary {isSelected ? 'border-primary' : 'border-surface1'}"
           >
             <div class="flex items-baseline gap-2">
               <h3 class="font-medium text-text truncate flex-1">{s.name}</h3>

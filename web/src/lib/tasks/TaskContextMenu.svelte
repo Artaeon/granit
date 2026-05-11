@@ -189,7 +189,7 @@
     <div class="my-1 border-t border-surface1"></div>
 
     <button
-      class="w-full text-left px-3 py-1.5 text-error hover:bg-error/10"
+      class="w-full text-left px-3 py-1.5 text-error hover:bg-surface0"
       onclick={deleteTask}
       role="menuitem"
     >Delete task</button>

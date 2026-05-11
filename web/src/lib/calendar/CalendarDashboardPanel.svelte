@@ -221,7 +221,7 @@
           {/each}
         </div>
       {:else if loadError && !bundle}
-        <div class="text-sm text-error border border-error/30 bg-error/5 rounded px-4 py-3">
+        <div class="text-sm text-error border border-error bg-surface0 rounded px-4 py-3">
           Could not load dashboard: {loadError}
           <button onclick={() => void load()} class="ml-3 underline text-secondary">retry</button>
         </div>
@@ -370,10 +370,10 @@
                         <span class="text-sm text-text flex-1 leading-snug">{t.text}</span>
                         <span class="flex items-baseline gap-1 flex-shrink-0">
                           {#if t.priority && t.priority > 0}
-                            <span class="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning font-mono">P{t.priority}</span>
+                            <span class="text-[10px] px-1 py-0.5 rounded bg-surface0 text-warning font-mono">P{t.priority}</span>
                           {/if}
                           {#if d != null}
-                            <span class="text-[10px] px-1 py-0.5 rounded bg-error/15 text-error font-mono">{d}d</span>
+                            <span class="text-[10px] px-1 py-0.5 rounded bg-surface0 text-error font-mono">{d}d</span>
                           {/if}
                         </span>
                       </div>
@@ -408,10 +408,10 @@
                         <span class="text-sm text-text flex-1 leading-snug">{t.text}</span>
                         <span class="flex items-baseline gap-1 flex-shrink-0">
                           {#if t.priority && t.priority > 0}
-                            <span class="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning font-mono">P{t.priority}</span>
+                            <span class="text-[10px] px-1 py-0.5 rounded bg-surface0 text-warning font-mono">P{t.priority}</span>
                           {/if}
                           {#if t.scheduledStart}
-                            <span class="text-[10px] px-1 py-0.5 rounded bg-secondary/15 text-secondary font-mono">{t.scheduledStart.slice(11, 16)}</span>
+                            <span class="text-[10px] px-1 py-0.5 rounded bg-surface1 text-secondary font-mono">{t.scheduledStart.slice(11, 16)}</span>
                           {/if}
                         </span>
                       </div>
@@ -443,7 +443,7 @@
                       <span class="text-subtext font-medium">{day.weekday}</span>
                       <span class="text-dim font-mono">{day.date.slice(5)}</span>
                       {#if day.hasDeepMorning}
-                        <span class="ml-auto text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-success/15 text-success" title="no events 09:00-12:00">deep</span>
+                        <span class="ml-auto text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-surface0 text-success" title="no events 09:00-12:00">deep</span>
                       {/if}
                     </div>
                     <div class="space-y-0.5">
@@ -453,7 +453,7 @@
                         {#each day.slots as slot, idx (idx)}
                           {@const widthPct = Math.min(100, Math.round((slot.durationMinutes / ((18 - 9) * 60)) * 100))}
                           <div
-                            class="px-2 py-1.5 rounded bg-secondary/10 border border-secondary/30 text-[11px] font-mono"
+                            class="px-2 py-1.5 rounded bg-surface1 border border-surface2 text-[11px] font-mono"
                             style="width: {Math.max(40, widthPct)}%"
                             title="{slot.durationMinutes} min free"
                           >

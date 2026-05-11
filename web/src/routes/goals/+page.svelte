@@ -248,7 +248,7 @@
       case 'paused':
         return { bg: 'bg-surface1', text: 'text-subtext' };
       case 'completed':
-        return { bg: 'bg-success/15', text: 'text-success' };
+        return { bg: 'bg-surface0', text: 'text-success' };
       case 'archived':
         return { bg: 'bg-surface1', text: 'text-dim' };
       default:
@@ -1055,7 +1055,7 @@
         </header>
 
         {#if checkinError}
-          <div class="px-4 py-2 text-xs text-error bg-error/5 border-b border-error/20">{checkinError}</div>
+          <div class="px-4 py-2 text-xs text-error bg-surface0 border-b border-error">{checkinError}</div>
         {/if}
 
         <div class="p-3 space-y-2">
@@ -1086,7 +1086,7 @@
                     <button
                       type="button"
                       onclick={() => void checkinSaveOne(e)}
-                      class="px-2 py-0.5 bg-primary/15 text-primary rounded hover:bg-primary/25"
+                      class="px-2 py-0.5 bg-surface1 text-primary rounded hover:bg-primary hover:text-on-primary"
                       title="Append this entry to today's jot"
                     >Save to jot</button>
                     <button
@@ -1175,13 +1175,13 @@
         </header>
 
         {#if auditError}
-          <div class="px-4 py-2 text-xs text-error bg-error/5 border-b border-error/20">{auditError}</div>
+          <div class="px-4 py-2 text-xs text-error bg-surface0 border-b border-error">{auditError}</div>
         {/if}
 
         <div class="p-3 space-y-2">
           {#if auditBusy && auditFindings.length === 0}
             <div class="text-xs text-dim italic px-2 py-3 flex items-center gap-2">
-              <span class="inline-block w-1.5 h-3 bg-warning/60 animate-pulse rounded-sm"></span>
+              <span class="inline-block w-1.5 h-3 bg-surface0 animate-pulse rounded-sm"></span>
               clustering {auditScope.orphanOpen.length + auditScope.orphanDoneRecent.length} unlinked tasks against {goals.filter((g) => (g.status ?? 'active') === 'active').length} active goals…
             </div>
           {:else if auditFindings.length === 0 && !auditError}
@@ -1192,7 +1192,7 @@
                 <article class="p-3 bg-mantle border border-surface1 rounded border-l-4" style="border-left-color: var(--color-warning);">
                   <div class="flex items-baseline gap-2 mb-1 flex-wrap">
                     <span class="text-sm font-medium text-text flex-1 min-w-0 break-words">{f.cluster}</span>
-                    <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-warning/15 text-warning tabular-nums">
+                    <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface0 text-warning tabular-nums">
                       {f.count} task{f.count === 1 ? '' : 's'}
                     </span>
                   </div>
@@ -1403,7 +1403,7 @@
       <button
         type="button"
         onclick={() => (stalledFilterOn = !stalledFilterOn)}
-        class="w-full text-left mb-4 px-3 py-2.5 rounded-lg border flex items-center gap-3 transition-colors {stalledFilterOn ? 'bg-warning/15 border-warning/50' : 'bg-warning/5 border-warning/20 hover:bg-warning/10'}"
+        class="w-full text-left mb-4 px-3 py-2.5 rounded-lg border flex items-center gap-3 transition-colors {stalledFilterOn ? 'bg-surface0 border-warning' : 'bg-surface0 border-warning hover:bg-surface0'}"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 text-warning flex-shrink-0">
           <circle cx="12" cy="12" r="9"/>
@@ -1494,7 +1494,7 @@
           {@const roll = rollupFor(g)}
           {@const aiOpen = aiGoalId === g.id}
           <article
-            class="bg-surface0 border border-surface1 rounded-lg overflow-hidden hover:border-primary/40 transition-colors {tone ? 'border-l-4' : ''}"
+            class="bg-surface0 border border-surface1 rounded-lg overflow-hidden hover:border-primary transition-colors {tone ? 'border-l-4' : ''}"
             style={tone ? `border-left-color: var(--color-${tone});` : ''}
           >
             <button
@@ -1514,7 +1514,7 @@
                     {g.status ?? 'active'}
                   </span>
                   {#if stalledGoals.some((s) => s.id === g.id)}
-                    <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-warning/15 text-warning" title="No edits in 30+ days, no recent completed tasks">
+                    <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-surface0 text-warning" title="No edits in 30+ days, no recent completed tasks">
                       stalled
                     </span>
                   {/if}
@@ -1572,12 +1572,12 @@
                     </span>
                   {/if}
                   {#if roll.done > 0}
-                    <span class="px-1.5 py-0.5 bg-success/10 text-success rounded tabular-nums" title="completed tasks linked to this goal">
+                    <span class="px-1.5 py-0.5 bg-surface0 text-success rounded tabular-nums" title="completed tasks linked to this goal">
                       {roll.done} done
                     </span>
                   {/if}
                   {#if roll.project}
-                    <span class="px-1.5 py-0.5 bg-secondary/15 text-secondary rounded truncate max-w-[14rem]" title="linked project">
+                    <span class="px-1.5 py-0.5 bg-surface1 text-secondary rounded truncate max-w-[14rem]" title="linked project">
                       📁 {roll.project.name}
                       {#if typeof roll.project.progress === 'number'}
                         <span class="opacity-70 tabular-nums ml-0.5">{roll.project.progress}%</span>
@@ -1740,7 +1740,7 @@
                   <button
                     type="button"
                     onclick={() => openDetail(g)}
-                    class="w-full text-left p-2.5 bg-mantle rounded border border-surface1 hover:border-primary/40 transition-colors {tone ? 'border-l-4' : ''}"
+                    class="w-full text-left p-2.5 bg-mantle rounded border border-surface1 hover:border-primary transition-colors {tone ? 'border-l-4' : ''}"
                     style={tone ? `border-left-color: var(--color-${tone});` : ''}
                   >
                     <div class="text-sm font-medium text-text break-words leading-snug">{@html inlineMd(g.title)}</div>

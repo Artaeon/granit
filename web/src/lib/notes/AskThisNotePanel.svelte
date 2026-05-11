@@ -218,7 +218,7 @@
             {#if t.role === 'user'}
               <p class="px-2 py-1 rounded bg-surface0 whitespace-pre-wrap break-words m-0">{t.content}</p>
             {:else if t.error}
-              <p class="px-2 py-1 rounded bg-error/5 border border-error/20 text-error text-[11px] m-0">{t.error}</p>
+              <p class="px-2 py-1 rounded bg-surface0 border border-error text-error text-[11px] m-0">{t.error}</p>
             {:else if !t.content && t.streaming}
               <span class="px-2 text-dim italic flex items-center gap-1.5">
                 <span class="ai-spinner" aria-hidden="true"></span>
@@ -250,7 +250,7 @@
         <button
           type="button"
           onclick={stop}
-          class="px-2 py-1 rounded text-[11px] bg-surface0 text-error border border-error/30 hover:bg-error/10"
+          class="px-2 py-1 rounded text-[11px] bg-surface0 text-error border border-error hover:bg-surface0"
         >stop</button>
       {:else}
         <button

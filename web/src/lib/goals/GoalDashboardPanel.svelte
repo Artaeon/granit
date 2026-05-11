@@ -215,7 +215,7 @@
           {/each}
         </div>
       {:else if loadError && !bundle}
-        <div class="text-sm text-error border border-error/30 bg-error/5 rounded px-4 py-3">
+        <div class="text-sm text-error border border-error bg-surface0 rounded px-4 py-3">
           Could not load dashboard: {loadError}
           <button onclick={() => void load()} class="ml-3 underline text-secondary">retry</button>
         </div>
@@ -239,12 +239,12 @@
                 >{g.status}</span>
               {/if}
               {#if g.category}
-                <span class="px-2 py-0.5 rounded bg-primary/15 text-primary uppercase tracking-wider text-[10px] font-medium">{g.category}</span>
+                <span class="px-2 py-0.5 rounded bg-surface1 text-primary uppercase tracking-wider text-[10px] font-medium">{g.category}</span>
               {/if}
               {#if g.venture}
                 <a
                   href={`/goals?venture=${encodeURIComponent(g.venture)}`}
-                  class="px-2 py-0.5 rounded bg-secondary/15 text-secondary hover:bg-secondary/25 text-[11px]"
+                  class="px-2 py-0.5 rounded bg-surface1 text-secondary hover:bg-surface1 text-[11px]"
                 >🏢 {g.venture}</a>
               {/if}
               {#if g.target_date}
@@ -289,7 +289,7 @@
                 <span class="text-[10px] uppercase tracking-wider text-dim">Linked project</span>
                 <a
                   href={`/projects?p=${encodeURIComponent(g.project)}`}
-                  class="px-2 py-0.5 rounded bg-primary/15 text-primary hover:bg-primary/25 inline-flex items-center gap-1"
+                  class="px-2 py-0.5 rounded bg-surface1 text-primary hover:bg-primary hover:text-on-primary inline-flex items-center gap-1"
                 >📁 {g.project}</a>
               </div>
             {/if}
@@ -346,7 +346,7 @@
                     <span class="text-sm text-text flex-1 leading-snug">{t.text}</span>
                     <span class="flex items-baseline gap-1 flex-shrink-0">
                       {#if t.priority && t.priority > 0}
-                        <span class="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning font-mono">P{t.priority}</span>
+                        <span class="text-[10px] px-1 py-0.5 rounded bg-surface0 text-warning font-mono">P{t.priority}</span>
                       {/if}
                       {#if t.dueDate}
                         <span class="text-[10px] text-dim font-mono">{t.dueDate}</span>
@@ -405,11 +405,11 @@
             {:else}
               <ul class="space-y-2">
                 {#each recentReviews as r, idx (idx + (r.date ?? ''))}
-                  <li class="px-2 py-1.5 rounded border-l-2 border-secondary/40 bg-mantle">
+                  <li class="px-2 py-1.5 rounded border-l-2 border-surface2 bg-mantle">
                     <div class="flex items-baseline gap-2">
                       <span class="text-[11px] text-dim font-mono">{r.date}</span>
                       {#if typeof r.progress === 'number' && r.progress > 0}
-                        <span class="text-[10px] px-1 py-0.5 rounded bg-success/15 text-success font-mono">{r.progress}%</span>
+                        <span class="text-[10px] px-1 py-0.5 rounded bg-surface0 text-success font-mono">{r.progress}%</span>
                       {/if}
                     </div>
                     {#if r.note && r.note.trim()}

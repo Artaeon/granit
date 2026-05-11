@@ -63,9 +63,9 @@
     const tone = priorityTone(p);
     if (tone === 'dim') return null;
     const cls =
-      tone === 'error' ? 'bg-error/20 text-error'
-      : tone === 'warning' ? 'bg-warning/20 text-warning'
-      : 'bg-info/20 text-info';
+      tone === 'error' ? 'bg-surface0 text-error'
+      : tone === 'warning' ? 'bg-surface0 text-warning'
+      : 'bg-surface0 text-info';
     return { label: `P${p}`, cls };
   }
 
@@ -434,7 +434,7 @@
   {#if swipeActive && swipeOffset !== 0}
     <div
       class="absolute inset-0 flex items-center px-3 text-sm font-semibold pointer-events-none
-        {swipeOffset > 0 ? 'justify-start bg-success/30 text-success' : 'justify-end bg-warning/30 text-warning'}"
+        {swipeOffset > 0 ? 'justify-start bg-surface0 text-success' : 'justify-end bg-surface0 text-warning'}"
       aria-hidden="true"
     >
       {#if swipeOffset > 0}
@@ -452,7 +452,7 @@
   {/if}
 <div
   class="task-card bg-surface0 border-l-2 {priorityClass(task.priority)} border border-surface1 rounded p-2 transition-all group relative
-    {isSelected ? 'ring-1 ring-primary' : 'hover:border-primary/40 hover:bg-surface0'}
+    {isSelected ? 'ring-1 ring-primary' : 'hover:border-primary hover:bg-surface0'}
     {isOverdue ? 'task-card--overdue' : ''}
     {isDueToday ? 'task-card--today' : ''}
     {task.done ? 'task-card--done' : ''}"
@@ -538,7 +538,7 @@
               </span>
             {/if}
             {#if task.scheduledStart}
-              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-primary bg-primary/10">
+              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-primary bg-surface1">
                 <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                 {new Date(task.scheduledStart).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}
               </span>
@@ -546,7 +546,7 @@
             {#if snoozed && task.snoozedUntil}
               <button
                 onclick={unsnooze}
-                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-warning bg-warning/10 hover:bg-warning/20"
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-warning bg-surface0 hover:bg-surface0"
                 title="click to wake now"
               >
                 <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -558,7 +558,7 @@
             {/if}
             {#if task.projectId}
               <span
-                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-secondary bg-secondary/10"
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-secondary bg-surface1"
                 title="project: {task.projectId}"
               >
                 <span aria-hidden="true">📁</span>
@@ -567,7 +567,7 @@
             {/if}
             {#if task.goalId}
               <span
-                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-info bg-info/10 font-mono"
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-info bg-surface0 font-mono"
                 title="goal: {task.goalId}"
               >
                 <span aria-hidden="true">🎯</span>{task.goalId}
@@ -575,7 +575,7 @@
             {/if}
             {#if task.deadlineId}
               <span
-                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-warning bg-warning/10"
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-warning bg-surface0"
                 title="deadline: {task.deadlineId}"
               >
                 <span aria-hidden="true">⏰</span>
@@ -592,7 +592,7 @@
               <span class="text-[10px] text-dim" title="depends on {task.dependsOn.join(', ')}">↳ {task.dependsOn.length} dep{task.dependsOn.length !== 1 ? 's' : ''}</span>
             {/if}
             {#if task.recurrence}
-              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-info bg-info/10" title="recurring {task.recurrence}">
+              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-info bg-surface0" title="recurring {task.recurrence}">
                 <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M3 16l3 3 3-3M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
                 {task.recurrence}
               </span>

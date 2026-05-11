@@ -655,12 +655,12 @@
       {#if project.kind || project.venture || (project.kind === 'software' && project.repo_url)}
         <div class="flex flex-wrap items-center gap-2 -mt-1 text-xs">
           {#if project.kind}
-            <span class="px-2 py-0.5 rounded bg-primary/15 text-primary uppercase tracking-wider text-[10px] font-medium">{project.kind}</span>
+            <span class="px-2 py-0.5 rounded bg-surface1 text-primary uppercase tracking-wider text-[10px] font-medium">{project.kind}</span>
           {/if}
           {#if project.venture}
             <a
               href={`/projects?venture=${encodeURIComponent(project.venture)}`}
-              class="px-2 py-0.5 rounded bg-secondary/15 text-secondary hover:bg-secondary/25"
+              class="px-2 py-0.5 rounded bg-surface1 text-secondary hover:bg-surface1"
               title="show all projects in this venture"
             >🏢 {project.venture}</a>
           {/if}
@@ -709,7 +709,7 @@
                 {@const pct = burnupMax === 0 ? 0 : Math.max(2, Math.round((b.count / burnupMax) * 100))}
                 <div class="flex-1 flex flex-col items-center justify-end gap-0.5" title="{b.label}: {b.count}">
                   <div
-                    class="w-full rounded-t {b.isThisWeek ? 'bg-primary' : 'bg-secondary/40'} transition-all"
+                    class="w-full rounded-t {b.isThisWeek ? 'bg-primary' : 'bg-surface2'} transition-all"
                     style="height: {pct}%"
                   ></div>
                   <div class="text-[9px] text-dim font-mono leading-none">{b.label}</div>
@@ -744,7 +744,7 @@
                 title="{d.label} {d.date}: {d.count} scheduled"
               >
                 <div
-                  class="w-full rounded-t {d.isToday ? 'bg-primary' : 'bg-secondary/40'} transition-all"
+                  class="w-full rounded-t {d.isToday ? 'bg-primary' : 'bg-surface2'} transition-all"
                   style="height: {pct}%"
                 ></div>
                 <div class="text-[9px] {d.isToday ? 'text-primary' : 'text-dim'} font-mono leading-none">{d.label}</div>
@@ -833,7 +833,7 @@
             </div>
           </div>
         {:else if aiHealthError}
-          <div class="text-xs text-error border border-error/30 bg-error/5 rounded px-3 py-2">
+          <div class="text-xs text-error border border-error bg-surface0 rounded px-3 py-2">
             <div class="font-medium mb-1">{aiHealthError}</div>
             {#if aiHealthRaw}
               <pre class="text-[10px] text-dim font-mono whitespace-pre-wrap mt-1">{aiHealthRaw}</pre>
@@ -874,7 +874,7 @@
         </div>
 
         {#if aiBriefError}
-          <div class="text-xs text-error border border-error/30 bg-error/5 rounded px-3 py-2 mb-2">
+          <div class="text-xs text-error border border-error bg-surface0 rounded px-3 py-2 mb-2">
             {aiBriefError}
             <button onclick={dismissAIBrief} class="ml-2 underline">dismiss</button>
           </div>
@@ -886,8 +886,8 @@
                overwrites the field. The "grounded in N tasks + M
                goals" line tells the user what the model actually
                read so the brief feels auditable, not magic. -->
-          <div class="mb-2 border border-primary/30 bg-primary/5 rounded">
-            <div class="px-3 py-2 border-b border-primary/20 flex items-baseline gap-2 text-[10px]">
+          <div class="mb-2 border border-surface2 bg-surface1 rounded">
+            <div class="px-3 py-2 border-b border-surface2 flex items-baseline gap-2 text-[10px]">
               <span class="text-primary uppercase tracking-wider font-medium flex-1">AI draft · review before saving</span>
               <span class="text-dim font-mono">grounded in {projectTasks.length} task{projectTasks.length === 1 ? '' : 's'}{linkedGoals.length > 0 ? ` + ${linkedGoals.length} goal${linkedGoals.length === 1 ? '' : 's'}` : ''}</span>
             </div>
@@ -895,7 +895,7 @@
               {aiBrief || '…'}
             </div>
             {#if !aiBriefBusy && aiBrief}
-              <div class="px-3 py-2 border-t border-primary/20 flex items-center gap-2">
+              <div class="px-3 py-2 border-t border-surface2 flex items-center gap-2">
                 <button
                   onclick={() => void applyAIBrief()}
                   disabled={aiBriefSaving}
@@ -954,7 +954,7 @@
         {:else}
           <button
             onclick={() => { nextActionBuf = project.next_action ?? ''; editingNextAction = true; }}
-            class="w-full text-left px-3 py-2.5 rounded text-sm border border-warning/30 bg-warning/10 text-warning hover:bg-warning/20 {!project.next_action ? 'italic opacity-70' : 'font-medium'}"
+            class="w-full text-left px-3 py-2.5 rounded text-sm border border-warning bg-surface0 text-warning hover:bg-surface0 {!project.next_action ? 'italic opacity-70' : 'font-medium'}"
           >→ {project.next_action || 'what\'s the next concrete step?'}</button>
         {/if}
       </section>

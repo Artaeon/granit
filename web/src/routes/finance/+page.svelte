@@ -148,8 +148,8 @@
   // ── status pill colors ─────────────────────────────────────────────
   function statusTone(s: string): { bg: string; text: string; label: string } {
     switch (s) {
-      case 'active':  return { bg: 'bg-success/15', text: 'text-success', label: 'Active' };
-      case 'planned': return { bg: 'bg-info/15',    text: 'text-info',    label: 'Planned' };
+      case 'active':  return { bg: 'bg-surface0', text: 'text-success', label: 'Active' };
+      case 'planned': return { bg: 'bg-surface0',    text: 'text-info',    label: 'Planned' };
       case 'idea':    return { bg: 'bg-primary/15', text: 'text-primary', label: 'Idea' };
       case 'paused':  return { bg: 'bg-surface1',   text: 'text-dim',     label: 'Paused' };
       default:        return { bg: 'bg-surface1',   text: 'text-subtext', label: s || '—' };

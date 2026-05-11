@@ -1451,7 +1451,7 @@
             <h3 class="text-xs uppercase tracking-wider text-dim mt-2 mb-2">Answered ✓</h3>
             <ul class="space-y-2 mb-5">
               {#each answered as p (p.id)}
-                <li class="bg-success/5 border border-success/30 rounded-lg p-3">
+                <li class="bg-surface0 border border-success rounded-lg p-3">
                   <div class="flex items-baseline gap-3 flex-wrap">
                     <p class="text-text flex-1 min-w-0 break-words">{p.text}</p>
                     {#if p.category}

@@ -321,7 +321,7 @@
 							<button
 								type="button"
 								onclick={() => useHistory(h)}
-								class="text-[10px] px-2 py-0.5 rounded bg-secondary/10 border border-secondary/30 text-secondary hover:bg-secondary/20"
+								class="text-[10px] px-2 py-0.5 rounded bg-surface1 border border-surface2 text-secondary hover:bg-surface1"
 								title={h}
 							>
 								{h.length > 40 ? h.slice(0, 39) + '…' : h}
@@ -369,7 +369,7 @@
 				{/if}
 
 				{#if applied.length > 0 && proposals.length === 0}
-					<div class="mb-3 flex items-baseline gap-2 p-2 rounded bg-success/5 border border-success/30 text-[11px]">
+					<div class="mb-3 flex items-baseline gap-2 p-2 rounded bg-surface0 border border-success text-[11px]">
 						<span class="text-success">✓ {applied.length} change{applied.length === 1 ? '' : 's'} applied</span>
 						<button
 							onclick={() => void undoRun()}
@@ -416,13 +416,13 @@
 								class="border rounded p-2 bg-surface0 transition-opacity {p.rejected
 									? 'opacity-40 border-surface1'
 									: p.applied
-									? 'border-success/40 bg-success/5'
+									? 'border-success bg-surface0'
 									: 'border-surface1 hover:border-primary'}"
 							>
 								<div class="flex items-baseline gap-2 mb-1">
 									<span
 										class="text-[9px] font-mono px-1 py-0.5 rounded uppercase tracking-wide {p.applied
-											? 'bg-success/20 text-success'
+											? 'bg-surface0 text-success'
 											: p.rejected
 											? 'bg-surface1 text-dim'
 											: 'bg-surface1 text-subtext'}"
@@ -433,7 +433,7 @@
 											type="button"
 											onclick={() => void applyAction(i)}
 											disabled={!!p.applying}
-											class="text-[11px] px-2 py-0.5 rounded bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-50"
+											class="text-[11px] px-2 py-0.5 rounded bg-surface1 text-primary hover:bg-primary hover:text-on-primary disabled:opacity-50"
 										>{p.applying ? '…' : 'accept'}</button>
 										<button
 											type="button"

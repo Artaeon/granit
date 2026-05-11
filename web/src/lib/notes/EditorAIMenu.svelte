@@ -1106,7 +1106,7 @@ Return [] if nothing in the note rises to the bar.`
       </button>
 
       {#if titleSuggestions.length > 0}
-        <div class="border-t border-surface1 mt-1 py-1 px-3 bg-primary/5">
+        <div class="border-t border-surface1 mt-1 py-1 px-3 bg-surface1">
           <div class="text-[10px] uppercase tracking-wider text-primary mb-1">title suggestions</div>
           {#each titleSuggestions as t}
             <button
@@ -1119,7 +1119,7 @@ Return [] if nothing in the note rises to the bar.`
       {/if}
 
       {#if gaps.length > 0}
-        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-warning/5 max-h-72 overflow-y-auto">
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-surface0 max-h-72 overflow-y-auto">
           <div class="flex items-baseline gap-2 mb-2">
             <span class="text-[10px] uppercase tracking-wider text-warning">what's missing</span>
             <span class="flex-1"></span>
@@ -1141,7 +1141,7 @@ Return [] if nothing in the note rises to the bar.`
       {/if}
 
       {#if memoryProposals.length > 0}
-        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-primary/5 max-h-80 overflow-y-auto">
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-surface1 max-h-80 overflow-y-auto">
           <div class="flex items-baseline gap-2 mb-2">
             <span class="text-[10px] uppercase tracking-wider text-primary">long-term memory</span>
             <span class="flex-1"></span>
@@ -1157,7 +1157,7 @@ Return [] if nothing in the note rises to the bar.`
                   onclick={() => commitMemoryProposal(i)}
                   disabled={p.committed}
                   class="tap-target flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded text-[11px] font-medium transition-colors {p.committed
-                    ? 'bg-success/20 text-success cursor-default'
+                    ? 'bg-surface0 text-success cursor-default'
                     : 'bg-surface0 border border-surface1 text-text hover:border-primary hover:bg-surface1'}"
                   aria-label={p.committed ? 'Already saved' : 'Save this fact to memory'}
                   title={p.committed ? 'Already saved' : 'Save to long-term memory'}
@@ -1178,7 +1178,7 @@ Return [] if nothing in the note rises to the bar.`
       {/if}
 
       {#if concepts.length > 0}
-        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-primary/5 max-h-72 overflow-y-auto">
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-surface1 max-h-72 overflow-y-auto">
           <div class="flex items-baseline gap-2 mb-2">
             <span class="text-[10px] uppercase tracking-wider text-primary">concepts</span>
             <span class="flex-1"></span>
@@ -1204,7 +1204,7 @@ Return [] if nothing in the note rises to the bar.`
       {/if}
 
       {#if studyCards.length > 0}
-        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-primary/5 max-h-72 overflow-y-auto">
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-surface1 max-h-72 overflow-y-auto">
           <div class="flex items-baseline gap-2 mb-2">
             <span class="text-[10px] uppercase tracking-wider text-primary">study questions</span>
             <span class="flex-1"></span>
@@ -1238,7 +1238,7 @@ Return [] if nothing in the note rises to the bar.`
              undoable transaction) or dismisses (no edit). The
              preview is read-only — re-running translation is one
              tap on DE / EN at the top of this section. -->
-        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-primary/5 max-h-72 overflow-y-auto">
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-surface1 max-h-72 overflow-y-auto">
           <div class="flex items-baseline gap-2 mb-2">
             <span class="text-[10px] uppercase tracking-wider text-primary">
               translation → {translatePreview.to === 'de' ? 'German' : 'English'}
@@ -1268,7 +1268,7 @@ Return [] if nothing in the note rises to the bar.`
              Accept inserts the whole outline as a `## Outline` block
              at the top of the body, with each heading + italic gist
              as a real markdown section the user can then flesh out. -->
-        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-info/5 max-h-72 overflow-y-auto">
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-surface0 max-h-72 overflow-y-auto">
           <div class="flex items-baseline gap-2 mb-2">
             <span class="text-[10px] uppercase tracking-wider text-info">outline</span>
             <span class="flex-1"></span>
@@ -1308,7 +1308,7 @@ Return [] if nothing in the note rises to the bar.`
              ticks the ones to commit, then "Add citations" splices a
              [^N] ref next to each cited line and a definitions block
              at the end of the body. All in one undoable transaction. -->
-        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-secondary/5 max-h-80 overflow-y-auto">
+        <div class="border-t border-surface1 mt-1 py-2 px-3 bg-surface1 max-h-80 overflow-y-auto">
           <div class="flex items-baseline gap-2 mb-2">
             <span class="text-[10px] uppercase tracking-wider text-secondary">vault citations</span>
             <span class="flex-1"></span>

@@ -249,7 +249,7 @@
           {#each filtered as o (o.path)}
             <a
               href="/notes/{encodeURIComponent(o.path)}"
-              class="bg-surface0 border border-surface1 rounded-lg p-3 hover:border-primary/40 transition-colors block"
+              class="bg-surface0 border border-surface1 rounded-lg p-3 hover:border-primary transition-colors block"
             >
               <div class="font-medium text-text truncate">{o.title}</div>
               <div class="text-xs text-dim font-mono mt-0.5 truncate">{o.path}</div>

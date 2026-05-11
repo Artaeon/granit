@@ -55,7 +55,7 @@
              visually crowding the rest of the row. -->
         <span
           class="w-10 h-6 rounded-full flex items-center justify-center transition-colors
-            {active ? 'bg-primary/15' : ''}"
+            {active ? 'bg-surface1' : ''}"
         >
           <NavIcon name={t.icon} class="w-5 h-5" />
         </span>
@@ -71,7 +71,7 @@
     >
       <span
         class="w-10 h-6 rounded-full flex items-center justify-center transition-colors
-          {moreActive ? 'bg-primary/15' : ''}"
+          {moreActive ? 'bg-surface1' : ''}"
       >
         <NavIcon name="more" class="w-5 h-5" />
       </span>

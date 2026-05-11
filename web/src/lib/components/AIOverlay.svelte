@@ -2098,7 +2098,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
       role="slider"
       onpointerdown={onResizeStart}
       onkeydown={onResizeKey}
-      class="hidden md:block absolute left-0 top-0 bottom-0 w-1.5 -ml-0.5 z-50 cursor-col-resize group {resizing ? 'bg-primary/40' : 'hover:bg-primary/30 focus-visible:bg-primary/40'} transition-colors"
+      class="hidden md:block absolute left-0 top-0 bottom-0 w-1.5 -ml-0.5 z-50 cursor-col-resize group {resizing ? 'bg-primary/40' : 'hover:bg-primary focus-visible:bg-primary/40'} transition-colors"
     >
       <span class="sr-only">Drag to resize panel</span>
     </button>
@@ -2455,7 +2455,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
           <button
             onclick={() => void saveThreadAsNote()}
             disabled={saving}
-            class="px-2 py-1 text-[11px] text-secondary hover:text-secondary/80 hover:underline disabled:opacity-50 inline-flex items-center gap-1"
+            class="px-2 py-1 text-[11px] text-secondary hover:text-subtext hover:underline disabled:opacity-50 inline-flex items-center gap-1"
             title="Save this thread as a markdown note under chat-history/"
           >
             <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2">

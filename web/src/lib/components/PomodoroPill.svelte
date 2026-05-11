@@ -117,9 +117,9 @@
   });
 
   let pillTone = $derived.by(() => {
-    if ($pomodoro.mode === 'focus') return 'bg-error/15 border-error/40 text-error';
-    if ($pomodoro.mode === 'break') return 'bg-success/15 border-success/40 text-success';
-    if ($pomodoro.lastFinishedAt > 0) return 'bg-success/15 border-success/40 text-success';
+    if ($pomodoro.mode === 'focus') return 'bg-surface0 border-error text-error';
+    if ($pomodoro.mode === 'break') return 'bg-surface0 border-success text-success';
+    if ($pomodoro.lastFinishedAt > 0) return 'bg-surface0 border-success text-success';
     return 'bg-mantle border-surface1 text-text';
   });
 </script>

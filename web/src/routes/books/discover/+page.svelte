@@ -191,7 +191,7 @@
   {#if warnings.length > 0}
     <div class="mt-3 space-y-2">
       {#each warnings as w (w.source)}
-        <div class="bg-warning/10 border border-warning/30 text-warning rounded p-2.5 text-xs">
+        <div class="bg-surface0 border border-warning text-warning rounded p-2.5 text-xs">
           <span class="font-medium">{sourceBadge(w.source).label}:</span>
           {warningCopy(w)}
         </div>
@@ -223,7 +223,7 @@
   {/if}
 
   {#if error}
-    <div class="mt-4 bg-error/10 border border-error/30 text-error rounded p-3 text-sm">
+    <div class="mt-4 bg-surface0 border border-error text-error rounded p-3 text-sm">
       {error}
     </div>
   {/if}

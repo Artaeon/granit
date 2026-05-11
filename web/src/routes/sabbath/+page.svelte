@@ -91,7 +91,7 @@
            verse, then time remaining, then a prayer prompt. No
            dashboard chrome; the page itself is the rest. -->
       <header class="text-center mb-10">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-success/10 text-success text-3xl mb-4">🕊️</div>
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-surface0 text-success text-3xl mb-4">🕊️</div>
         <h1 class="text-3xl font-light text-text">Sabbath</h1>
         <p class="text-sm text-dim mt-2">a day made for you, not the other way around</p>
       </header>
@@ -125,7 +125,7 @@
           and let it stay there.
         </p>
         <div class="mt-5 flex flex-wrap gap-2 text-sm">
-          <a href="/prayer" class="px-3 py-1.5 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15">→ /prayer</a>
+          <a href="/prayer" class="px-3 py-1.5 rounded bg-surface1 text-primary border border-surface2 hover:bg-surface1">→ /prayer</a>
           <a href="/jots" class="px-3 py-1.5 rounded bg-surface0 text-subtext border border-surface1 hover:bg-surface1">→ /jots</a>
           <a href="/scripture" class="px-3 py-1.5 rounded bg-surface0 text-subtext border border-surface1 hover:bg-surface1">→ /scripture</a>
         </div>

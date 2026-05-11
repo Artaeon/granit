@@ -161,14 +161,14 @@
           <button
             type="button"
             onclick={stop}
-            class="text-[11px] px-2 py-0.5 rounded bg-surface0 text-error border border-error/30 hover:bg-error/10"
+            class="text-[11px] px-2 py-0.5 rounded bg-surface0 text-error border border-error hover:bg-surface0"
           >stop</button>
           <span class="text-[10px] text-secondary italic">streaming…</span>
         {:else}
           <button
             type="button"
             onclick={generate}
-            class="text-[11px] px-2 py-0.5 rounded bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 inline-flex items-center gap-1"
+            class="text-[11px] px-2 py-0.5 rounded bg-surface1 hover:bg-surface1 text-primary border border-surface2 inline-flex items-center gap-1"
             title="Generate 3 study questions about this section"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-2.5 h-2.5">
@@ -193,7 +193,7 @@
     {/if}
 
     {#if error}
-      <div class="text-[11px] text-error bg-error/5 border border-error/20 rounded px-2 py-1">
+      <div class="text-[11px] text-error bg-surface0 border border-error rounded px-2 py-1">
         {error}
       </div>
     {:else if questions}

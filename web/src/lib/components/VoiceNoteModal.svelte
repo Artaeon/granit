@@ -301,7 +301,7 @@
   >
     <div class="w-full sm:max-w-xl bg-mantle border border-surface1 rounded-t-xl sm:rounded-xl shadow-2xl flex flex-col max-h-[92dvh]">
       <header class="flex items-center gap-3 px-4 py-3 border-b border-surface1">
-        <div class="w-8 h-8 rounded-full bg-primary/15 text-primary flex items-center justify-center">
+        <div class="w-8 h-8 rounded-full bg-surface1 text-primary flex items-center justify-center">
           <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="9" y="3" width="6" height="12" rx="3"/>
             <path d="M5 11a7 7 0 0014 0M12 18v3" stroke-linecap="round"/>
@@ -332,10 +332,10 @@
 
       <div class="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
         {#if errorMsg}
-          <div class="text-xs text-error bg-error/10 border border-error/20 rounded px-2 py-1.5">{errorMsg}</div>
+          <div class="text-xs text-error bg-surface0 border border-error rounded px-2 py-1.5">{errorMsg}</div>
         {/if}
         {#if !recognitionSupported && phase === 'idle'}
-          <div class="text-xs text-warning bg-warning/10 border border-warning/20 rounded px-2 py-1.5">
+          <div class="text-xs text-warning bg-surface0 border border-warning rounded px-2 py-1.5">
             Live transcription not supported in this browser. You can still record audio and transcribe later.
           </div>
         {/if}

@@ -496,8 +496,8 @@
       {#if loadError}<div class="text-sm text-error mb-4">{loadError}</div>{/if}
 
       {#if aiNotConfigured}
-        <div class="mb-4 p-4 bg-warning/10 border border-warning/30 rounded-lg flex items-start gap-3">
-          <div class="w-8 h-8 rounded-full bg-warning/20 flex items-center justify-center flex-shrink-0">
+        <div class="mb-4 p-4 bg-surface0 border border-warning rounded-lg flex items-start gap-3">
+          <div class="w-8 h-8 rounded-full bg-surface0 flex items-center justify-center flex-shrink-0">
             <svg viewBox="0 0 24 24" class="w-4 h-4 text-warning" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 9v4M12 17h.01" stroke-linecap="round"/>
               <circle cx="12" cy="12" r="9"/>
@@ -526,7 +526,7 @@
           onclick={toggleFocus}
           aria-pressed={focus}
           class="text-xs px-3 py-1.5 rounded inline-flex items-center gap-1.5 transition-colors
-            {focus ? 'bg-primary/15 text-primary border border-primary/40' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary/40'}"
+            {focus ? 'bg-surface1 text-primary border border-surface2' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary'}"
           title={focus ? 'Show all enabled widgets' : 'Hide everything except today essentials'}
         >
           <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
@@ -581,7 +581,7 @@
                   ondragend={onDragEnd}
                   class="flex items-center gap-2 py-1.5 px-2 rounded transition-colors cursor-grab active:cursor-grabbing
                     {dragId === w.id ? 'opacity-40' : ''}
-                    {dragOverId === w.id && dragId !== w.id ? 'bg-primary/10 border border-primary/40' : 'border border-transparent'}"
+                    {dragOverId === w.id && dragId !== w.id ? 'bg-surface1 border border-surface2' : 'border border-transparent'}"
                 >
                   <span aria-hidden="true" class="text-dim/60 select-none flex-shrink-0" title="drag to reorder">⋮⋮</span>
                   <button
@@ -641,7 +641,7 @@
             <ul class="space-y-1">
               {#each config?.layouts ?? [] as l (l.name)}
                 {@const active = config?.active === l.name}
-                <li class="flex items-center gap-2 px-2.5 py-1.5 rounded {active ? 'bg-primary/10 border border-primary/40' : 'border border-transparent hover:bg-surface0'}">
+                <li class="flex items-center gap-2 px-2.5 py-1.5 rounded {active ? 'bg-surface1 border border-surface2' : 'border border-transparent hover:bg-surface0'}">
                   <span class="text-sm flex-1 truncate {active ? 'text-primary font-medium' : 'text-text'}">
                     {l.name}
                   </span>
@@ -702,7 +702,7 @@
               {:then Widget}
                 <Widget vaultPath={vault?.root ?? ''} />
               {:catch err}
-                <div class="bg-error/10 border border-error/30 text-error rounded-lg p-3 text-xs">
+                <div class="bg-surface0 border border-error text-error rounded-lg p-3 text-xs">
                   Widget {meta.label} failed to load: {err?.message ?? err}
                 </div>
               {/await}

@@ -139,7 +139,7 @@
           {#if target}
             <span
               class="text-[10px] px-1.5 py-0.5 rounded border tabular-nums flex-shrink-0
-                {onTarget ? 'bg-success/15 text-success border-success/30' : 'bg-warning/10 text-warning border-warning/25'}"
+                {onTarget ? 'bg-surface0 text-success border-success' : 'bg-surface0 text-warning border-warning'}"
               title="weekly target"
             >🎯 {last7}/{target}</span>
           {/if}
@@ -159,7 +159,7 @@
         type="button"
         onclick={tickAll}
         disabled={bulkBusy}
-        class="mt-3 w-full text-[11px] py-1.5 rounded border bg-success/10 text-success border-success/30 hover:bg-success/20 disabled:opacity-50"
+        class="mt-3 w-full text-[11px] py-1.5 rounded border bg-surface0 text-success border-success hover:bg-surface0 disabled:opacity-50"
       >
         {bulkBusy ? '…' : `Tick all (${totalCount - doneCount})`}
       </button>

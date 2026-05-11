@@ -259,11 +259,11 @@
 
 {#if visible}
   <div
-    class="ai-summary mb-4 not-prose border border-secondary/30 rounded-md bg-secondary/5"
+    class="ai-summary mb-4 not-prose border border-surface2 rounded-md bg-surface1"
     role="region"
     aria-label="AI summary"
   >
-    <div class="flex items-baseline gap-2 px-3 py-2 border-b border-secondary/20">
+    <div class="flex items-baseline gap-2 px-3 py-2 border-b border-surface2">
       <span class="text-secondary text-[11px] uppercase tracking-wider font-medium flex items-center gap-1.5">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3" aria-hidden="true">
           <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>

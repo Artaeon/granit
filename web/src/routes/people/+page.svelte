@@ -325,7 +325,7 @@
     <div class="flex items-baseline gap-3 flex-wrap mb-4">
       <span class="text-xs text-dim">{people.length} people</span>
       {#if staleCount > 0}
-        <span class="text-[11px] px-1.5 py-0.5 rounded bg-warning/15 text-warning">
+        <span class="text-[11px] px-1.5 py-0.5 rounded bg-surface0 text-warning">
           {staleCount} need a ping
         </span>
       {/if}
@@ -334,7 +334,7 @@
           type="button"
           onclick={aiSuggest}
           disabled={aiBusy}
-          class="text-[11px] px-2 py-0.5 rounded inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 disabled:opacity-50"
+          class="text-[11px] px-2 py-0.5 rounded inline-flex items-center gap-1 bg-surface1 text-primary border border-surface2 hover:bg-surface1 disabled:opacity-50"
           title="Ask AI: who should I reach out to today?"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
@@ -348,7 +348,7 @@
     </div>
 
     {#if aiBusy || aiPicks.length > 0 || aiError}
-      <section class="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+      <section class="mb-4 p-3 bg-surface1 border border-surface2 rounded-lg">
         <div class="flex items-baseline gap-2 mb-2">
           <h3 class="text-xs uppercase tracking-wider text-primary font-medium">Today's reach-outs</h3>
           <span class="flex-1"></span>
@@ -378,7 +378,7 @@
                 {pick.name}
               </button>
               <span class="flex-1 text-xs text-subtext truncate">{pick.rationale}</span>
-              <button onclick={() => pingByName(pick.name)} class="text-[11px] px-2 py-0.5 rounded bg-success/15 text-success hover:bg-success/25" title="stamp last contact = today">ping</button>
+              <button onclick={() => pingByName(pick.name)} class="text-[11px] px-2 py-0.5 rounded bg-surface0 text-success hover:bg-surface0" title="stamp last contact = today">ping</button>
             </li>
           {/each}
         </ul>
@@ -444,7 +444,7 @@
         {#each filtered as p (p.id)}
           {@const stale = isStale(p)}
           {@const lab = lastContactLabel(p)}
-          <li class="bg-surface0 border border-surface1 rounded-lg p-3 {p.archived ? 'opacity-60' : stale ? 'border-warning/40' : ''}">
+          <li class="bg-surface0 border border-surface1 rounded-lg p-3 {p.archived ? 'opacity-60' : stale ? 'border-warning' : ''}">
             <div class="flex items-baseline gap-3 flex-wrap">
               <button onclick={() => openEdit(p)} class="text-base font-medium text-text hover:underline truncate">{p.name}</button>
               {#if p.relationship}
@@ -460,7 +460,7 @@
               {/if}
               <button
                 onclick={() => pingPerson(p)}
-                class="text-xs px-2 py-0.5 rounded bg-success/15 text-success hover:bg-success/25"
+                class="text-xs px-2 py-0.5 rounded bg-surface0 text-success hover:bg-surface0"
                 title="Stamp last contact = today"
               >ping</button>
               <button onclick={() => deletePerson(p)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>

@@ -484,7 +484,7 @@
           <button
             type="button"
             onclick={() => (folderFilter = '')}
-            class="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded bg-warning/10 text-warning hover:bg-warning/20 flex-shrink-0"
+            class="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded bg-surface0 text-warning hover:bg-surface0 flex-shrink-0"
             title="Clear folder filter"
           >
             <span>📁</span>
@@ -564,7 +564,7 @@
               {#if sec.untagged}
                 <span class="text-[11px] uppercase tracking-wider text-dim italic">untagged</span>
               {:else}
-                <span class="text-xs px-1.5 py-0.5 rounded bg-secondary/15 text-secondary">#{sec.tag}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-surface1 text-secondary">#{sec.tag}</span>
               {/if}
               <span class="text-[11px] text-dim">{sec.notes.length}</span>
             </div>
@@ -641,7 +641,7 @@
             <span>·</span>
             <span class="flex flex-wrap gap-1">
               {#each n.tags.slice(0, 3) as tag}
-                <span class="px-1 rounded bg-secondary/10 text-secondary">#{tag}</span>
+                <span class="px-1 rounded bg-surface1 text-secondary">#{tag}</span>
               {/each}
             </span>
           {/if}

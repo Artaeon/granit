@@ -221,7 +221,7 @@
           type="button"
           onclick={() => onJump?.(h.line)}
           class="w-full text-left py-1 px-2 rounded truncate flex items-baseline gap-1.5 transition-colors
-            {isActive ? 'bg-primary/10 text-primary border-l-2 border-primary -ml-px' : 'text-text hover:bg-surface0'}"
+            {isActive ? 'bg-surface1 text-primary border-l-2 border-primary -ml-px' : 'text-text hover:bg-surface0'}"
           style="padding-left: {0.5 + (h.level - 1) * 0.75}rem; font-size: {h.level === 1 ? '0.875rem' : '0.8125rem'}; opacity: {isActive ? 1 : 1 - (h.level - 1) * 0.08};"
         >
           <span class="truncate flex-1">{h.text}</span>

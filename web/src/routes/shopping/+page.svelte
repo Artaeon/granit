@@ -628,7 +628,7 @@
                         {/if}
                         <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
                           {#if it.standard}
-                            <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary/15 text-secondary">
+                            <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface1 text-secondary">
                               standard{#if it.cadence} · {it.cadence}{/if}
                             </span>
                           {/if}

@@ -95,20 +95,20 @@
     do: {
       title: 'Do',
       subtitle: 'Important · urgent',
-      accent: 'border-error/40',
-      badge: 'bg-error/15 text-error'
+      accent: 'border-error',
+      badge: 'bg-surface0 text-error'
     },
     plan: {
       title: 'Plan',
       subtitle: 'Important · not urgent',
-      accent: 'border-success/40',
-      badge: 'bg-success/15 text-success'
+      accent: 'border-success',
+      badge: 'bg-surface0 text-success'
     },
     delegate: {
       title: 'Delegate',
       subtitle: 'Urgent · not important',
-      accent: 'border-warning/40',
-      badge: 'bg-warning/15 text-warning'
+      accent: 'border-warning',
+      badge: 'bg-surface0 text-warning'
     },
     drop: {
       title: 'Drop',

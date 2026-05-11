@@ -527,7 +527,7 @@
                  here jumps to the project's detail view. -->
             <a
               href={`/projects/${encodeURIComponent(event.project_id)}`}
-              class="inline-flex items-center gap-1 text-xs px-2 py-0.5 mt-2 rounded-full bg-secondary/15 text-secondary border border-secondary/30 hover:bg-secondary/25"
+              class="inline-flex items-center gap-1 text-xs px-2 py-0.5 mt-2 rounded-full bg-surface1 text-secondary border border-surface2 hover:bg-surface1"
               title="open project"
             >
               <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2">
@@ -713,13 +713,13 @@
             <button type="submit" disabled={busy} class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded disabled:opacity-50">save</button>
             <button type="button" onclick={() => (editing = false)} class="px-3 py-1.5 text-sm text-subtext hover:text-text">cancel</button>
             <span class="flex-1"></span>
-            <button type="button" onclick={deleteEvent} disabled={busy} class="px-3 py-1.5 text-sm text-error hover:bg-error/10 rounded">delete</button>
+            <button type="button" onclick={deleteEvent} disabled={busy} class="px-3 py-1.5 text-sm text-error hover:bg-surface0 rounded">delete</button>
           </div>
         </form>
       {:else}
       <div class="flex flex-wrap gap-2 pt-2 border-t border-surface1">
         {#if event.taskId}
-          <button onclick={toggleDone} disabled={busy} class="px-3 py-1.5 text-sm bg-success/20 text-success rounded hover:bg-success/30 disabled:opacity-50">
+          <button onclick={toggleDone} disabled={busy} class="px-3 py-1.5 text-sm bg-surface0 text-success rounded hover:bg-surface0 disabled:opacity-50">
             {event.done ? 'mark not done' : 'mark done'}
           </button>
           {#if event.start}
@@ -739,7 +739,7 @@
             <button
               onclick={skipOccurrence}
               disabled={busy}
-              class="px-3 py-1.5 text-sm bg-warning/15 text-warning rounded hover:bg-warning/25"
+              class="px-3 py-1.5 text-sm bg-surface0 text-warning rounded hover:bg-surface0"
               title="Cancel just this occurrence — keep the rest of the series"
             >skip this</button>
           {/if}
@@ -753,11 +753,11 @@
             <button
               onclick={resetOccurrence}
               disabled={busy}
-              class="px-3 py-1.5 text-sm bg-info/15 text-info rounded hover:bg-info/25"
+              class="px-3 py-1.5 text-sm bg-surface0 text-info rounded hover:bg-surface0"
               title="Drop the per-occurrence override and inherit the series defaults"
             >reset this</button>
           {/if}
-          <button onclick={deleteEvent} disabled={busy} class="px-3 py-1.5 text-sm text-error hover:bg-error/10 rounded">
+          <button onclick={deleteEvent} disabled={busy} class="px-3 py-1.5 text-sm text-error hover:bg-surface0 rounded">
             {event.type === 'event' && event.rrule ? 'delete series' : 'delete'}
           </button>
         {/if}
@@ -769,7 +769,7 @@
         <button
           onclick={createMeetingNote}
           disabled={creatingMeetingNote}
-          class="px-3 py-1.5 text-sm bg-secondary/15 text-secondary rounded hover:bg-secondary/25 disabled:opacity-50"
+          class="px-3 py-1.5 text-sm bg-surface1 text-secondary rounded hover:bg-surface1 disabled:opacity-50"
           title="Create a meeting note for this event with frontmatter"
         >
           {creatingMeetingNote ? 'creating…' : '✎ meeting note'}

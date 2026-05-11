@@ -203,9 +203,9 @@
               <header class="flex items-baseline gap-2 mb-1">
                 <h3 class="text-base font-semibold text-text flex-1 truncate">{p.name}</h3>
                 {#if p.includeWrite}
-                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-error/15 text-error" title="Can create/edit notes/tasks">writes</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-surface0 text-error" title="Can create/edit notes/tasks">writes</span>
                 {/if}
-                <span class="text-[10px] px-1.5 py-0.5 rounded {p.source === 'vault' ? 'bg-info/15 text-info' : 'bg-surface1 text-dim'}" title={p.source === 'vault' ? '.granit/agents/' + p.id + '.json' : 'shipped with granit'}>
+                <span class="text-[10px] px-1.5 py-0.5 rounded {p.source === 'vault' ? 'bg-surface0 text-info' : 'bg-surface1 text-dim'}" title={p.source === 'vault' ? '.granit/agents/' + p.id + '.json' : 'shipped with granit'}>
                   {p.source}
                 </span>
               </header>

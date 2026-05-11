@@ -148,7 +148,7 @@
       <button
         type="button"
         onclick={fire}
-        class="text-xs px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 inline-flex items-center gap-1.5"
+        class="text-xs px-2 py-1 rounded bg-surface1 hover:bg-surface1 text-primary border border-surface2 inline-flex items-center gap-1.5"
         title="Ask AI to suggest tags + outbound links from your vault"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5">
@@ -163,12 +163,12 @@
   </div>
 
   {#if error}
-    <div class="text-xs text-error bg-error/10 border border-error/20 rounded px-2 py-1.5">
+    <div class="text-xs text-error bg-surface0 border border-error rounded px-2 py-1.5">
       {error}
     </div>
   {/if}
   {#if warning}
-    <div class="text-xs text-warning bg-warning/10 border border-warning/20 rounded px-2 py-1.5">
+    <div class="text-xs text-warning bg-surface0 border border-warning rounded px-2 py-1.5">
       {warning}
     </div>
   {/if}
@@ -183,7 +183,7 @@
       <div class="flex flex-wrap gap-1">
         {#each tags as tag (tag.name)}
           <span
-            class="group inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-surface0 border border-surface1 hover:border-primary/40"
+            class="group inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-surface0 border border-surface1 hover:border-primary"
             title={tag.rationale ?? ''}
           >
             <button
@@ -213,7 +213,7 @@
       <div class="space-y-1">
         {#each links as link (link.type + ':' + link.ref)}
           <div
-            class="flex items-start gap-1.5 group rounded border border-surface1 bg-surface0 px-2 py-1.5 hover:border-primary/40"
+            class="flex items-start gap-1.5 group rounded border border-surface1 bg-surface0 px-2 py-1.5 hover:border-primary"
             title={link.rationale ?? ''}
           >
             <span class="text-xs leading-5">{linkIcon[link.type]}</span>

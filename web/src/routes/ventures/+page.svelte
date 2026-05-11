@@ -364,7 +364,7 @@
                   {@const projectsCount = v.project_count ?? 0}
                   {@const goalsCount = v.goal_count ?? 0}
                   <article
-                    class="bg-surface0 border border-surface1 rounded-lg overflow-hidden hover:border-primary/40 transition-colors flex flex-col"
+                    class="bg-surface0 border border-surface1 rounded-lg overflow-hidden hover:border-primary transition-colors flex flex-col"
                   >
                     <div class="h-1.5 flex-shrink-0" style="background: {colorVar(v.color)}"></div>
                     <div class="p-4 flex flex-col gap-2 flex-1">
@@ -528,7 +528,7 @@
                 <p class="text-xs text-dim italic text-center py-4">empty</p>
               {:else}
                 {#each list as v (v.name)}
-                  <article class="bg-mantle border border-surface1 rounded p-2.5 hover:border-primary/40 transition-colors">
+                  <article class="bg-mantle border border-surface1 rounded p-2.5 hover:border-primary transition-colors">
                     <div class="flex items-start gap-2">
                       <span class="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style="background: {colorVar(v.color)}"></span>
                       <a

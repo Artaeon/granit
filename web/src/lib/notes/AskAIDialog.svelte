@@ -361,7 +361,7 @@
         </span>
         {#if bigInput}
           <span
-            class="text-[10px] px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/30"
+            class="text-[10px] px-1.5 py-0.5 rounded bg-surface0 text-warning border border-warning"
             title="Large input — costs more tokens. Consider selecting a portion instead of the whole note."
           >big</span>
         {/if}
@@ -404,7 +404,7 @@
                    when it does, and tells them how to back out
                    ("type to edit"). The pill clears the moment
                    cancelAutoFire runs (any key in the textarea). -->
-              <div class="absolute right-2 top-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/15 text-[10px] text-primary pointer-events-none">
+              <div class="absolute right-2 top-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface1 text-[10px] text-primary pointer-events-none">
                 <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
                 <span>preset queued · type to edit</span>
               </div>
@@ -437,7 +437,7 @@
              the spinner; pending+streaming shows the partial
              response with a small streaming indicator above it. -->
         {#if error}
-          <div class="text-xs text-error border border-error/30 bg-error/5 rounded px-3 py-2">
+          <div class="text-xs text-error border border-error bg-surface0 rounded px-3 py-2">
             {error}
             {#if /provider|api key|not configured/i.test(error)}
               <div class="text-dim mt-1">
@@ -511,9 +511,9 @@
                   {#if l.type === 'eq'}
                     <div class="px-3 py-0.5 text-dim whitespace-pre-wrap break-words"><span class="opacity-60">  </span>{l.text || ' '}</div>
                   {:else if l.type === 'add'}
-                    <div class="px-3 py-0.5 bg-success/10 text-success whitespace-pre-wrap break-words"><span class="opacity-80">+ </span>{l.text || ' '}</div>
+                    <div class="px-3 py-0.5 bg-surface0 text-success whitespace-pre-wrap break-words"><span class="opacity-80">+ </span>{l.text || ' '}</div>
                   {:else}
-                    <div class="px-3 py-0.5 bg-error/10 text-error whitespace-pre-wrap break-words"><span class="opacity-80">- </span>{l.text || ' '}</div>
+                    <div class="px-3 py-0.5 bg-surface0 text-error whitespace-pre-wrap break-words"><span class="opacity-80">- </span>{l.text || ' '}</div>
                   {/if}
                 {/each}
               </div>
@@ -542,7 +542,7 @@
           <button
             type="button"
             onclick={stop}
-            class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-error border border-error/30 rounded hover:bg-error/10"
+            class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-error border border-error rounded hover:bg-surface0"
           >Stop</button>
           <span class="flex-1"></span>
           <span class="text-[11px] text-dim italic">Streaming · cancel anytime</span>

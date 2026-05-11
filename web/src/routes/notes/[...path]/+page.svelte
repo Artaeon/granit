@@ -1576,7 +1576,7 @@
           </svg>
           <span>Margin notes</span>
           {#if annotationCount > 0}
-            <span class="ml-auto normal-case tracking-normal text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary tabular-nums">
+            <span class="ml-auto normal-case tracking-normal text-[10px] px-1.5 py-0.5 rounded-full bg-surface1 text-primary tabular-nums">
               {annotationCount}
             </span>
           {/if}
@@ -1751,7 +1751,7 @@
       </header>
       <div class="p-6 text-sm text-error">{error}</div>
     {:else if error}
-      <div class="px-4 py-2 text-sm text-error border-b border-error/30 bg-error/10 flex-shrink-0">{error}</div>
+      <div class="px-4 py-2 text-sm text-error border-b border-error bg-surface0 flex-shrink-0">{error}</div>
     {/if}
     {#if note}
       <header bind:this={editorHeaderEl} class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle sticky top-0 z-20">
@@ -2009,7 +2009,7 @@
           aria-label={audioOpen ? 'Close audio player' : 'Open audio player'}
           aria-pressed={audioOpen}
           class="hidden sm:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
-            {audioOpen ? 'bg-secondary/15 text-secondary' : 'text-subtext hover:text-secondary hover:bg-surface0'}"
+            {audioOpen ? 'bg-surface1 text-secondary' : 'text-subtext hover:text-secondary hover:bg-surface0'}"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
             <path d="M11 5L6 9H2v6h4l5 4V5z" stroke-linejoin="round"/>
@@ -2029,7 +2029,7 @@
           aria-label={readingMode ? 'Exit reading mode' : 'Enter reading mode'}
           aria-pressed={readingMode}
           class="hidden sm:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
-            {readingMode ? 'bg-primary/15 text-primary' : 'text-subtext hover:text-primary hover:bg-surface0'}"
+            {readingMode ? 'bg-surface1 text-primary' : 'text-subtext hover:text-primary hover:bg-surface0'}"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
             <path d="M2 5h7a3 3 0 013 3v11a2 2 0 00-2-2H2V5z"/>
@@ -2047,7 +2047,7 @@
           aria-label={focusMode ? 'Exit focus mode' : 'Enter focus mode'}
           aria-pressed={focusMode}
           class="hidden sm:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
-            {focusMode ? 'bg-primary/15 text-primary' : 'text-subtext hover:text-primary hover:bg-surface0'}"
+            {focusMode ? 'bg-surface1 text-primary' : 'text-subtext hover:text-primary hover:bg-surface0'}"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
             {#if focusMode}
@@ -2134,7 +2134,7 @@
       {#if saveFailCount >= 2 && note}
         <div
           role="status"
-          class="px-3 sm:px-4 py-2 border-b border-error/40 bg-error/10 text-error text-xs sm:text-sm flex items-center gap-3"
+          class="px-3 sm:px-4 py-2 border-b border-error bg-surface0 text-error text-xs sm:text-sm flex items-center gap-3"
         >
           <span class="flex-shrink-0" aria-hidden="true">⚠</span>
           <span class="flex-1 min-w-0">
@@ -2146,7 +2146,7 @@
             type="button"
             onclick={() => save({ silent: false })}
             disabled={saving}
-            class="px-2.5 py-1 rounded bg-error/20 hover:bg-error/30 text-error font-medium flex-shrink-0 disabled:opacity-50"
+            class="px-2.5 py-1 rounded bg-surface0 hover:bg-surface0 text-error font-medium flex-shrink-0 disabled:opacity-50"
           >
             {saving ? 'retrying…' : 'retry now'}
           </button>

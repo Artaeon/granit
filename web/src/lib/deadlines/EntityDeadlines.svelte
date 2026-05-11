@@ -129,9 +129,9 @@
               >
                 <span class="text-sm text-text flex-1 truncate group-hover:text-primary">{d.title}</span>
                 {#if d.importance === 'critical'}
-                  <span class="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-error/15 text-error flex-shrink-0">crit</span>
+                  <span class="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-surface0 text-error flex-shrink-0">crit</span>
                 {:else if d.importance === 'high'}
-                  <span class="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-warning/15 text-warning flex-shrink-0">high</span>
+                  <span class="text-[9px] uppercase tracking-wider px-1 py-0.5 rounded bg-surface0 text-warning flex-shrink-0">high</span>
                 {/if}
                 <span class="text-xs tabular-nums flex-shrink-0" style="color: var(--color-{t});">{countdown(days)}</span>
               </a>
@@ -143,7 +143,7 @@
         {/if}
       {/if}
       {#if recentlyMet.length > 0}
-        <ul class="space-y-0.5 mt-2 pl-2 border-l border-success/30">
+        <ul class="space-y-0.5 mt-2 pl-2 border-l border-success">
           {#each recentlyMet as d (d.id)}
             <li class="text-[11px] text-success/80 truncate">✓ {d.title}</li>
           {/each}

@@ -103,7 +103,7 @@
           {/if}
           <button
             onclick={() => removeRule(i)}
-            class="text-error hover:bg-error/10 px-2 py-1 rounded text-xs"
+            class="text-error hover:bg-surface0 px-2 py-1 rounded text-xs"
             aria-label="remove"
           >×</button>
         </li>

@@ -1352,7 +1352,7 @@
           onclick={() => void dayInsight(cursor)}
           disabled={insightBusy}
           title="AI take on this day's schedule"
-          class="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border bg-primary/10 text-primary border-primary/20 hover:bg-primary/15 disabled:opacity-50"
+          class="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border bg-surface1 text-primary border-surface2 hover:bg-surface1 disabled:opacity-50"
         >
           <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" />
@@ -1398,7 +1398,7 @@
         Plan
       </button>
       {#if planMode}
-        <span class="hidden sm:inline-block text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary/20 text-secondary border border-secondary/30">Plan mode</span>
+        <span class="hidden sm:inline-block text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface1 text-secondary border border-surface2">Plan mode</span>
       {/if}
       <!-- AI: Plan my week. Visible on sm+ to keep mobile lean —
            mobile already has the global Mod+J overlay via the
@@ -1409,7 +1409,7 @@
         onclick={() => void planMyWeek()}
         disabled={aiBusy}
         title="Suggest a slot for each unscheduled open task across the next 7 days"
-        class="hidden sm:inline-flex px-2.5 py-1.5 text-xs sm:text-sm bg-gradient-to-r from-primary/15 to-secondary/15 border border-primary/30 text-primary rounded hover:border-primary/60 disabled:opacity-50 items-center gap-1"
+        class="hidden sm:inline-flex px-2.5 py-1.5 text-xs sm:text-sm bg-surface1 border border-surface2 text-primary rounded hover:border-primary disabled:opacity-50 items-center gap-1"
       >
         <span aria-hidden="true">✨</span>
         <span>{aiBusy ? 'thinking…' : 'Plan my week'}</span>
@@ -1444,7 +1444,7 @@
         onclick={() => (findOpen = !findOpen)}
         aria-pressed={findOpen}
         title="AI finds empty slots that match your duration + time-of-day"
-        class="hidden sm:inline-flex px-2.5 py-1.5 text-xs sm:text-sm rounded items-center gap-1 {findOpen ? 'bg-primary text-on-primary' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary/40'}"
+        class="hidden sm:inline-flex px-2.5 py-1.5 text-xs sm:text-sm rounded items-center gap-1 {findOpen ? 'bg-primary text-on-primary' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary'}"
       >
         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="9"/>
@@ -1593,7 +1593,7 @@
          user clicks Plan or navigates away (insightForDay
          comparison handles the latter). -->
     {#if (insightText || insightBusy || insightError) && (view === 'day' || view === '3day') && insightForDay === fmtDateISO(cursor)}
-      <div class="px-3 py-2.5 border-b border-surface1 flex-shrink-0 bg-primary/5">
+      <div class="px-3 py-2.5 border-b border-surface1 flex-shrink-0 bg-surface1">
         <div class="flex items-baseline gap-2 mb-1">
           <span class="text-[10px] uppercase tracking-wider text-primary font-semibold">✦ Day insight</span>
           <span class="flex-1"></span>
@@ -1621,7 +1621,7 @@
          tint as the other AI surfaces (vision/goals/tasks) so the
          visual category is consistent across pages. -->
     {#if aiBusy || aiResponse || aiError}
-      <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-gradient-to-r from-primary/5 via-secondary/5 to-primary/5">
+      <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-surface1">
         <div class="flex items-baseline gap-2 mb-2">
           <span class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">✨ Plan my week</span>
           {#if aiBusy}

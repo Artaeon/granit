@@ -187,9 +187,9 @@
 										{#if pb}
 											<span
 												class="text-[9px] font-mono px-1 rounded {p.priority && p.priority >= 3
-													? 'bg-error/15 text-error'
+													? 'bg-surface0 text-error'
 													: p.priority === 2
-													? 'bg-warning/15 text-warning'
+													? 'bg-surface0 text-warning'
 													: 'bg-surface1 text-dim'}"
 												title="priority {p.priority}"
 											>

@@ -147,7 +147,7 @@
         {@const pct = max === 0 ? 0 : Math.max(2, Math.round((b.count / max) * 100))}
         <div class="flex-1 flex flex-col items-center justify-end gap-1" title="{b.label}: {b.count} task{b.count === 1 ? '' : 's'}">
           <div
-            class="w-full rounded-t {b.isThisWeek ? 'bg-primary' : 'bg-secondary/40'} transition-all"
+            class="w-full rounded-t {b.isThisWeek ? 'bg-primary' : 'bg-surface2'} transition-all"
             style="height: {pct}%"
           ></div>
           <div class="text-[9px] text-dim font-mono leading-none">{b.label}</div>

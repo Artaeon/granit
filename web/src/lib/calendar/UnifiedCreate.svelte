@@ -441,7 +441,7 @@
                 endM = newEnd % 60;
               }}
               class="px-2 py-1 text-xs rounded border transition-colors
-                {active ? 'bg-primary/15 border-primary text-primary' : 'bg-surface0 border-surface1 text-subtext hover:border-primary/40'}"
+                {active ? 'bg-surface1 border-primary text-primary' : 'bg-surface0 border-surface1 text-subtext hover:border-primary'}"
             >{preset.label}</button>
           {/each}
         </div>
@@ -539,7 +539,7 @@
                   type="button"
                   onclick={() => (remindMinsBefore = preset.mins)}
                   class="px-2 py-1 text-xs rounded border transition-colors
-                    {active ? 'bg-primary/15 border-primary text-primary' : 'bg-surface0 border-surface1 text-subtext hover:border-primary/40'}"
+                    {active ? 'bg-surface1 border-primary text-primary' : 'bg-surface0 border-surface1 text-subtext hover:border-primary'}"
                 >{preset.label}</button>
               {/each}
             </div>

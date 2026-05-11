@@ -211,7 +211,7 @@
     </div>
     <button
       onclick={openPlanDrawer}
-      class="px-2.5 py-1 text-xs rounded bg-secondary/15 text-secondary border border-secondary/30 hover:bg-secondary/25 flex items-center gap-1.5"
+      class="px-2.5 py-1 text-xs rounded bg-surface1 text-secondary border border-surface2 hover:bg-surface1 flex items-center gap-1.5"
       title="Preview an AI-drafted schedule, edit, then apply"
     >
       <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -247,7 +247,7 @@
               ? `scheduled at ${fmtScheduled(t.scheduledStart)} — drag on grid to move`
               : 'drag onto the grid to schedule'}
             class="flex items-center gap-2 px-2 py-1.5 rounded text-xs border border-surface1 bg-base
-              {scheduled ? 'opacity-40 cursor-default' : 'cursor-grab active:cursor-grabbing hover:border-primary/50'}
+              {scheduled ? 'opacity-40 cursor-default' : 'cursor-grab active:cursor-grabbing hover:border-primary'}
               flex-shrink-0 md:flex-shrink min-w-[180px] md:min-w-0"
             style="touch-action: {scheduled ? 'auto' : 'none'};"
           >

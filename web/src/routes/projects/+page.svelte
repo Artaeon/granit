@@ -684,7 +684,7 @@
       {#if ventureFilter}
         <button
           onclick={clearVentureFilter}
-          class="text-xs px-2 py-1 rounded bg-secondary/15 text-secondary hover:bg-secondary/25 min-h-[32px]"
+          class="text-xs px-2 py-1 rounded bg-surface1 text-secondary hover:bg-surface1 min-h-[32px]"
           title="clear venture filter"
         >🏢 {ventureFilter} ×</button>
       {/if}
@@ -732,7 +732,7 @@
       {#if ventureFilter}
         <button
           onclick={clearVentureFilter}
-          class="w-full text-left px-2 py-1 text-xs rounded bg-secondary/15 text-secondary hover:bg-secondary/25 flex items-center gap-1.5"
+          class="w-full text-left px-2 py-1 text-xs rounded bg-surface1 text-secondary hover:bg-surface1 flex items-center gap-1.5"
           title="clear venture filter"
         >
           <span>🏢 {ventureFilter}</span>
@@ -755,14 +755,14 @@
         >
           <span>📡 Stalled radar</span>
           {#if stalledLocally.length > 0}
-            <span class="ml-auto px-1.5 py-0 rounded bg-warning/20 text-warning font-mono text-[10px]">{stalledLocally.length}</span>
+            <span class="ml-auto px-1.5 py-0 rounded bg-surface0 text-warning font-mono text-[10px]">{stalledLocally.length}</span>
           {:else}
             <span class="ml-auto text-dim font-mono text-[10px]">—</span>
           {/if}
         </button>
       {:else}
-        <div class="border border-warning/30 bg-warning/5 rounded">
-          <div class="px-2 py-1.5 flex items-center gap-1.5 text-xs border-b border-warning/20">
+        <div class="border border-warning bg-surface0 rounded">
+          <div class="px-2 py-1.5 flex items-center gap-1.5 text-xs border-b border-warning">
             <span class="text-warning font-medium flex-1">📡 Stalled radar</span>
             {#if radarBusy}
               <button onclick={cancelRadar} class="text-[10px] text-dim hover:text-error">cancel</button>
@@ -860,7 +860,7 @@
                     <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: {colorVar(p.color)}"></span>
                     <span class="text-sm font-medium text-text flex-1 truncate">{p.name}</span>
                     {#if p.kind}
-                      <span class="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/10 text-primary flex-shrink-0">{p.kind}</span>
+                      <span class="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface1 text-primary flex-shrink-0">{p.kind}</span>
                     {/if}
                     <span
                       class="text-[10px] uppercase tracking-wider flex-shrink-0"
@@ -910,7 +910,7 @@
                             {@const isThisWeek = i === SPARK_WEEKS - 1}
                             {@const pct = sparkMax === 0 ? 0 : Math.max(15, Math.round((count / sparkMax) * 100))}
                             <div
-                              class="w-1 rounded-sm {isThisWeek ? 'bg-primary' : 'bg-secondary/40'}"
+                              class="w-1 rounded-sm {isThisWeek ? 'bg-primary' : 'bg-surface2'}"
                               style="height: {pct}%"
                             ></div>
                           {/each}
