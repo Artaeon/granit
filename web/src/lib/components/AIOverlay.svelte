@@ -2933,14 +2933,16 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
       </div>
     {/if}
 
-    <!-- Chat input. Sits at the bottom, growable up to a few rows.
-         Enter sends, Shift+Enter inserts a newline. Disabled
-         during Sabbath since the request would just be refused. -->
+    <!-- Chat input. ChatGPT-style composer: textarea wraps the full
+         width, mic + send sit as icon buttons inside the bottom-right
+         corner. Disabled during Sabbath. -->
     <form
       onsubmit={send}
-      class="border-t border-surface1 px-4 py-3 flex items-end gap-2 flex-shrink-0"
+      class="border-t border-surface1 px-3 py-3 flex-shrink-0"
     >
-      <div class="flex-1 relative">
+      <div
+        class="relative bg-surface0 border rounded-2xl px-3 py-2 transition-colors {recording ? 'border-error' : 'border-surface1 focus-within:border-primary'}"
+      >
         <textarea
           bind:this={inputEl}
           bind:value={input}
@@ -2948,17 +2950,46 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
           oninput={onInputChange}
           onclick={onInputClick}
           rows="2"
-          placeholder={$sabbath ? 'Sabbath active — AI paused' : recording ? 'Listening… speak freely' : 'Ask anything, /help for commands, @ to reference an item'}
+          placeholder={$sabbath ? 'Sabbath active — AI paused' : recording ? 'Listening… speak freely' : 'Ask anything, /help for commands, @ to reference…'}
           disabled={busy || $sabbath}
-          class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-none disabled:opacity-60 transition-colors {recording ? 'border-error' : ''}"
-          style="min-height: 2.5rem;"
+          class="w-full bg-transparent border-0 text-sm text-text placeholder-dim focus:outline-none resize-none disabled:opacity-60 pr-20"
+          style="min-height: 2.5rem; max-height: 12rem;"
         ></textarea>
-        <!-- Slash-command + mention pickers. Mutually exclusive: slash
-             always wins because the input must start with /, so the
-             mention picker only renders when slash is closed. Each
-             component owns its own dropdown UI + filter logic; the
-             parent only chains keydown via handleKey() and forwards
-             oninput/onclick triggers to detectTrigger(). -->
+        <!-- Bottom-right action cluster — mic (optional) + send.
+             Anchored inside the textarea wrapper so the input grows
+             vertically while the buttons stay pinned to its corner. -->
+        <div class="absolute right-2 bottom-2 flex items-center gap-1">
+          {#if voiceSupported}
+            <button
+              type="button"
+              onclick={toggleVoice}
+              disabled={busy || $sabbath}
+              aria-pressed={recording}
+              class="w-8 h-8 inline-flex items-center justify-center rounded-full disabled:opacity-40 transition-colors {recording ? 'bg-error text-white animate-pulse' : 'text-subtext hover:bg-surface1 hover:text-text'}"
+              title={recording ? 'Stop dictating' : 'Dictate'}
+              aria-label={recording ? 'Stop dictating' : 'Dictate'}
+            >
+              <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="3" width="6" height="12" rx="3"/>
+                <path d="M5 11a7 7 0 0014 0M12 18v3"/>
+              </svg>
+            </button>
+          {/if}
+          <button
+            type="submit"
+            disabled={busy || !input.trim() || $sabbath}
+            aria-label="Send"
+            title="Send (Enter)"
+            class="w-8 h-8 inline-flex items-center justify-center rounded-full bg-primary text-on-primary disabled:opacity-30 hover:opacity-90 active:opacity-80 transition-opacity"
+          >
+            <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 19V5M5 12l7-7 7 7"/>
+            </svg>
+          </button>
+        </div>
+        <!-- Slash-command + mention pickers. Same wiring as before;
+             rendered as children of the wrapper so their popovers
+             anchor to the input box. -->
         <SlashCommandPicker
           bind:this={slashPickerRef}
           bind:value={input}
@@ -2976,30 +3007,6 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
           />
         {/if}
       </div>
-      {#if voiceSupported}
-        <!-- Voice input: tap to start, tap again to stop. Live
-             transcript fills the input as the user speaks. Same
-             SpeechRecognition shape as the voice-note modal. -->
-        <button
-          type="button"
-          onclick={toggleVoice}
-          disabled={busy || $sabbath}
-          aria-pressed={recording}
-          class="tap-target px-3 py-2 text-sm rounded font-medium disabled:opacity-40 inline-flex items-center justify-center transition-colors {recording ? 'bg-error text-white animate-pulse' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary'}"
-          title={recording ? 'Stop dictating' : 'Dictate (browser speech-to-text)'}
-          aria-label={recording ? 'Stop dictating' : 'Dictate'}
-        >
-          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="3" width="6" height="12" rx="3"/>
-            <path d="M5 11a7 7 0 0014 0M12 18v3" stroke-linecap="round"/>
-          </svg>
-        </button>
-      {/if}
-      <button
-        type="submit"
-        disabled={busy || !input.trim() || $sabbath}
-        class="tap-target px-3 py-2 text-sm bg-primary text-on-primary rounded font-medium disabled:opacity-40 hover:opacity-90 active:opacity-80 transition-colors"
-      >Send</button>
     </form>
   </div>
 {/if}
