@@ -28,6 +28,10 @@
     renderGoalContext
   } from '$lib/ai/goalManagerContext';
   import {
+    loadCalendarContext,
+    renderCalendarContext
+  } from '$lib/ai/calendarManagerContext';
+  import {
     getThread,
     upsertThread,
     deleteThread,
@@ -624,21 +628,24 @@
   // that defaults from the mode's preference but the user overrides.
   let modeId = $state<string>(loadModeId());
   let mode = $derived(findMode(modeId));
-  // Tracks the context-driven auto-switch state. Three values:
+  // Tracks the context-driven auto-switch state. Four values:
   //   - ''           : user's chosen mode is in effect (persisted)
-  //   - 'project'    : we switched into project-manager because
-  //                    the user is on a project page
-  //   - 'goal'       : we switched into goal-manager because the
-  //                    user has a focused goal on /goals
+  //   - 'project'    : project-manager (on a project page)
+  //   - 'goal'       : goal-manager   (focused goal on /goals)
+  //   - 'calendar'   : calendar-manager (on /calendar)
   // Each contextual switch is NOT persisted; leaving the context
   // reverts to loadModeId() so the user's normal preference
   // doesn't get clobbered. Manual mode pick clears autoMode so
   // the next exit doesn't yank the user back.
-  let autoMode = $state<'' | 'project' | 'goal'>('');
+  let autoMode = $state<'' | 'project' | 'goal' | 'calendar'>('');
 
   $effect(() => {
+    // Precedence: most-specific entity wins. Project > goal >
+    // calendar — a "project page open with calendar in the URL
+    // somehow" stays in PM. In practice only one is ever true.
     const inProject = !!currentProjectName;
-    const inGoal = !inProject && !!currentGoalId; // project wins when both URLs co-exist (shouldn't happen)
+    const inGoal = !inProject && !!currentGoalId;
+    const inCalendar = !inProject && !inGoal && onCalendarPage;
     if (inProject) {
       if (modeId !== 'project-manager') {
         autoMode = 'project';
@@ -649,7 +656,15 @@
         autoMode = 'goal';
         modeId = 'goal-manager';
       }
-    } else if (autoMode && (modeId === 'project-manager' || modeId === 'goal-manager')) {
+    } else if (inCalendar) {
+      if (modeId !== 'calendar-manager') {
+        autoMode = 'calendar';
+        modeId = 'calendar-manager';
+      }
+    } else if (
+      autoMode &&
+      (modeId === 'project-manager' || modeId === 'goal-manager' || modeId === 'calendar-manager')
+    ) {
       autoMode = '';
       modeId = loadModeId();
     }
@@ -757,6 +772,10 @@
     if (!p.startsWith('/goals')) return '';
     return $page.url.searchParams.get('focus') ?? '';
   });
+  // Calendar page — no specific entity to focus on. Presence
+  // alone (path starts with /calendar) is enough to enter the
+  // Calendar Manager mode and inject the date-window prelude.
+  const onCalendarPage = $derived($page.url.pathname.startsWith('/calendar'));
 
   function close() {
     abort?.abort();
@@ -1708,6 +1727,36 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
         // let the chat run as a generic thread.
       }
     }
+    // Calendar context — date-window flavour rather than per-entity.
+    // Fires when the user opens the chat from /calendar and we're
+    // not already loading project/goal scope. Window defaults to
+    // 14 days ahead; the formatter surfaces the range so the AI
+    // refuses questions about events outside it.
+    if (isFirstTurn && onCalendarPage && !currentProjectName && !currentGoalId) {
+      try {
+        const bundle = await loadCalendarContext(
+          {
+            listEvents: async () => {
+              const r = await api.listEvents();
+              return r.events;
+            },
+            listTasks: async () => {
+              const r = await api.listTasks({});
+              return r.tasks;
+            }
+          },
+          { todayISO: todayISO() }
+        );
+        prelude.push({
+          role: 'system',
+          content:
+            "The user is currently looking at their calendar in Granit. Use this date-window context as the default subject of their messages.\n\n" +
+            renderCalendarContext(bundle)
+        });
+      } catch {
+        // Listing failure — skip silently.
+      }
+    }
     // Goal-scoped context — mirror of the project flow above.
     // Fires only when a goal is focused (URL `?focus=<id>`) and
     // we're not already loading project context (project wins
@@ -2175,6 +2224,29 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
           onclick={() => { input = `Looking at the open tasks + linked goals on ${currentProjectName}, what's the ONE thing I should do next, and why? Pick one, defend it briefly.`; }}
           class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
         >What's next?</button>
+        <span class="w-full sm:hidden"></span>
+      {:else if onCalendarPage}
+        <!-- Calendar Manager chips. The prelude carries the
+             14-day date window, upcoming events, overdue +
+             due-today + scheduled-this-week tasks, so the
+             intent text can keep it short. -->
+        <span class="text-[10px] text-dim uppercase tracking-wide self-center mr-1 flex-shrink-0">Cal:</span>
+        <button
+          onclick={() => { input = `Describe what my week looks like — heaviest day, lightest day, where the deep-work blocks are or aren't, what's the dominant theme.`; }}
+          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+        >Week shape</button>
+        <button
+          onclick={() => { input = `Find me a 2-hour focus block in the next 5 days. Propose ONE specific day + start time + reasoning. Don't list options.`; }}
+          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+        >Find focus block</button>
+        <button
+          onclick={() => { input = `What's overdue and worth doing vs. worth declaring dead? Walk me through it.`; }}
+          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+        >Overdue triage</button>
+        <button
+          onclick={() => { input = `If I had to clear one meeting from this week to protect a deep-work block, which one and why? Name the trade-off explicitly.`; }}
+          class="px-2.5 py-1 text-xs bg-primary/10 border border-primary/40 rounded text-primary hover:bg-primary/20"
+        >Clear one meeting</button>
         <span class="w-full sm:hidden"></span>
       {:else if currentGoalId}
         <!-- Goal Manager chips. Same shape as PM chips but
