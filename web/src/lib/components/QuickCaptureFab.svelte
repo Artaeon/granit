@@ -1,56 +1,90 @@
 <script lang="ts">
-  import { api, todayISO } from '$lib/api';
+  import { api, todayISO, type Project } from '$lib/api';
   import { onMount } from 'svelte';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { invalidateTitleCache } from '$lib/editor/wikilinks';
+  import { goto } from '$app/navigation';
+  import { slugifyTitle } from '$lib/util/slug';
   import VoiceNoteModal from '$lib/components/VoiceNoteModal.svelte';
 
-  // QuickCaptureFab — global floating-action-button rendered from
-  // +layout.svelte once the user is authed. Single keyboard shortcut
-  // (Mod-Shift-N) toggles a small modal that captures a task into
-  // today's daily note.
+  // QuickCaptureFab — global capture surface. Single keystroke
+  // (Mod-Shift-N) opens a tabbed modal that can capture a task,
+  // freeform note, calendar event, or jot from anywhere.
   //
-  // Why a FAB instead of inline forms scattered everywhere: capture
-  // should be one keystroke from anywhere in the app, with no context
-  // switch — the user is on /goals when an idea hits, presses
-  // Mod-Shift-N, types, and is back where they were a second later.
-  // Mounted at the layout level once so every authed page gets it.
+  // Task → today's daily note `## Tasks` section
+  // Note → vault note at <folder>/<slug>.md (Notes/ default)
+  // Event → events.json (one-off date + optional time)
+  // Jot → bullet appended to today's daily note `## Jots` section
   //
-  // Today this captures a task to today's daily note. A "jot" mode
-  // (free-text bullet append, no parser) was scoped out for this
-  // commit because the server has no /jots POST endpoint yet — adding
-  // one is a clean separate change. For now, jots happen in the daily
-  // note's editor directly.
+  // Mode persists across reopens so the user comes back to the
+  // same surface they last used.
+
+  type CaptureMode = 'task' | 'note' | 'event' | 'jot';
 
   let open = $state(false);
   let voiceOpen = $state(false);
+  let mode = $state<CaptureMode>('task');
+
+  // Shared text input — used as the task line, note title, event
+  // title, or jot body depending on mode.
   let text = $state('');
+  let body = $state('');
+  let saving = $state(false);
+
+  // Task fields
   let priority = $state(0);
   let dueDate = $state('');
   let recurrence = $state<'' | 'daily' | 'weekly' | 'monthly' | '3x-week'>('');
-  let saving = $state(false);
+  let projectId = $state('');
+  let tags = $state(''); // comma separated, applied to task or note
+
+  // Note fields
+  let folder = $state('Notes');
+
+  // Event fields
+  let eventDate = $state(todayISO());
+  let allDay = $state(true);
+  let startTime = $state('09:00');
+  let endTime = $state('10:00');
+
+  let projects = $state<Project[]>([]);
+  let projectsLoaded = $state(false);
+
   let inputEl: HTMLInputElement | undefined = $state();
 
   function show() {
     open = true;
-    // Defer focus to next tick so the input is mounted in the DOM.
+    if (!projectsLoaded) void loadProjects();
     queueMicrotask(() => inputEl?.focus());
   }
   function hide() {
     open = false;
-    // Reset transient form state but keep the mode preference so
-    // re-opening lands where the user last was.
     text = '';
+    body = '';
     priority = 0;
     dueDate = '';
     recurrence = '';
+    projectId = '';
+    tags = '';
+    folder = 'Notes';
+    eventDate = todayISO();
+    allDay = true;
+    startTime = '09:00';
+    endTime = '10:00';
   }
 
-  // Global keybind. We attach to the document so the shortcut works
-  // even when no input is focused. Mod-Shift-N = "new" with a
-  // discriminator so we don't collide with Mod-N (browser → new
-  // window/tab) or Mod-Shift-T (browser → reopen tab).
+  async function loadProjects() {
+    try {
+      const res = await api.listProjects();
+      projects = res.projects.filter((p) => p.status !== 'archived');
+    } catch {
+      // best-effort — the picker just stays empty
+    } finally {
+      projectsLoaded = true;
+    }
+  }
+
   onMount(() => {
     function onKey(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey;
@@ -59,14 +93,6 @@
         if (open) hide();
         else show();
       } else if (mod && e.shiftKey && (e.key === 'V' || e.key === 'v')) {
-        // Mod-Shift-V — voice note. Same chord shape as the
-        // capture sibling so it's discoverable; V for voice. The
-        // browser's "paste without formatting" is also Mod-Shift-V
-        // but only inside a contenteditable — we preventDefault so
-        // it doesn't compete in plain page chrome. Inside text
-        // inputs the chord still produces a paste because input
-        // elements consume the keydown before our document listener
-        // sees it.
         const target = e.target as HTMLElement | null;
         const inField = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
         if (!inField) {
@@ -75,74 +101,151 @@
         }
       } else if (open && e.key === 'Escape') {
         hide();
+      } else if (open && mod && (e.key === 'Enter' || e.key === 'Return')) {
+        // Mod-Enter submits from any field — useful when focus is
+        // in the multi-line body textarea.
+        e.preventDefault();
+        void submit();
+      } else if (open && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const target = e.target as HTMLElement | null;
+        const inField = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+        if (inField) return;
+        if (e.key === '1') { mode = 'task'; e.preventDefault(); }
+        else if (e.key === '2') { mode = 'note'; e.preventDefault(); }
+        else if (e.key === '3') { mode = 'event'; e.preventDefault(); }
+        else if (e.key === '4') { mode = 'jot'; e.preventDefault(); }
       }
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   });
 
-  // Daily note path (`Daily/YYYY-MM-DD.md`) — server-side handler
-  // creates the file if missing. We don't pre-fetch the daily here;
-  // the createTask + jot endpoints both auto-materialise.
   function dailyPath(): string {
     return `Daily/${todayISO()}.md`;
   }
 
-  async function submit(e: Event) {
-    e.preventDefault();
+  function parseTags(): string[] {
+    return tags
+      .split(/[,\s]+/)
+      .map((t) => t.trim().replace(/^#/, ''))
+      .filter(Boolean);
+  }
+
+  async function submit(e?: Event) {
+    e?.preventDefault();
     if (!text.trim()) return;
     saving = true;
     try {
-      const created = await api.createTask({
-        notePath: dailyPath(),
-        text: text.trim(),
-        priority: priority || undefined,
-        dueDate: dueDate || undefined,
-        section: '## Tasks'
-      });
-      // Recurrence isn't part of the create payload (server applies it
-      // as a marker via PATCH). One round-trip if the user picked a
-      // recurrence, zero otherwise. Best-effort — the task itself
-      // exists either way and the user can always set recurrence from
-      // the task detail panel.
-      if (recurrence) {
+      if (mode === 'task') {
+        const created = await api.createTask({
+          notePath: dailyPath(),
+          text: text.trim(),
+          priority: priority || undefined,
+          dueDate: dueDate || undefined,
+          tags: parseTags().length ? parseTags() : undefined,
+          section: '## Tasks'
+        });
+        const patch: Record<string, string> = {};
+        if (recurrence) patch.recurrence = recurrence;
+        if (projectId) patch.projectId = projectId;
+        if (Object.keys(patch).length) {
+          try {
+            await api.patchTask(created.id, patch as Parameters<typeof api.patchTask>[1]);
+          } catch {
+            /* ignore — primary capture succeeded */
+          }
+        }
+        toast.success('task captured');
+        invalidateTitleCache();
+      } else if (mode === 'note') {
+        const title = text.trim();
+        const slug = slugifyTitle(title);
+        const cleanFolder = folder.trim().replace(/^\/+|\/+$/g, '') || 'Notes';
+        const path = `${cleanFolder}/${slug}.md`;
+        const fm: Record<string, unknown> = { title };
+        const tagList = parseTags();
+        if (tagList.length) fm.tags = tagList;
+        await api.createNote({ path, frontmatter: fm, body: body.trim() });
+        toast.success('note created');
+        invalidateTitleCache();
+        hide();
+        void goto(`/notes/${encodeURIComponent(path)}`);
+        return;
+      } else if (mode === 'event') {
+        const payload: Record<string, string> = {
+          title: text.trim(),
+          date: eventDate
+        };
+        if (!allDay) {
+          payload.start_time = startTime;
+          payload.end_time = endTime;
+        }
+        await api.createEvent(payload);
+        toast.success('event captured');
+      } else if (mode === 'jot') {
+        // Append a bullet line to today's daily note's `## Jots`
+        // section. The server-side daily handler materialises the
+        // section + file as needed.
+        const line = `- ${text.trim()}`;
         try {
-          await api.patchTask(created.id, { recurrence });
-        } catch {
-          /* ignore — primary capture succeeded */
+          const path = dailyPath();
+          let existing = '';
+          try {
+            const note = await api.getNote(path);
+            existing = note.body || '';
+          } catch {
+            existing = '';
+          }
+          let next: string;
+          const jotIdx = existing.search(/^## Jots\b/m);
+          if (jotIdx >= 0) {
+            const after = existing.slice(jotIdx);
+            const headerEnd = after.indexOf('\n');
+            const insertAt = jotIdx + (headerEnd >= 0 ? headerEnd + 1 : after.length);
+            next = existing.slice(0, insertAt) + line + '\n' + existing.slice(insertAt);
+          } else {
+            const sep = existing && !existing.endsWith('\n') ? '\n\n' : '\n';
+            next = existing + sep + '## Jots\n' + line + '\n';
+          }
+          await api.putNote(path, { body: next });
+          toast.success('jot captured');
+        } catch (err) {
+          toast.error('jot failed: ' + errorMessage(err));
+          return;
         }
       }
-      toast.success('task captured');
-      // The daily note may have been auto-created by the createTask
-      // path. Drop the title cache so wikilink + autolink suggestions
-      // pick it up on the next typed phrase.
-      invalidateTitleCache();
       hide();
     } catch (err) {
-      toast.error('capture failed: ' + (errorMessage(err)));
+      toast.error('capture failed: ' + errorMessage(err));
     } finally {
       saving = false;
     }
   }
+
+  const TABS: { id: CaptureMode; label: string; hint: string }[] = [
+    { id: 'task', label: 'Task', hint: '1' },
+    { id: 'note', label: 'Note', hint: '2' },
+    { id: 'event', label: 'Event', hint: '3' },
+    { id: 'jot', label: 'Jot', hint: '4' }
+  ];
+
+  const PLACEHOLDERS: Record<CaptureMode, string> = {
+    task: 'what needs doing?',
+    note: 'note title',
+    event: 'event title',
+    jot: 'quick thought, link, or one-liner'
+  };
 </script>
 
-<!-- Floating button. Hidden at sm breakpoint and below by default
-     because the mobile bottom-nav already crowds the bottom-right; on
-     mobile users can still trigger via the keyboard shortcut on a
-     paired keyboard, or we surface it differently in a follow-up.
-     The button itself sits one nav-row above the bottom edge so the
-     FAB doesn't collide with system home-bar gestures. -->
-<!-- Capture cluster: primary "+" plus a smaller voice "🎤" satellite.
-     Both desktop-only (mobile gets the bottom-nav). The voice button
-     sits a row above the primary so the cluster reads as related but
-     the primary is unambiguous. -->
+<!-- Capture cluster: primary "+" plus a smaller voice satellite.
+     Both desktop-only (mobile gets the bottom-nav). -->
 <div class="hidden md:flex flex-col items-end gap-2 fixed bottom-5 right-5 z-30">
   <button
     type="button"
     onclick={() => (voiceOpen = true)}
     aria-label="voice note (Ctrl+Shift+V)"
     title="voice note (Ctrl+Shift+V)"
-    class="w-10 h-10 flex items-center justify-center rounded-full bg-mantle border border-surface1 text-subtext shadow hover:bg-surface0 hover:text-primary transition-all hover:scale-105"
+    class="w-10 h-10 flex items-center justify-center rounded-full bg-mantle border border-surface1 text-subtext shadow hover:bg-surface0 hover:text-primary transition-colors"
   >
     <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
       <rect x="9" y="3" width="6" height="12" rx="3"/>
@@ -154,7 +257,7 @@
     onclick={show}
     aria-label="quick capture (Ctrl+Shift+N)"
     title="quick capture (Ctrl+Shift+N)"
-    class="w-12 h-12 flex items-center justify-center rounded-full bg-primary text-on-primary shadow-lg hover:opacity-90 transition-all hover:scale-105"
+    class="w-12 h-12 flex items-center justify-center rounded-full bg-primary text-on-primary shadow-lg hover:opacity-90 transition-colors"
   >
     <svg viewBox="0 0 24 24" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
       <path d="M12 5v14M5 12h14"/>
@@ -165,9 +268,9 @@
 <VoiceNoteModal bind:open={voiceOpen} />
 
 {#if open}
-  <!-- Backdrop. Click anywhere outside the panel closes. -->
+  <!-- Backdrop. Solid 60% dark — no blur. -->
   <div
-    class="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-start sm:pt-[15vh] justify-center sm:p-4"
+    class="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-start sm:pt-[12vh] justify-center sm:p-4"
     role="dialog"
     aria-label="quick capture"
     onclick={hide}
@@ -176,63 +279,154 @@
   >
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
-      class="w-full max-w-lg bg-mantle border border-surface1 rounded-t-lg sm:rounded-lg shadow-2xl overflow-hidden"
+      class="w-full max-w-xl bg-mantle border border-surface1 rounded-t-lg sm:rounded-lg shadow-2xl overflow-hidden"
       role="document"
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
     >
-      <header class="flex items-center border-b border-surface1 px-4 py-2">
-        <h2 class="text-sm font-medium text-text flex-1">Quick capture</h2>
+      <!-- Tab strip — mode is the headline UX choice; everything
+           else adapts to it. Bold solid pill for the active tab. -->
+      <div class="flex items-center border-b border-surface1 bg-base">
+        {#each TABS as t (t.id)}
+          <button
+            type="button"
+            onclick={() => { mode = t.id; queueMicrotask(() => inputEl?.focus()); }}
+            class="flex-1 px-3 py-2.5 text-sm font-medium transition-colors {mode === t.id ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface0 hover:text-text'}"
+            aria-pressed={mode === t.id}
+          >
+            <span>{t.label}</span>
+            <span class="ml-1.5 text-[10px] {mode === t.id ? 'opacity-80' : 'text-dim'}">{t.hint}</span>
+          </button>
+        {/each}
         <button
           type="button"
           onclick={hide}
           aria-label="close"
-          class="text-dim hover:text-text"
+          class="px-3 py-2.5 text-dim hover:text-text"
         >×</button>
-      </header>
+      </div>
 
       <form onsubmit={submit} class="p-4 space-y-3">
         <input
           bind:this={inputEl}
           bind:value={text}
           required
-          placeholder="what needs doing?"
+          placeholder={PLACEHOLDERS[mode]}
           class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded text-base text-text placeholder-dim focus:outline-none focus:border-primary"
         />
 
-        <div class="flex flex-wrap items-center gap-2 text-xs">
-          <select
-            bind:value={priority}
-            class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm"
-          >
-            <option value={0}>no priority</option>
-            <option value={1}>!1 high</option>
-            <option value={2}>!2 med</option>
-            <option value={3}>!3 low</option>
-          </select>
-          <input
-            type="date"
-            bind:value={dueDate}
-            class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm"
-            aria-label="due date"
-          />
-          <select
-            bind:value={recurrence}
-            class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm"
-            aria-label="recurrence"
-          >
-            <option value="">no repeat</option>
-            <option value="daily">🔁 daily</option>
-            <option value="weekly">🔁 weekly</option>
-            <option value="monthly">🔁 monthly</option>
-            <option value="3x-week">🔁 3×/week</option>
-          </select>
-        </div>
+        {#if mode === 'note'}
+          <textarea
+            bind:value={body}
+            placeholder="optional body — markdown supported"
+            rows="6"
+            class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y font-mono leading-relaxed"
+          ></textarea>
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <label class="text-dim text-[11px] flex items-center gap-1.5">
+              <span>Folder</span>
+              <input
+                bind:value={folder}
+                placeholder="Notes"
+                class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm w-32"
+              />
+            </label>
+            <label class="text-dim text-[11px] flex items-center gap-1.5 flex-1 min-w-[10rem]">
+              <span>Tags</span>
+              <input
+                bind:value={tags}
+                placeholder="tag1, tag2"
+                class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm flex-1"
+              />
+            </label>
+          </div>
+        {:else if mode === 'task'}
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+            <select
+              bind:value={priority}
+              class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm"
+              aria-label="priority"
+            >
+              <option value={0}>no priority</option>
+              <option value={1}>!1 high</option>
+              <option value={2}>!2 medium</option>
+              <option value={3}>!3 low</option>
+            </select>
+            <input
+              type="date"
+              bind:value={dueDate}
+              class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm"
+              aria-label="due date"
+            />
+            <select
+              bind:value={recurrence}
+              class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm"
+              aria-label="recurrence"
+            >
+              <option value="">no repeat</option>
+              <option value="daily">daily</option>
+              <option value="weekly">weekly</option>
+              <option value="monthly">monthly</option>
+              <option value="3x-week">3×/week</option>
+            </select>
+            <select
+              bind:value={projectId}
+              class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm col-span-2 sm:col-span-1"
+              aria-label="project"
+            >
+              <option value="">no project</option>
+              {#each projects as p (p.name)}
+                <option value={p.name}>{p.name}</option>
+              {/each}
+            </select>
+            <input
+              bind:value={tags}
+              placeholder="#tag1 #tag2"
+              class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm col-span-2"
+              aria-label="tags"
+            />
+          </div>
+        {:else if mode === 'event'}
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs items-center">
+            <input
+              type="date"
+              bind:value={eventDate}
+              class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm col-span-2"
+              aria-label="event date"
+            />
+            <label class="flex items-center gap-1.5 text-subtext col-span-2 sm:col-span-1">
+              <input type="checkbox" bind:checked={allDay} class="w-3.5 h-3.5 accent-primary"/>
+              <span>all-day</span>
+            </label>
+            {#if !allDay}
+              <input
+                type="time"
+                bind:value={startTime}
+                class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm"
+                aria-label="start time"
+              />
+              <input
+                type="time"
+                bind:value={endTime}
+                class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-text text-sm"
+                aria-label="end time"
+              />
+            {/if}
+          </div>
+        {/if}
 
         <div class="flex items-center gap-2 pt-1">
           <span class="text-[11px] text-dim flex-1">
-            Saves to today's daily note
-            <kbd class="ml-1 text-[10px] font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">Ctrl+Shift+N</kbd>
+            {#if mode === 'task'}
+              Saved to today's daily note
+            {:else if mode === 'note'}
+              New note in vault
+            {:else if mode === 'event'}
+              Added to calendar
+            {:else}
+              Appended to daily Jots
+            {/if}
+            <kbd class="ml-1 text-[10px] font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">Ctrl+Enter</kbd>
           </span>
           <button
             type="button"
@@ -242,7 +436,7 @@
           <button
             type="submit"
             disabled={!text.trim() || saving}
-            class="px-4 py-1.5 bg-primary text-on-primary rounded font-medium text-sm disabled:opacity-50"
+            class="px-4 py-1.5 bg-primary text-on-primary rounded font-medium text-sm disabled:opacity-50 hover:opacity-90 transition-colors"
           >
             {saving ? '…' : 'Capture'}
           </button>
