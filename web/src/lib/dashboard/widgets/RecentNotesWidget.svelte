@@ -96,7 +96,7 @@
         <li>
           <a
             href="/notes/{encodeURIComponent(n.path)}"
-            class="block py-1 px-2 -mx-2 rounded hover:bg-surface1/60 transition-colors group"
+            class="block py-1 px-2 -mx-2 rounded hover:bg-surface1 transition-colors group"
           >
             <div class="flex items-baseline gap-2">
               {#if folder}

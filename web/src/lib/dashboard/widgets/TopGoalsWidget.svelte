@@ -70,7 +70,7 @@
           {@const pct = progressPct(goal)}
           {@const chip = targetChip(goal.target_date)}
           <li
-            class="flex items-start gap-2 pl-2.5 pr-1 py-1.5 bg-mantle/30 rounded border-l-2"
+            class="flex items-start gap-2 pl-2.5 pr-1 py-1.5 bg-mantle rounded border-l-2"
             style="border-left-color: {targetBorderColor(days)};"
           >
             <a href="/goals?focus={encodeURIComponent(goal.id)}" class="flex-1 min-w-0 hover:text-primary">

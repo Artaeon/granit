@@ -403,7 +403,7 @@
     <!-- Vision context strip — shows the user's current season focus
          so the vision-check question doesn't require alt-tabbing. -->
     {#if vision?.season_focus}
-      <div class="mb-5 px-3 py-2 bg-surface0/40 border border-surface1 rounded text-xs text-subtext">
+      <div class="mb-5 px-3 py-2 bg-surface0 border border-surface1 rounded text-xs text-subtext">
         <span class="text-dim uppercase tracking-wider">Your season focus:</span>
         <span class="text-text font-medium ml-1">{vision.season_focus}</span>
         {#if vision.season_day && vision.season_total}

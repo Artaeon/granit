@@ -87,7 +87,7 @@
       <ul class="space-y-2">
         {#each visible as { d, days } (d.id)}
           <li
-            class="flex items-start gap-2 pl-2.5 pr-1 py-1.5 bg-mantle/30 rounded border-l-2"
+            class="flex items-start gap-2 pl-2.5 pr-1 py-1.5 bg-mantle rounded border-l-2"
             style="border-left-color: {borderColor(days)};"
           >
             <div class="flex-1 min-w-0">

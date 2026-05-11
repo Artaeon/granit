@@ -178,7 +178,7 @@
                 <button
                   onclick={() => void pick(n)}
                   onmouseenter={() => (cursor = i)}
-                  class="w-full text-left px-4 py-2.5 border-b border-surface1/50 transition-colors {i === cursor ? 'bg-surface1' : 'hover:bg-surface0'}"
+                  class="w-full text-left px-4 py-2.5 border-b border-surface1 transition-colors {i === cursor ? 'bg-surface1' : 'hover:bg-surface0'}"
                 >
                   <div class="flex items-baseline gap-2">
                     <span class="text-sm text-text font-medium truncate flex-1">{noteTitle(n)}</span>

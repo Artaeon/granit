@@ -244,7 +244,7 @@
 </div>
 
 {#if open}
-	<div class="mt-2 border border-surface1 rounded-md bg-base/60 p-3">
+	<div class="mt-2 border border-surface1 rounded-md bg-base p-3">
 		<header class="flex items-baseline gap-2 mb-2">
 			<h3 class="text-sm font-medium text-text flex-1">Starter pack</h3>
 			{#if busy}

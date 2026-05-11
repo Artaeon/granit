@@ -273,7 +273,7 @@
 
 {#if open}
 	<div
-		class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center pt-8 sm:pt-16 px-3 sm:px-6"
+		class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center pt-8 sm:pt-16 px-3 sm:px-6"
 		role="dialog"
 		aria-modal="true"
 		aria-label="Goal agent"

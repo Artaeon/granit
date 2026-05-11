@@ -601,7 +601,7 @@
   <button
     onclick={close}
     aria-label="close"
-    class="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm cursor-default"
+    class="fixed inset-0 z-[60] bg-black/60 cursor-default"
   ></button>
   <div
     role="dialog"

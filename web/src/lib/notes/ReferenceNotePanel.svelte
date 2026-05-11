@@ -306,7 +306,7 @@
              Wikilinks inside the reference navigate within the
              panel rather than the main editor — keeping the rail's
              role as a research surface, not a navigation hijack. -->
-        <div class="max-h-96 overflow-y-auto bg-mantle/30 border border-surface1 rounded px-3 py-2 text-[12px] reference-prose">
+        <div class="max-h-96 overflow-y-auto bg-mantle border border-surface1 rounded px-3 py-2 text-[12px] reference-prose">
           <MarkdownRenderer body={activeBody} onWikilink={navigateWikilink} />
         </div>
       {/if}

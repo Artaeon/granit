@@ -180,7 +180,7 @@
 </svelte:head>
 
 <div class="h-full flex flex-col">
-  <header class="flex-shrink-0 px-3 sm:px-4 py-3 border-b border-surface1 bg-mantle/40 flex items-center gap-3">
+  <header class="flex-shrink-0 px-3 sm:px-4 py-3 border-b border-surface1 bg-mantle flex items-center gap-3">
     <svg viewBox="0 0 24 24" class="w-5 h-5 text-dim flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2">
       <circle cx="11" cy="11" r="7"/>
       <path d="M21 21l-4.5-4.5" stroke-linecap="round"/>
@@ -282,7 +282,7 @@
     {:else}
       <div class="max-w-3xl mx-auto space-y-4">
         {#each grouped as g (g.path)}
-          <section class="border border-surface1 rounded bg-surface0/40">
+          <section class="border border-surface1 rounded bg-surface0">
             <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
               <button
                 onclick={() => goto(`/notes/${encodeURIComponent(g.path)}`)}
@@ -300,7 +300,7 @@
                 <li>
                   <button
                     onclick={() => jumpToHit(h)}
-                    class="w-full text-left px-3 py-2 hover:bg-surface1/50 flex items-baseline gap-3"
+                    class="w-full text-left px-3 py-2 hover:bg-surface1 flex items-baseline gap-3"
                     title="Open at line {h.line}"
                   >
                     <span class="text-[10px] text-dim font-mono tabular-nums w-10 flex-shrink-0">L{h.line}</span>

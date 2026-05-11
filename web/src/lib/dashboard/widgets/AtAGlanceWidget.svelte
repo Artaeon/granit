@@ -149,7 +149,7 @@
     {#each tiles as t}
       <a
         href={t.href}
-        class="block px-2.5 py-2 rounded bg-mantle/40 hover:bg-mantle/70 border-l-2 transition-colors"
+        class="block px-2.5 py-2 rounded bg-mantle hover:bg-black/60 border-l-2 transition-colors"
         style="border-left-color: var(--color-{t.tone});"
         title={t.label}
       >

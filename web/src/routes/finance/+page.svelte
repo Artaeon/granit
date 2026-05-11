@@ -621,7 +621,7 @@
         {#if overview.income_monthly_actual_cents > 0 || overview.subscription_monthly_cents > 0}
           {@const recurringShoppingCents = shoppingTotals ? Math.round(shoppingTotals.recurring_monthly_estimate * 100) : 0}
           {@const net = overview.income_monthly_actual_cents - overview.subscription_monthly_cents - recurringShoppingCents}
-          <div class="mb-6 px-4 py-3 bg-surface0/40 border border-surface1 rounded text-sm">
+          <div class="mb-6 px-4 py-3 bg-surface0 border border-surface1 rounded text-sm">
             <span class="text-dim">Monthly run rate: </span>
             <span class="text-success">+{fmtMoney(overview.income_monthly_actual_cents, overview.currency)}</span>
             <span class="text-dim"> − </span>
@@ -705,7 +705,7 @@
               <div class="relative h-6 bg-mantle rounded mb-3">
                 <div class="absolute inset-y-0 left-0 right-0 flex items-center px-1">
                   {#each Array.from({ length: 30 }, (_, i) => i) as i}
-                    <div class="flex-1 border-r last:border-r-0 border-surface1/50 h-2 self-center"></div>
+                    <div class="flex-1 border-r last:border-r-0 border-surface1 h-2 self-center"></div>
                   {/each}
                 </div>
                 {#each cashflowEvents as e (e.date + e.label)}

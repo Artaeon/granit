@@ -566,7 +566,7 @@
       </div>
 
       {#if editing && config}
-        <section class="mb-6 bg-mantle/50 border border-surface1 rounded-lg p-4 space-y-3">
+        <section class="mb-6 bg-mantle border border-surface1 rounded-lg p-4 space-y-3">
           <h2 class="text-sm font-medium text-text">Widgets</h2>
           <ul class="space-y-1.5">
             {#each config.widgets as w, i (w.id)}
@@ -621,7 +621,7 @@
              complete widget list (order + enabled state); switching
              swaps them in. Save snapshots whatever's currently
              arranged. -->
-        <section class="mb-6 bg-mantle/50 border border-surface1 rounded-lg p-4 space-y-3">
+        <section class="mb-6 bg-mantle border border-surface1 rounded-lg p-4 space-y-3">
           <div class="flex items-baseline justify-between">
             <h2 class="text-sm font-medium text-text">Layout presets</h2>
             <button
@@ -670,7 +670,7 @@
       {#if focus && config && activeWidgets.length === 0}
         <!-- Focus on but the user has none of the essentials enabled.
              Tell them rather than render an empty page. -->
-        <div class="mb-4 p-4 bg-mantle/60 border border-surface1 rounded-lg text-sm">
+        <div class="mb-4 p-4 bg-mantle border border-surface1 rounded-lg text-sm">
           <div class="text-text font-medium mb-1">Focus mode is on, but no essential widgets are enabled.</div>
           <p class="text-xs text-dim mb-3">
             Focus shows: greeting, at-a-glance, today's focus, today's tasks, calendar week, top deadlines.

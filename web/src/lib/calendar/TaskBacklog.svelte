@@ -203,7 +203,7 @@
   }
 </script>
 
-<div class="flex flex-col h-full bg-mantle/40 border border-surface1 rounded overflow-hidden">
+<div class="flex flex-col h-full bg-mantle border border-surface1 rounded overflow-hidden">
   <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0">
     <div class="flex-1 min-w-0">
       <h3 class="text-sm font-medium text-text truncate">Today's plan</h3>

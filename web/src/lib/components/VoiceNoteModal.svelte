@@ -294,7 +294,7 @@
 
 {#if open}
   <div
-    class="fixed inset-0 z-50 bg-base/95 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6"
+    class="fixed inset-0 z-50 bg-base flex items-end sm:items-center justify-center p-0 sm:p-6"
     role="dialog"
     aria-modal="true"
     aria-label="Voice note recorder"

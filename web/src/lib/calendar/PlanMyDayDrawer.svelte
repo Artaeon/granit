@@ -302,7 +302,7 @@
       {#if phase === 'idle' || phase === 'error'}
         <!-- Pre-run intro -->
         <div class="p-4 space-y-3">
-          <div class="rounded p-3 bg-surface0/50 border border-surface1">
+          <div class="rounded p-3 bg-surface0 border border-surface1">
             <p class="text-sm text-text">
               Click <strong>Run</strong> to draft today's schedule. The AI looks at:
             </p>
@@ -357,7 +357,7 @@
             <ul class="space-y-2">
               {#each editable as p, i (p.base.taskId + ':' + i)}
                 <li
-                  class="rounded border border-surface1 bg-surface0/40 transition-opacity {p.keep ? '' : 'opacity-40'}"
+                  class="rounded border border-surface1 bg-surface0 transition-opacity {p.keep ? '' : 'opacity-40'}"
                 >
                   <div class="flex items-stretch gap-2 p-2">
                     <!-- Keep / skip toggle. Big tap target on mobile. -->

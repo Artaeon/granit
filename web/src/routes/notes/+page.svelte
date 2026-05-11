@@ -411,7 +411,7 @@
 </script>
 
 <div class="h-full flex flex-col">
-  <header class="px-3 sm:px-4 py-3 border-b border-surface1 flex-shrink-0 sticky top-0 z-20 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md">
+  <header class="px-3 sm:px-4 py-3 border-b border-surface1 flex-shrink-0 sticky top-0 z-20 bg-mantle">
     <div class="flex items-center justify-between gap-3 mb-3">
       <div class="min-w-0">
         <h1 class="text-xl sm:text-2xl font-semibold text-text truncate">Notes</h1>
@@ -543,7 +543,7 @@
       {:else}
         <div class="overflow-y-auto h-full">
           {#each alphaSections as sec (sec.letter)}
-            <div class="sticky top-0 z-10 bg-mantle/95 backdrop-blur px-3 sm:px-4 py-1 text-[11px] uppercase tracking-wider text-dim border-b border-surface1/60">
+            <div class="sticky top-0 z-10 bg-mantle px-3 sm:px-4 py-1 text-[11px] uppercase tracking-wider text-dim border-b border-surface1">
               {sec.letter} <span class="opacity-60 ml-1">{sec.notes.length}</span>
             </div>
             <ul class="divide-y divide-surface1/50">
@@ -560,7 +560,7 @@
       {:else}
         <div class="overflow-y-auto h-full">
           {#each tagSections as sec (sec.tag)}
-            <div class="sticky top-0 z-10 bg-mantle/95 backdrop-blur px-3 sm:px-4 py-1.5 border-b border-surface1/60 flex items-center gap-2">
+            <div class="sticky top-0 z-10 bg-mantle px-3 sm:px-4 py-1.5 border-b border-surface1 flex items-center gap-2">
               {#if sec.untagged}
                 <span class="text-[11px] uppercase tracking-wider text-dim italic">untagged</span>
               {:else}
@@ -622,7 +622,7 @@
 
 {#snippet row(n: Note)}
   {@const isPinned = pinned.has(n.path)}
-  <li class="group hover:bg-surface0/60 transition-colors">
+  <li class="group hover:bg-surface0 transition-colors">
     <div class="flex items-center gap-3 px-3 sm:px-4 py-2.5">
       <button
         type="button"

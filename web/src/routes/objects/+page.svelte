@@ -144,7 +144,7 @@
 
 <div class="h-full flex">
   <!-- Type list (sidebar) -->
-  <aside class="hidden md:flex md:flex-col md:w-64 lg:w-72 border-r border-surface1 bg-mantle/40 flex-shrink-0">
+  <aside class="hidden md:flex md:flex-col md:w-64 lg:w-72 border-r border-surface1 bg-mantle flex-shrink-0">
     <div class="px-3 py-3 border-b border-surface1">
       <h2 class="text-sm font-semibold text-text">Types</h2>
       <p class="text-xs text-dim mt-0.5">{types.length} types · {untyped} untyped notes</p>

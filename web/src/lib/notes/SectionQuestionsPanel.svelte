@@ -197,7 +197,7 @@
         {error}
       </div>
     {:else if questions}
-      <div class="bg-mantle/30 border border-surface1 rounded px-2 py-1.5 text-[12px] questions-prose">
+      <div class="bg-mantle border border-surface1 rounded px-2 py-1.5 text-[12px] questions-prose">
         <MarkdownRenderer body={questions} />
       </div>
     {/if}

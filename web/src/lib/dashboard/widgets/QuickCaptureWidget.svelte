@@ -386,7 +386,7 @@
        captured item where applicable, plus a tiny "undo" chip. -->
   {#if recents.length > 0}
     {void _now}
-    <div class="mt-3 pt-3 border-t border-surface1/70 space-y-1">
+    <div class="mt-3 pt-3 border-t border-surface1 space-y-1">
       {#each recents as r (r.id)}
         {@const m = MODES.find((x) => x.id === r.mode)!}
         <div class="flex items-baseline gap-2 text-xs">

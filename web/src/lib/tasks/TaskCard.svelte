@@ -452,7 +452,7 @@
   {/if}
 <div
   class="task-card bg-surface0 border-l-2 {priorityClass(task.priority)} border border-surface1 rounded p-2 transition-all group relative
-    {isSelected ? 'ring-1 ring-primary' : 'hover:border-primary/40 hover:bg-surface0/80'}
+    {isSelected ? 'ring-1 ring-primary' : 'hover:border-primary/40 hover:bg-surface0'}
     {isOverdue ? 'task-card--overdue' : ''}
     {isDueToday ? 'task-card--today' : ''}
     {task.done ? 'task-card--done' : ''}"
@@ -530,7 +530,7 @@
           <div class="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs">
             {#if task.dueDate}
               <span
-                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] {dueClass} bg-surface1/40"
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] {dueClass} bg-surface1"
                 title="due {task.dueDate}"
               >
                 <span class="text-[9px]" aria-hidden="true">{dueIcon(task.dueDate)}</span>

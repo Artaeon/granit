@@ -150,10 +150,10 @@
     <div class="flex-1 overflow-auto">
       <div class="grid heatmap-grid min-w-[640px]">
         <!-- Axis row — week labels -->
-        <div class="px-3 py-1.5 border-b border-surface1 bg-mantle/60 sticky left-0 z-10 text-[10px] text-dim uppercase tracking-wider font-medium">
+        <div class="px-3 py-1.5 border-b border-surface1 bg-mantle sticky left-0 z-10 text-[10px] text-dim uppercase tracking-wider font-medium">
           Project
         </div>
-        <div class="border-b border-surface1 bg-mantle/60 grid heatmap-cols">
+        <div class="border-b border-surface1 bg-mantle grid heatmap-cols">
           {#each weekOrder as w (w.key)}
             <div
               class="text-[9px] {w.isThisWeek ? 'text-primary font-medium' : 'text-dim'} font-mono text-center py-1.5"
@@ -161,7 +161,7 @@
             >{w.isThisWeek ? 'now' : w.label}</div>
           {/each}
         </div>
-        <div class="px-2 py-1.5 border-b border-surface1 bg-mantle/60 text-[10px] text-dim uppercase tracking-wider font-medium text-right">
+        <div class="px-2 py-1.5 border-b border-surface1 bg-mantle text-[10px] text-dim uppercase tracking-wider font-medium text-right">
           12w
         </div>
 
@@ -169,7 +169,7 @@
         {#each projects as p (p.name)}
           {@const inner = cells.get(p.name) ?? new Map()}
           {@const total = rowTotals.get(p.name) ?? 0}
-          <div class="px-3 py-1 border-b border-surface1/50 sticky left-0 bg-base z-[5] flex items-center gap-1.5 min-w-0">
+          <div class="px-3 py-1 border-b border-surface1 sticky left-0 bg-base z-[5] flex items-center gap-1.5 min-w-0">
             <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: {colorVar(p.color)}"></span>
             <button
               onclick={() => onSelect(p.name)}
@@ -177,7 +177,7 @@
               title="open {p.name}"
             >{p.name}</button>
           </div>
-          <div class="border-b border-surface1/50 grid heatmap-cols">
+          <div class="border-b border-surface1 grid heatmap-cols">
             {#each weekOrder as w (w.key)}
               {@const count = inner.get(w.key) ?? 0}
               {@const op = cellOpacity(count)}
@@ -190,7 +190,7 @@
               ></button>
             {/each}
           </div>
-          <div class="px-2 py-1 border-b border-surface1/50 text-[10px] {total === 0 ? 'text-dim' : 'text-subtext'} font-mono text-right tabular-nums">
+          <div class="px-2 py-1 border-b border-surface1 text-[10px] {total === 0 ? 'text-dim' : 'text-subtext'} font-mono text-right tabular-nums">
             {total}
           </div>
         {/each}

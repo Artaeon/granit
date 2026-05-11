@@ -336,7 +336,7 @@
        visible. The presets row is dense — on a phone it fits two
        rows of chips before the response panel begins. -->
   <div
-    class="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-12 sm:px-4 bg-mantle/70 backdrop-blur-sm"
+    class="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-12 sm:px-4 bg-black/60"
     onclick={dismiss}
     onkeydown={onKey}
     role="presentation"

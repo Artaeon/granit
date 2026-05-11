@@ -138,7 +138,7 @@
   }
 </script>
 
-<div class="px-3 py-2 border-b border-surface1 bg-surface0/40 flex-shrink-0">
+<div class="px-3 py-2 border-b border-surface1 bg-surface0 flex-shrink-0">
   <form onsubmit={submit} class="flex items-center gap-2 max-w-3xl mx-auto">
     <!-- Kind toggle. Compact two-state pill — task vs event. -->
     <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-[11px] flex-shrink-0">

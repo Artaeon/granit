@@ -101,7 +101,7 @@
       {/if}
     </a>
     {#if stats.words > 0 || stats.tasks > 0 || stats.jots > 0}
-      <div class="flex items-baseline gap-3 mt-3 pt-2 border-t border-surface1/60 text-[11px] text-dim font-mono tabular-nums">
+      <div class="flex items-baseline gap-3 mt-3 pt-2 border-t border-surface1 text-[11px] text-dim font-mono tabular-nums">
         {#if stats.words > 0}<span>{stats.words} words</span>{/if}
         {#if stats.tasks > 0}<span class="text-secondary">{stats.tasks} ☐</span>{/if}
         {#if stats.jots > 0}<span class="text-info">{stats.jots} jots</span>{/if}

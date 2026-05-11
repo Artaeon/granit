@@ -132,7 +132,7 @@
         <button
           type="button"
           onclick={() => onJumpToWord?.(e.word)}
-          class="w-full text-left px-2 py-1 rounded hover:bg-surface1/50 flex items-center gap-2 group"
+          class="w-full text-left px-2 py-1 rounded hover:bg-surface1 flex items-center gap-2 group"
           title="Jump to first occurrence in editor"
         >
           <span class="flex-1 truncate text-sm text-text">{e.word}</span>

@@ -68,7 +68,7 @@
         <li>
           <a
             href={`/projects?venture=${encodeURIComponent(v.name)}`}
-            class="flex items-center gap-2.5 px-2.5 py-1.5 rounded hover:bg-mantle/40 group"
+            class="flex items-center gap-2.5 px-2.5 py-1.5 rounded hover:bg-mantle group"
           >
             <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: {colorVar(v.color)}"></span>
             <span class="text-sm text-text flex-1 min-w-0 truncate group-hover:text-primary">{v.name}</span>

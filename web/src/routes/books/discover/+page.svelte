@@ -254,7 +254,7 @@
       </header>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {#each results as r (r.source + r.externalId)}
-          <article class="flex gap-3 p-3 border border-surface1 rounded-lg bg-surface0/50 hover:bg-surface0 transition-colors">
+          <article class="flex gap-3 p-3 border border-surface1 rounded-lg bg-surface0 hover:bg-surface0 transition-colors">
             <div class="w-20 h-28 flex-shrink-0 bg-surface1 rounded overflow-hidden flex items-center justify-center">
               {#if r.coverUrl}
                 <img

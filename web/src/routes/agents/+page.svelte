@@ -163,7 +163,7 @@
           {q.trim() ? 'no runs match your filter' : 'No agent runs yet. Run one from the granit TUI ("Agents" overlay) and it\'ll show up here.'}
         </div>
       {:else}
-        <ul class="divide-y divide-surface1 bg-surface0/40 border border-surface1 rounded-lg">
+        <ul class="divide-y divide-surface1 bg-surface0 border border-surface1 rounded-lg">
           {#each filteredRuns as r (r.path)}
             <li>
               <button

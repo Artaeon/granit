@@ -1453,7 +1453,7 @@
 
 <div class="flex h-full">
   <!-- Desktop sidebar -->
-  <aside class="hidden md:block md:w-56 lg:w-64 border-r border-surface1 bg-mantle/50 flex-shrink-0 overflow-y-auto">
+  <aside class="hidden md:block md:w-56 lg:w-64 border-r border-surface1 bg-mantle flex-shrink-0 overflow-y-auto">
     {@render filterContent()}
   </aside>
 
@@ -2208,7 +2208,7 @@
 <!-- Keyboard shortcuts overlay. Toggled with '?' or the header button. -->
 {#if helpOpen}
   <div
-    class="fixed inset-0 bg-mantle/80 z-50 flex items-center justify-center p-4"
+    class="fixed inset-0 bg-mantle z-50 flex items-center justify-center p-4"
     onclick={() => (helpOpen = false)}
     role="presentation"
   >

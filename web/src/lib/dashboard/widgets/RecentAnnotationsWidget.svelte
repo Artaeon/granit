@@ -70,7 +70,7 @@
   {#if loading && items.length === 0}
     <div class="space-y-2">
       {#each Array(3) as _, i (i)}
-        <div class="h-12 bg-surface1/50 rounded animate-pulse"></div>
+        <div class="h-12 bg-surface1 rounded animate-pulse"></div>
       {/each}
     </div>
   {:else if items.length === 0}
@@ -84,7 +84,7 @@
           <button
             type="button"
             onclick={() => open(a)}
-            class="w-full text-left flex gap-2 p-2 rounded hover:bg-surface1/50 group"
+            class="w-full text-left flex gap-2 p-2 rounded hover:bg-surface1 group"
           >
             <span class="w-1 self-stretch rounded-full {annotationBarClass(a.color)} flex-shrink-0"></span>
             <div class="flex-1 min-w-0">

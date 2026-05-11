@@ -922,7 +922,7 @@
              gloss is intentionally short and ephemeral; the user can
              always fall through to "Reflect on this" or "AI reflection"
              when they want a saved devotional note. -->
-        <div class="bg-surface0/40 border border-surface1 rounded-lg p-4 mt-4">
+        <div class="bg-surface0 border border-surface1 rounded-lg p-4 mt-4">
           <div class="flex items-baseline gap-2 flex-wrap">
             <span class="text-xs uppercase tracking-wider text-dim font-medium">Ask AI</span>
             <button
@@ -1062,7 +1062,7 @@
           {/each}
         </div>
       {/if}
-      <ul class="divide-y divide-surface1 bg-surface0/40 border border-surface1 rounded-lg">
+      <ul class="divide-y divide-surface1 bg-surface0 border border-surface1 rounded-lg">
         {#each filteredAll as v}
           <li class="px-4 py-3 group">
             <p class="text-sm text-text font-serif italic leading-relaxed">"{v.text}"</p>

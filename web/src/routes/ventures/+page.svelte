@@ -442,7 +442,7 @@
            (the cards view exists for that). -->
       <div class="bg-surface0 border border-surface1 rounded-lg overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="bg-surface1/50 text-xs uppercase tracking-wider text-dim">
+          <thead class="bg-surface1 text-xs uppercase tracking-wider text-dim">
             <tr>
               <th class="text-left font-medium px-4 py-2">Name</th>
               <th class="text-left font-medium px-2 py-2 hidden md:table-cell">Mission</th>
@@ -454,7 +454,7 @@
           </thead>
           <tbody>
             {#each filtered as v (v.name)}
-              <tr class="border-t border-surface1 hover:bg-surface1/30">
+              <tr class="border-t border-surface1 hover:bg-surface1">
                 <td class="px-4 py-2">
                   <a
                     href={`/ventures/${encodeURIComponent(v.name)}`}

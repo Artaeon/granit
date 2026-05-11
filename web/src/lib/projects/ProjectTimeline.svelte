@@ -135,13 +135,13 @@
            is the chart area. -->
       <div class="grid timeline-grid min-w-[700px]">
         <!-- Axis row -->
-        <div class="px-3 py-1.5 border-b border-surface1 bg-mantle/60 sticky left-0 z-10 text-[10px] text-dim uppercase tracking-wider font-medium">
+        <div class="px-3 py-1.5 border-b border-surface1 bg-mantle sticky left-0 z-10 text-[10px] text-dim uppercase tracking-wider font-medium">
           Project
         </div>
-        <div class="relative border-b border-surface1 bg-mantle/60 h-7">
+        <div class="relative border-b border-surface1 bg-mantle h-7">
           {#each ticks as t (t.pct)}
             <div
-              class="absolute top-0 bottom-0 border-l border-surface1/60 text-[9px] text-dim font-mono pl-1"
+              class="absolute top-0 bottom-0 border-l border-surface1 text-[9px] text-dim font-mono pl-1"
               style="left: {t.pct}%"
             >{t.label}</div>
           {/each}
@@ -158,7 +158,7 @@
         {#each projects as p (p.name)}
           {@const bar = rowBar(p)}
           {@const pct = progress(p)}
-          <div class="px-3 py-1.5 border-b border-surface1/50 sticky left-0 bg-base z-[5] flex items-center gap-1.5 min-w-0">
+          <div class="px-3 py-1.5 border-b border-surface1 sticky left-0 bg-base z-[5] flex items-center gap-1.5 min-w-0">
             <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: {colorVar(p.color)}"></span>
             <button
               onclick={() => onSelect(p.name)}
@@ -166,7 +166,7 @@
               title="open {p.name}"
             >{p.name}</button>
           </div>
-          <div class="relative border-b border-surface1/50 h-8">
+          <div class="relative border-b border-surface1 h-8">
             <!-- Today line repeats per row so it's always visible at
                  any scroll position (otherwise it disappears as the
                  user scrolls vertically away from the axis). -->
@@ -188,7 +188,7 @@
                      legible together. -->
                 {#if pct > 0}
                   <div
-                    class="absolute inset-y-0 left-0 bg-base/30"
+                    class="absolute inset-y-0 left-0 bg-base"
                     style="width: {Math.round(pct * 100)}%"
                   ></div>
                 {/if}

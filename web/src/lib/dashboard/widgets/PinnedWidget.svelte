@@ -92,7 +92,7 @@
         <li>
           <a
             href="/notes/{encodeURIComponent(p.path)}"
-            class="flex items-baseline gap-2 group py-1 px-2 -mx-2 rounded hover:bg-surface1/50 transition-colors"
+            class="flex items-baseline gap-2 group py-1 px-2 -mx-2 rounded hover:bg-surface1 transition-colors"
           >
             <span class="text-warning flex-shrink-0">★</span>
             <span class="flex-1 min-w-0">

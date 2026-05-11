@@ -40,7 +40,7 @@
 {#if show && vision}
   <a
     href="/vision"
-    class="block mb-4 px-3 py-2 bg-surface0/40 border border-surface1 rounded text-xs hover:border-primary/40 transition-colors group"
+    class="block mb-4 px-3 py-2 bg-surface0 border border-surface1 rounded text-xs hover:border-primary/40 transition-colors group"
     title="Open vision"
   >
     <div class="flex items-baseline gap-3 flex-wrap">

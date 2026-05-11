@@ -413,7 +413,7 @@
               <button
                 type="button"
                 onclick={() => { titleEditing = true; }}
-                class="text-base font-medium text-text break-words text-left w-full hover:bg-surface1/40 rounded px-2 py-1 -mx-2 -my-1 transition-colors {task.done ? 'line-through text-dim' : ''}"
+                class="text-base font-medium text-text break-words text-left w-full hover:bg-surface1 rounded px-2 py-1 -mx-2 -my-1 transition-colors {task.done ? 'line-through text-dim' : ''}"
                 title="click to rename"
               >{cleanTaskText(task.text)}</button>
             {/if}

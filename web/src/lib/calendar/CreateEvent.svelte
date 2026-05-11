@@ -282,7 +282,7 @@
        height) accounts for the iOS Safari address-bar height
        changes — vh would clip when the address bar is visible. -->
   <div
-    class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
+    class="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center sm:p-4"
     onclick={close}
     role="dialog"
     tabindex="-1"
@@ -502,7 +502,7 @@
               </div>
             {/if}
             {#if rrule}
-              <div class="sm:col-span-2 px-2.5 py-1.5 bg-mantle/50 border border-surface1/60 rounded text-[11px] text-dim font-mono">
+              <div class="sm:col-span-2 px-2.5 py-1.5 bg-mantle border border-surface1 rounded text-[11px] text-dim font-mono">
                 <span class="text-secondary">→</span> {rrule}
               </div>
             {/if}

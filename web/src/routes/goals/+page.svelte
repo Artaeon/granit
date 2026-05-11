@@ -1073,7 +1073,7 @@
                   : e.verdict === 'drifting' ? 'warning'
                   : e.verdict === 'dead' ? 'error'
                   : 'subtext'}
-                <article class="p-3 bg-mantle/40 border border-surface1 rounded">
+                <article class="p-3 bg-mantle border border-surface1 rounded">
                   <div class="flex items-baseline gap-2 mb-1">
                     <span class="text-sm font-medium text-text flex-1 min-w-0 break-words">{e.title}</span>
                     <span
@@ -1189,7 +1189,7 @@
           {:else}
             {#each auditFindings as f (f.cluster + f.observation)}
               {#if !auditDismissed.has(f.cluster)}
-                <article class="p-3 bg-mantle/40 border border-surface1 rounded border-l-4" style="border-left-color: var(--color-warning);">
+                <article class="p-3 bg-mantle border border-surface1 rounded border-l-4" style="border-left-color: var(--color-warning);">
                   <div class="flex items-baseline gap-2 mb-1 flex-wrap">
                     <span class="text-sm font-medium text-text flex-1 min-w-0 break-words">{f.cluster}</span>
                     <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-warning/15 text-warning tabular-nums">
@@ -1608,7 +1608,7 @@
                 </button>
               </div>
               {#if aiOpen}
-                <div class="border-t border-surface1 bg-mantle/40 p-3">
+                <div class="border-t border-surface1 bg-mantle p-3">
                   <div class="text-[10px] uppercase tracking-wider text-dim mb-1">AI suggestion</div>
                   {#if aiError}
                     <div class="text-sm text-error mb-2">{aiError}</div>

@@ -105,7 +105,7 @@
       </blockquote>
 
       <!-- Time-remaining + work-modules-paused summary. -->
-      <section class="bg-surface0/50 border border-surface1 rounded-lg p-5 my-8 text-center">
+      <section class="bg-surface0 border border-surface1 rounded-lg p-5 my-8 text-center">
         <p class="text-sm text-subtext">
           Rest until midnight — <span class="text-text font-medium">{fmtRemaining(minutesRemaining)}</span> remaining.
         </p>

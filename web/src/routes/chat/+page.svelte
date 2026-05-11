@@ -193,7 +193,7 @@
        env(safe-area-inset-bottom) means the iPhone home indicator
        doesn't sit on top of the textarea. The form itself stays
        padded; the safe-area only kicks in on devices that report it. -->
-  <div class="border-t border-surface1 bg-mantle/50 flex-shrink-0 pb-[env(safe-area-inset-bottom,0px)]">
+  <div class="border-t border-surface1 bg-mantle flex-shrink-0 pb-[env(safe-area-inset-bottom,0px)]">
     <form onsubmit={send} class="max-w-3xl mx-auto p-3 flex gap-2 items-end">
       <textarea
         bind:this={inputEl}

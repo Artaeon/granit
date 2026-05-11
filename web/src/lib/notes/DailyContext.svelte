@@ -67,7 +67,7 @@
 </script>
 
 {#if ctx && (ctx.carryover.length > 0 || ctx.habits.length > 0)}
-  <div class="px-3 py-2 border-b border-surface1 bg-surface0/30 flex-shrink-0 space-y-2">
+  <div class="px-3 py-2 border-b border-surface1 bg-surface0 flex-shrink-0 space-y-2">
     <div class="max-w-3xl mx-auto space-y-2">
       {#if ctx.carryover.length > 0}
         <section>

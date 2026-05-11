@@ -30,7 +30,7 @@
 <div class="flex gap-3 overflow-x-auto pb-3 h-full">
   {#each cols as c}
     {@const list = grouped[c.key] ?? []}
-    <section class="w-72 flex-shrink-0 flex flex-col bg-surface0/50 border border-surface1 rounded">
+    <section class="w-72 flex-shrink-0 flex flex-col bg-surface0 border border-surface1 rounded">
       <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
         <h3 class="text-xs uppercase tracking-wider font-medium" style="color: var(--color-{c.tone})">{c.label}</h3>
         <span class="text-[10px] text-dim">{list.length}</span>

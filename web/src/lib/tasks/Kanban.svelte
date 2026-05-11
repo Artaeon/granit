@@ -467,7 +467,7 @@
       {@const estTotal = colTasks.reduce((s, t) => s + (t.estimatedMinutes ?? 0), 0)}
       {@const isDropTarget = dragOverCol === col.key + ':' + lane.key}
       <div
-        class="bg-mantle/50 border rounded flex flex-col md:flex-shrink-0 md:w-72
+        class="bg-mantle border rounded flex flex-col md:flex-shrink-0 md:w-72
           {isDropTarget ? 'border-primary/60 bg-primary/5' : 'border-surface1'}
           {overWip ? 'ring-1 ring-error/40' : ''}"
         ondragover={(e) => onDragOver(e, col.key + ':' + lane.key)}

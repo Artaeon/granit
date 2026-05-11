@@ -78,7 +78,7 @@
     <ul class="space-y-2">
       {#each visible as p (p.id)}
         {@const tie = tieLabel(p)}
-        <li class="px-2.5 py-1.5 bg-mantle/30 rounded">
+        <li class="px-2.5 py-1.5 bg-mantle rounded">
           <div class="text-sm text-text break-words">{p.text}</div>
           {#if tie || p.passage_ref}
             <div class="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 mt-1 text-[11px] text-dim">

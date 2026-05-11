@@ -538,7 +538,7 @@
                   <button
                     type="button"
                     onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
-                    class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1/60 text-dim border-surface2 hover:text-text"
+                    class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1 text-dim border-surface2 hover:text-text"
                     title="set a weekly target"
                   >+ target</button>
                 {/if}
@@ -661,7 +661,7 @@
                     <button
                       type="button"
                       onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
-                      class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1/60 text-dim border-surface2 hover:text-text"
+                      class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1 text-dim border-surface2 hover:text-text"
                     >+ target</button>
                   {/if}
                 </div>

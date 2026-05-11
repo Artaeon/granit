@@ -184,8 +184,8 @@
 <!-- Full-page overlay above the goals page. Backdrop absorbs clicks
      so a stray click outside the cards doesn't dismiss; explicit
      exits are the X button + Esc. Hides body scroll while open. -->
-<div class="fixed inset-0 z-50 bg-mantle/95 backdrop-blur-sm flex flex-col" role="dialog" aria-modal="true" aria-label="Goal dashboard">
-  <header class="flex-shrink-0 border-b border-surface1 bg-base/80 px-3 sm:px-6 py-3 flex items-center gap-3">
+<div class="fixed inset-0 z-50 bg-mantle flex flex-col" role="dialog" aria-modal="true" aria-label="Goal dashboard">
+  <header class="flex-shrink-0 border-b border-surface1 bg-base px-3 sm:px-6 py-3 flex items-center gap-3">
     <span class="w-3 h-3 rounded-full flex-shrink-0" style="background: {colorVar(goal.color)}"></span>
     <div class="flex-1 min-w-0">
       <div class="flex items-baseline gap-2">
@@ -405,7 +405,7 @@
             {:else}
               <ul class="space-y-2">
                 {#each recentReviews as r, idx (idx + (r.date ?? ''))}
-                  <li class="px-2 py-1.5 rounded border-l-2 border-secondary/40 bg-mantle/40">
+                  <li class="px-2 py-1.5 rounded border-l-2 border-secondary/40 bg-mantle">
                     <div class="flex items-baseline gap-2">
                       <span class="text-[11px] text-dim font-mono">{r.date}</span>
                       {#if typeof r.progress === 'number' && r.progress > 0}

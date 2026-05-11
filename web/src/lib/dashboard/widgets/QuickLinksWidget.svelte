@@ -85,7 +85,7 @@
               class="w-full text-left px-2 py-1.5 rounded hover:bg-surface1 flex items-center gap-2.5 group"
               aria-label={it.url ? `Open ${it.title}` : it.title}
             >
-              <div class="w-6 h-6 flex-shrink-0 rounded bg-mantle/40 flex items-center justify-center text-[11px] font-medium text-text overflow-hidden">
+              <div class="w-6 h-6 flex-shrink-0 rounded bg-mantle flex items-center justify-center text-[11px] font-medium text-text overflow-hidden">
                 {#if fav}
                   <img
                     src={fav}

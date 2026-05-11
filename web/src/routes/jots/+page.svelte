@@ -443,7 +443,7 @@
 
     <!-- Toolbar (sticky) -->
     <div
-      class="sticky top-0 z-20 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2.5 mb-4 bg-base/95 backdrop-blur border-b border-surface1"
+      class="sticky top-0 z-20 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2.5 mb-4 bg-base border-b border-surface1"
     >
       <div class="flex flex-wrap items-center gap-2">
         <label class="flex items-center gap-2 text-xs text-dim">
@@ -596,7 +596,7 @@
         disabled={composerBusy}
         class="w-full bg-transparent px-3 py-2 text-sm text-text placeholder-dim focus:outline-none resize-y disabled:opacity-50"
       ></textarea>
-      <div class="flex items-center justify-between px-3 py-1.5 border-t border-surface1/50">
+      <div class="flex items-center justify-between px-3 py-1.5 border-t border-surface1">
         <p class="text-[10px] text-dim">Appends under <code>## Jots</code> in today's daily</p>
         <button
           type="button"
@@ -651,7 +651,7 @@
           <li>
             <article>
               <header
-                class="sticky top-[3.25rem] z-10 -mx-1 px-1 py-1.5 bg-base/95 backdrop-blur flex items-baseline gap-2 mb-2"
+                class="sticky top-[3.25rem] z-10 -mx-1 px-1 py-1.5 bg-base flex items-baseline gap-2 mb-2"
               >
                 <h2 class="text-base sm:text-lg font-semibold text-text">
                   {relativeLabel(jot.date, today)}

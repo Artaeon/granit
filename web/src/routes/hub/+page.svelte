@@ -583,7 +583,7 @@
 <!-- Add / edit modal -->
 {#if modalOpen}
   <div
-    class="fixed inset-0 z-50 flex items-start justify-center pt-12 px-4 bg-mantle/70 backdrop-blur-sm"
+    class="fixed inset-0 z-50 flex items-start justify-center pt-12 px-4 bg-black/60"
     onclick={() => (modalOpen = false)}
     role="presentation"
   >

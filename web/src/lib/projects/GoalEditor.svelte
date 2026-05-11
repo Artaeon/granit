@@ -107,7 +107,7 @@
 <div class="space-y-2">
   {#each goals as g, gi (gi)}
     {@const prog = goalProgress(g)}
-    <div class="border border-surface1 rounded bg-surface0/50">
+    <div class="border border-surface1 rounded bg-surface0">
       <div class="flex items-center gap-2 px-3 py-2">
         <button
           onclick={() => toggleGoal(gi)}

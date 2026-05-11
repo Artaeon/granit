@@ -299,7 +299,7 @@
         <li>
           <a
             href={r.href}
-            class="flex items-baseline gap-3 py-1 px-2 -mx-2 rounded hover:bg-surface1/50 transition-colors {r.past ? 'opacity-45' : ''}"
+            class="flex items-baseline gap-3 py-1 px-2 -mx-2 rounded hover:bg-surface1 transition-colors {r.past ? 'opacity-45' : ''}"
           >
             <span class="w-12 flex-shrink-0 text-xs font-mono tabular-nums text-dim">
               {r.time || '—'}
@@ -323,11 +323,11 @@
        per day with count + first event. Hidden when both days
        are empty so the widget stays tight. -->
   {#if loaded && upcoming.some((u) => u.eventCount > 0 || u.taskCount > 0)}
-    <div class="mt-4 pt-3 border-t border-surface1/70 grid grid-cols-1 sm:grid-cols-2 gap-2">
+    <div class="mt-4 pt-3 border-t border-surface1 grid grid-cols-1 sm:grid-cols-2 gap-2">
       {#each upcoming as u (u.iso)}
         <a
           href="/calendar"
-          class="flex flex-col gap-0.5 px-3 py-2 rounded bg-surface1/40 hover:bg-surface1 transition-colors {u.eventCount === 0 && u.taskCount === 0 ? 'opacity-60' : ''}"
+          class="flex flex-col gap-0.5 px-3 py-2 rounded bg-surface1 hover:bg-surface1 transition-colors {u.eventCount === 0 && u.taskCount === 0 ? 'opacity-60' : ''}"
         >
           <span class="text-[10px] uppercase tracking-wider text-dim">
             {fmtDayLabel(u.date)}

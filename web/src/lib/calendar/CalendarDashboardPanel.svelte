@@ -187,8 +187,8 @@
 <!-- Full-page overlay above the /calendar layout. Same modal
      contract as the project + goal dashboards: Esc + the X button
      are the only ways out. Hides body scroll while open. -->
-<div class="fixed inset-0 z-50 bg-mantle/95 backdrop-blur-sm flex flex-col" role="dialog" aria-modal="true" aria-label="Calendar dashboard">
-  <header class="flex-shrink-0 border-b border-surface1 bg-base/80 px-3 sm:px-6 py-3 flex items-center gap-3">
+<div class="fixed inset-0 z-50 bg-mantle flex flex-col" role="dialog" aria-modal="true" aria-label="Calendar dashboard">
+  <header class="flex-shrink-0 border-b border-surface1 bg-base px-3 sm:px-6 py-3 flex items-center gap-3">
     <span class="w-3 h-3 rounded-full flex-shrink-0 bg-primary"></span>
     <div class="flex-1 min-w-0">
       <div class="flex items-baseline gap-2 flex-wrap">

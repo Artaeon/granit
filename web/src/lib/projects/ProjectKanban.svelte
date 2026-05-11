@@ -126,7 +126,7 @@
 		{#each buckets as bucket (bucket.status)}
 			{@const isDropTarget = dragOver === bucket.status && draggingName !== null}
 			<section
-				class="flex flex-col flex-shrink-0 w-[18rem] sm:w-[20rem] rounded border bg-mantle/40 transition-colors {isDropTarget
+				class="flex flex-col flex-shrink-0 w-[18rem] sm:w-[20rem] rounded border bg-mantle transition-colors {isDropTarget
 					? 'border-primary bg-primary/5'
 					: 'border-surface1'}"
 				aria-label="{statusLabel(bucket.status)} column"

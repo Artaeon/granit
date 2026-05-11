@@ -128,10 +128,10 @@
      drawer) via z-50, with a backdrop that absorbs clicks so a stray
      click outside the panel doesn't dismiss it (the X button + Esc
      are the explicit exits). Hides body scroll while open. -->
-<div class="fixed inset-0 z-50 bg-mantle/95 backdrop-blur-sm flex flex-col" role="dialog" aria-modal="true" aria-label="Project dashboard">
+<div class="fixed inset-0 z-50 bg-mantle flex flex-col" role="dialog" aria-modal="true" aria-label="Project dashboard">
   <!-- Header bar — project identity + close. Sticky so a long scroll
        through cards still has the close affordance reachable. -->
-  <header class="flex-shrink-0 border-b border-surface1 bg-base/80 px-3 sm:px-6 py-3 flex items-center gap-3">
+  <header class="flex-shrink-0 border-b border-surface1 bg-base px-3 sm:px-6 py-3 flex items-center gap-3">
     <span class="w-3 h-3 rounded-full flex-shrink-0" style="background: {colorVar(project.color)}"></span>
     <div class="flex-1 min-w-0">
       <div class="flex items-baseline gap-2">

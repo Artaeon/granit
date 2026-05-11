@@ -1705,7 +1705,7 @@
        wasted a NotesTree mount + its WS subscription per page mount.
        Render only the active one based on the live `isLg` flag. -->
   {#if isLg}
-    <aside class="hidden lg:flex lg:flex-col lg:w-64 xl:w-72 border-r border-surface1 bg-mantle/40 flex-shrink-0 focus-hide">
+    <aside class="hidden lg:flex lg:flex-col lg:w-64 xl:w-72 border-r border-surface1 bg-mantle flex-shrink-0 focus-hide">
       {@render treeContent()}
     </aside>
   {:else}
@@ -1724,7 +1724,7 @@
            too — without this the user has no UI to navigate away
            except a full page reload. Keep it minimal: just a back
            link and the error message. -->
-      <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md sticky top-0 z-20">
+      <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle sticky top-0 z-20">
         <a
           href="/notes"
           aria-label="back to notes"
@@ -1754,7 +1754,7 @@
       <div class="px-4 py-2 text-sm text-error border-b border-error/30 bg-error/10 flex-shrink-0">{error}</div>
     {/if}
     {#if note}
-      <header bind:this={editorHeaderEl} class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md sticky top-0 z-20">
+      <header bind:this={editorHeaderEl} class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle sticky top-0 z-20">
         <!-- Hidden on mobile: the layout's top-bar already shows a back
              arrow to /notes for any subpath, so a second one here pushes
              the view-mode toggle (and save button) off the right edge on
@@ -2282,7 +2282,7 @@
        editing on any non-xl viewport, and keeps the desktop layout
        unchanged when isXl is true. Focus-mode still hides the rail. -->
   {#if isXl}
-    <aside class="hidden xl:flex xl:flex-col xl:w-72 border-l border-surface1 bg-mantle/40 flex-shrink-0 focus-hide">
+    <aside class="hidden xl:flex xl:flex-col xl:w-72 border-l border-surface1 bg-mantle flex-shrink-0 focus-hide">
       {@render infoContent()}
     </aside>
   {:else}

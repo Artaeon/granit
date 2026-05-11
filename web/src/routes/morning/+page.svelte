@@ -413,7 +413,7 @@
       {/if}
 
       {#if scripturePickerOpen}
-        <div class="mt-3 p-3 bg-mantle/60 border border-surface1 rounded space-y-3">
+        <div class="mt-3 p-3 bg-mantle border border-surface1 rounded space-y-3">
           <div>
             <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5">From rotation</div>
             <div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
@@ -446,7 +446,7 @@
          deadlines so the user starts grounded in what they're
          actually working towards before picking today's specifics. -->
     {#if activeGoals.length > 0 || upcomingNear.length > 0}
-      <section class="mb-7 p-3 sm:p-4 rounded-lg bg-mantle/50 border border-surface1/60">
+      <section class="mb-7 p-3 sm:p-4 rounded-lg bg-mantle border border-surface1">
         <div class="text-[10px] uppercase tracking-wider text-dim mb-2">Working towards</div>
         {#if activeGoals.length > 0}
           <ul class="space-y-1.5">
@@ -460,7 +460,7 @@
           </ul>
         {/if}
         {#if upcomingNear.length > 0}
-          <ul class="space-y-1.5 {activeGoals.length > 0 ? 'mt-2 pt-2 border-t border-surface1/60' : ''}">
+          <ul class="space-y-1.5 {activeGoals.length > 0 ? 'mt-2 pt-2 border-t border-surface1' : ''}">
             {#each upcomingNear as { d, days } (d.id)}
               <li class="flex items-baseline gap-2 text-sm">
                 <DeadlinePill variant="countdown" {days} status={d.status} />
@@ -656,7 +656,7 @@
         class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary leading-relaxed"
       ></textarea>
       {#if prayerPickerOpen}
-        <div class="mt-3 p-3 bg-mantle/40 border border-surface1 rounded space-y-2">
+        <div class="mt-3 p-3 bg-mantle border border-surface1 rounded space-y-2">
           {#if sortedIntentions.length > 0}
             <ul class="space-y-1 max-h-48 overflow-y-auto">
               {#each sortedIntentions as p (p.id)}
@@ -707,7 +707,7 @@
        the sidebar collapsed to compact). The bottom padding adds the
        iOS home-indicator inset so the Lock-in button stays reachable
        above the gesture area on phones. -->
-  <footer class="sticky bottom-0 z-20 border-t border-surface1 bg-mantle/95 backdrop-blur px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+  <footer class="sticky bottom-0 z-20 border-t border-surface1 bg-mantle px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
     <div class="max-w-2xl mx-auto flex items-center gap-3">
       <span class="text-[11px] text-dim flex-1">
         {#if filledCount === 0}

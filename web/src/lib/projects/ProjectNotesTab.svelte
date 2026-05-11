@@ -269,7 +269,7 @@
   {#if loading && notes.length === 0}
     <div class="text-xs text-dim">scanning vault…</div>
   {:else if notes.length === 0}
-    <div class="text-xs text-dim italic px-3 py-2 bg-surface0/50 border border-dashed border-surface1 rounded">
+    <div class="text-xs text-dim italic px-3 py-2 bg-surface0 border border-dashed border-surface1 rounded">
       No notes link to this project yet. A note links if it has
       <code class="text-secondary">project: "{project.name}"</code> in frontmatter,
       a <code class="text-secondary">[[{project.name}]]</code> wikilink in the body,

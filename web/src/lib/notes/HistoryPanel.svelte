@@ -215,7 +215,7 @@
 
 {#if open}
   <div
-    class="fixed inset-0 z-50 bg-base/95 backdrop-blur-sm flex flex-col"
+    class="fixed inset-0 z-50 bg-base flex flex-col"
     role="dialog"
     aria-label="Version history"
     aria-modal="true"
@@ -231,7 +231,7 @@
         <!-- View toggle: side-by-side bodies vs. LCS diff. The diff
              reads "this snapshot → live body" so the user sees what
              they've added/removed since the snapshot. -->
-        <div class="ml-2 inline-flex items-center text-[11px] rounded border border-surface1 bg-surface0/60 overflow-hidden">
+        <div class="ml-2 inline-flex items-center text-[11px] rounded border border-surface1 bg-surface0 overflow-hidden">
           <button
             type="button"
             onclick={() => setView('split')}
@@ -296,7 +296,7 @@
              to ~40dvh so the selected version body still gets
              primary real estate; if the user has many versions they
              scroll inside the constrained list rather than past it. -->
-        <aside class="border-b md:border-b-0 md:border-r border-surface1 overflow-y-auto bg-mantle/40 max-h-[40dvh] md:max-h-none">
+        <aside class="border-b md:border-b-0 md:border-r border-surface1 overflow-y-auto bg-mantle max-h-[40dvh] md:max-h-none">
           <ul class="divide-y divide-surface1">
             {#each versions as v (v.timestamp)}
               {@const sel = selectedTs === v.timestamp}
@@ -326,7 +326,7 @@
                carries +/-/space so it's still readable in
                monochrome / when red-green colour-blind. -->
           <section class="md:col-span-1 lg:col-span-2 overflow-y-auto bg-base">
-            <div class="px-4 py-3 border-b border-surface1 sticky top-0 bg-base/95 backdrop-blur-sm">
+            <div class="px-4 py-3 border-b border-surface1 sticky top-0 bg-base">
               <div class="text-[11px] uppercase tracking-wider text-dim font-semibold">Diff</div>
               <div class="text-sm text-text">
                 {#if selectedTs}
@@ -353,7 +353,7 @@
         {:else}
           <!-- Selected version body (read-only) -->
           <section class="overflow-y-auto border-r border-surface1 bg-base">
-            <div class="px-4 py-3 border-b border-surface1 sticky top-0 bg-base/95 backdrop-blur-sm">
+            <div class="px-4 py-3 border-b border-surface1 sticky top-0 bg-base">
               <div class="text-[11px] uppercase tracking-wider text-dim font-semibold">Selected version</div>
               {#if selectedTs}
                 <div class="text-sm text-text">{fmtTimestampFull(selectedTs)}</div>
@@ -371,7 +371,7 @@
           <!-- Current live body for comparison. Hidden on narrow
                viewports where the side-by-side wouldn't fit anyway. -->
           <section class="hidden lg:block overflow-y-auto bg-base">
-            <div class="px-4 py-3 border-b border-surface1 sticky top-0 bg-base/95 backdrop-blur-sm">
+            <div class="px-4 py-3 border-b border-surface1 sticky top-0 bg-base">
               <div class="text-[11px] uppercase tracking-wider text-dim font-semibold">Current</div>
               <div class="text-sm text-text">Live (unsaved changes excluded)</div>
             </div>

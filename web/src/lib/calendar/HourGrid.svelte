@@ -599,7 +599,7 @@
         <!-- Hours rail -->
         <div class="relative">
           {#each HOURS as h}
-            <div class="text-[10px] text-dim text-right pr-1 border-b border-surface1/50" style="height: {HOUR_PX}px">
+            <div class="text-[10px] text-dim text-right pr-1 border-b border-surface1" style="height: {HOUR_PX}px">
               {#if h > 0}
                 <span class="-translate-y-2 inline-block">{String(h).padStart(2, '0')}:00</span>
               {/if}
@@ -626,8 +626,8 @@
             style="touch-action: none;"
           >
             {#each HOURS as h}
-              <div class="border-b border-surface1/40 absolute left-0 right-0 pointer-events-none" style="top: {h * HOUR_PX}px; height: {HOUR_PX}px"></div>
-              <div class="border-b border-dashed border-surface1/20 absolute left-0 right-0 pointer-events-none" style="top: {h * HOUR_PX + HOUR_PX / 2}px"></div>
+              <div class="border-b border-surface1 absolute left-0 right-0 pointer-events-none" style="top: {h * HOUR_PX}px; height: {HOUR_PX}px"></div>
+              <div class="border-b border-dashed border-surface1 absolute left-0 right-0 pointer-events-none" style="top: {h * HOUR_PX + HOUR_PX / 2}px"></div>
             {/each}
 
             {#if isToday}

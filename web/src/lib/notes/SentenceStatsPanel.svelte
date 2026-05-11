@@ -173,15 +173,15 @@
 {:else}
   <!-- Top row: averages + count + rhythm signal -->
   <div class="grid grid-cols-3 gap-2 mb-3 text-xs">
-    <div class="bg-surface1/40 rounded px-2 py-1.5">
+    <div class="bg-surface1 rounded px-2 py-1.5">
       <div class="text-dim text-[10px] uppercase tracking-wider">Sentences</div>
       <div class="text-text font-medium tabular-nums">{stats.count}</div>
     </div>
-    <div class="bg-surface1/40 rounded px-2 py-1.5">
+    <div class="bg-surface1 rounded px-2 py-1.5">
       <div class="text-dim text-[10px] uppercase tracking-wider">Avg words</div>
       <div class="text-text font-medium tabular-nums">{stats.mean.toFixed(1)}</div>
     </div>
-    <div class="bg-surface1/40 rounded px-2 py-1.5">
+    <div class="bg-surface1 rounded px-2 py-1.5">
       <div class="text-dim text-[10px] uppercase tracking-wider">Rhythm</div>
       <div class="font-medium {rhythmClass(stats.rhythmTone)}">{stats.rhythmLabel}</div>
     </div>

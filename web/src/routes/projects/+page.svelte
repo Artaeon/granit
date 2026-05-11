@@ -700,7 +700,7 @@
   <div class="flex-1 min-h-0 flex">
   {#if viewMode === 'list'}
   <!-- List -->
-  <aside class="w-full md:w-72 lg:w-80 xl:w-96 flex-shrink-0 border-r border-surface1 bg-mantle/40 flex flex-col {selectedName ? 'hidden md:flex' : ''}">
+  <aside class="w-full md:w-72 lg:w-80 xl:w-96 flex-shrink-0 border-r border-surface1 bg-mantle flex flex-col {selectedName ? 'hidden md:flex' : ''}">
     <header class="px-3 py-2.5 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
       <h2 class="text-sm font-medium text-text flex-1">Projects</h2>
       <!-- Project Agent button removed; launches from the chat
@@ -840,7 +840,7 @@
       {:else}
         {#each grouped as g (g.venture)}
           {#if !ventureFilter && grouped.length > 1}
-            <div class="px-3 pt-3 pb-1 sticky top-0 bg-mantle/90 backdrop-blur z-10 flex items-center gap-2 border-b border-surface1/50">
+            <div class="px-3 pt-3 pb-1 sticky top-0 bg-mantle z-10 flex items-center gap-2 border-b border-surface1">
               <span class="text-[10px] uppercase tracking-wider text-dim font-medium flex-1 truncate">
                 {g.venture === '—' ? 'no venture' : g.venture}
               </span>

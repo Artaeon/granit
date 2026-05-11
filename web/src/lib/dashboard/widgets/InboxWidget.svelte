@@ -164,7 +164,7 @@
       <div class="text-sm text-dim italic">nothing to action right now — open <a href="/tasks" class="text-secondary hover:underline">Tasks</a> to plan ahead</div>
     {/if}
 
-    <div class="pt-3 mt-1 border-t border-surface1/60 flex items-center justify-between">
+    <div class="pt-3 mt-1 border-t border-surface1 flex items-center justify-between">
       <span class="text-[11px] text-dim">{allOpen.length} open total</span>
       <a href="/tasks" class="text-xs text-secondary hover:underline">Open Tasks page →</a>
     </div>

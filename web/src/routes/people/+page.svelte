@@ -373,7 +373,7 @@
         {/if}
         <ul class="space-y-1.5">
           {#each aiPicks as pick (pick.name)}
-            <li class="flex items-baseline gap-2 p-2 bg-mantle/50 border border-surface1/60 rounded">
+            <li class="flex items-baseline gap-2 p-2 bg-mantle border border-surface1 rounded">
               <button type="button" onclick={() => openByName(pick.name)} class="text-sm font-medium text-text hover:text-primary truncate" title="open person">
                 {pick.name}
               </button>

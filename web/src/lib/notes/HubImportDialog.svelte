@@ -192,7 +192,7 @@
 
 {#if open}
   <div
-    class="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-12 sm:px-4 bg-mantle/70 backdrop-blur-sm"
+    class="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-12 sm:px-4 bg-black/60"
     onclick={onClose}
     role="presentation"
   >
@@ -263,7 +263,7 @@
           <div class="space-y-3">
             {#each groups as [cat, list] (cat)}
               <div class="border border-surface1 rounded">
-                <header class="px-3 py-1.5 border-b border-surface1 flex items-baseline gap-2 bg-surface0/50">
+                <header class="px-3 py-1.5 border-b border-surface1 flex items-baseline gap-2 bg-surface0">
                   <button
                     type="button"
                     onclick={() => selectCategory(cat === fallbackCategory && parsed.find((p) => !p.category)?.category === '' ? '' : cat)}

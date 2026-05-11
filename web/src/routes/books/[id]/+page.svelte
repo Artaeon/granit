@@ -518,7 +518,7 @@
 {:else}
   <div class="h-full flex flex-col {outerThemeClass}">
     <!-- Top bar — title + chapter context + reader-prefs popover. -->
-    <header class="flex-shrink-0 border-b border-surface1/50 px-3 sm:px-4 py-2 flex items-center gap-2 backdrop-blur-sm">
+    <header class="flex-shrink-0 border-b border-surface1 px-3 sm:px-4 py-2 flex items-center gap-2">
       <button
         onclick={() => goto('/books')}
         class="text-dim hover:text-text text-sm flex-shrink-0"
@@ -534,7 +534,7 @@
       </div>
       <button
         onclick={addBookmark}
-        class="text-xs px-2 py-1 rounded hover:bg-surface1/50 text-subtext flex items-center gap-1"
+        class="text-xs px-2 py-1 rounded hover:bg-surface1 text-subtext flex items-center gap-1"
         title="Bookmark current spot"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
@@ -544,13 +544,13 @@
       </button>
       <button
         onclick={() => (sidebarOpen = !sidebarOpen)}
-        class="text-xs px-2 py-1 rounded hover:bg-surface1/50 text-subtext"
+        class="text-xs px-2 py-1 rounded hover:bg-surface1 text-subtext"
         title="Toggle table of contents"
       >
         {sidebarOpen ? 'Hide TOC' : 'TOC'}
       </button>
       <details class="relative">
-        <summary class="text-xs px-2 py-1 rounded hover:bg-surface1/50 text-subtext cursor-pointer list-none">
+        <summary class="text-xs px-2 py-1 rounded hover:bg-surface1 text-subtext cursor-pointer list-none">
           Aa
         </summary>
         <div class="absolute right-0 top-full mt-1 z-20 bg-surface0 border border-surface1 rounded-lg shadow-lg p-3 w-56 text-sm space-y-3 text-text">
@@ -613,7 +613,7 @@
     <div class="flex-1 flex min-h-0">
       <!-- Sidebar: TOC + highlights -->
       {#if sidebarOpen}
-        <aside class="w-72 border-r border-surface1/50 overflow-y-auto flex-shrink-0 hidden md:block">
+        <aside class="w-72 border-r border-surface1 overflow-y-auto flex-shrink-0 hidden md:block">
           <div class="p-3">
             <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Contents</h3>
             <ul class="space-y-0.5">
@@ -622,7 +622,7 @@
                   <button
                     onclick={() => entry.SpineIdx >= 0 && jumpToChapter(entry.SpineIdx)}
                     style="padding-left: {0.25 + depth * 0.75}rem"
-                    class="block w-full text-left text-sm py-1 rounded hover:bg-surface1/50 truncate {entry.SpineIdx === chapterIdx ? 'text-primary font-medium' : 'text-subtext'}"
+                    class="block w-full text-left text-sm py-1 rounded hover:bg-surface1 truncate {entry.SpineIdx === chapterIdx ? 'text-primary font-medium' : 'text-subtext'}"
                     disabled={entry.SpineIdx < 0}
                     title={entry.Title}
                   >
@@ -636,7 +636,7 @@
                   <li>
                     <button
                       onclick={() => jumpToChapter(ch.index)}
-                      class="block w-full text-left text-sm py-1 px-1 rounded hover:bg-surface1/50 truncate {ch.index === chapterIdx ? 'text-primary font-medium' : 'text-subtext'}"
+                      class="block w-full text-left text-sm py-1 px-1 rounded hover:bg-surface1 truncate {ch.index === chapterIdx ? 'text-primary font-medium' : 'text-subtext'}"
                     >
                       {ch.label}
                     </button>
@@ -649,7 +649,7 @@
               <h3 class="text-xs uppercase tracking-wider text-dim mt-6 mb-2">Bookmarks</h3>
               <ul class="space-y-1">
                 {#each sidecar?.bookmarks ?? [] as b (b.id)}
-                  <li class="group flex items-center rounded hover:bg-surface1/50">
+                  <li class="group flex items-center rounded hover:bg-surface1">
                     <button
                       class="flex-1 min-w-0 text-left text-xs leading-snug px-2 py-1.5 flex items-center gap-2"
                       onclick={() => jumpToBookmark(b)}
@@ -677,7 +677,7 @@
                 {#each sidecar?.highlights ?? [] as h (h.id)}
                   <li>
                     <button
-                      class="w-full text-left text-xs leading-snug p-2 rounded hover:bg-surface1/50 border-l-2 border-{h.color}-300"
+                      class="w-full text-left text-xs leading-snug p-2 rounded hover:bg-surface1 border-l-2 border-{h.color}-300"
                       onclick={() => jumpToChapter(h.chapterIdx)}
                     >
                       <div class="text-text line-clamp-3">"{h.text}"</div>

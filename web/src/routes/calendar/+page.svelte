@@ -1317,7 +1317,7 @@
 
 <div class="flex h-full">
   <!-- Desktop sidebar -->
-  <aside class="hidden md:block md:w-56 lg:w-64 border-r border-surface1 bg-mantle/50 flex-shrink-0 overflow-y-auto">
+  <aside class="hidden md:block md:w-56 lg:w-64 border-r border-surface1 bg-mantle flex-shrink-0 overflow-y-auto">
     {@render sidebarContent()}
   </aside>
 
@@ -1492,7 +1492,7 @@
          top, AI-returned slot candidates below. Click a slot to
          pre-fill the create-event modal at that time. -->
     {#if findOpen}
-      <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-mantle/40">
+      <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-mantle">
         <div class="flex items-baseline gap-2 mb-2 flex-wrap">
           <span class="text-xs uppercase tracking-wider text-secondary font-semibold">✨ Find free time</span>
           <span class="flex-1"></span>

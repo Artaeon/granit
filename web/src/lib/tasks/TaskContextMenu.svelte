@@ -197,7 +197,7 @@
     <div class="px-3 py-1 text-[10px] uppercase tracking-wider text-dim">priority</div>
     {#each [{ p: 1, label: 'P1 high' }, { p: 2, label: 'P2 medium' }, { p: 3, label: 'P3 low' }, { p: 0, label: 'no priority' }] as o}
       <button
-        class="w-full text-left px-3 py-1.5 text-text hover:bg-surface0 {task.priority === o.p ? 'bg-surface0/60 text-primary' : ''}"
+        class="w-full text-left px-3 py-1.5 text-text hover:bg-surface0 {task.priority === o.p ? 'bg-surface0 text-primary' : ''}"
         onclick={() => setPriority(o.p)}
         role="menuitem"
       >{o.label}</button>
@@ -217,7 +217,7 @@
       <div class="max-h-64 overflow-y-auto">
         {#each projects as p}
           <button
-            class="w-full text-left px-3 py-1.5 text-text hover:bg-surface0 truncate {task.projectId === p.name ? 'bg-surface0/60 text-primary' : ''}"
+            class="w-full text-left px-3 py-1.5 text-text hover:bg-surface0 truncate {task.projectId === p.name ? 'bg-surface0 text-primary' : ''}"
             onclick={() => linkProject(p.name)}
             role="menuitem"
             title={p.description}
@@ -240,7 +240,7 @@
       <div class="max-h-64 overflow-y-auto">
         {#each goals as g}
           <button
-            class="w-full text-left px-3 py-1.5 text-text hover:bg-surface0 truncate {task.goalId === g.id ? 'bg-surface0/60 text-primary' : ''}"
+            class="w-full text-left px-3 py-1.5 text-text hover:bg-surface0 truncate {task.goalId === g.id ? 'bg-surface0 text-primary' : ''}"
             onclick={() => linkGoal(g.id)}
             role="menuitem"
             title={g.description ?? ''}
@@ -266,7 +266,7 @@
       <div class="max-h-64 overflow-y-auto">
         {#each deadlines as d}
           <button
-            class="w-full text-left px-3 py-1.5 text-text hover:bg-surface0 truncate {task.deadlineId === d.id ? 'bg-surface0/60 text-primary' : ''}"
+            class="w-full text-left px-3 py-1.5 text-text hover:bg-surface0 truncate {task.deadlineId === d.id ? 'bg-surface0 text-primary' : ''}"
             onclick={() => linkDeadline(d.id)}
             role="menuitem"
             title={d.description ?? ''}

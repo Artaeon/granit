@@ -300,7 +300,7 @@
        (dynamic viewport) accounts for iOS Safari's bottom bar so a
        long dialog doesn't get clipped when the bar shows. -->
   <div
-    class="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-16 sm:px-4 bg-mantle/70 backdrop-blur-sm"
+    class="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-16 sm:px-4 bg-black/60"
     onclick={dismiss}
     onkeydown={onKey}
     role="presentation"
