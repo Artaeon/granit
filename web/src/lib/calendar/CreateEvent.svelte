@@ -255,11 +255,20 @@
     }
   }
 
-  const colorOptions = ['red', 'yellow', 'orange', 'green', 'blue', 'purple', 'cyan'];
-  function tone(c: string): string {
-    const map: Record<string, string> = { red: 'error', yellow: 'warning', orange: 'accent', green: 'success', blue: 'secondary', purple: 'primary', cyan: 'info' };
-    return `var(--color-${map[c] ?? 'info'})`;
-  }
+  const colorOptions: { name: string; hex: string }[] = [
+    { name: 'red', hex: '#ff3b30' },
+    { name: 'orange', hex: '#ff9500' },
+    { name: 'yellow', hex: '#ffcc00' },
+    { name: 'green', hex: '#34c759' },
+    { name: 'mint', hex: '#00c7be' },
+    { name: 'teal', hex: '#5ac8fa' },
+    { name: 'blue', hex: '#007aff' },
+    { name: 'indigo', hex: '#5856d6' },
+    { name: 'purple', hex: '#af52de' },
+    { name: 'pink', hex: '#ff2d55' },
+    { name: 'brown', hex: '#a2845e' },
+    { name: 'gray', hex: '#8e8e93' }
+  ];
 
   // Reminder presets — same set the notification scheduler honors.
   // 0 means no reminder; the API call drops the field via undefined.
@@ -515,13 +524,14 @@
                mobile, can shrink to 24px on desktop where pixel
                targeting is more forgiving. -->
           <div class="flex items-center gap-2 flex-wrap">
-            {#each colorOptions as c}
+            {#each colorOptions as c (c.name)}
               <button
                 type="button"
-                onclick={() => (color = c)}
-                aria-label={c}
-                class="w-8 h-8 sm:w-7 sm:h-7 rounded-full border-2 transition-transform {color === c ? 'border-text scale-110' : 'border-surface1'}"
-                style="background: {tone(c)}"
+                onclick={() => (color = c.name)}
+                aria-label={c.name}
+                title={c.name}
+                class="w-8 h-8 sm:w-7 sm:h-7 rounded-full border-2 transition-transform {color === c.name ? 'border-text scale-110' : 'border-surface1'}"
+                style="background: {c.hex}"
               ></button>
             {/each}
             {#if color}

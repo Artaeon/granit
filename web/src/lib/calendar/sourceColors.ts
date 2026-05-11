@@ -20,15 +20,25 @@ const KEY = 'granit.calendar.source-colors';
 export type CalendarTone =
   | ''
   | 'red'
-  | 'yellow'
   | 'orange'
+  | 'yellow'
   | 'green'
+  | 'mint'
+  | 'teal'
   | 'blue'
+  | 'indigo'
   | 'purple'
-  | 'cyan'
-  | 'pink';
+  | 'pink'
+  | 'brown'
+  | 'gray'
+  // legacy values from before the Apple-hue rebuild; kept so saved
+  // sourceColors don't get silently dropped on load.
+  | 'cyan';
 
-const TONES = new Set<CalendarTone>(['', 'red', 'yellow', 'orange', 'green', 'blue', 'purple', 'cyan', 'pink']);
+const TONES = new Set<CalendarTone>([
+  '', 'red', 'orange', 'yellow', 'green', 'mint', 'teal',
+  'blue', 'indigo', 'purple', 'pink', 'brown', 'gray', 'cyan'
+]);
 
 export const sourceColors = persistedWritable<Record<string, CalendarTone>>(KEY, {}, {
   validate: (raw) => {

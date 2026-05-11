@@ -137,19 +137,24 @@ export function layoutDay(events: CalendarEvent[]): LaidOutEvent[] {
   return out;
 }
 
-// Theme-aware event colors. Uses CSS custom properties + color-mix() so the
-// foreground stays readable in both light and dark themes.
+// Theme-aware event colors. Solid-fill events with white text + a
+// stronger same-hue left border. The monochrome rebuild made the
+// previous 18%-tint chips read as washed-out grey on both themes;
+// going solid keeps each event distinct on the grid and follows the
+// Apple Calendar / Google Calendar visual model the user expects.
 //
-// We map to the existing palette tokens (--color-error, --color-warning, ...)
-// instead of hardcoded hexes — the dark/light palettes both define them, so
-// switching themes recolors automatically and chips never become
-// invisible-on-bg.
+// For semantic categories we still route through the theme tokens
+// (--color-error etc.) so deadlines / tasks pick up theme changes.
+// For freeform user/ICS events we use a curated 12-hue palette of
+// Apple system colors so the calendar reads as colorful regardless
+// of the otherwise-monochrome surface palette.
 export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; border: string } {
   const tone = (token: string) => ({
-    bg: `color-mix(in srgb, var(--color-${token}) 18%, transparent)`,
-    fg: `var(--color-${token})`,
-    border: `color-mix(in srgb, var(--color-${token}) 65%, transparent)`
+    bg: `var(--color-${token})`,
+    fg: '#ffffff',
+    border: `var(--color-${token})`
   });
+  const hex = (h: string) => ({ bg: h, fg: '#ffffff', border: h });
 
   // Deadlines: color by importance — critical (red), high (yellow),
   // normal (purple). Highest specificity, evaluated FIRST so a future
@@ -175,35 +180,36 @@ export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; bor
   // legacy default — without this ordering every ICS event would land
   // on the same cyan tone and the per-source palette would be dead code.
   if (ev.type === 'ics_event' && ev.source) {
-    return tone(sourcePalette[hashStr(ev.source) % sourcePalette.length]);
+    return hex(EVENT_HUES[hashStr(ev.source) % EVENT_HUES.length]);
   }
 
-  // Granit's events.json `color` field — map names → palette tokens.
-  // Explicit user choice on a USER event; honored before the type-
-  // default fallback. ICS events are excluded here because their
-  // server-side default isn't a real user choice (see above).
+  // Granit's events.json `color` field — map common names to the
+  // curated event-hue palette. Explicit user choice; honored before
+  // the hash-by-title fallback.
   const named: Record<string, string> = {
-    red: 'error',
-    yellow: 'warning',
-    orange: 'accent',
-    green: 'success',
-    blue: 'secondary',
-    purple: 'primary',
-    cyan: 'info'
+    red: '#ff3b30',
+    orange: '#ff9500',
+    yellow: '#ffcc00',
+    green: '#34c759',
+    mint: '#00c7be',
+    teal: '#5ac8fa',
+    blue: '#007aff',
+    indigo: '#5856d6',
+    purple: '#af52de',
+    pink: '#ff2d55',
+    brown: '#a2845e',
+    gray: '#8e8e93'
   };
   if (ev.type === 'event' && ev.color && named[ev.color]) {
-    return tone(named[ev.color]);
+    return hex(named[ev.color]);
   }
 
-  // Untouched user events fall here. Hash by title (or the eventId
-  // when present) into the same per-source palette so a fresh
-  // calendar with five drag-created events shows five distinct hues
-  // for free — matches the visual pattern users expect from Google /
-  // Apple Calendar where every event gets its own color out of the
-  // box. The user can still override via the explicit color picker.
+  // Untouched user events fall here. Hash by title (or eventId when
+  // present) into the 12-hue palette so a fresh calendar with five
+  // drag-created events shows five distinct colors for free.
   if (ev.type === 'event') {
     const seed = ev.title || ev.eventId || '';
-    return tone(sourcePalette[hashStr(seed) % sourcePalette.length]);
+    return hex(EVENT_HUES[hashStr(seed) % EVENT_HUES.length]);
   }
 
   switch (ev.type) {
@@ -220,20 +226,41 @@ export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; bor
   }
 }
 
-// sourcePalette is the per-ICS-source rotation. Eight tones picked so
-// no two adjacent indices clash visually. Order matters less than
-// the count — bigger palette = more distinguishable sources, with
-// diminishing returns past ~8 (humans don't reliably distinguish
-// 12+ pastels at a glance).
+// EVENT_HUES is the curated 12-hue rotation used for ICS sources and
+// untouched user events. Apple system colors — high contrast against
+// white text, distinct from each other at small sizes (calendar grid
+// cells), and recognisable across both light and dark themes since
+// they don't track the page palette.
+//
+// Order is hand-tuned: adjacent indices land on different visual
+// families (red→orange→yellow→green→teal→blue→…) so a hash-by-name
+// rarely puts two-adjacent-in-the-week events on visually close hues.
+const EVENT_HUES = [
+  '#ff3b30', // red
+  '#ff9500', // orange
+  '#ffcc00', // yellow
+  '#34c759', // green
+  '#00c7be', // mint
+  '#5ac8fa', // teal
+  '#007aff', // blue
+  '#5856d6', // indigo
+  '#af52de', // purple
+  '#ff2d55', // pink
+  '#a2845e', // brown
+  '#8e8e93'  // gray
+] as const;
+
+// Legacy palette retained for the sourceColorToken() export below —
+// the source-list legend in the sidebar maps to a single token name.
 const sourcePalette = [
-  'info',       // teal/cyan
-  'success',    // green
-  'warning',    // yellow
-  'primary',    // mauve/purple
-  'secondary',  // blue
-  'accent',     // peach/orange
-  'error',      // red/pink
-  'subtext'     // muted grey — fallback "other"
+  'info',
+  'success',
+  'warning',
+  'primary',
+  'secondary',
+  'accent',
+  'error',
+  'subtext'
 ] as const;
 
 // sourceColorToken returns the palette token a given ICS source maps

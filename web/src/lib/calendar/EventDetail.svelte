@@ -388,7 +388,20 @@
     }
   }
 
-  const colorOptions = ['red', 'yellow', 'orange', 'green', 'blue', 'purple', 'cyan'];
+  const colorOptions: { name: string; hex: string }[] = [
+    { name: 'red', hex: '#ff3b30' },
+    { name: 'orange', hex: '#ff9500' },
+    { name: 'yellow', hex: '#ffcc00' },
+    { name: 'green', hex: '#34c759' },
+    { name: 'mint', hex: '#00c7be' },
+    { name: 'teal', hex: '#5ac8fa' },
+    { name: 'blue', hex: '#007aff' },
+    { name: 'indigo', hex: '#5856d6' },
+    { name: 'purple', hex: '#af52de' },
+    { name: 'pink', hex: '#ff2d55' },
+    { name: 'brown', hex: '#a2845e' },
+    { name: 'gray', hex: '#8e8e93' }
+  ];
 
   async function toggleDone() {
     if (!event?.taskId) return;
@@ -699,13 +712,14 @@
           {/if}
           <div class="flex items-center gap-2">
             <span class="text-[11px] text-dim uppercase tracking-wider">Color</span>
-            {#each colorOptions as c}
+            {#each colorOptions as c (c.name)}
               <button
                 type="button"
-                onclick={() => (editColor = c)}
-                aria-label={c}
-                class="w-5 h-5 rounded-full border-2 {editColor === c ? 'border-text' : 'border-surface1'}"
-                style="background: var(--color-{c === 'red' ? 'error' : c === 'yellow' ? 'warning' : c === 'orange' ? 'accent' : c === 'green' ? 'success' : c === 'blue' ? 'secondary' : c === 'purple' ? 'primary' : 'info'})"
+                onclick={() => (editColor = c.name)}
+                aria-label={c.name}
+                title={c.name}
+                class="w-5 h-5 rounded-full border-2 {editColor === c.name ? 'border-text' : 'border-surface1'}"
+                style="background: {c.hex}"
               ></button>
             {/each}
           </div>
