@@ -65,6 +65,89 @@
       'Extract the actionable items from the following as a markdown task list (`- [ ] task` lines). Each line should be a concrete action. Return ONLY the markdown checklist, no preamble.'
   } as const;
 
+  // Advanced selection actions — surfaced in the More menu so the
+  // top row stays focused on the high-frequency five. These are
+  // the tone / length / proofread / translate moves the user wants
+  // less often but reaches for repeatedly when they do.
+  const SELECTION_MORE = [
+    {
+      id: 'formal',
+      label: 'More formal',
+      glyph: '🎩',
+      preset:
+        'Rewrite the following in a more formal register. Preserve meaning + structure. Return only the rewritten text, no preamble.'
+    },
+    {
+      id: 'casual',
+      label: 'More casual',
+      glyph: '👋',
+      preset:
+        'Rewrite the following in a more casual, conversational register. Preserve meaning. Return only the rewritten text, no preamble.'
+    },
+    {
+      id: 'grammar',
+      label: 'Fix grammar',
+      glyph: '✓',
+      preset:
+        'Fix grammar, spelling, and punctuation in the following. Preserve voice and meaning exactly. Return only the corrected text, no preamble.'
+    },
+    {
+      id: 'expand',
+      label: 'Expand',
+      glyph: '↔',
+      preset:
+        'Expand the following into a fuller paragraph (2-4 sentences) without padding or repetition. Stay in the same voice. Return only the expanded text, no preamble.'
+    },
+    {
+      id: 'shorten',
+      label: 'Shorten',
+      glyph: '⇲',
+      preset:
+        'Tighten the following into the shortest faithful version. Drop redundancy and filler; keep meaning. Return only the shortened text, no preamble.'
+    },
+    {
+      id: 'translate-en',
+      label: 'Translate → English',
+      glyph: '🌐',
+      preset: 'Translate the following into clear, natural English. Return only the translation, no preamble.'
+    }
+  ] as const;
+  // Whole-note advanced actions — surfaced when there's no
+  // selection. Different shape: outline + key concepts + a couple
+  // of writing-helper transforms applied to the whole note.
+  const WHOLE_MORE = [
+    {
+      id: 'outline',
+      label: 'Generate outline',
+      glyph: '☰',
+      preset:
+        'Read the following note and produce a markdown outline of its sections (H2 / H3 headings only, no body text). Use the existing section titles if any. Return only the outline.'
+    },
+    {
+      id: 'concepts',
+      label: 'Key concepts',
+      glyph: '◆',
+      preset:
+        'List the 5-8 key concepts from the following note as a markdown bullet list. Each bullet: bold the concept name, one short sentence after. Return only the list.'
+    },
+    {
+      id: 'questions',
+      label: 'Open questions',
+      glyph: '?',
+      preset:
+        'What are the 3-5 open questions this note raises but doesn\'t answer? Return a short markdown bullet list. No preamble.'
+    },
+    {
+      id: 'tighten',
+      label: 'Tighten prose',
+      glyph: '⇲',
+      preset:
+        'Tighten the prose of the following note — drop filler, sharpen verbs, prefer concrete nouns. Preserve the structure and meaning. Return the full tightened note, ready to paste back.'
+    }
+  ] as const;
+
+  let moreOpen = $state(false);
+
   interface Props {
     /** Current selection snapshot, updated by the host via the
      *  selectionStateExtension ViewPlugin. */
@@ -221,6 +304,52 @@
       <span class="ai-bar-label">Extract tasks</span>
     </button>
 
+    <!-- More — overflow menu of advanced selection verbs (tone /
+         grammar / length / translate). Keeps the top row focused
+         on the high-frequency five; power moves live one click
+         deeper but with explicit labels (not a mystery menu). -->
+    <div class="relative inline-block">
+      <button
+        type="button"
+        onclick={() => (moreOpen = !moreOpen)}
+        aria-haspopup="menu"
+        aria-expanded={moreOpen}
+        title="More AI actions for the selection"
+        class="ai-bar-btn"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <circle cx="6" cy="12" r="1.2" fill="currentColor"/>
+          <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
+          <circle cx="18" cy="12" r="1.2" fill="currentColor"/>
+        </svg>
+        <span class="ai-bar-label">More</span>
+      </button>
+      {#if moreOpen}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <div
+          role="presentation"
+          class="fixed inset-0 z-30"
+          onclick={() => (moreOpen = false)}
+        ></div>
+        <div
+          role="menu"
+          class="absolute right-0 top-full mt-1 w-56 bg-mantle border border-surface1 rounded-md shadow-xl z-40 py-1"
+        >
+          {#each SELECTION_MORE as item (item.id)}
+            <button
+              type="button"
+              role="menuitem"
+              onclick={() => { askRangePreset(item.preset); moreOpen = false; }}
+              class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface0 text-text"
+            >
+              <span class="text-base leading-none w-5 text-center flex-shrink-0">{item.glyph}</span>
+              <span class="text-sm">{item.label}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
     <span class="flex-1" aria-hidden="true"></span>
     <!-- Selection length chip. Lives at the right edge so it acts as
          a status anchor the user can glance at without scanning. Tab-
@@ -296,6 +425,50 @@
       </svg>
       <span class="ai-bar-label">Extract tasks</span>
     </button>
+    <!-- More — whole-note advanced verbs (outline, concepts,
+         questions, tighten). Same shape as the selection-mode
+         More menu so the user learns one pattern. -->
+    <div class="relative inline-block">
+      <button
+        type="button"
+        onclick={() => (moreOpen = !moreOpen)}
+        aria-haspopup="menu"
+        aria-expanded={moreOpen}
+        title="More AI actions for this note"
+        class="ai-bar-btn"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <circle cx="6" cy="12" r="1.2" fill="currentColor"/>
+          <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
+          <circle cx="18" cy="12" r="1.2" fill="currentColor"/>
+        </svg>
+        <span class="ai-bar-label">More</span>
+      </button>
+      {#if moreOpen}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <div
+          role="presentation"
+          class="fixed inset-0 z-30"
+          onclick={() => (moreOpen = false)}
+        ></div>
+        <div
+          role="menu"
+          class="absolute right-0 top-full mt-1 w-56 bg-mantle border border-surface1 rounded-md shadow-xl z-40 py-1"
+        >
+          {#each WHOLE_MORE as item (item.id)}
+            <button
+              type="button"
+              role="menuitem"
+              onclick={() => { askWholeNotePreset(item.preset); moreOpen = false; }}
+              class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface0 text-text"
+            >
+              <span class="text-base leading-none w-5 text-center flex-shrink-0">{item.glyph}</span>
+              <span class="text-sm">{item.label}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
   {/if}
 </div>
 
