@@ -809,41 +809,48 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {#each comingUp as h (h.id)}
               {@const days = daysUntil(h.date)}
+              {@const urgencyBg = days < 0 || days <= 3
+                ? '#ff453a'
+                : days <= 7
+                  ? '#ff9f0a'
+                  : days <= 14
+                    ? '#0a84ff'
+                    : 'var(--color-secondary)'}
+              {@const urgencyLabel = days < 0
+                ? `${Math.abs(days)}d overdue`
+                : days === 0
+                  ? 'Today'
+                  : days === 1
+                    ? 'Tomorrow'
+                    : `in ${days} days`}
               <button
                 type="button"
                 onclick={() => openEdit(h)}
-                class="text-left block p-3 sm:p-4 bg-surface0 border-l-4 rounded-lg hover:border-primary transition-colors"
-                style="border-left-color: {heroBorder(days)};"
+                class="text-left block p-3 sm:p-4 bg-surface0 border-l-4 rounded-lg hover:bg-surface1 transition-colors"
+                style="border-left-color: {urgencyBg};"
               >
                 <div class="flex items-start gap-2.5">
-                  <span class="text-xl flex-shrink-0 mt-0.5" aria-hidden="true">
-                    {h.importance === 'critical' ? '🔴' : h.importance === 'high' ? '🟠' : '🟢'}
-                  </span>
+                  <span
+                    class="w-3 h-3 mt-1.5 rounded-full flex-shrink-0"
+                    style="background: {urgencyBg};"
+                    aria-hidden="true"
+                  ></span>
                   <div class="flex-1 min-w-0">
-                    <div class="text-sm sm:text-base font-semibold text-text leading-tight truncate" title={h.title}>
+                    <div class="text-base font-semibold text-text leading-tight truncate" title={h.title}>
                       {h.title}
                     </div>
-                    <div class="mt-1 text-xs">
-                      {#if days < 0}
-                        <span class="text-error font-medium">{Math.abs(days)}d overdue</span>
-                      {:else if days === 0}
-                        <span class="text-error font-medium">Today</span>
-                      {:else if days === 1}
-                        <span class="text-warning font-medium">Tomorrow</span>
-                      {:else if days <= 7}
-                        <span class="text-warning font-medium">in {days} days</span>
-                      {:else if days <= 31}
-                        <span class="text-info font-medium">in {days} days</span>
-                      {:else}
-                        <span class="text-secondary font-medium">in {days} days</span>
-                      {/if}
-                      <span class="text-dim ml-1">· {h.date}</span>
+                    <div class="mt-1.5 flex items-center gap-2 text-xs">
+                      <span
+                        class="inline-flex px-2 py-0.5 rounded font-semibold uppercase tracking-wide"
+                        style="background: {urgencyBg}; color: #ffffff;"
+                      >{urgencyLabel}</span>
+                      <span class="text-subtext font-mono">{h.date}</span>
                     </div>
                     {#if h.project || h.goal_id || h.venture}
-                      <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 text-[11px] text-dim">
-                        {#if h.venture}<span class="text-secondary truncate">🏢 {h.venture}</span>{/if}
-                        {#if h.goal_id}<span class="text-secondary truncate">🎯 {goalTitle(h.goal_id)}</span>{/if}
-                        {#if h.project}<span class="text-secondary truncate">📁 {h.project}</span>{/if}
+                      <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-[11px] text-subtext">
+                        {#if h.venture}<span class="truncate">{h.venture}</span>{/if}
+                        {#if h.goal_id}<span class="truncate">{goalTitle(h.goal_id)}</span>{/if}
+                        {#if h.project}<span class="truncate">{h.project}</span>{/if}
                       </div>
                     {/if}
                   </div>
