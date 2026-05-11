@@ -17,6 +17,7 @@
   import TaskContextMenu from '$lib/tasks/TaskContextMenu.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
   import EisenhowerView from '$lib/tasks/EisenhowerView.svelte';
+  import TaskAgent from '$lib/tasks/TaskAgent.svelte';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { saveProposals, loadProposals } from '$lib/util/proposalCache';
   import { extractJsonBlock } from '$lib/util/jsonExtract';
@@ -35,6 +36,12 @@
 
   let tasks = $state<Task[]>([]);
   let projects = $state<Project[]>([]);
+  // Task Agent — conversational action proposer. Sees the
+  // currently-filtered task list, takes a free-text intent, returns
+  // a list of typed actions the user accepts per-card. Distinct
+  // from Plan-day (schedules) and Stale-review (verdicts) — this
+  // is the "do something for me" surface.
+  let agentOpen = $state(false);
   // Goals + deadlines drive the new group-by options and the group
   // header titles (so a "Q3 launch (G004)" group reads as the goal's
   // title, not the bare ID). Loaded once, then refreshed alongside
@@ -1538,6 +1545,22 @@
         </div>
       </div>
       <button
+        onclick={() => (agentOpen = true)}
+        aria-label="open task agent"
+        title={selectedIds.size > 0
+          ? `Task agent — operate on ${selectedIds.size} selected task${selectedIds.size === 1 ? '' : 's'}`
+          : 'Task agent — describe what you want done in plain words'}
+        class="inline-flex items-center gap-1 px-2 py-1 text-xs border rounded {selectedIds.size > 0
+          ? 'border-primary bg-primary/10 text-primary'
+          : 'border-surface1 bg-surface0 text-text hover:border-primary'}"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
+          <path d="M5 21h14" />
+        </svg>
+        <span class="hidden sm:inline">{selectedIds.size > 0 ? `Agent · ${selectedIds.size}` : 'Agent'}</span>
+      </button>
+      <button
         onclick={() => (helpOpen = !helpOpen)}
         aria-label="keyboard shortcuts"
         title="keyboard shortcuts (?)"
@@ -2218,3 +2241,16 @@
     </div>
   </div>
 {/if}
+
+<!-- When the user has bulk-selected tasks, narrow the agent's
+     scope to that selection — the explicit selection IS the
+     intent. Otherwise fall back to the page's filtered list so
+     "agent over what I'm looking at" is the default. -->
+<TaskAgent
+  open={agentOpen}
+  tasks={selectedIds.size > 0 ? filtered.filter((t) => selectedIds.has(t.id)) : filtered}
+  todayISO={todayISO()}
+  availableProjects={projects.map((p) => p.name)}
+  onClose={() => (agentOpen = false)}
+  onChanged={load}
+/>
