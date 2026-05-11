@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type CalendarEvent, type CalendarFeed, type CalendarSource, type HabitInfo, type Project, type Task } from '$lib/api';
+  import { api, type CalendarEvent, type CalendarEventEntry, type CalendarFeed, type CalendarSource, type HabitInfo, type Project, type Task } from '$lib/api';
+  import CalendarAgent from '$lib/calendar/CalendarAgent.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -74,6 +75,22 @@
   let feed = $state<CalendarFeed | null>(null);
   let habits = $state<HabitInfo[]>([]);
   let loading = $state(false);
+
+  // Native calendar event entries — the editable rows the
+  // Calendar Agent operates on. Loaded separately from `feed`
+  // (which is the expanded read-only render view including ICS
+  // sources, tasks, deadlines). Refreshed on event.* WS frames.
+  let nativeEvents = $state<CalendarEventEntry[]>([]);
+  let agentOpen = $state(false);
+  async function loadNativeEvents() {
+    if (!$auth) return;
+    try {
+      const r = await api.listEvents();
+      nativeEvents = r.events;
+    } catch {
+      nativeEvents = [];
+    }
+  }
 
   let fetchFrom = $state(addDays(new Date(), -7));
   let fetchTo = $state(addDays(new Date(), 60));
@@ -258,6 +275,7 @@
   onMount(loadSources);
   onMount(loadHabits);
   onMount(loadAllProjects);
+  onMount(loadNativeEvents);
   onMount(() =>
     onWsEvent((ev) => {
       if (
@@ -270,6 +288,11 @@
         // Habits live inside daily notes — a note change might mean a
         // habit was ticked. Refetch alongside the event feed.
         loadHabits();
+      }
+      // Refresh native event entries on any event change so the
+      // Calendar Agent's scope reflects current state.
+      if (ev.type === 'event.changed' || ev.type === 'event.removed') {
+        loadNativeEvents();
       }
       // Deadlines are an overlay on the feed — refetch when the
       // server signals .granit/deadlines.json changed (TUI edit, web
@@ -1358,6 +1381,21 @@
         <span aria-hidden="true">✨</span>
         <span>{aiBusy ? 'thinking…' : 'Plan my week'}</span>
       </button>
+      <!-- Calendar Agent — conversational mutation engine. Same
+           shape as Tasks/Projects/Goals agents; ICS events are
+           excluded server-side so the agent only edits things it
+           can actually patch. -->
+      <button
+        onclick={() => (agentOpen = true)}
+        title="Calendar agent — describe what you want done"
+        class="hidden sm:inline-flex px-2.5 py-1.5 text-xs sm:text-sm bg-surface0 border border-surface1 text-subtext rounded hover:border-primary hover:text-text items-center gap-1"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
+          <path d="M5 21h14" />
+        </svg>
+        <span>Agent</span>
+      </button>
       <!-- Find Free Time — distinct from Plan my week. Plan
            distributes pending tasks across the week; this picks
            candidate empty slots of a chosen length so the user
@@ -1712,4 +1750,16 @@
   defaultKind={unifiedKind}
   defaultNotePath={`Jots/${fmtDateISO(unifiedStart)}.md`}
   onCreated={load}
+/>
+
+<!-- Calendar Agent — scoped to the currently-visible fetch
+     window so the agent sees roughly the same horizon as the
+     user, not their entire historical events file. -->
+<CalendarAgent
+  open={agentOpen}
+  events={nativeEvents.filter((e) => e.date >= fmtDateISO(fetchFrom) && e.date <= fmtDateISO(fetchTo))}
+  todayISO={fmtDateISO(new Date())}
+  knownProjects={allProjects.map((p) => p.name)}
+  onClose={() => (agentOpen = false)}
+  onChanged={() => { void load(); void loadNativeEvents(); }}
 />
