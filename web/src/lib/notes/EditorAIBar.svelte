@@ -67,74 +67,71 @@
 
   // Advanced selection actions — surfaced in the More menu so the
   // top row stays focused on the high-frequency five. These are
-  // the tone / length / proofread / translate moves the user wants
-  // less often but reaches for repeatedly when they do.
-  // Advanced action lists. Labels alone — no emoji glyphs (the
-  // bar reads as a professional control surface, not a chat
-  // app). The popover renders the labels directly.
-  const SELECTION_MORE = [
-    {
-      id: 'formal',
-      label: 'More formal',
-      preset:
-        'Rewrite the following in a more formal register. Preserve meaning + structure. Return only the rewritten text, no preamble.'
-    },
-    {
-      id: 'casual',
-      label: 'More casual',
-      preset:
-        'Rewrite the following in a more casual, conversational register. Preserve meaning. Return only the rewritten text, no preamble.'
-    },
-    {
-      id: 'grammar',
-      label: 'Fix grammar',
-      preset:
-        'Fix grammar, spelling, and punctuation in the following. Preserve voice and meaning exactly. Return only the corrected text, no preamble.'
-    },
-    {
-      id: 'expand',
-      label: 'Expand',
-      preset:
-        'Expand the following into a fuller paragraph (2-4 sentences) without padding or repetition. Stay in the same voice. Return only the expanded text, no preamble.'
-    },
-    {
-      id: 'shorten',
-      label: 'Shorten',
-      preset:
-        'Tighten the following into the shortest faithful version. Drop redundancy and filler; keep meaning. Return only the shortened text, no preamble.'
-    },
-    {
-      id: 'translate-en',
-      label: 'Translate to English',
-      preset: 'Translate the following into clear, natural English. Return only the translation, no preamble.'
+  // the tone / length / proofread / translate / transform moves the
+  // user wants less often but reaches for repeatedly when they do.
+  //
+  // Items carry a `group` so the popover can section them with
+  // small uppercase headers. Labels alone — no emoji glyphs (the
+  // bar reads as a professional control surface, not a chat app).
+  type MoreItem = { id: string; label: string; preset: string; group: string };
+  const SELECTION_MORE: readonly MoreItem[] = [
+    { group: 'Tone', id: 'formal', label: 'More formal',
+      preset: 'Rewrite the following in a more formal register. Preserve meaning + structure. Return only the rewritten text, no preamble.' },
+    { group: 'Tone', id: 'casual', label: 'More casual',
+      preset: 'Rewrite the following in a more casual, conversational register. Preserve meaning. Return only the rewritten text, no preamble.' },
+    { group: 'Tone', id: 'simpler', label: 'Explain simpler',
+      preset: 'Rewrite the following so a smart non-expert can follow on first read. No jargon unless defined inline; use shorter sentences. Preserve meaning. Return only the rewritten text, no preamble.' },
+    { group: 'Edit', id: 'grammar', label: 'Fix grammar',
+      preset: 'Fix grammar, spelling, and punctuation in the following. Preserve voice and meaning exactly. Return only the corrected text, no preamble.' },
+    { group: 'Edit', id: 'expand', label: 'Expand',
+      preset: 'Expand the following into a fuller paragraph (2-4 sentences) without padding or repetition. Stay in the same voice. Return only the expanded text, no preamble.' },
+    { group: 'Edit', id: 'shorten', label: 'Shorten',
+      preset: 'Tighten the following into the shortest faithful version. Drop redundancy and filler; keep meaning. Return only the shortened text, no preamble.' },
+    { group: 'Transform', id: 'bullets', label: 'Convert to bullets',
+      preset: 'Convert the following into a tight markdown bullet list. One idea per bullet, parallel grammatical structure. Return only the list, no preamble.' },
+    { group: 'Transform', id: 'table', label: 'Convert to table',
+      preset: 'Convert the following into a markdown table. Infer sensible column headers from the content. If the structure doesn\'t fit a table, say so in one line instead. Return only the table.' },
+    { group: 'Transform', id: 'counter', label: 'Counterargument',
+      preset: 'Steelman the strongest counterargument to the claim(s) in the following. Be specific and concrete — name the weak link, then state the rebuttal in 2-4 sentences. Return only the counterargument, no preamble.' },
+    { group: 'Translate', id: 'translate-en', label: 'Translate to English',
+      preset: 'Translate the following into clear, natural English. Return only the translation, no preamble.' },
+    { group: 'Translate', id: 'translate-de', label: 'Translate to German',
+      preset: 'Translate the following into clear, natural German. Return only the translation, no preamble.' }
+  ];
+  const WHOLE_MORE: readonly MoreItem[] = [
+    { group: 'Inspect', id: 'outline', label: 'Generate outline',
+      preset: 'Read the following note and produce a markdown outline of its sections (H2 / H3 headings only, no body text). Use the existing section titles if any. Return only the outline.' },
+    { group: 'Inspect', id: 'concepts', label: 'Key concepts',
+      preset: 'List the 5-8 key concepts from the following note as a markdown bullet list. Each bullet: bold the concept name, one short sentence after. Return only the list.' },
+    { group: 'Inspect', id: 'questions', label: 'Open questions',
+      preset: 'What are the 3-5 open questions this note raises but doesn\'t answer? Return a short markdown bullet list. No preamble.' },
+    { group: 'Inspect', id: 'gaps', label: 'Find gaps',
+      preset: 'Read the following note as a critical editor. What is missing, unclear, or assumed without evidence? Return 3-6 specific gaps as a markdown bullet list — each gap names what\'s missing and what would close it. No preamble.' },
+    { group: 'Improve', id: 'tighten', label: 'Tighten prose',
+      preset: 'Tighten the prose of the following note — drop filler, sharpen verbs, prefer concrete nouns. Preserve the structure and meaning. Return the full tightened note, ready to paste back.' },
+    { group: 'Improve', id: 'abstract', label: 'Write abstract',
+      preset: 'Write a 3-5 sentence abstract of the following note suitable for the top of the document. Lead with the central claim; cover scope and findings; no preamble.' },
+    { group: 'Improve', id: 'titles', label: 'Alternative titles',
+      preset: 'Suggest 5 alternative titles for the following note. Mix registers: precise, evocative, descriptive. Return only the titles as a numbered list — no commentary.' },
+    { group: 'Build', id: 'toc', label: 'Table of contents',
+      preset: 'Produce a markdown table of contents for the following note from its existing headings. Use indented bullet links (`- [Heading](#heading)`). Return only the TOC.' },
+    { group: 'Build', id: 'frontmatter', label: 'Suggest frontmatter',
+      preset: 'Suggest YAML frontmatter for the following note: a 1-line `title`, 3-6 `tags` (lowercase, hyphenated), and a 1-sentence `summary`. Return only the frontmatter block enclosed in `---` fences, nothing else.' },
+    { group: 'Build', id: 'next', label: 'Suggested next steps',
+      preset: 'Based on the following note, what are the 3-5 most useful next steps for the author? Concrete actions, not vague advice. Return a short markdown bullet list. No preamble.' }
+  ];
+
+  // Distinct group labels in their original order — used by the
+  // popover to render section headers without re-scanning the list
+  // for each render.
+  function groupsOf(items: readonly MoreItem[]): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const it of items) {
+      if (!seen.has(it.group)) { seen.add(it.group); out.push(it.group); }
     }
-  ] as const;
-  const WHOLE_MORE = [
-    {
-      id: 'outline',
-      label: 'Generate outline',
-      preset:
-        'Read the following note and produce a markdown outline of its sections (H2 / H3 headings only, no body text). Use the existing section titles if any. Return only the outline.'
-    },
-    {
-      id: 'concepts',
-      label: 'Key concepts',
-      preset:
-        'List the 5-8 key concepts from the following note as a markdown bullet list. Each bullet: bold the concept name, one short sentence after. Return only the list.'
-    },
-    {
-      id: 'questions',
-      label: 'Open questions',
-      preset:
-        'What are the 3-5 open questions this note raises but doesn\'t answer? Return a short markdown bullet list. No preamble.'
-    },
-    {
-      id: 'tighten',
-      label: 'Tighten prose',
-      preset:
-        'Tighten the prose of the following note — drop filler, sharpen verbs, prefer concrete nouns. Preserve the structure and meaning. Return the full tightened note, ready to paste back.'
-    }
-  ] as const;
+    return out;
+  }
 
   let moreOpen = $state(false);
 
@@ -474,22 +471,28 @@
   ></div>
   <div
     role="menu"
-    class="fixed bg-mantle border border-surface1 rounded-md shadow-xl py-1 z-[61]"
+    class="fixed bg-mantle border border-surface1 rounded-md shadow-xl py-1 z-[61] max-h-[70vh] overflow-y-auto"
     style="top: {popoverTop}px; right: {popoverRight}px; width: {POPOVER_WIDTH}px;"
   >
-    {#each hasSelection ? SELECTION_MORE : WHOLE_MORE as item (item.id)}
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() => {
-          if (hasSelection) askRangePreset(item.preset);
-          else askWholeNotePreset(item.preset);
-          moreOpen = false;
-        }}
-        class="w-full flex items-center px-3 py-2 text-left text-sm text-text hover:bg-surface0"
-      >
-        {item.label}
-      </button>
+    {#each groupsOf(hasSelection ? SELECTION_MORE : WHOLE_MORE) as group, gi (group)}
+      {#if gi > 0}
+        <div class="border-t border-surface1 my-1" role="separator"></div>
+      {/if}
+      <div class="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-dim select-none">{group}</div>
+      {#each (hasSelection ? SELECTION_MORE : WHOLE_MORE).filter((i) => i.group === group) as item (item.id)}
+        <button
+          type="button"
+          role="menuitem"
+          onclick={() => {
+            if (hasSelection) askRangePreset(item.preset);
+            else askWholeNotePreset(item.preset);
+            moreOpen = false;
+          }}
+          class="w-full flex items-center px-3 py-1.5 text-left text-[13px] text-text hover:bg-surface0 transition-colors"
+        >
+          {item.label}
+        </button>
+      {/each}
     {/each}
   </div>
 {/if}
