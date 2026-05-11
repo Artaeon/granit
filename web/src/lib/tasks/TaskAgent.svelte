@@ -360,7 +360,7 @@
 	<!-- Modal overlay. Click-outside dismisses (rare for AI surfaces
 		 but consistent with the rest of the app's modals). -->
 	<div
-		class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center pt-8 sm:pt-16 px-3 sm:px-6"
+		class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3 sm:p-6" style="padding-right: calc(0.75rem + var(--ai-pinned-w, 0px));"
 		role="dialog"
 		aria-modal="true"
 		aria-label="Task agent"
@@ -370,7 +370,7 @@
 		onkeydown={onKey}
 		tabindex="-1"
 	>
-		<div class="w-full max-w-3xl bg-base border border-surface1 rounded-lg shadow-2xl flex flex-col max-h-[90vh]">
+		<div class="w-full max-w-3xl bg-base border border-surface1 rounded-xl shadow-2xl flex flex-col max-h-[88vh]">
 			<!-- Header -->
 			<header class="px-4 py-3 border-b border-surface1 flex items-baseline gap-3 flex-shrink-0">
 				<h2 class="text-base font-medium text-text flex-1 inline-flex items-baseline gap-2">
