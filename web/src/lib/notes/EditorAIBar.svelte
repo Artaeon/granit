@@ -208,27 +208,33 @@
 </script>
 
 <!--
-  Sticky positioning is applied by the host's container (the bar lives
-  inside a position-relative editor pane). On the bar itself we just
-  paint the surface and lay out the action chips. The Catppuccin
-  palette tokens (surface0 / surface1 / text / subtext / dim / primary)
-  are wired through the global CSS variables — the bar inherits
-  whatever theme the user has selected without any extra plumbing.
--->
-<!--
   The bar is part of the editor pane's flex column: header (sticky
-  top-0 z-20) → bar → editor body. CodeMirror's own scroller lives
-  inside the editor body, so the bar stays naturally pinned above
-  the scrolling content without needing position: sticky itself
-  (which would compete with the header on the same top:0 anchor).
-  On mobile / narrow viewports where the editor pane itself scrolls
-  inside its drawer ancestor, the bar still sits above the editor —
-  the header just slides up first by virtue of its sticky positioning
-  and the bar follows it. That's the right composition: header is
-  the always-visible anchor, the bar is selection-aware context.
+  top-0 z-20) → bar (sticky top:var(--editor-header-height) z-10) →
+  editor body. CodeMirror owns the scroller inside the editor body,
+  so on desktop the bar rarely needs to actually stick — but when the
+  editor pane itself scrolls (mobile keyboards push it into a
+  scrollable state, the daily view stacks DailyContext/QuickAdd
+  above the editor, etc.) the bar pins flush under the header
+  instead of scrolling away. The header anchors at top:0 z-20 and
+  the bar at top:var(--editor-header-height) z-10 so they never
+  overlap — the host writes the live header height to that custom
+  property via a ResizeObserver, so every breakpoint and mobile
+  tap-target bump is accounted for without hardcoding.
+
+  Backdrop-blur composition: `bg-mantle/85` is the fallback for
+  browsers without backdrop-filter; `supports-[backdrop-filter]`
+  upgrades to a translucent + blurred surface. position:sticky
+  doesn't affect either layer — the bar's painted background still
+  composites with what scrolls underneath when it's pinned.
+
+  Catppuccin palette tokens (surface0 / surface1 / text / subtext /
+  dim / primary) are wired through the global CSS variables — the
+  bar inherits whatever theme the user has selected without any
+  extra plumbing.
 -->
 <div
-  class="editor-ai-bar flex flex-wrap items-center gap-1 px-2 sm:px-3 py-1.5 border-b border-surface1 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md text-xs"
+  class="editor-ai-bar sticky z-10 flex flex-wrap items-center gap-1 px-2 sm:px-3 py-1.5 border-b border-surface1 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md text-xs"
+  style="top: var(--editor-header-height, 0px);"
   role="toolbar"
   aria-label="AI actions for {hasSelection ? 'selection' : 'note'}"
 >

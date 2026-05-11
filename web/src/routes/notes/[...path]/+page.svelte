@@ -910,6 +910,36 @@
   // between "no selection" verbs (whole-note) and "has selection"
   // verbs (range-scoped).
   let aiBarSelection = $state<SelectionState>({ from: 0, to: 0, text: '' });
+
+  // ── Editor header height tracking ──────────────────────────────
+  // The note header is `position: sticky; top: 0`. The EditorAIBar
+  // is `position: sticky; top: var(--editor-header-height)`. Without
+  // the variable they'd anchor at the same top and stack on top of
+  // each other when the pane scrolls. The header height differs by
+  // breakpoint (desktop ~40px, mobile bumps tap targets to 40px+
+  // per WCAG, narrow viewports may wrap chips). A ResizeObserver on
+  // the actual element handles every case without hardcoding — it
+  // fires whenever the header's rendered box changes (orientation
+  // flip, font scale, breakpoint cross, daily-label toggle, etc.).
+  let editorPaneEl = $state<HTMLDivElement | null>(null);
+  let editorHeaderEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    const pane = editorPaneEl;
+    const header = editorHeaderEl;
+    if (!pane || !header || typeof ResizeObserver === 'undefined') return;
+    const apply = () => {
+      // offsetHeight rather than getBoundingClientRect so we get an
+      // integer pixel count that lines up with the header's painted
+      // bottom edge; sub-pixel fractions would leave a 0.5px gap or
+      // overlap depending on browser rounding.
+      const h = header.offsetHeight;
+      pane.style.setProperty('--editor-header-height', `${h}px`);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(header);
+    return () => ro.disconnect();
+  });
   // Stable reference — Editor.svelte reads extraExtensions ONCE at
   // setupView time, so the array must not be re-created on every
   // render or the change would be ignored anyway. The callback
@@ -1686,7 +1716,7 @@
   {/if}
 
   <!-- Center: editor -->
-  <div class="flex-1 flex flex-col min-w-0">
+  <div class="flex-1 flex flex-col min-w-0" bind:this={editorPaneEl}>
     {#if error && !note}
       <!-- Stuck-on-error escape header. When the load failed and we
            have no note to render, the normal header below is hidden
@@ -1723,7 +1753,7 @@
       <div class="px-4 py-2 text-sm text-error border-b border-error/30 bg-error/10 flex-shrink-0">{error}</div>
     {/if}
     {#if note}
-      <header class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md sticky top-0 z-20">
+      <header bind:this={editorHeaderEl} class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle/85 supports-[backdrop-filter]:bg-mantle/60 supports-[backdrop-filter]:backdrop-blur-md sticky top-0 z-20">
         <!-- Hidden on mobile: the layout's top-bar already shows a back
              arrow to /notes for any subpath, so a second one here pushes
              the view-mode toggle (and save button) off the right edge on
