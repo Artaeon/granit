@@ -660,7 +660,7 @@
           {#if project.venture}
             <a
               href={`/projects?venture=${encodeURIComponent(project.venture)}`}
-              class="px-2 py-0.5 rounded bg-surface1 text-secondary hover:bg-surface1"
+              class="px-2 py-0.5 rounded bg-surface1 text-secondary hover:bg-surface2"
               title="show all projects in this venture"
             >🏢 {project.venture}</a>
           {/if}
@@ -954,7 +954,7 @@
         {:else}
           <button
             onclick={() => { nextActionBuf = project.next_action ?? ''; editingNextAction = true; }}
-            class="w-full text-left px-3 py-2.5 rounded text-sm border border-warning bg-surface0 text-warning hover:bg-surface0 {!project.next_action ? 'italic opacity-70' : 'font-medium'}"
+            class="w-full text-left px-3 py-2.5 rounded text-sm border border-warning bg-surface0 text-warning hover:bg-surface1 {!project.next_action ? 'italic opacity-70' : 'font-medium'}"
           >→ {project.next_action || 'what\'s the next concrete step?'}</button>
         {/if}
       </section>

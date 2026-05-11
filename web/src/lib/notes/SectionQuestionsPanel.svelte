@@ -161,7 +161,7 @@
           <button
             type="button"
             onclick={stop}
-            class="text-[11px] px-2 py-0.5 rounded bg-surface0 text-error border border-error hover:bg-surface0"
+            class="text-[11px] px-2 py-0.5 rounded bg-surface0 text-error border border-error hover:bg-surface1"
           >stop</button>
           <span class="text-[10px] text-secondary italic">streaming…</span>
         {:else}

@@ -743,7 +743,7 @@
             <button
               onclick={() => void pausePush()}
               disabled={pushBusy}
-              class="px-3 py-1.5 bg-surface0 text-warning rounded text-sm hover:bg-surface0 disabled:opacity-50"
+              class="px-3 py-1.5 bg-surface0 text-warning rounded text-sm hover:bg-surface1 disabled:opacity-50"
               title="Stop receiving notifications without unsubscribing"
             >Pause notifications</button>
           {/if}

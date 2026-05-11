@@ -125,7 +125,7 @@
           and let it stay there.
         </p>
         <div class="mt-5 flex flex-wrap gap-2 text-sm">
-          <a href="/prayer" class="px-3 py-1.5 rounded bg-surface1 text-primary border border-surface2 hover:bg-surface1">→ /prayer</a>
+          <a href="/prayer" class="px-3 py-1.5 rounded bg-surface1 text-primary border border-surface2 hover:bg-surface2">→ /prayer</a>
           <a href="/jots" class="px-3 py-1.5 rounded bg-surface0 text-subtext border border-surface1 hover:bg-surface1">→ /jots</a>
           <a href="/scripture" class="px-3 py-1.5 rounded bg-surface0 text-subtext border border-surface1 hover:bg-surface1">→ /scripture</a>
         </div>

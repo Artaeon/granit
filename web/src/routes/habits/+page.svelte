@@ -340,7 +340,7 @@
             onclick={tickAllToday}
             disabled={bulkBusy}
             title="mark every undone habit as done today"
-            class="px-3 py-1.5 bg-surface0 text-success border border-success rounded text-sm font-medium hover:bg-surface0 disabled:opacity-50"
+            class="px-3 py-1.5 bg-surface0 text-success border border-success rounded text-sm font-medium hover:bg-surface1 disabled:opacity-50"
           >
             {bulkBusy ? '…' : `Tick all (${undoneToday.length})`}
           </button>
@@ -427,7 +427,7 @@
           <button
             type="button"
             onclick={aiInsight}
-            class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-surface1 text-primary border border-surface2 hover:bg-surface1"
+            class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-surface1 text-primary border border-surface2 hover:bg-surface2"
             title="Ask AI for pattern observations"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
@@ -530,8 +530,8 @@
                     onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
                     class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border transition-colors
                       {hit
-                        ? 'bg-surface0 text-success border-success hover:bg-surface0'
-                        : 'bg-surface0 text-warning border-warning hover:bg-surface0'}"
+                        ? 'bg-surface0 text-success border-success hover:bg-surface1'
+                        : 'bg-surface0 text-warning border-warning hover:bg-surface1'}"
                     title="weekly target — click to edit"
                   >🎯 {tgt.done}/{tgt.target}/wk</button>
                 {:else}
@@ -653,8 +653,8 @@
                       onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
                       class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border transition-colors
                         {hit
-                          ? 'bg-surface0 text-success border-success hover:bg-surface0'
-                          : 'bg-surface0 text-warning border-warning hover:bg-surface0'}"
+                          ? 'bg-surface0 text-success border-success hover:bg-surface1'
+                          : 'bg-surface0 text-warning border-warning hover:bg-surface1'}"
                       title="weekly target — click to edit"
                     >🎯 {tgt.done}/{tgt.target}/wk</button>
                   {:else}

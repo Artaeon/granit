@@ -159,7 +159,7 @@
         type="button"
         onclick={tickAll}
         disabled={bulkBusy}
-        class="mt-3 w-full text-[11px] py-1.5 rounded border bg-surface0 text-success border-success hover:bg-surface0 disabled:opacity-50"
+        class="mt-3 w-full text-[11px] py-1.5 rounded border bg-surface0 text-success border-success hover:bg-surface1 disabled:opacity-50"
       >
         {bulkBusy ? '…' : `Tick all (${totalCount - doneCount})`}
       </button>

@@ -334,7 +334,7 @@
           type="button"
           onclick={aiSuggest}
           disabled={aiBusy}
-          class="text-[11px] px-2 py-0.5 rounded inline-flex items-center gap-1 bg-surface1 text-primary border border-surface2 hover:bg-surface1 disabled:opacity-50"
+          class="text-[11px] px-2 py-0.5 rounded inline-flex items-center gap-1 bg-surface1 text-primary border border-surface2 hover:bg-surface2 disabled:opacity-50"
           title="Ask AI: who should I reach out to today?"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
@@ -378,7 +378,7 @@
                 {pick.name}
               </button>
               <span class="flex-1 text-xs text-subtext truncate">{pick.rationale}</span>
-              <button onclick={() => pingByName(pick.name)} class="text-[11px] px-2 py-0.5 rounded bg-surface0 text-success hover:bg-surface0" title="stamp last contact = today">ping</button>
+              <button onclick={() => pingByName(pick.name)} class="text-[11px] px-2 py-0.5 rounded bg-surface0 text-success hover:bg-surface1" title="stamp last contact = today">ping</button>
             </li>
           {/each}
         </ul>
@@ -460,7 +460,7 @@
               {/if}
               <button
                 onclick={() => pingPerson(p)}
-                class="text-xs px-2 py-0.5 rounded bg-surface0 text-success hover:bg-surface0"
+                class="text-xs px-2 py-0.5 rounded bg-surface0 text-success hover:bg-surface1"
                 title="Stamp last contact = today"
               >ping</button>
               <button onclick={() => deletePerson(p)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>

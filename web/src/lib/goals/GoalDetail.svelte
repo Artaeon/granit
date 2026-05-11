@@ -588,14 +588,14 @@
             {#if goal.project}
               <a
                 href="/projects?p={encodeURIComponent(goal.project)}"
-                class="px-2 py-0.5 rounded-full bg-surface1 text-secondary border border-surface2 hover:border-surface2 hover:bg-surface1 transition-colors"
+                class="px-2 py-0.5 rounded-full bg-surface1 text-secondary border border-surface2 hover:border-surface2 hover:bg-surface2 transition-colors"
                 title="Open the linked project"
               >📁 {goal.project}</a>
             {/if}
             {#if goal.venture}
               <a
                 href="/ventures/{encodeURIComponent(goal.venture)}"
-                class="px-2 py-0.5 rounded-full bg-surface1 text-primary border border-surface2 hover:border-primary hover:bg-surface1 transition-colors"
+                class="px-2 py-0.5 rounded-full bg-surface1 text-primary border border-surface2 hover:border-primary hover:bg-surface2 transition-colors"
                 title="Open the linked venture"
               >🏢 {goal.venture}</a>
             {/if}
@@ -707,7 +707,7 @@
                     </div>
                     <button
                       onclick={() => void acceptMilestone(p)}
-                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface0"
+                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface1"
                     >accept</button>
                     <button
                       onclick={() => skipMilestone(p)}
@@ -885,7 +885,7 @@
                     {/if}
                     <button
                       onclick={() => void acceptTaskProposal(p)}
-                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface0"
+                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface1"
                       title="Create as a task linked to this goal"
                     >accept</button>
                     <button

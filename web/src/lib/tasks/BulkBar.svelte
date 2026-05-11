@@ -63,7 +63,7 @@
   <button onclick={onClear} class="text-xs text-dim hover:text-text">clear</button>
   <span class="flex-1"></span>
 
-  <button onclick={bulkDone} disabled={busy} class="px-2.5 py-1 text-xs bg-surface0 text-success rounded hover:bg-surface0 disabled:opacity-50">✓ done</button>
+  <button onclick={bulkDone} disabled={busy} class="px-2.5 py-1 text-xs bg-surface0 text-success rounded hover:bg-surface1 disabled:opacity-50">✓ done</button>
   <button onclick={bulkOpen} disabled={busy} class="px-2.5 py-1 text-xs bg-surface1 text-subtext rounded hover:bg-surface2 disabled:opacity-50 hidden sm:inline-block">re-open</button>
 
   <span class="hidden sm:inline-block w-px h-4 bg-surface1"></span>
@@ -99,7 +99,7 @@
       bind:this={snoozeAnchor}
       onclick={() => (snoozeOpen = !snoozeOpen)}
       disabled={busy}
-      class="px-2.5 py-1 text-xs bg-surface0 text-warning rounded hover:bg-surface0 disabled:opacity-50"
+      class="px-2.5 py-1 text-xs bg-surface0 text-warning rounded hover:bg-surface1 disabled:opacity-50"
     >snooze</button>
     {#if snoozeOpen}
       <SnoozePicker anchor={snoozeAnchor} onPick={bulkSnooze} onClose={() => (snoozeOpen = false)} />
@@ -130,5 +130,5 @@
 
   <span class="hidden sm:inline-block w-px h-4 bg-surface1"></span>
 
-  <button onclick={bulkDelete} disabled={busy} class="px-2.5 py-1 text-xs bg-surface0 text-error rounded hover:bg-surface0 disabled:opacity-50">🗑 delete</button>
+  <button onclick={bulkDelete} disabled={busy} class="px-2.5 py-1 text-xs bg-surface0 text-error rounded hover:bg-surface1 disabled:opacity-50">🗑 delete</button>
 </div>

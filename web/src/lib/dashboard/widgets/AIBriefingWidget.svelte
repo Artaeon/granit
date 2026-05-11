@@ -134,7 +134,7 @@
       <button
         onclick={saveToToday}
         disabled={savedToToday}
-        class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface1 disabled:opacity-50"
+        class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface2 disabled:opacity-50"
       >{savedToToday ? '✓ Saved to today' : 'Save to today\'s daily'}</button>
     </div>
   {/if}

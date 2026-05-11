@@ -250,7 +250,7 @@
         <button
           type="button"
           onclick={stop}
-          class="px-2 py-1 rounded text-[11px] bg-surface0 text-error border border-error hover:bg-surface0"
+          class="px-2 py-1 rounded text-[11px] bg-surface0 text-error border border-error hover:bg-surface1"
         >stop</button>
       {:else}
         <button

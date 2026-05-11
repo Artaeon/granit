@@ -1403,7 +1403,7 @@
       <button
         type="button"
         onclick={() => (stalledFilterOn = !stalledFilterOn)}
-        class="w-full text-left mb-4 px-3 py-2.5 rounded-lg border flex items-center gap-3 transition-colors {stalledFilterOn ? 'bg-surface0 border-warning' : 'bg-surface0 border-warning hover:bg-surface0'}"
+        class="w-full text-left mb-4 px-3 py-2.5 rounded-lg border flex items-center gap-3 transition-colors {stalledFilterOn ? 'bg-surface0 border-warning' : 'bg-surface0 border-warning hover:bg-surface1'}"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 text-warning flex-shrink-0">
           <circle cx="12" cy="12" r="9"/>

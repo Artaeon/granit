@@ -684,7 +684,7 @@
       {#if ventureFilter}
         <button
           onclick={clearVentureFilter}
-          class="text-xs px-2 py-1 rounded bg-surface1 text-secondary hover:bg-surface1 min-h-[32px]"
+          class="text-xs px-2 py-1 rounded bg-surface1 text-secondary hover:bg-surface2 min-h-[32px]"
           title="clear venture filter"
         >🏢 {ventureFilter} ×</button>
       {/if}
@@ -732,7 +732,7 @@
       {#if ventureFilter}
         <button
           onclick={clearVentureFilter}
-          class="w-full text-left px-2 py-1 text-xs rounded bg-surface1 text-secondary hover:bg-surface1 flex items-center gap-1.5"
+          class="w-full text-left px-2 py-1 text-xs rounded bg-surface1 text-secondary hover:bg-surface2 flex items-center gap-1.5"
           title="clear venture filter"
         >
           <span>🏢 {ventureFilter}</span>

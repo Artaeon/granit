@@ -1358,9 +1358,9 @@
       <div class="text-xs uppercase tracking-wider text-dim mb-2">Priority</div>
       <div class="flex flex-col gap-1 text-sm">
         <button class="text-left px-3 py-2 rounded {priorityFilter === '' ? 'bg-surface1' : 'hover:bg-surface0'} text-subtext" onclick={() => (priorityFilter = '')}>any</button>
-        <button class="text-left px-3 py-2 rounded {priorityFilter === 1 ? 'bg-surface0 text-error' : 'hover:bg-surface0 text-error'}" onclick={() => (priorityFilter = 1)}>P1 high</button>
-        <button class="text-left px-3 py-2 rounded {priorityFilter === 2 ? 'bg-surface0 text-warning' : 'hover:bg-surface0 text-warning'}" onclick={() => (priorityFilter = 2)}>P2 medium</button>
-        <button class="text-left px-3 py-2 rounded {priorityFilter === 3 ? 'bg-surface0 text-info' : 'hover:bg-surface0 text-info'}" onclick={() => (priorityFilter = 3)}>P3 low</button>
+        <button class="text-left px-3 py-2 rounded {priorityFilter === 1 ? 'bg-surface0 text-error' : 'hover:bg-surface1 text-error'}" onclick={() => (priorityFilter = 1)}>P1 high</button>
+        <button class="text-left px-3 py-2 rounded {priorityFilter === 2 ? 'bg-surface0 text-warning' : 'hover:bg-surface1 text-warning'}" onclick={() => (priorityFilter = 2)}>P2 medium</button>
+        <button class="text-left px-3 py-2 rounded {priorityFilter === 3 ? 'bg-surface0 text-info' : 'hover:bg-surface1 text-info'}" onclick={() => (priorityFilter = 3)}>P3 low</button>
       </div>
     </div>
 
@@ -1408,7 +1408,7 @@
           >all</button>
           {#each goals.slice(0, 12) as g}
             <button
-              class="text-left px-3 py-2 rounded text-sm truncate {goalFilter === g.id ? 'bg-surface0 text-info' : 'text-subtext hover:bg-surface0'}"
+              class="text-left px-3 py-2 rounded text-sm truncate {goalFilter === g.id ? 'bg-surface0 text-info' : 'text-subtext hover:bg-surface1'}"
               onclick={() => (goalFilter = goalFilter === g.id ? '' : g.id)}
               title={g.description}
             >
@@ -1430,7 +1430,7 @@
           >all</button>
           {#each deadlines.slice(0, 12) as d}
             <button
-              class="text-left px-3 py-2 rounded text-sm truncate {deadlineFilter === d.id ? 'bg-surface0 text-warning' : 'text-subtext hover:bg-surface0'}"
+              class="text-left px-3 py-2 rounded text-sm truncate {deadlineFilter === d.id ? 'bg-surface0 text-warning' : 'text-subtext hover:bg-surface1'}"
               onclick={() => (deadlineFilter = deadlineFilter === d.id ? '' : d.id)}
               title={d.description}
             >
@@ -1518,7 +1518,7 @@
         </div>
         <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm">
           <button
-            class="px-2 sm:px-3 py-1.5 inline-flex items-center gap-1 {view === 'inbox' ? 'bg-primary text-on-primary' : viewCounts.inbox > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface1'}"
+            class="px-2 sm:px-3 py-1.5 inline-flex items-center gap-1 {view === 'inbox' ? 'bg-primary text-on-primary' : viewCounts.inbox > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface2'}"
             onclick={() => (view = 'inbox')}
             title="untriaged tasks awaiting categorisation"
           >
@@ -1528,7 +1528,7 @@
             {/if}
           </button>
           <button
-            class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'quickwins' ? 'bg-primary text-on-primary' : viewCounts.quickwins > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface1'}"
+            class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'quickwins' ? 'bg-primary text-on-primary' : viewCounts.quickwins > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface2'}"
             onclick={() => (view = 'quickwins')}
             title="high priority + ≤30 min — tackle a few before lunch"
           >
@@ -1538,7 +1538,7 @@
             {/if}
           </button>
           <button
-            class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'stale' ? 'bg-primary text-on-primary' : viewCounts.stale > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface1'}"
+            class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'stale' ? 'bg-primary text-on-primary' : viewCounts.stale > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface2'}"
             onclick={() => (view = 'stale')}
             title="not touched in 7+ days — needs a decision"
           >
@@ -1548,7 +1548,7 @@
             {/if}
           </button>
           <button
-            class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'review' ? 'bg-primary text-on-primary' : viewCounts.review > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface1'}"
+            class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'review' ? 'bg-primary text-on-primary' : viewCounts.review > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface2'}"
             onclick={() => (view = 'review')}
             title="completed in the last 7 days — celebrate the wins"
           >
@@ -1632,7 +1632,7 @@
                     </div>
                     <button
                       onclick={() => void acceptPlanItem(p)}
-                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface0 flex-shrink-0"
+                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface1 flex-shrink-0"
                       title="Pin this task into a time slot today"
                     >accept</button>
                     <button
@@ -1882,27 +1882,27 @@
             {#if aiTriageBusy}
               <button
                 onclick={cancelAITriage}
-                class="px-3 py-1.5 text-xs bg-surface0 text-warning rounded hover:bg-surface0 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface0 text-warning rounded hover:bg-surface1 flex-shrink-0"
                 title="Cancel the in-flight triage call"
               >✨ thinking… cancel</button>
             {:else}
               <button
                 onclick={() => void runAITriage()}
                 disabled={filtered.length === 0}
-                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface1 disabled:opacity-50 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface2 disabled:opacity-50 flex-shrink-0"
                 title="Ask AI to suggest priority + schedule for each untriaged task"
               >✨ AI triage</button>
             {/if}
             {#if aiDeadlineBusy}
               <button
                 onclick={cancelAIDeadline}
-                class="px-3 py-1.5 text-xs bg-surface0 text-warning rounded hover:bg-surface0 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface0 text-warning rounded hover:bg-surface1 flex-shrink-0"
                 title="Cancel the in-flight deadline scan"
               >✨ thinking… cancel</button>
             {:else}
               <button
                 onclick={() => void runAIDeadlineDetect()}
-                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface1 disabled:opacity-50 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface2 disabled:opacity-50 flex-shrink-0"
                 title="Scan all open tasks without a due date — propose ones whose title implies a clear deadline"
               >✨ Detect deadlines</button>
             {/if}
@@ -1937,7 +1937,7 @@
                       <button
                         onclick={() => void applyDeadlineProposal(p)}
                         disabled={aiDeadlineBusy}
-                        class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface0"
+                        class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface1"
                       >accept</button>
                       <button
                         onclick={() => skipDeadlineProposal(p.id)}
@@ -1978,7 +1978,7 @@
                       <button
                         onclick={() => void applyTriageProposal(p)}
                         disabled={aiTriageBusy}
-                        class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface0"
+                        class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface1"
                       >accept</button>
                       <button
                         onclick={() => skipTriageProposal(p.id)}
@@ -2006,13 +2006,13 @@
             {#if aiStaleBusy}
               <button
                 onclick={cancelAIStale}
-                class="px-3 py-1.5 text-xs bg-surface0 text-warning rounded hover:bg-surface0 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface0 text-warning rounded hover:bg-surface1 flex-shrink-0"
                 title="Cancel the in-flight verdict scan"
               >✨ thinking… cancel</button>
             {:else if aiStaleVerdicts.length > 0 || aiStaleError || aiStaleRaw}
               <button
                 onclick={() => void runAIStaleVerdict()}
-                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface1 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface2 flex-shrink-0"
                 title="Re-evaluate stale tasks"
               >↻ re-scan</button>
               <button
@@ -2023,7 +2023,7 @@
               <button
                 onclick={() => void runAIStaleVerdict()}
                 disabled={filtered.filter(isStale).length === 0}
-                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface1 disabled:opacity-50 flex-shrink-0"
+                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface2 disabled:opacity-50 flex-shrink-0"
                 title="AI verdict on each stale task: keep, defer 2 weeks, or archive"
               >✨ AI verdicts</button>
             {/if}
@@ -2079,9 +2079,9 @@
                         onclick={() => void applyStaleVerdict(v)}
                         disabled={aiStaleApplyingId === v.taskId}
                         class="px-2 py-0.5 rounded flex-shrink-0
-                          {v.verdict === 'archive' ? 'bg-surface0 text-error hover:bg-surface0' :
-                           v.verdict === 'defer' ? 'bg-surface0 text-warning hover:bg-surface0' :
-                           'bg-surface0 text-success hover:bg-surface0'}
+                          {v.verdict === 'archive' ? 'bg-surface0 text-error hover:bg-surface1' :
+                           v.verdict === 'defer' ? 'bg-surface0 text-warning hover:bg-surface1' :
+                           'bg-surface0 text-success hover:bg-surface1'}
                           disabled:opacity-50"
                         title={v.verdict === 'archive'
                           ? 'Drop the task — done=true, triage=dropped'

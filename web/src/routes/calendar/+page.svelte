@@ -1352,7 +1352,7 @@
           onclick={() => void dayInsight(cursor)}
           disabled={insightBusy}
           title="AI take on this day's schedule"
-          class="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border bg-surface1 text-primary border-surface2 hover:bg-surface1 disabled:opacity-50"
+          class="hidden sm:inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border bg-surface1 text-primary border-surface2 hover:bg-surface2 disabled:opacity-50"
         >
           <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" />

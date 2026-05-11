@@ -483,7 +483,7 @@
             type="button"
             onclick={detectThemes}
             disabled={aiBusy}
-            class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-surface1 text-primary border border-surface2 hover:bg-surface1 disabled:opacity-50"
+            class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-surface1 text-primary border border-surface2 hover:bg-surface2 disabled:opacity-50"
             title="Ask AI to find recurring themes in your jots"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">

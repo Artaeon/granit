@@ -542,7 +542,7 @@
           <button
             type="button"
             onclick={stop}
-            class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-error border border-error rounded hover:bg-surface0"
+            class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-error border border-error rounded hover:bg-surface1"
           >Stop</button>
           <span class="flex-1"></span>
           <span class="text-[11px] text-dim italic">Streaming · cancel anytime</span>

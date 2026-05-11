@@ -192,7 +192,7 @@
               {#if p.venture}
                 <a
                   href={`/projects?venture=${encodeURIComponent(p.venture)}`}
-                  class="px-2 py-0.5 rounded bg-surface1 text-secondary hover:bg-surface1 text-[11px]"
+                  class="px-2 py-0.5 rounded bg-surface1 text-secondary hover:bg-surface2 text-[11px]"
                 >🏢 {p.venture}</a>
               {/if}
               {#if typeof p.priority === 'number' && p.priority > 0}

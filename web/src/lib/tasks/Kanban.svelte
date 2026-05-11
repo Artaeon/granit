@@ -434,7 +434,7 @@
 <div class="flex items-center gap-3 mb-3 text-xs text-dim flex-wrap">
   {#if hasConfigMode}
     <button
-      class="px-2 py-1 rounded {mode === 'config' ? 'bg-surface1 text-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+      class="px-2 py-1 rounded {mode === 'config' ? 'bg-surface1 text-primary' : 'bg-surface0 text-subtext hover:bg-surface2'}"
       onclick={() => (mode = 'config')}
       title="use {config!.kanban_columns?.length ?? 0} columns from .granit.json"
     >config columns</button>

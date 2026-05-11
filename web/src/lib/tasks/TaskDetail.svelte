@@ -462,7 +462,7 @@
             {:else}
               <button
                 onclick={() => void runAIDecompose()}
-                class="text-[11px] px-2 py-0.5 bg-surface1 text-secondary rounded hover:bg-surface1"
+                class="text-[11px] px-2 py-0.5 bg-surface1 text-secondary rounded hover:bg-surface2"
                 title="AI proposes 3-7 concrete sub-tasks"
               >✨ break it down</button>
             {/if}
@@ -499,7 +499,7 @@
                     <button
                       onclick={() => void acceptSubtask(idx)}
                       disabled={aiDecompAcceptingIdx >= 0}
-                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface0 disabled:opacity-50 flex-shrink-0"
+                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface1 disabled:opacity-50 flex-shrink-0"
                     >{aiDecompAcceptingIdx === idx ? '…' : 'add'}</button>
                     <button
                       onclick={() => skipSubtask(idx)}

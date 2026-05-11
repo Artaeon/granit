@@ -484,7 +484,7 @@
           <button
             type="button"
             onclick={() => (folderFilter = '')}
-            class="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded bg-surface0 text-warning hover:bg-surface0 flex-shrink-0"
+            class="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded bg-surface0 text-warning hover:bg-surface1 flex-shrink-0"
             title="Clear folder filter"
           >
             <span>📁</span>

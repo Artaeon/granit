@@ -527,7 +527,7 @@
                  here jumps to the project's detail view. -->
             <a
               href={`/projects/${encodeURIComponent(event.project_id)}`}
-              class="inline-flex items-center gap-1 text-xs px-2 py-0.5 mt-2 rounded-full bg-surface1 text-secondary border border-surface2 hover:bg-surface1"
+              class="inline-flex items-center gap-1 text-xs px-2 py-0.5 mt-2 rounded-full bg-surface1 text-secondary border border-surface2 hover:bg-surface2"
               title="open project"
             >
               <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2">
@@ -719,7 +719,7 @@
       {:else}
       <div class="flex flex-wrap gap-2 pt-2 border-t border-surface1">
         {#if event.taskId}
-          <button onclick={toggleDone} disabled={busy} class="px-3 py-1.5 text-sm bg-surface0 text-success rounded hover:bg-surface0 disabled:opacity-50">
+          <button onclick={toggleDone} disabled={busy} class="px-3 py-1.5 text-sm bg-surface0 text-success rounded hover:bg-surface1 disabled:opacity-50">
             {event.done ? 'mark not done' : 'mark done'}
           </button>
           {#if event.start}
@@ -739,7 +739,7 @@
             <button
               onclick={skipOccurrence}
               disabled={busy}
-              class="px-3 py-1.5 text-sm bg-surface0 text-warning rounded hover:bg-surface0"
+              class="px-3 py-1.5 text-sm bg-surface0 text-warning rounded hover:bg-surface1"
               title="Cancel just this occurrence — keep the rest of the series"
             >skip this</button>
           {/if}
@@ -753,7 +753,7 @@
             <button
               onclick={resetOccurrence}
               disabled={busy}
-              class="px-3 py-1.5 text-sm bg-surface0 text-info rounded hover:bg-surface0"
+              class="px-3 py-1.5 text-sm bg-surface0 text-info rounded hover:bg-surface1"
               title="Drop the per-occurrence override and inherit the series defaults"
             >reset this</button>
           {/if}
@@ -769,7 +769,7 @@
         <button
           onclick={createMeetingNote}
           disabled={creatingMeetingNote}
-          class="px-3 py-1.5 text-sm bg-surface1 text-secondary rounded hover:bg-surface1 disabled:opacity-50"
+          class="px-3 py-1.5 text-sm bg-surface1 text-secondary rounded hover:bg-surface2 disabled:opacity-50"
           title="Create a meeting note for this event with frontmatter"
         >
           {creatingMeetingNote ? 'creating…' : '✎ meeting note'}

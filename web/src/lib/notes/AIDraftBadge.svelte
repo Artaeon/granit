@@ -83,7 +83,7 @@
 	{#if href}
 		<a
 			{href}
-			class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-surface2 bg-surface1 text-primary text-[11px] hover:bg-surface1 hover:border-primary transition-colors min-h-[24px]"
+			class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-surface2 bg-surface1 text-primary text-[11px] hover:bg-surface2 hover:border-primary transition-colors min-h-[24px]"
 			title="Saved from the AI sidebar — click to open the {sourceLabel.split(':')[0]}"
 		>
 			<span aria-hidden="true">{mode?.glyph ?? '✨'}</span>

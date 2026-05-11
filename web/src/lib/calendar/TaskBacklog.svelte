@@ -211,7 +211,7 @@
     </div>
     <button
       onclick={openPlanDrawer}
-      class="px-2.5 py-1 text-xs rounded bg-surface1 text-secondary border border-surface2 hover:bg-surface1 flex items-center gap-1.5"
+      class="px-2.5 py-1 text-xs rounded bg-surface1 text-secondary border border-surface2 hover:bg-surface2 flex items-center gap-1.5"
       title="Preview an AI-drafted schedule, edit, then apply"
     >
       <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">

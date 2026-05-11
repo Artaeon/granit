@@ -311,7 +311,7 @@
 							<button
 								type="button"
 								onclick={() => useHistory(h)}
-								class="text-[10px] px-2 py-0.5 rounded bg-surface1 border border-surface2 text-secondary hover:bg-surface1"
+								class="text-[10px] px-2 py-0.5 rounded bg-surface1 border border-surface2 text-secondary hover:bg-surface2"
 								title={h}
 							>{h.length > 40 ? h.slice(0, 39) + '…' : h}</button>
 						{/each}
