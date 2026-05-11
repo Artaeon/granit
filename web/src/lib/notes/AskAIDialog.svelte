@@ -110,25 +110,50 @@
     if (s.length > 0 && s.length < 500) saveStoredString(LAST_INSTRUCTION_KEY, s);
   }
 
+  // Preset-path delay before auto-fire. The user picked the preset
+  // on the bar so they EXPECT a request to fire — but flashing the
+  // dialog open and immediately streaming gives no window for "wait,
+  // I meant a different selection" / "let me tweak the instruction".
+  // 400ms is long enough to read what's about to be sent + reach
+  // for the input, short enough that the user doesn't feel like
+  // they're waiting. Any keystroke in the instruction box cancels
+  // the timer (the user is editing; that IS their cancel).
+  let autoFireTimer: ReturnType<typeof setTimeout> | null = $state(null);
+  let autoFireCountdown = $state(false);
+  const AUTO_FIRE_DELAY_MS = 400;
+
+  function cancelAutoFire() {
+    if (autoFireTimer !== null) {
+      clearTimeout(autoFireTimer);
+      autoFireTimer = null;
+    }
+    autoFireCountdown = false;
+  }
+
   $effect(() => {
     if (request) {
       response = '';
+      // Cancel any leftover countdown from a previous open before
+      // we (maybe) start a new one — protects against rapid
+      // preset → close → different-preset opens stacking timers.
+      cancelAutoFire();
       // When the bar (or any host) passed a presetInstruction, honour
-      // it AND auto-fire so the user gets the response without an
-      // extra "Ask" click — they already picked the action on the
-      // bar. The selection preview still renders above so they can
-      // see what's being sent. Falls back to last-used when not set.
+      // it AND auto-fire AFTER a short cancellable delay. The user
+      // already picked the action on the bar; the delay gives them
+      // a beat to edit if they want.
       if (request.presetInstruction && request.presetInstruction.trim()) {
         instruction = request.presetInstruction.trim();
         viewMode = request.presetView ?? (isRewriteInstruction(instruction) ? 'diff' : 'preview');
         error = '';
         pending = false;
-        // Wait a tick so the dialog mounts before we kick off the
-        // stream — otherwise the spinner can flash in a half-rendered
-        // panel on very slow devices.
+        autoFireCountdown = true;
         tick().then(() => {
           inputEl?.focus();
-          void ask();
+          autoFireTimer = setTimeout(() => {
+            autoFireTimer = null;
+            autoFireCountdown = false;
+            void ask();
+          }, AUTO_FIRE_DELAY_MS);
         });
       } else {
         // Pre-fill with last-used instruction so a "summarise this"
@@ -225,6 +250,9 @@
   }
 
   function pickQuick(text: string) {
+    // Cancel any pending preset-auto-fire so picking a different
+    // chip mid-countdown doesn't race the queued instruction.
+    cancelAutoFire();
     instruction = text;
     // Auto-switch to diff for rewrite-style presets so the user
     // sees what changed at a glance. The toggle stays available
@@ -271,6 +299,9 @@
   }
 
   function close() {
+    // Clear any pending preset auto-fire so a closed-then-reopened
+    // dialog doesn't accidentally fire the previous request.
+    cancelAutoFire();
     onDismiss();
   }
 
@@ -281,6 +312,7 @@
       stop();
       return;
     }
+    cancelAutoFire();
     request?.cancel();
     close();
   }
@@ -354,15 +386,30 @@
              immediately so a one-tap "Summarise" workflow exists. -->
         <div>
           <label for="ai-instruction" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Instruction (optional)</label>
-          <textarea
-            id="ai-instruction"
-            bind:this={inputEl}
-            bind:value={instruction}
-            rows="2"
-            placeholder="What should the AI do? (or pick a preset below)"
-            class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
-            disabled={pending}
-          ></textarea>
+          <div class="relative">
+            <textarea
+              id="ai-instruction"
+              bind:this={inputEl}
+              bind:value={instruction}
+              oninput={cancelAutoFire}
+              onkeydown={cancelAutoFire}
+              rows="2"
+              placeholder="What should the AI do? (or pick a preset below)"
+              class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+              disabled={pending}
+            ></textarea>
+            {#if autoFireCountdown}
+              <!-- Tiny countdown pill — surfaces that a preset is
+                   queued to auto-fire so the user isn't surprised
+                   when it does, and tells them how to back out
+                   ("type to edit"). The pill clears the moment
+                   cancelAutoFire runs (any key in the textarea). -->
+              <div class="absolute right-2 top-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/15 text-[10px] text-primary pointer-events-none">
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                <span>preset queued · type to edit</span>
+              </div>
+            {/if}
+          </div>
           <!-- Grouped presets — Transform / Extract / Translate.
                Each group is a labeled row of chips so the wall of
                13 buttons reads as scannable categories. Group label

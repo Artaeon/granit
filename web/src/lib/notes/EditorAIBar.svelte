@@ -175,9 +175,13 @@
   // count the user sees in the status bar.
   let hasSelection = $derived(selection.text.length > 0);
   let selLen = $derived(selection.text.length);
+  // Two flavours of the selection-length chip so very-narrow
+  // viewports (<320px) don't blow the bar onto three lines. The
+  // CSS swaps between them at the narrow breakpoint.
   let selLabel = $derived(
     selLen === 1 ? '1 char selected' : `${selLen.toLocaleString()} chars selected`
   );
+  let selLabelShort = $derived(selLen.toLocaleString());
 
   // Helpers — all the bar's actions ultimately go through one of
   // these. Pulling them out here keeps the markup readable and
@@ -355,10 +359,12 @@
          a status anchor the user can glance at without scanning. Tab-
          ular nums so the digits don't jitter as the count grows. -->
     <span
-      class="text-[10px] text-dim font-mono tabular-nums px-1.5 py-0.5 rounded bg-surface0/60 select-none"
+      class="text-[10px] text-dim font-mono tabular-nums px-1.5 py-0.5 rounded bg-surface0/60 select-none ai-bar-sel-chip"
       aria-live="polite"
+      title={selLabel}
     >
-      {selLabel}
+      <span class="ai-bar-sel-long">{selLabel}</span>
+      <span class="ai-bar-sel-short" aria-hidden="true">{selLabelShort}</span>
     </span>
   {:else}
     <button
@@ -541,6 +547,32 @@
       min-width: 2.5rem;
       padding: 0 0.625rem;
       justify-content: center;
+    }
+  }
+
+  /* Selection chip swaps to a digits-only flavour on very-narrow
+     viewports (<320px ~= iPhone 5 / SE 1) so seven 40-px buttons +
+     a long chip don't trip the bar onto three rows. Above 320px
+     the verbose "243 chars selected" reads. The title attribute
+     still carries the long form for hover / long-press / screen
+     readers regardless. */
+  .editor-ai-bar :global(.ai-bar-sel-long) {
+    display: inline;
+  }
+  .editor-ai-bar :global(.ai-bar-sel-short) {
+    display: none;
+  }
+  @media (max-width: 319px) {
+    .editor-ai-bar :global(.ai-bar-sel-long) {
+      display: none;
+    }
+    .editor-ai-bar :global(.ai-bar-sel-short) {
+      display: inline;
+    }
+    /* Tighter button padding at this width too — gives the bar a
+       chance to fit on a single row with the More menu visible. */
+    .editor-ai-bar :global(.ai-bar-btn) {
+      padding: 0 0.5rem;
     }
   }
 </style>

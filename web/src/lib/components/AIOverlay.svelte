@@ -2142,20 +2142,44 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                    goal / calendar) and revert when the user leaves.
                    Visually distinguished with a primary-tinted
                    glyph background so the user reads them as
-                   "tied to a page", not generic postures. -->
+                   "tied to a page", not generic postures.
+                   Out-of-scope modes are dimmed + carry a "needs
+                   <X>" hint so the user knows the prelude won't
+                   carry context — they can still pick (sometimes
+                   useful for the system-prompt posture alone),
+                   it just won't be the full PM/Goal/Calendar
+                   manager experience. -->
               <div class="border-t border-surface1 mt-1"></div>
               <div class="px-3 pt-2 pb-1 text-[9px] uppercase tracking-widest text-primary">Contextual</div>
               {#each CONTEXTUAL_MODES as m (m.id)}
+                {@const inScope =
+                  (m.id === 'project-manager' && !!currentProjectName) ||
+                  (m.id === 'goal-manager' && !!currentGoalId) ||
+                  (m.id === 'calendar-manager' && onCalendarPage)}
+                {@const scopeHint =
+                  m.id === 'project-manager'
+                    ? 'open a project'
+                    : m.id === 'goal-manager'
+                    ? 'focus a goal'
+                    : 'open the calendar'}
                 <button
                   type="button"
                   role="option"
                   aria-selected={m.id === modeId}
                   onclick={() => { selectMode(m.id); modePickerOpen = false; }}
-                  class="w-full flex items-start gap-2 px-3 py-2 hover:bg-surface0 text-left {m.id === modeId ? 'bg-primary/10' : ''}"
+                  class="w-full flex items-start gap-2 px-3 py-2 hover:bg-surface0 text-left {m.id === modeId ? 'bg-primary/10' : ''} {inScope ? '' : 'opacity-60'}"
+                  title={inScope
+                    ? m.tagline
+                    : `Pick-able from any page, but the prelude won't carry context until you ${scopeHint}.`}
                 >
                   <span class="text-base leading-tight flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/15 text-primary">{m.glyph}</span>
                   <div class="flex-1 min-w-0">
-                    <div class="text-sm font-medium text-text">{m.label}</div>
+                    <div class="text-sm font-medium text-text inline-flex items-center gap-1.5">
+                      {m.label}
+                      {#if !inScope}
+                        <span class="text-[9px] uppercase tracking-wider text-dim font-normal bg-surface1 px-1 rounded">needs {scopeHint}</span>
+                      {/if}
+                    </div>
                     <div class="text-[11px] text-dim leading-snug">{m.tagline}</div>
                   </div>
                   {#if m.id === modeId}
