@@ -95,6 +95,62 @@ func TestICSWritable_404OnMissing(t *testing.T) {
 	}
 }
 
+// TestFindICSSource_PrefersWritable repros the user's "most events
+// show event not found on edit" bug. When the same .ics filename
+// exists in BOTH the read-only vault root AND the writable
+// <vault>/calendars/ directory (common when a Sync app drops files
+// at the root and the user has copies they want to edit), the
+// previous "first match wins" lookup returned the read-only copy
+// and the CRUD endpoint bounced with 403. The user perceived that
+// as a calendar bug. After the fix, findICSSource prefers writable
+// matches when both exist, so the editable copy takes precedence.
+func TestFindICSSource_PrefersWritable(t *testing.T) {
+	s, _, root := icsTestServer(t)
+
+	// Plant a read-only copy at vault root, then a writable copy
+	// under <vault>/calendars/. Both have the same filename.
+	readonly := filepath.Join(root, "shared.ics")
+	if err := icswriter.WriteFile(readonly, icswriter.CalendarMeta{Name: "shared (root)"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "calendars"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writable := filepath.Join(root, "calendars", "shared.ics")
+	if err := icswriter.WriteFile(writable, icswriter.CalendarMeta{Name: "shared (writable)"}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	src := s.findICSSource("shared.ics")
+	if src == nil {
+		t.Fatal("findICSSource returned nil for shared.ics")
+	}
+	if !src.Writable {
+		t.Errorf("findICSSource must prefer the writable copy; got read-only path %q", src.Path)
+	}
+	if filepath.Dir(src.Path) != filepath.Join(root, "calendars") {
+		t.Errorf("findICSSource picked the wrong file: %q (expected under calendars/)", src.Path)
+	}
+}
+
+// TestFindICSSource_FallsBackToReadOnly verifies the read-only path
+// still resolves when no writable copy exists — otherwise the read-
+// only branch would return 404 instead of the more accurate 403.
+func TestFindICSSource_FallsBackToReadOnly(t *testing.T) {
+	s, _, root := icsTestServer(t)
+	readonly := filepath.Join(root, "only-readonly.ics")
+	if err := icswriter.WriteFile(readonly, icswriter.CalendarMeta{Name: "x"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	src := s.findICSSource("only-readonly.ics")
+	if src == nil {
+		t.Fatal("findICSSource returned nil for an existing read-only source")
+	}
+	if src.Writable {
+		t.Errorf("vault-root file should be read-only, got Writable=true")
+	}
+}
+
 // TestICS_CreateCalendar_AndEventRoundTrip exercises the full local
 // path: create calendar → create event → patch → delete. After each
 // step we re-parse the file with the existing reader (parseICSFile)

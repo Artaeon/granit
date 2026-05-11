@@ -172,6 +172,12 @@ export interface CalendarEvent {
   location?: string;
   /** ICS filename for ics_event types — drives per-source coloring. */
   source?: string;
+  /** False when this ICS event lives in a read-only location (vault
+   *  root or <vault>/Calendars/). The UI hides edit/drag affordances
+   *  so users don't waste a click on a server-side 403. Only emitted
+   *  for type='ics_event'; native events are editable through their
+   *  own endpoints and don't need this flag. */
+  editable?: boolean;
   /** Deadline importance — set only on type='deadline' (critical/high/normal). */
   importance?: 'critical' | 'high' | 'normal';
   /** Source recurrence rule when this occurrence was expanded from a

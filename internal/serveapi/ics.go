@@ -2,6 +2,7 @@ package serveapi
 
 import (
 	"bufio"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -24,6 +25,21 @@ type icsEvent struct {
 	// Empty for events that originated in events.json (granit's native
 	// store) — those use the user-picked color field instead.
 	Source string
+	// Writable mirrors icsSource.Writable so the calendar feed can
+	// emit an editable flag per event without re-resolving the source
+	// at emit time. False when the file lives in vault root or
+	// <vault>/Calendars/ (read-only roots); true only under
+	// <vault>/calendars/.
+	Writable bool
+	// Floating is true when the event's time is a "floating" ICS time
+	// (no Z suffix, no TZID parameter — RFC 5545 §3.3.5). These
+	// events should display at their wall-clock hours in any
+	// timezone the user is in. We emit them to the wire WITHOUT an
+	// offset so the browser's Date parser treats them as local.
+	// Without this distinction, the previous code parsed floating
+	// times as the server's local zone and emitted with that offset,
+	// producing a {server-tz - client-tz} drift on the grid.
+	Floating bool
 	// ExDates is the set of explicitly-cancelled occurrences of a
 	// recurring event (RFC 5545 EXDATE). When a user cancels a single
 	// instance of a weekly meeting in their calendar app, the export
@@ -112,9 +128,12 @@ func icsScan(vaultRoot string, disabled []string) []icsEvent {
 		// Tag each parsed event with its origin filename so the web
 		// can color-by-source (faith.ics vs training.ics get distinct
 		// hues). expandRRULE preserves the field on every instance it
-		// produces.
+		// produces. Writable goes along so the feed can emit per-event
+		// editable=false for read-only roots without re-resolving the
+		// source.
 		for i := range evs {
 			evs[i].Source = src.Source
+			evs[i].Writable = src.Writable
 		}
 		out = append(out, evs...)
 	}
@@ -177,6 +196,11 @@ func parseICSFile(path string) ([]icsEvent, error) {
 			if t, allDay, ok := parseICSTime(val, params["TZID"]); ok {
 				cur.Start = t
 				cur.AllDay = allDay
+				// Capture floating-vs-zoned on DTSTART since the
+				// emit path needs to know whether to attach an
+				// offset on the wire. RFC 5545 says DTEND inherits
+				// DTSTART's shape — both are floating or neither.
+				cur.Floating = !allDay && icsTimeIsFloating(val, params["TZID"])
 			}
 		case "DTEND":
 			if t, _, ok := parseICSTime(val, params["TZID"]); ok {
@@ -252,9 +276,18 @@ func unescape(s string) string {
 //   YYYYMMDDTHHMMSS                (floating local time — use Local)
 //   YYYYMMDDTHHMMSSZ               (UTC)
 //   With TZID param: floating local time interpreted in the named zone.
+//
+// Return values: (parsedTime, allDay, ok). The caller is also expected
+// to compute Floating separately (via ICSTimeIsFloating) when it cares
+// — floating times are "the wall-clock numbers display in whatever
+// timezone is reading them" (RFC 5545 §3.3.5) and need different
+// emission than zoned/UTC times.
 func parseICSTime(value, tzid string) (time.Time, bool, bool) {
 	value = strings.TrimSpace(value)
 	if len(value) == 8 {
+		// VALUE=DATE / all-day. Parse in UTC so the date encoding is
+		// stable regardless of server tz — we only ever consume the
+		// Y/M/D components downstream.
 		t, err := time.Parse("20060102", value)
 		if err != nil {
 			return time.Time{}, false, false
@@ -269,11 +302,24 @@ func parseICSTime(value, tzid string) (time.Time, bool, bool) {
 		return t, false, true
 	}
 	if len(value) == 15 {
-		loc := time.Local
+		// Two sub-cases: explicit TZID → parse in that zone; no TZID
+		// → floating time, parse in UTC to preserve the wall-clock
+		// numbers verbatim (the emitter will write back without an
+		// offset so the browser interprets in its local zone).
+		// Previously this used time.Local as the fallback, which baked
+		// the SERVER's offset into the parsed instant and then the
+		// RFC3339 emit at the feed layer surfaced that offset to the
+		// browser — drifting wall-clock by {server-tz - client-tz}.
+		loc := time.UTC
 		if tzid != "" {
-			if l, err := time.LoadLocation(tzid); err == nil {
+			if l, err := loadTZ(tzid); err == nil {
 				loc = l
 			}
+			// Unknown TZID also falls back to UTC. Better than
+			// server-local because the wire shape already commits to
+			// a specific timestamp; we surface the wall-clock numbers
+			// verbatim and let the user notice and correct rather
+			// than silently drift.
 		}
 		t, err := time.ParseInLocation("20060102T150405", value, loc)
 		if err != nil {
@@ -282,6 +328,68 @@ func parseICSTime(value, tzid string) (time.Time, bool, bool) {
 		return t, false, true
 	}
 	return time.Time{}, false, false
+}
+
+// icsTimeIsFloating reports whether an ICS time value should be
+// treated as floating (RFC 5545 §3.3.5). Floating times have no
+// Z suffix and no TZID param; they display as wall-clock in
+// whatever timezone is reading them. Pure check on the raw line —
+// no parsing needed.
+func icsTimeIsFloating(value, tzid string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false // not a time at all
+	}
+	if len(value) == 8 {
+		return false // all-day; not "floating" in the time sense
+	}
+	if strings.HasSuffix(value, "Z") {
+		return false
+	}
+	return tzid == ""
+}
+
+// loadTZ resolves an ICS TZID to an IANA *time.Location. Falls back
+// to a small map of Windows-style names that calendar apps (Outlook,
+// older Exchange exports) emit. Returning an error keeps the parser
+// path explicit about "we couldn't honor this TZID" rather than
+// silently substituting server-local.
+func loadTZ(tzid string) (*time.Location, error) {
+	if l, err := time.LoadLocation(tzid); err == nil {
+		return l, nil
+	}
+	if iana, ok := windowsToIANA[tzid]; ok {
+		return time.LoadLocation(iana)
+	}
+	return nil, errICSUnknownTZ
+}
+
+var errICSUnknownTZ = fmt.Errorf("unknown ICS TZID")
+
+// windowsToIANA covers the Windows TZID names Outlook + Exchange emit
+// for the most common zones. Not exhaustive — the full table runs to
+// 100+ entries — but enough that the typical EU/US user with an
+// Outlook-exported .ics doesn't see times drift on import.
+var windowsToIANA = map[string]string{
+	"UTC":                       "UTC",
+	"GMT Standard Time":         "Europe/London",
+	"Central European Standard Time": "Europe/Warsaw",
+	"W. Europe Standard Time":   "Europe/Berlin",
+	"Central Europe Standard Time": "Europe/Budapest",
+	"Romance Standard Time":     "Europe/Paris",
+	"E. Europe Standard Time":   "Europe/Bucharest",
+	"FLE Standard Time":         "Europe/Helsinki",
+	"Russian Standard Time":     "Europe/Moscow",
+	"Eastern Standard Time":     "America/New_York",
+	"Central Standard Time":     "America/Chicago",
+	"Mountain Standard Time":    "America/Denver",
+	"Pacific Standard Time":     "America/Los_Angeles",
+	"Alaskan Standard Time":     "America/Anchorage",
+	"Hawaiian Standard Time":    "Pacific/Honolulu",
+	"AUS Eastern Standard Time": "Australia/Sydney",
+	"Tokyo Standard Time":       "Asia/Tokyo",
+	"China Standard Time":       "Asia/Shanghai",
+	"India Standard Time":       "Asia/Kolkata",
 }
 
 // expandRRULE returns instances of ev within [from, to] inclusive, given the

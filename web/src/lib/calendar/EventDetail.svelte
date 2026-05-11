@@ -135,8 +135,20 @@
 
   // ICS events from a writable calendar are editable through the
   // ics-events endpoints; events.json events keep their existing path.
+  //
+  // Source of truth: the calendar feed now stamps each ICS event
+  // with editable=true/false directly (based on the file's location),
+  // so we trust event.editable when present. Falls back to a sources
+  // lookup for backward compatibility with older feed payloads or
+  // events that pre-date the editable flag (e.g. in-memory entries
+  // built from API responses that don't echo it). Without this, the
+  // user's most common bug was: feed picks the writable copy of a
+  // duplicated .ics file but EventDetail's source-lookup finds the
+  // read-only one first and disables editing.
   let icsWritable = $derived.by(() => {
-    if (event?.type !== 'ics_event' || !event.source) return false;
+    if (event?.type !== 'ics_event') return false;
+    if (typeof event.editable === 'boolean') return event.editable;
+    if (!event.source) return false;
     const src = sources.find((s) => s.source === event.source);
     return !!src?.writable;
   });

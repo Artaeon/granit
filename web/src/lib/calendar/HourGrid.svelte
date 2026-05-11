@@ -81,6 +81,11 @@
     if (ev.taskId) return true;
     if (ev.type === 'event' && ev.eventId) return true;
     if (ev.type === 'ics_event' && ev.eventId && ev.source) {
+      // Trust the server-stamped editable flag when present —
+      // covers the "same filename in two roots" case where the
+      // writableSources prop derived from the calendar-sources
+      // endpoint can lag the feed's actual source resolution.
+      if (typeof ev.editable === 'boolean') return ev.editable;
       return writableSources.includes(ev.source);
     }
     return false;

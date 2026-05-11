@@ -39,6 +39,17 @@ type icsEventCRUD struct {
 // findICSSource matches a source name case-insensitively, with or
 // without the .ics suffix. Returns nil when nothing matches; the caller
 // distinguishes 404 vs 403 based on Writable.
+//
+// Prefers writable matches when the same filename exists in multiple
+// roots (vault root + <vault>/calendars/, say — a common shape when a
+// Sync app drops .ics files at the root AND the user has copies under
+// the writable directory). Previously the first match won by
+// iteration order, so the read-only vault-root copy shadowed the
+// writable one and PATCH/DELETE returned 403 "calendar is read-only"
+// even though the user clearly intended to edit the writable copy.
+// Writable-first resolves that without breaking the pure-read-only
+// case (no writable copy exists → falls through to the read-only
+// match → caller emits a clear 403).
 func (s *Server) findICSSource(name string) *icsSource {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -48,12 +59,20 @@ func (s *Server) findICSSource(name string) *icsSource {
 	if !strings.HasSuffix(lower, ".ics") {
 		lower += ".ics"
 	}
+	var fallback *icsSource
 	for _, src := range icsListSources(s.cfg.Vault.Root) {
-		if strings.ToLower(src.Source) == lower {
+		if strings.ToLower(src.Source) != lower {
+			continue
+		}
+		if src.Writable {
 			return &src
 		}
+		if fallback == nil {
+			s2 := src
+			fallback = &s2
+		}
 	}
-	return nil
+	return fallback
 }
 
 // icsRecord is the round-trip-aware view of a VEVENT — richer than

@@ -542,9 +542,18 @@
         // a stale writableSources prop can let a drag fire that the
         // server then rejects with 403. Catch it here with a clear
         // message instead of a generic patchICSEvent failure toast.
-        const w = calSources.find((s) => s.source === ev.source)?.writable;
+        //
+        // Prefer the server-stamped event.editable flag — it tracks
+        // the actual file's location at feed time and survives
+        // duplicate-filename scenarios where two .ics files share a
+        // name but only one is writable. Falls back to calSources
+        // lookup for legacy entries that pre-date the flag.
+        const w =
+          typeof ev.editable === 'boolean'
+            ? ev.editable
+            : !!calSources.find((s) => s.source === ev.source)?.writable;
         if (!w) {
-          toast.error(`Read-only calendar (${ev.source}) — can't move this event.`);
+          toast.error(`Read-only calendar (${ev.source}) — move the file to <vault>/calendars/ to enable edits.`);
           return;
         }
       }
@@ -742,6 +751,16 @@
         const endTime = `${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
         await api.patchEvent(ev.eventId, { end_time: endTime });
       } else if (ev.type === 'ics_event' && ev.eventId && ev.source && ev.start) {
+        // Same editable gate as moveEvent — read-only sources can't
+        // be resized either. Prefer the server-stamped flag.
+        const w =
+          typeof ev.editable === 'boolean'
+            ? ev.editable
+            : !!calSources.find((s) => s.source === ev.source)?.writable;
+        if (!w) {
+          toast.error(`Read-only calendar (${ev.source}) — can't resize this event.`);
+          return;
+        }
         // ICS uses RFC3339 — full timestamps, so cross-midnight is
         // representable. No clamp needed; the writer will normalize
         // to UTC on emit.

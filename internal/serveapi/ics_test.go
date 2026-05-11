@@ -467,3 +467,143 @@ func TestParseBYDAY(t *testing.T) {
 		}
 	}
 }
+
+// parseICSTime + the icsTimeIsFloating helper are the load-bearing
+// pieces of the "calendar times are sometimes wrong" fix. The bug
+// repro: a server running in UTC parses a floating ICS time
+// "20260315T140000" as time.Local (= UTC since server tz is UTC),
+// then emits as RFC3339 → "2026-03-15T14:00:00Z". A client in
+// Europe/Berlin (UTC+1 in winter) renders that as 15:00 — drifted
+// by the client's offset. Floating times must round-trip wall-clock
+// numbers, NOT instants.
+
+func TestICSTimeIsFloating(t *testing.T) {
+	cases := []struct {
+		value, tzid string
+		want        bool
+	}{
+		{"20260315T140000", "", true},               // no Z + no TZID → floating
+		{"20260315T140000Z", "", false},             // UTC instant
+		{"20260315T140000", "Europe/Berlin", false}, // TZID-qualified
+		{"20260315", "", false},                     // all-day (date) — not floating in the time sense
+		{"", "", false},
+	}
+	for _, c := range cases {
+		got := icsTimeIsFloating(c.value, c.tzid)
+		if got != c.want {
+			t.Errorf("icsTimeIsFloating(%q, %q) = %v, want %v", c.value, c.tzid, got, c.want)
+		}
+	}
+}
+
+func TestParseICSTime_FloatingPreservesWallClock(t *testing.T) {
+	// Floating times must parse to the exact wall-clock numbers
+	// regardless of the server's local zone. We assert the Y/M/D/h/m
+	// fields rather than the absolute instant — the absolute is
+	// meaningless for floating times by definition.
+	t0, _, ok := parseICSTime("20260315T140000", "")
+	if !ok {
+		t.Fatal("parseICSTime returned !ok")
+	}
+	if t0.Year() != 2026 || t0.Month() != 3 || t0.Day() != 15 || t0.Hour() != 14 || t0.Minute() != 0 {
+		t.Errorf("floating time mis-parsed: %v", t0)
+	}
+	// The instant should be in UTC for stability. A previous bug
+	// used time.Local here and the emitted instant drifted with the
+	// server timezone — pin it.
+	if t0.Location() != time.UTC {
+		t.Errorf("floating time should land in UTC, got %v", t0.Location())
+	}
+}
+
+func TestParseICSTime_TZIDKnown(t *testing.T) {
+	// IANA TZID resolves correctly. Use Europe/Berlin since Granit's
+	// primary user is in CET; 14:00 Berlin in March (CET, before DST)
+	// is 13:00 UTC.
+	t0, _, ok := parseICSTime("20260315T140000", "Europe/Berlin")
+	if !ok {
+		t.Fatal("parseICSTime returned !ok")
+	}
+	utc := t0.UTC()
+	if utc.Hour() != 13 || utc.Minute() != 0 {
+		t.Errorf("Europe/Berlin 14:00 → UTC %02d:%02d, want 13:00", utc.Hour(), utc.Minute())
+	}
+}
+
+func TestParseICSTime_TZIDWindowsAlias(t *testing.T) {
+	// Outlook/Exchange exports use Windows-style TZIDs; the fallback
+	// map should resolve them. "Central European Standard Time" →
+	// Europe/Warsaw (CET, same offset as Berlin for our purposes).
+	t0, _, ok := parseICSTime("20260315T140000", "Central European Standard Time")
+	if !ok {
+		t.Fatal("parseICSTime returned !ok")
+	}
+	utc := t0.UTC()
+	if utc.Hour() != 13 || utc.Minute() != 0 {
+		t.Errorf("Windows CET 14:00 → UTC %02d:%02d, want 13:00", utc.Hour(), utc.Minute())
+	}
+}
+
+func TestParseICSTime_TZIDUnknown_FallsBackToUTC(t *testing.T) {
+	// An unrecognised TZID (typo / obscure zone) must not silently
+	// drift to server-local. Falling back to UTC preserves the wall-
+	// clock numbers, which the user can spot and correct rather than
+	// having an invisible shift creep in.
+	t0, _, ok := parseICSTime("20260315T140000", "Not/A/Zone")
+	if !ok {
+		t.Fatal("parseICSTime returned !ok")
+	}
+	if t0.Hour() != 14 || t0.Location() != time.UTC {
+		t.Errorf("unknown TZID should preserve 14:00 in UTC, got %v in %v", t0, t0.Location())
+	}
+}
+
+func TestParseICSFile_TagsFloatingFlag(t *testing.T) {
+	// End-to-end: a file with a mix of UTC/zoned/floating timestamps
+	// gets correctly tagged so the calendar feed knows which to emit
+	// with an offset vs as floating-ISO.
+	const mixed = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//EN
+BEGIN:VEVENT
+UID:utc@test
+SUMMARY:UTC event
+DTSTART:20260315T140000Z
+DTEND:20260315T150000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:zoned@test
+SUMMARY:Berlin event
+DTSTART;TZID=Europe/Berlin:20260315T160000
+DTEND;TZID=Europe/Berlin:20260315T170000
+END:VEVENT
+BEGIN:VEVENT
+UID:floating@test
+SUMMARY:Floating event
+DTSTART:20260315T180000
+DTEND:20260315T190000
+END:VEVENT
+END:VCALENDAR
+`
+	path := writeTempICS(t, mixed)
+	events, err := parseICSFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+	flagByUID := map[string]bool{}
+	for _, e := range events {
+		flagByUID[e.UID] = e.Floating
+	}
+	if flagByUID["utc@test"] {
+		t.Errorf("UTC event should NOT be flagged floating")
+	}
+	if flagByUID["zoned@test"] {
+		t.Errorf("zoned (TZID) event should NOT be flagged floating")
+	}
+	if !flagByUID["floating@test"] {
+		t.Errorf("no-Z no-TZID event MUST be flagged floating")
+	}
+}

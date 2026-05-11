@@ -29,6 +29,14 @@ type calendarEvent struct {
 	// "faith.ics") — the web uses it to color-by-source so different
 	// calendars are visually distinct on the grid.
 	Source string `json:"source,omitempty"`
+	// Editable is false for ICS events whose source file lives in a
+	// read-only location (vault root or <vault>/Calendars/ — only
+	// <vault>/calendars/ is writable). The frontend hides edit/drag
+	// affordances when this is false so the user doesn't waste a click
+	// on something the server is going to bounce with 403. Native
+	// events and tasks are always editable through their own endpoints,
+	// so the field is only emitted for type="ics_event".
+	Editable *bool `json:"editable,omitempty"`
 	// Importance is set ONLY on type=="deadline" entries — drives the
 	// per-deadline color in the web's calendar overlay
 	// (critical→error / high→warning / normal→secondary). Empty for
@@ -452,6 +460,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 						continue
 					}
 					icsSeen[key] = struct{}{}
+					editable := ev.Writable
 					events = append(events, calendarEvent{
 						Type:     "ics_event",
 						Title:    ev.Title,
@@ -461,6 +470,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 						Source:   ev.Source,
 						Date:     dayISO,
 						RRule:    ev.RRule,
+						Editable: &editable,
 					})
 				}
 				continue
@@ -475,6 +485,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			icsSeen[key] = struct{}{}
+			editable := ev.Writable
 			ce := calendarEvent{
 				Type:     "ics_event",
 				Title:    ev.Title,
@@ -483,11 +494,29 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				Color:    "cyan",
 				Source:   ev.Source,
 				RRule:    ev.RRule,
+				Editable: &editable,
 			}
-			startStr := ev.Start.Format(time.RFC3339)
+			// Floating ICS times (no Z, no TZID) emit as RFC3339-style
+			// WITHOUT an offset so the browser's Date parser uses its
+			// own local zone for display. RFC3339 attaches the parser's
+			// zone (server-local), which the browser then converts again
+			// — producing a {server-tz - client-tz} drift on every
+			// occurrence. Zoned/UTC times keep their RFC3339 emit
+			// because they carry real instants and the offset is correct.
+			var startStr string
+			if ev.Floating {
+				startStr = ev.Start.Format("2006-01-02T15:04:05")
+			} else {
+				startStr = ev.Start.Format(time.RFC3339)
+			}
 			ce.Start = &startStr
 			if !ev.End.IsZero() {
-				endStr := ev.End.Format(time.RFC3339)
+				var endStr string
+				if ev.Floating {
+					endStr = ev.End.Format("2006-01-02T15:04:05")
+				} else {
+					endStr = ev.End.Format(time.RFC3339)
+				}
 				ce.End = &endStr
 				ce.DurationMinutes = int(ev.End.Sub(ev.Start) / time.Minute)
 			}
