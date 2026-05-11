@@ -2170,17 +2170,30 @@
            don't touch that markup) and ABOVE the editor body. Reads
            selection state through the selectionStateExtension wired
            into the Editor's extraExtensions, and re-renders whenever
-           the user expands or shrinks the selection. Hidden in
-           preview mode — the bar is only meaningful for active
-           editing. Reuses the host's askAIWholeNote / askAIRange /
-           chord dispatchers, so every action stays on the audit-
-           gated chatStream path. -->
-      {#if note && viewMode !== 'preview'}
+           the user expands or shrinks the selection. Also visible
+           in preview mode — selection-aware verbs degrade to the
+           whole-note set (Extract tasks, Summarise, Suggest tags,
+           etc.) so a read-only reader still has the AI menu. Reuses
+           the host's askAIWholeNote / askAIRange / chord dispatchers,
+           so every action stays on the audit-gated chatStream path. -->
+      {#if note}
+        {@const previewMode = viewMode === 'preview'}
         <EditorAIBar
-          selection={aiBarSelection}
+          selection={previewMode ? { from: 0, to: 0, text: '' } : aiBarSelection}
           onAskWholeNote={askAIWholeNote}
           onAskRange={askAIRange}
-          onChord={(chord) => editor?.dispatchChord(chord)}
+          onChord={(chord) => {
+            if (previewMode) {
+              // No live editor in preview — flip to edit mode first
+              // so the chord (e.g. continue-writing) has a cursor to
+              // anchor against. The chord dispatch is deferred to
+              // next tick so the editor has mounted by then.
+              viewMode = 'edit';
+              queueMicrotask(() => editor?.dispatchChord(chord));
+              return;
+            }
+            editor?.dispatchChord(chord);
+          }}
         />
       {/if}
       <div class="flex-1 min-h-0 p-2 sm:p-3">
