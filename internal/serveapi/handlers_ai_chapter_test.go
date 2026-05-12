@@ -20,6 +20,62 @@ func TestCleanGeneratedChapter_StripsPreamble(t *testing.T) {
 	}
 }
 
+// Happy path: model returned exactly the requested title. Keep
+// the output verbatim — no prepend (would duplicate), no rewrite
+// (heading already matches).
+func TestCleanGeneratedChapter_KeepsExactMatch(t *testing.T) {
+	in := "# Closures\n\nA closure is a function that captures its scope."
+	got := cleanGeneratedChapter(in, "Closures")
+	if got != in {
+		t.Errorf("expected verbatim output for matching title, got modified:\nbefore: %q\nafter:  %q", in, got)
+	}
+}
+
+// Models occasionally use ~~~ fences instead of ``` (CommonMark
+// permits both). The stripper must handle either.
+func TestCleanGeneratedChapter_StripsTildeFence(t *testing.T) {
+	in := "~~~markdown\n# Chapter\nbody\n~~~"
+	got := cleanGeneratedChapter(in, "Chapter")
+	if strings.Contains(got, "~~~") {
+		t.Errorf("tilde fence not stripped: %q", got)
+	}
+	if !strings.HasPrefix(got, "# Chapter") {
+		t.Errorf("heading lost: %q", got)
+	}
+}
+
+func TestSanitiseChapterTitle_StripsControlChars(t *testing.T) {
+	cases := map[string]string{
+		"Foo\nBar":                 "Foo Bar",
+		"Foo\tBar":                 "Foo Bar",
+		"Foo\rBar":                 "Foo Bar",
+		"Closures":                 "Closures",
+		"  spaces   collapse  ":    "spaces collapse",
+		"Foo\x00Bar":               "Foo Bar",
+		"Foo\nIGNORE PREVIOUS\nBar": "Foo IGNORE PREVIOUS Bar",
+		"":                         "",
+		"   ":                      "",
+	}
+	for in, want := range cases {
+		if got := sanitiseChapterTitle(in); got != want {
+			t.Errorf("sanitiseChapterTitle(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Unicode passes through unchanged — title sanitiser is for control
+// chars + whitespace only, not for character-class restrictions.
+func TestSanitiseChapterTitle_KeepsUnicode(t *testing.T) {
+	got := sanitiseChapterTitle("Café résumé naïve")
+	if got != "Café résumé naïve" {
+		t.Errorf("unicode mangled: %q", got)
+	}
+	got = sanitiseChapterTitle("関数型プログラミング")
+	if got != "関数型プログラミング" {
+		t.Errorf("CJK mangled: %q", got)
+	}
+}
+
 func TestCleanGeneratedChapter_StripsCodeFence(t *testing.T) {
 	in := "```markdown\n# Chapter Title\nContent here.\n```"
 	got := cleanGeneratedChapter(in, "Chapter Title")

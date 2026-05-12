@@ -72,7 +72,7 @@ func (s *Server) handleAIGenerateChapter(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	chapterTitle := strings.TrimSpace(body.ChapterTitle)
+	chapterTitle := sanitiseChapterTitle(body.ChapterTitle)
 	if chapterTitle == "" {
 		writeError(w, http.StatusBadRequest, "chapterTitle required")
 		return
@@ -179,13 +179,18 @@ func cleanGeneratedChapter(raw, chapterTitle string) string {
 	if s == "" {
 		return ""
 	}
-	// Strip outer code fence (single ```...``` block).
-	if strings.HasPrefix(s, "```") && strings.HasSuffix(s, "```") {
-		if nl := strings.Index(s, "\n"); nl > 0 {
-			s = s[nl+1:]
+	// Strip outer code fence — accept both ```...``` and ~~~...~~~
+	// variants (CommonMark spec allows both; some models prefer
+	// tildes when the content itself contains backticks).
+	for _, fence := range []string{"```", "~~~"} {
+		if strings.HasPrefix(s, fence) && strings.HasSuffix(s, fence) {
+			if nl := strings.Index(s, "\n"); nl > 0 {
+				s = s[nl+1:]
+			}
+			s = strings.TrimSuffix(s, fence)
+			s = strings.TrimSpace(s)
+			break
 		}
-		s = strings.TrimSuffix(s, "```")
-		s = strings.TrimSpace(s)
 	}
 	// Strip common preamble lines (first line only, when followed by
 	// a blank line and looks intro-y).
@@ -224,6 +229,44 @@ func cleanGeneratedChapter(raw, chapterTitle string) string {
 		rest = s[nl+1:]
 	}
 	return "# " + chapterTitle + "\n" + rest
+}
+
+// sanitiseChapterTitle removes control characters + collapses runs
+// of whitespace from a user-controlled chapter title before we
+// either (a) splice it into the LLM user-prompt or (b) emit it as
+// a markdown heading line.
+//
+// Why bother:
+//   - Newlines in the title would break the heading rewrite path
+//     (`# Foo\nBar` becomes two markdown lines, one being
+//     freestanding "Bar" text).
+//   - Newlines + control chars in the user prompt are a prompt-
+//     injection surface — a malicious caller could embed
+//     "Closures\n\nIGNORE PREVIOUS INSTRUCTIONS..." in the title.
+//     The Researcher mode prompt is short and a determined attacker
+//     could still find a way, but stripping the obvious vector is
+//     basic hygiene.
+//   - Tabs / weird whitespace make filenames awkward when the title
+//     also feeds slugifyChapter via deriveChapterPath.
+//
+// Returns "" for inputs that are entirely whitespace after sanitising
+// so the caller's empty-string check rejects them cleanly.
+func sanitiseChapterTitle(raw string) string {
+	// Drop ASCII control chars (0x00-0x1F) + DEL (0x7F) — covers \r,
+	// \n, \t, and anything obscure a model or hostile caller might
+	// emit. Multi-byte unicode passes through unchanged.
+	var b strings.Builder
+	b.Grow(len(raw))
+	for _, r := range raw {
+		if r < 0x20 || r == 0x7F {
+			b.WriteByte(' ') // replace with space so word boundaries survive
+			continue
+		}
+		b.WriteRune(r)
+	}
+	// Collapse whitespace runs to single spaces.
+	fields := strings.Fields(b.String())
+	return strings.Join(fields, " ")
 }
 
 // topicallyEqual is a forgiving title comparison: case-insensitive,
