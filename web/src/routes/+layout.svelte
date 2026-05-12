@@ -793,7 +793,16 @@
   </div>
 {/snippet}
 
-<div class="h-screen flex flex-col md:flex-row overflow-hidden">
+<!--
+  h-dvh (dynamic viewport height) instead of h-screen (100vh) so the
+  shell actually shrinks when the on-screen keyboard opens on mobile.
+  100vh on iOS Safari stays at the full screen height regardless of
+  the keyboard — that's the whole reason child surfaces (chat, ai
+  overlay) need their own visualViewport hacks. h-dvh fixes this at
+  the root, and falls back to 100vh on browsers that don't support
+  dvh (auto via Tailwind's fallback chain).
+-->
+<div class="h-dvh flex flex-col md:flex-row overflow-hidden">
   {#if $auth}
     <!-- Mobile top bar — back (when in subpage) · title · search.
          Settings used to live here too but it's already in the More

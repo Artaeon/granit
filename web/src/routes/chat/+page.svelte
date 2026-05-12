@@ -125,9 +125,62 @@
     void input;
     tick().then(() => autosizeInput());
   });
+
+  // ── iOS keyboard-safe composer ──────────────────────────────────
+  // Mirror the AIOverlay pattern: when the on-screen keyboard opens
+  // on iOS Safari, the layout viewport DOESN'T shrink (100vh stays
+  // at the full screen height), so a bottom-anchored composer ends
+  // up under the keyboard. visualViewport.height does shrink — the
+  // difference is the obscured strip we need to lift by.
+  //
+  // Lift is applied via a CSS variable on the composer wrapper so
+  // CSS transitions can run smoothly when the keyboard slides up /
+  // down. Also auto-scrolls messages to the bottom on keyboard open
+  // so the user sees the latest reply, not the middle of history.
+  let keyboardOffset = $state(0);
+  let keyboardOpen = $state(false);
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function update() {
+      const obscured = Math.max(0, window.innerHeight - (vv?.height ?? window.innerHeight));
+      keyboardOffset = obscured;
+      // 120px threshold separates the keyboard from chrome shrinks
+      // (Safari's URL bar can shrink VV by 40–80px without the
+      // keyboard being up). Tuning from AIOverlay's heuristic.
+      keyboardOpen = obscured > 120;
+    }
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    update();
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  });
+
+  // Auto-scroll on keyboard-open so the focused composer is flush
+  // against the keyboard and the most recent message is visible
+  // right above it — without this the user lands looking at the
+  // middle of older history.
+  $effect(() => {
+    if (keyboardOpen && scrollEl) {
+      tick().then(() => {
+        if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+      });
+    }
+  });
 </script>
 
-<div class="h-full flex flex-col overflow-hidden">
+<!--
+  Root: h-full inherits from the layout, which switched to h-dvh so the
+  whole shell shrinks when the iOS keyboard opens. min-h-0 on the
+  message scroll area below lets flex shrinking actually happen — without
+  it the scroller would expand to its content size and push the composer
+  off-screen on small viewports.
+-->
+<div class="h-full flex flex-col overflow-hidden" style:--chat-keyboard-lift="{keyboardOffset}px">
   <!-- Use PageHeader's actions snippet so the title/subtitle and
        chrome buttons share the same flex-wrap rules. Avoids the
        previous nested-<header> + arm-twisted flex layout that
@@ -147,7 +200,7 @@
     </PageHeader>
   </div>
 
-  <div bind:this={scrollEl} class="flex-1 overflow-y-auto">
+  <div bind:this={scrollEl} class="flex-1 min-h-0 overflow-y-auto">
     <div class="max-w-3xl mx-auto px-4 py-6">
       {#if messages.length === 0}
         <div class="text-center py-12">
@@ -189,11 +242,23 @@
     </div>
   </div>
 
-  <!-- Bottom input rests against the keyboard on mobile. Adding
-       env(safe-area-inset-bottom) means the iPhone home indicator
-       doesn't sit on top of the textarea. The form itself stays
-       padded; the safe-area only kicks in on devices that report it. -->
-  <div class="border-t border-surface1 bg-mantle flex-shrink-0 pb-[env(safe-area-inset-bottom,0px)]">
+  <!--
+    Bottom composer sits flush against the on-screen keyboard on
+    mobile. Three things keep it there:
+      1. translateY(-keyboardOffset): lifts the entire composer up
+         by the obscured strip height so it stays above the keyboard
+         on iOS (where layout viewport doesn't shrink for the keyboard)
+      2. env(safe-area-inset-bottom): keeps the iPhone home indicator
+         from sitting on top of the textarea when the keyboard is down
+      3. CSS transition: smooth slide when the keyboard opens/closes
+         instead of a jarring snap
+    On desktop / keyboard-down, keyboardOffset stays 0 and this is
+    a no-op — desktop UX unchanged.
+  -->
+  <div
+    class="composer-bar border-t border-surface1 bg-mantle flex-shrink-0 pb-[env(safe-area-inset-bottom,0px)]"
+    class:keyboard-open={keyboardOpen}
+  >
     <form onsubmit={send} class="max-w-3xl mx-auto p-3 flex gap-2 items-end">
       <textarea
         bind:this={inputEl}
@@ -213,3 +278,26 @@
     </form>
   </div>
 </div>
+
+<style>
+  /* Lift the composer above the on-screen keyboard on mobile.
+     --chat-keyboard-lift is the obscured visualViewport strip
+     (pixels) — 0 when the keyboard is down. translateY moves the
+     whole composer-bar up by that amount so the textarea stays
+     reachable on iOS where 100vh doesn't shrink for the keyboard.
+
+     Transition tuned to match iOS Safari's keyboard slide (~280ms
+     cubic-bezier feel) so the composer arrives in sync with the
+     keyboard, not before / after it. */
+  .composer-bar {
+    transform: translateY(calc(-1 * var(--chat-keyboard-lift, 0px)));
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+  }
+  /* When the keyboard is open, remove the safe-area padding — the
+     home indicator only shows when the keyboard is down. Saves a
+     few pixels of awkward gap above the keyboard. */
+  .composer-bar.keyboard-open {
+    padding-bottom: 0;
+  }
+</style>
