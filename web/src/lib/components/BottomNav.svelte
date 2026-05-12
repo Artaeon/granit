@@ -36,46 +36,51 @@
   });
 </script>
 
+<!-- Five-column thumb bar. Each cell renders as a flat, edge-to-
+     edge box (no rounded pill behind the icon, no rounded button
+     shape) to match the rest of the app's not-rounded design.
+     Active state is a thin top accent rail + filled background +
+     primary-tinted text — reads as a tab without the floating-pill
+     look. Vertical divider lines between cells make the five
+     columns scannable as discrete targets, matching the dense
+     power-UI grammar of the rest of the app. -->
 <nav
   aria-label="primary"
   class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-mantle border-t border-surface1 pb-safe"
 >
   <div class="flex items-stretch justify-around h-14">
-    {#each tabs as t (t.href)}
+    {#each tabs as t, i (t.href)}
       {@const active = isActive(t.href)}
       <a
         href={t.href}
         aria-current={active ? 'page' : undefined}
         aria-label={t.label}
-        class="flex flex-col items-center justify-center flex-1 gap-0.5 transition-colors
-          {active ? 'text-primary' : 'text-dim active:text-text'}"
+        class="relative flex flex-col items-center justify-center flex-1 gap-0.5 transition-colors
+          {i > 0 ? 'border-l border-surface1' : ''}
+          {active ? 'text-primary bg-surface0' : 'text-dim active:bg-surface0 active:text-text'}"
       >
-        <!-- Active state: a small pill behind the icon, not a
-             full-row fill. Reads as the active tab without
-             visually crowding the rest of the row. -->
-        <span
-          class="w-10 h-6 rounded-full flex items-center justify-center transition-colors
-            {active ? 'bg-surface1' : ''}"
-        >
-          <NavIcon name={t.icon} class="w-5 h-5" />
-        </span>
-        <span class="text-[10px] font-medium">{t.label}</span>
+        {#if active}
+          <!-- Top accent rail — 2px primary line flush against the
+               top edge of the cell. Anchors the active state without
+               the floating-pill effect. -->
+          <span aria-hidden="true" class="absolute top-0 inset-x-0 h-0.5 bg-primary"></span>
+        {/if}
+        <NavIcon name={t.icon} class="w-5 h-5" />
+        <span class="text-[10px] font-medium tracking-wide uppercase leading-none">{t.label}</span>
       </a>
     {/each}
     <button
       onclick={onMore}
       aria-label="more"
       aria-current={moreActive ? 'page' : undefined}
-      class="flex flex-col items-center justify-center flex-1 gap-0.5 transition-colors
-        {moreActive ? 'text-primary' : 'text-dim active:text-text'}"
+      class="relative flex flex-col items-center justify-center flex-1 gap-0.5 transition-colors border-l border-surface1
+        {moreActive ? 'text-primary bg-surface0' : 'text-dim active:bg-surface0 active:text-text'}"
     >
-      <span
-        class="w-10 h-6 rounded-full flex items-center justify-center transition-colors
-          {moreActive ? 'bg-surface1' : ''}"
-      >
-        <NavIcon name="more" class="w-5 h-5" />
-      </span>
-      <span class="text-[10px] font-medium">More</span>
+      {#if moreActive}
+        <span aria-hidden="true" class="absolute top-0 inset-x-0 h-0.5 bg-primary"></span>
+      {/if}
+      <NavIcon name="more" class="w-5 h-5" />
+      <span class="text-[10px] font-medium tracking-wide uppercase leading-none">More</span>
     </button>
   </div>
 </nav>
