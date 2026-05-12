@@ -1808,7 +1808,7 @@
              state — the user has tasks, just none for today. The
              tone is calm-celebratory rather than the cobwebbed
              "get to work" used by the Review view. -->
-        <div class="max-w-md mx-auto py-10 text-center">
+        <div class="max-w-md mx-auto py-6 text-center">
           <div class="text-4xl mb-3 opacity-50">🌤</div>
           <h2 class="text-base font-medium text-text mb-1">Today is clear</h2>
           <p class="text-sm text-dim">
@@ -1827,7 +1827,7 @@
       {:else if filtered.length === 0 && tasks.length === 0}
         <!-- True empty: no tasks anywhere. Onboarding-style hint
              pointing at the quick-add bar. -->
-        <div class="max-w-md mx-auto py-12 text-center">
+        <div class="max-w-md mx-auto py-6 text-center">
           <div class="text-5xl mb-3 opacity-30">✓</div>
           <h2 class="text-lg font-semibold text-text mb-2">No tasks yet</h2>
           <p class="text-sm text-dim mb-1">
@@ -1842,7 +1842,7 @@
       {:else if filtered.length === 0}
         <!-- Tasks exist but the active filter masks them all. Offer
              a "Clear filters" reset so the user isn't stuck. -->
-        <div class="max-w-md mx-auto py-12 text-center">
+        <div class="max-w-md mx-auto py-6 text-center">
           <div class="text-4xl mb-3 opacity-30">🔍</div>
           <h2 class="text-base font-medium text-text mb-2">No tasks match these filters</h2>
           <p class="text-sm text-dim mb-3">

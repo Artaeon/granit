@@ -180,7 +180,7 @@
 </svelte:head>
 
 <div class="h-full flex flex-col">
-  <header class="flex-shrink-0 px-3 sm:px-4 py-3 border-b border-surface1 bg-mantle flex items-center gap-3">
+  <header class="flex-shrink-0 px-3 sm:px-3 py-2 border-b border-surface1 bg-mantle flex items-center gap-3">
     <svg viewBox="0 0 24 24" class="w-5 h-5 text-dim flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2">
       <circle cx="11" cy="11" r="7"/>
       <path d="M21 21l-4.5-4.5" stroke-linecap="round"/>
@@ -272,7 +272,7 @@
     {:else if q.trim().length < 2}
       <div class="text-sm text-dim italic">Type at least 2 characters…</div>
     {:else if results.length === 0 && !busy}
-      <div class="max-w-md mx-auto py-12 text-center">
+      <div class="max-w-md mx-auto py-6 text-center">
         <div class="text-4xl mb-3 opacity-30">∅</div>
         <h2 class="text-base font-medium text-text mb-2">No matches for "{q.trim()}"</h2>
         <p class="text-sm text-dim">

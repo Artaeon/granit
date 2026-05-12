@@ -144,7 +144,7 @@
     aria-label="link a note to this project"
   >
     <div class="bg-base border border-surface1 rounded-lg shadow-2xl w-full max-w-2xl max-h-[85dvh] flex flex-col pointer-events-auto overflow-hidden">
-      <header class="px-4 py-3 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
+      <header class="px-3 py-2 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
         <span class="text-sm font-medium text-text flex-1">Link an existing note</span>
         <button
           onclick={close}
@@ -153,7 +153,7 @@
         >×</button>
       </header>
 
-      <div class="px-4 py-3 border-b border-surface1 flex-shrink-0">
+      <div class="px-3 py-2 border-b border-surface1 flex-shrink-0">
         <input
           bind:this={inputEl}
           bind:value={q}

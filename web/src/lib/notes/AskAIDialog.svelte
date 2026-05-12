@@ -354,7 +354,7 @@
       <div class="sm:hidden flex justify-center pt-2 pb-1">
         <span class="block w-10 h-1 rounded-full bg-surface2"></span>
       </div>
-      <header class="px-4 py-3 border-b border-surface1 flex items-baseline gap-2">
+      <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">Ask AI</h2>
         <span class="text-[11px] text-dim font-mono">
           {charCount.toLocaleString()} chars · ~{tokenEstimate.toLocaleString()} tok

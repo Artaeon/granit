@@ -2161,7 +2161,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
     >
       <span class="block w-10 h-1.5 rounded-full bg-surface2 transition-colors {sheetDragging ? 'bg-primary' : ''}"></span>
     </button>
-    <header class="px-4 py-3 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
+    <header class="px-3 py-2 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
       <!-- Mode picker — replaces the static '✨ AI assistant'
            heading. Click to open a popover of agent modes, each
            with a one-line tagline. Mode is the headline UX choice

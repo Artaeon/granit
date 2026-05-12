@@ -826,7 +826,7 @@
              progress + task counts. Active first, paused below in a
              muted block. -->
         {#if projects.length === 0}
-          <div class="text-center py-10 text-sm text-dim">
+          <div class="text-center py-6 text-sm text-dim">
             No projects linked to this venture yet.
             <div class="mt-2">
               <a
@@ -888,7 +888,7 @@
       {:else if tab === 'goals'}
         <!-- Goals tab — every goal with milestone breakdown. -->
         {#if goals.length === 0}
-          <div class="text-center py-10 text-sm text-dim">
+          <div class="text-center py-6 text-sm text-dim">
             No goals linked to this venture yet.
             <div class="mt-2">
               <a href="/goals" class="text-secondary hover:underline">Create one →</a>

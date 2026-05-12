@@ -393,7 +393,7 @@
 <Drawer bind:open side="right" responsive width="w-full sm:w-96 md:w-[28rem]">
   {#if task}
     <div class="h-full flex flex-col overflow-hidden">
-      <header class="px-4 py-3 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
+      <header class="px-3 py-2 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
         <h2 class="text-sm font-semibold text-text flex-1 truncate">Task details</h2>
         {#if busy}
           <span class="text-[10px] text-dim italic" aria-live="polite">saving…</span>

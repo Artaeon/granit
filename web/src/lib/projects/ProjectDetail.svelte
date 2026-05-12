@@ -599,7 +599,7 @@
 
 <div class="h-full flex flex-col overflow-hidden">
   <!-- Header -->
-  <header class="px-4 py-3 border-b border-surface1 flex-shrink-0 flex items-center gap-2">
+  <header class="px-3 py-2 border-b border-surface1 flex-shrink-0 flex items-center gap-2">
     <button
       onclick={onClose}
       aria-label="back"

@@ -411,7 +411,7 @@
 </script>
 
 <div class="h-full flex flex-col">
-  <header class="px-3 sm:px-4 py-3 border-b border-surface1 flex-shrink-0 sticky top-0 z-20 bg-mantle">
+  <header class="px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 sticky top-0 z-20 bg-mantle">
     <div class="flex items-center justify-between gap-3 mb-3">
       <div class="min-w-0">
         <h1 class="text-xl sm:text-2xl font-semibold text-text truncate">Notes</h1>

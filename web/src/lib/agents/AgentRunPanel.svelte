@@ -235,7 +235,7 @@
 <Drawer bind:open side="right" responsive width="w-full sm:w-96 md:w-[32rem] lg:w-[36rem]">
   {#if preset}
     <div class="h-full flex flex-col overflow-hidden">
-      <header class="px-4 py-3 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
+      <header class="px-3 py-2 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
         <h2 class="text-base font-semibold text-text flex-1 truncate">{preset.name}</h2>
         <button
           onclick={() => (open = false)}
@@ -244,14 +244,14 @@
         >×</button>
       </header>
 
-      <div class="px-4 py-3 border-b border-surface1 flex-shrink-0">
+      <div class="px-3 py-2 border-b border-surface1 flex-shrink-0">
         <p class="text-xs text-subtext">{preset.description}</p>
       </div>
 
       {#if status === 'idle'}
         <form
           onsubmit={(e) => { e.preventDefault(); run(); }}
-          class="px-4 py-3 border-b border-surface1 space-y-2 flex-shrink-0"
+          class="px-3 py-2 border-b border-surface1 space-y-2 flex-shrink-0"
         >
           <label for="goal" class="block text-[11px] uppercase tracking-wider text-dim">Goal {#if !preset.includeWrite}<span class="text-dim/70">(optional)</span>{/if}</label>
           <textarea

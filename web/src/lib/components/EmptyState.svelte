@@ -14,7 +14,7 @@
   } = $props();
 </script>
 
-<div class="text-center py-10 px-4">
+<div class="text-center py-6 px-4">
   {#if icon}
     <div class="text-4xl mb-3 opacity-60">{icon}</div>
   {/if}

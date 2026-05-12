@@ -300,7 +300,7 @@
     aria-label="Voice note recorder"
   >
     <div class="w-full sm:max-w-xl bg-mantle border border-surface1 rounded-t-xl sm:rounded-xl shadow-2xl flex flex-col max-h-[92dvh]">
-      <header class="flex items-center gap-3 px-4 py-3 border-b border-surface1">
+      <header class="flex items-center gap-3 px-3 py-2 border-b border-surface1">
         <div class="w-8 h-8 rounded-full bg-surface1 text-primary flex items-center justify-center">
           <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="9" y="3" width="6" height="12" rx="3"/>

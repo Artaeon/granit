@@ -609,7 +609,7 @@
     aria-modal="true"
     class="fixed left-1/2 top-[12vh] -translate-x-1/2 z-[61] w-[92vw] max-w-xl bg-mantle border border-surface1 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
   >
-    <div class="px-4 py-3 border-b border-surface1 flex items-center gap-3 flex-shrink-0">
+    <div class="px-3 py-2 border-b border-surface1 flex items-center gap-3 flex-shrink-0">
       <svg viewBox="0 0 24 24" class="w-4 h-4 text-dim flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" stroke-linecap="round" />
       </svg>

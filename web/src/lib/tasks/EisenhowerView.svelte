@@ -134,7 +134,7 @@
     {@const meta = QUADRANT_META[q]}
     {@const list = quadrants[q]}
     <section class="bg-surface0 border-2 {meta.accent} rounded-lg flex flex-col min-h-[18rem]">
-      <header class="flex items-baseline justify-between px-4 py-3 border-b border-surface1">
+      <header class="flex items-baseline justify-between px-3 py-2 border-b border-surface1">
         <div>
           <h3 class="text-sm font-semibold text-text">{meta.title}</h3>
           <p class="text-[11px] text-dim mt-0.5">{meta.subtitle}</p>

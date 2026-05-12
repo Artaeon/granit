@@ -312,7 +312,7 @@
       role="dialog"
       aria-label="Extract selection to new note"
     >
-      <header class="px-4 py-3 border-b border-surface1 flex items-baseline gap-2">
+      <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">Extract to new note</h2>
         <span class="text-[11px] text-dim">{request.text.length} char{request.text.length === 1 ? '' : 's'} selected</span>
       </header>

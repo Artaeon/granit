@@ -594,7 +594,7 @@
       role="dialog"
       aria-label={editing ? 'Edit hub item' : 'Add to hub'}
     >
-      <header class="px-4 py-3 border-b border-surface1 flex items-baseline gap-2">
+      <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">{editing ? 'Edit hub item' : 'Add to hub'}</h2>
         <button
           type="button"

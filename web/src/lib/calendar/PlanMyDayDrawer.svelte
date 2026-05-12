@@ -282,7 +282,7 @@
 <Drawer bind:open side="right" responsive width="w-full sm:w-[28rem] md:w-[34rem] lg:w-[38rem]">
   <div class="h-full flex flex-col overflow-hidden">
     <!-- Header -->
-    <header class="px-4 py-3 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
+    <header class="px-3 py-2 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
       <div class="flex-1 min-w-0">
         <h2 class="text-base font-semibold text-text">Plan today with AI</h2>
         <p class="text-[11px] text-dim mt-0.5">

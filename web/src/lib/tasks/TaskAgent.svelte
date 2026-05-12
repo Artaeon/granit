@@ -372,7 +372,7 @@
 	>
 		<div class="w-full max-w-3xl bg-base border border-surface1 rounded-xl shadow-2xl flex flex-col max-h-[88vh]">
 			<!-- Header -->
-			<header class="px-4 py-3 border-b border-surface1 flex items-baseline gap-3 flex-shrink-0">
+			<header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-3 flex-shrink-0">
 				<h2 class="text-base font-medium text-text flex-1 inline-flex items-baseline gap-2">
 					<svg viewBox="0 0 24 24" class="w-4 h-4 self-center" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z" />
@@ -385,7 +385,7 @@
 			</header>
 
 			<!-- Input + suggestion chips -->
-			<div class="px-4 py-3 border-b border-surface1 flex-shrink-0 space-y-2">
+			<div class="px-3 py-2 border-b border-surface1 flex-shrink-0 space-y-2">
 				<textarea
 					bind:value={intent}
 					bind:this={inputEl}

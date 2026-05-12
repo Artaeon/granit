@@ -202,7 +202,7 @@
       role="dialog"
       aria-label="Import browser bookmarks"
     >
-      <header class="px-4 py-3 border-b border-surface1 flex items-baseline gap-2">
+      <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">Import browser bookmarks</h2>
         {#if parsed.length > 0}
           <span class="text-[11px] text-dim">{selectedCount} of {parsed.length} selected</span>

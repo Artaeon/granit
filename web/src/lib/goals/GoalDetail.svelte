@@ -539,7 +539,7 @@
 <Drawer bind:open side="right" responsive width="w-full sm:w-[32rem] md:w-[40rem]">
   {#if goal}
     <div class="flex flex-col h-full">
-      <header class="px-4 py-3 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
+      <header class="px-3 py-2 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
         <span class="w-3 h-3 rounded-full flex-shrink-0" style="background: {colorVar(goal.color)}"></span>
         {#if editingTitle}
           <input
