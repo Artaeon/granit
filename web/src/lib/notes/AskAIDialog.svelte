@@ -404,6 +404,56 @@
     }
   }
 
+  // Save the AI response as a new vault note. Useful when the
+  // user asked for something that's worth keeping separately —
+  // an outline, a translation, a chapter draft — instead of
+  // splicing it into the source note. Path-default is "AI/<first
+  // 40 chars of instruction>.md" so the user doesn't have to
+  // type a path from scratch; they can replace it if they want
+  // a different location.
+  async function saveAsNote() {
+    if (!response) return;
+    const guess = suggestSavePath(instruction, response);
+    const raw = prompt(
+      `Save AI response as a new note.\n\nVault-relative path (must end in .md):`,
+      guess
+    );
+    if (!raw) return;
+    let path = raw.trim();
+    if (!path) return;
+    if (!path.toLowerCase().endsWith('.md')) path += '.md';
+    // Reject obvious traversal / absolute paths client-side so
+    // the user sees a clear error before the backend round-trip.
+    // The backend has its own checks; this is just early feedback.
+    if (path.startsWith('/') || path.split('/').some((seg) => seg === '..')) {
+      toast.error('Invalid path — must be vault-relative.');
+      return;
+    }
+    try {
+      await api.createNote({ path, body: response });
+      toast.success(`Saved to ${path}`);
+    } catch (err) {
+      toast.error('Save failed: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+
+  // Derive a plausible filename from the instruction. "Summarise"
+  // → "AI/Summarise.md"; a free-form "translate to German and
+  // tighten the grammar" trims to its first short clause + a
+  // timestamp suffix so two saves in the same minute don't
+  // collide on disk. No instruction → just the timestamp.
+  function suggestSavePath(instr: string, _body: string): string {
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    const clean = instr
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, '')
+      .replace(/\s+/g, ' ')
+      .slice(0, 40)
+      .trim();
+    if (!clean) return `AI/Response ${stamp}.md`;
+    return `AI/${clean} ${stamp}.md`;
+  }
+
   function replaceSelection() {
     if (!request || !response) return;
     request.replace(response);
@@ -740,18 +790,27 @@
             <button
               type="button"
               onclick={copyResponse}
+              title="Copy the AI response to clipboard"
               class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
             >Copy</button>
             <button
               type="button"
+              onclick={saveAsNote}
+              title="Save the response as a new vault note (path defaults to AI/<instruction>.md)"
+              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
+            >Save as note</button>
+            <button
+              type="button"
               onclick={insertBelow}
+              title="Insert the response below your current selection in the editor"
               class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
             >Insert below</button>
             <button
               type="button"
               onclick={replaceSelection}
+              title="Replace the original selection with the AI response"
               class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90"
-            >Replace selection</button>
+            >Replace</button>
           {:else}
             <span class="flex-1"></span>
             <button
