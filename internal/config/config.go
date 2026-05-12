@@ -1,6 +1,8 @@
 package config
 
 import (
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -145,6 +147,26 @@ type Config struct {
 	// stay in their last-known enabled state).
 	UseProfiles bool `json:"use_profiles"`
 
+	// Stoicera intranet integration. Exposes a read-only API surface
+	// at /api/v1/integrations/stoicera/* that the stoicera-intranet
+	// app consumes to sync the user's projects / tasks / goals
+	// belonging to a specific venture. Off by default — the endpoint
+	// returns 404 when disabled (rather than 401) so an attacker
+	// can't probe whether granit is running this feature behind a
+	// reverse proxy.
+	//
+	// Token is a 32-character hex string generated on first enable;
+	// callers send it as `Authorization: Bearer <token>`. Regenerate
+	// at any time to invalidate prior tokens.
+	//
+	// VentureName narrows the data scope: only Projects / Goals whose
+	// Venture field matches this string surface through the endpoint.
+	// Empty matches nothing (closes the door on accidental over-share
+	// if the user forgot to set it).
+	StoiceraIntegrationEnabled bool   `json:"stoicera_integration_enabled,omitempty"`
+	StoiceraIntegrationToken   string `json:"stoicera_integration_token,omitempty"`
+	StoiceraVentureName        string `json:"stoicera_venture_name,omitempty"`
+
 	// File path (not serialized)
 	filePath string `json:"-"`
 }
@@ -215,7 +237,30 @@ func DefaultConfig() Config {
 		CorePlugins:            DefaultCorePlugins(),
 		UseTaskStore:           true,
 		UseProfiles:            true,
+		// Stoicera integration defaults: off, no token, no venture
+		// scope. User must explicitly enable + name their venture in
+		// Settings → Integrations to expose anything.
+		StoiceraIntegrationEnabled: false,
+		StoiceraIntegrationToken:   "",
+		StoiceraVentureName:        "",
 	}
+}
+
+// GenerateIntegrationToken returns a fresh 32-character hex token
+// suitable for the stoicera intranet integration. Uses crypto/rand —
+// 128 bits of entropy is overkill for a single-user PKM but cheap
+// and matches the bar the auth_password.go salt uses.
+//
+// Returns an error only when the OS RNG fails (basically never on
+// Linux/macOS); callers should propagate so the settings UI can show
+// "couldn't generate token — try again" rather than silently writing
+// an empty string.
+func GenerateIntegrationToken() (string, error) {
+	b := make([]byte, 16)
+	if _, err := cryptorand.Read(b); err != nil {
+		return "", fmt.Errorf("integration token: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // DefaultCorePlugins returns the default set of core plugins, all enabled.
