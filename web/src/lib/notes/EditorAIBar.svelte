@@ -36,6 +36,7 @@
 -->
 <script lang="ts">
   import type { SelectionState } from '$lib/notes/selectionState';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // The selection presets reuse the same instruction wording as the
   // AskAIDialog's preset chips so the audit log and the response
@@ -245,6 +246,19 @@
   // count the user sees in the status bar.
   let hasSelection = $derived(selection.text.length > 0);
   let selLen = $derived(selection.text.length);
+  // Word + line counts for the selection — surfaced alongside the
+  // chars chip so a power user picking text for a "shorten" or
+  // "rewrite as bullets" pass can size their selection at a glance
+  // without scrolling to the status bar. Cheap to derive every
+  // render; the selection text is bounded by what fits in memory.
+  let selWords = $derived(
+    selection.text.trim() ? selection.text.trim().split(/\s+/).length : 0
+  );
+  let selLines = $derived(selection.text ? selection.text.split('\n').length : 0);
+  // ~4 chars/token is the industry rule of thumb. Lets the user
+  // tell when a selection is too big for a cheap model or when it
+  // crosses into "this is going to take a while" territory.
+  let selTokens = $derived(Math.round(selLen / 4));
   // Two flavours of the selection-length chip so very-narrow
   // viewports (<320px) don't blow the bar onto three lines. The
   // CSS swaps between them at the narrow breakpoint.
@@ -252,6 +266,55 @@
     selLen === 1 ? '1 char selected' : `${selLen.toLocaleString()} chars selected`
   );
   let selLabelShort = $derived(selLen.toLocaleString());
+
+  // Last-fired preset — persisted so the "quick re-fire" chip on
+  // the right side of the bar survives navigation away and back.
+  // Stored under separate selection vs whole-note keys so a user
+  // who alternates between the two modes gets the right last-action
+  // for whichever mode they're in now. Same localStorage helper
+  // the rest of the app uses, so SSR doesn't touch window.
+  const LAST_SELECTION_PRESET_KEY = 'granit.ai.bar.lastSelectionPreset';
+  const LAST_WHOLE_PRESET_KEY = 'granit.ai.bar.lastWholePreset';
+  type LastPreset = { id: string; label: string; preset: string };
+  let lastSelectionPreset = $state<LastPreset | null>(null);
+  let lastWholePreset = $state<LastPreset | null>(null);
+  $effect(() => {
+    try {
+      const sel = loadStoredString(LAST_SELECTION_PRESET_KEY, '');
+      if (sel) {
+        const p = JSON.parse(sel) as unknown;
+        if (p && typeof p === 'object' && 'id' in p && 'label' in p && 'preset' in p) {
+          lastSelectionPreset = p as LastPreset;
+        }
+      }
+      const whole = loadStoredString(LAST_WHOLE_PRESET_KEY, '');
+      if (whole) {
+        const p = JSON.parse(whole) as unknown;
+        if (p && typeof p === 'object' && 'id' in p && 'label' in p && 'preset' in p) {
+          lastWholePreset = p as LastPreset;
+        }
+      }
+    } catch {
+      // Malformed → ignore; no last-preset chip surfaces.
+    }
+  });
+  function rememberPreset(scope: 'selection' | 'note', item: LastPreset) {
+    if (scope === 'selection') {
+      lastSelectionPreset = item;
+      try {
+        saveStoredString(LAST_SELECTION_PRESET_KEY, JSON.stringify(item));
+      } catch {
+        // Storage quota / private window — chip just won't persist this session.
+      }
+    } else {
+      lastWholePreset = item;
+      try {
+        saveStoredString(LAST_WHOLE_PRESET_KEY, JSON.stringify(item));
+      } catch {
+        // ditto
+      }
+    }
+  }
 
   // Helpers — all the bar's actions ultimately go through one of
   // these. Pulling them out here keeps the markup readable and
@@ -402,16 +465,44 @@
       <span class="ai-bar-label">More</span>
     </button>
 
+    {#if lastSelectionPreset}
+      <!-- Quick re-fire — the last More-menu pick for this scope.
+           One click re-runs the same prompt against the current
+           selection. Power-UI: a user who keeps using "Fix grammar"
+           on each paragraph as they write doesn't have to dive
+           into the More menu every time. -->
+      <button
+        type="button"
+        onclick={() => askRangePreset(lastSelectionPreset!.preset)}
+        title={`Re-fire last preset: ${lastSelectionPreset.label}`}
+        class="ai-bar-btn ai-bar-btn--quick"
+      >
+        <span class="text-[9px] text-dim leading-none">↻</span>
+        <span class="ai-bar-label truncate max-w-[8rem]">{lastSelectionPreset.label}</span>
+      </button>
+    {/if}
+
     <span class="flex-1" aria-hidden="true"></span>
-    <!-- Selection length chip. Lives at the right edge so it acts as
+    <!-- Selection stats chip. Lives at the right edge so it acts as
          a status anchor the user can glance at without scanning. Tab-
-         ular nums so the digits don't jitter as the count grows. -->
+         ular nums so the digits don't jitter as the count grows.
+         Power-UI: surfaces chars / words / lines / ~tokens together
+         so the user can size a selection for the model's context
+         window without having to count or estimate. -->
     <span
-      class="text-[10px] text-dim font-mono tabular-nums px-1.5 py-0.5 rounded bg-surface0 select-none ai-bar-sel-chip"
+      class="text-[10px] text-dim font-mono tabular-nums px-1.5 py-0.5 rounded bg-surface0 select-none ai-bar-sel-chip flex items-center gap-1"
       aria-live="polite"
-      title={selLabel}
+      title={`${selLabel} · ${selWords.toLocaleString()} word${selWords === 1 ? '' : 's'} · ${selLines} line${selLines === 1 ? '' : 's'} · ~${selTokens.toLocaleString()} token${selTokens === 1 ? '' : 's'}`}
     >
-      <span class="ai-bar-sel-long">{selLabel}</span>
+      <span class="ai-bar-sel-long flex items-center gap-1">
+        <span>{selLen.toLocaleString()}c</span>
+        <span class="text-surface2">·</span>
+        <span>{selWords.toLocaleString()}w</span>
+        <span class="text-surface2 hidden md:inline">·</span>
+        <span class="hidden md:inline">{selLines}L</span>
+        <span class="text-surface2 hidden lg:inline">·</span>
+        <span class="hidden lg:inline">~{selTokens.toLocaleString()}t</span>
+      </span>
       <span class="ai-bar-sel-short" aria-hidden="true">{selLabelShort}</span>
     </span>
   {:else}
@@ -499,6 +590,22 @@
       </svg>
       <span class="ai-bar-label">More</span>
     </button>
+
+    {#if lastWholePreset}
+      <!-- Quick re-fire for whole-note scope — same idea as the
+           selection variant. A user iterating on an outline with
+           "Generate study plan" / "Suggest frontmatter" / "TL;DR"
+           gets the last one as a one-click chip. -->
+      <button
+        type="button"
+        onclick={() => askWholeNotePreset(lastWholePreset!.preset)}
+        title={`Re-fire last preset: ${lastWholePreset.label}`}
+        class="ai-bar-btn ai-bar-btn--quick"
+      >
+        <span class="text-[9px] text-dim leading-none">↻</span>
+        <span class="ai-bar-label truncate max-w-[8rem]">{lastWholePreset.label}</span>
+      </button>
+    {/if}
   {/if}
 </div>
 
@@ -529,6 +636,16 @@
           type="button"
           role="menuitem"
           onclick={() => {
+            // Remember THIS pick as the last-fired so the bar
+            // surfaces a ↻ quick-refire chip for it next time.
+            // Scope-aware: a "Generate study plan" pick stays
+            // pinned to whole-note even if the user makes a
+            // selection later, and vice versa.
+            rememberPreset(hasSelection ? 'selection' : 'note', {
+              id: item.id,
+              label: item.label,
+              preset: item.preset
+            });
             if (hasSelection) askRangePreset(item.preset);
             else askWholeNotePreset(item.preset);
             moreOpen = false;
@@ -576,6 +693,22 @@
   }
   .editor-ai-bar :global(.ai-bar-btn:active) {
     background: var(--color-surface1);
+  }
+
+  /* Quick re-fire variant — subtle accent so the chip reads as
+     "recent / sticky" rather than just another action. Inherits
+     the standard padding/height so the bar's flex layout stays
+     intact. The `secondary` tint gives it just enough presence
+     to scan past the regular buttons without overwhelming them. */
+  .editor-ai-bar :global(.ai-bar-btn--quick) {
+    color: var(--color-secondary);
+    border: 1px dashed
+      color-mix(in srgb, var(--color-secondary) 35%, transparent);
+  }
+  .editor-ai-bar :global(.ai-bar-btn--quick:hover),
+  .editor-ai-bar :global(.ai-bar-btn--quick:focus-visible) {
+    color: var(--color-primary);
+    border-color: color-mix(in srgb, var(--color-primary) 50%, transparent);
   }
 
   /* Hide the per-mode header label on devices narrower than ~24rem.
