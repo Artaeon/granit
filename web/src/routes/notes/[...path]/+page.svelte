@@ -763,6 +763,11 @@
   // note isn't mutated and the user can retry without dead links.
   let extractRequest = $state<ExtractRequest | null>(null);
   let askAIRequest = $state<AskAIRequest | null>(null);
+  // True while api.generateChapter is in flight. Used by the wikilink
+  // → AI-chapter flow to gate against re-entry (double-clicks /
+  // different wikilink clicks during the 30+ second LLM round-trip).
+  // See offerAIChapterGenerationFor for the actual usage.
+  let chapterGenerating = $state(false);
   let printOpen = $state(false);
   let historyOpen = $state(false);
   // Focus mode (Mod-Shift-Z) — hides the app sidebar, info panel,
@@ -1107,6 +1112,15 @@
     targetPath: string
   ): Promise<boolean> {
     if (!note || !note.path) return false;
+    // Re-entry guard: chapter generation can take 30+ seconds. While
+    // it's in flight the wikilink stays clickable and the user might
+    // double-tap or click a different wikilink, kicking off a second
+    // generation. The persistent toast (sticky ttl=0) tells the user
+    // the request is alive; this flag prevents duplicate fires.
+    if (chapterGenerating) {
+      toast.info('Another chapter is still generating — please wait.');
+      return true;
+    }
     const outline = body ?? '';
     // Heuristic gate: parent must have at least 3 wikilinks (so it
     // really is a TOC-like note) and >= 80 chars of non-fluff
@@ -1116,15 +1130,21 @@
     if (wikilinkCount < 3 || outline.trim().length < 80) return false;
     const ok = confirm(
       `The note "${chapterTitle}" doesn't exist yet.\n\n` +
-      `Generate it with AI using this outline as context?`
+      `Generate it with AI using this outline as context?\n\n` +
+      `(This typically takes 15-60 seconds — a banner will show progress.)`
     );
     if (!ok) {
       // User explicitly declined — fall through to the standard
       // "open empty" path so they can write the chapter manually.
       return false;
     }
+    chapterGenerating = true;
+    // Sticky toast (ttl=0) so the user sees ongoing progress instead
+    // of the previous fire-and-forget 4-second info that vanished
+    // mid-call, leaving them staring at a still page wondering if
+    // the app froze (the actual user complaint).
+    const toastId = toast.info(`Generating "${chapterTitle}"…`, { ttl: 0 });
     try {
-      toast.info(`Generating "${chapterTitle}"…`);
       const r = await api.generateChapter({
         parentPath: note.path,
         chapterTitle,
@@ -1142,6 +1162,9 @@
     } catch (e) {
       toast.error('Generation failed: ' + errorMessage(e));
       return false;
+    } finally {
+      toast.dismiss(toastId);
+      chapterGenerating = false;
     }
   }
 
