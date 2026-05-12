@@ -1368,8 +1368,98 @@
       (projectFilter ? 1 : 0) +
       (tagFilter ? 1 : 0) +
       (goalFilter ? 1 : 0) +
-      (deadlineFilter ? 1 : 0)
+      (deadlineFilter ? 1 : 0) +
+      (q ? 1 : 0) +
+      (status !== 'open' ? 1 : 0) +
+      (sourceFilter !== 'task-notes' ? 1 : 0)
   );
+
+  // Active-filter chip row. Each filter that's not at its default
+  // surfaces as a removable chip above the stats row. Lets power
+  // users see + clear filters at a glance without opening the
+  // filter drawer (mobile) or scrolling the sidebar (desktop).
+  // The chips share one shape so the user can dismiss any of them
+  // with the same gesture (click the ×). Includes a final "clear
+  // all" pill when 2+ filters are active so a stuck-in-narrow-view
+  // power user can reset in one click.
+  type FilterChip = { key: string; label: string; clear: () => void; tone?: string };
+  let activeFilterChips = $derived.by((): FilterChip[] => {
+    const out: FilterChip[] = [];
+    if (q) {
+      out.push({
+        key: 'q',
+        label: `search: "${q.length > 18 ? q.slice(0, 17) + '…' : q}"`,
+        clear: () => (q = '')
+      });
+    }
+    if (status !== 'open') {
+      out.push({
+        key: 'status',
+        label: `status: ${status}`,
+        clear: () => (status = 'open')
+      });
+    }
+    if (priorityFilter !== '') {
+      const tone =
+        priorityFilter === 1 ? 'text-error'
+        : priorityFilter === 2 ? 'text-warning'
+        : 'text-info';
+      out.push({
+        key: 'priority',
+        label: `P${priorityFilter}`,
+        clear: () => (priorityFilter = ''),
+        tone
+      });
+    }
+    if (projectFilter) {
+      out.push({
+        key: 'project',
+        label: `project: ${projectFilter.length > 16 ? projectFilter.slice(0, 15) + '…' : projectFilter}`,
+        clear: () => (projectFilter = '')
+      });
+    }
+    if (tagFilter) {
+      out.push({
+        key: 'tag',
+        label: `#${tagFilter.replace(/^#/, '')}`,
+        clear: () => (tagFilter = '')
+      });
+    }
+    if (goalFilter) {
+      const g = goals.find((x) => x.id === goalFilter);
+      out.push({
+        key: 'goal',
+        label: `goal: ${g?.title ?? goalFilter}`,
+        clear: () => (goalFilter = '')
+      });
+    }
+    if (deadlineFilter) {
+      const d = deadlines.find((x) => x.id === deadlineFilter);
+      out.push({
+        key: 'deadline',
+        label: `deadline: ${d?.title ?? deadlineFilter}`,
+        clear: () => (deadlineFilter = '')
+      });
+    }
+    if (sourceFilter !== 'task-notes') {
+      out.push({
+        key: 'source',
+        label: 'all notes',
+        clear: () => (sourceFilter = 'task-notes')
+      });
+    }
+    return out;
+  });
+  function clearAllFilters() {
+    q = '';
+    status = 'open';
+    priorityFilter = '';
+    projectFilter = '';
+    tagFilter = '';
+    goalFilter = '';
+    deadlineFilter = '';
+    sourceFilter = 'task-notes';
+  }
 </script>
 
 {#snippet filterContent()}
@@ -1799,6 +1889,39 @@
             title="Save the current filters as a named preset"
             class="px-2 py-0.5 text-dim hover:text-primary border border-dashed border-surface1 hover:border-primary rounded"
           >+ save current</button>
+        </div>
+      {/if}
+      <!-- Active-filter chip row. Surfaces every non-default filter
+           as an x-removable chip so the user can SEE what's filtering
+           the visible list and dismiss any single one in one click —
+           no need to open the filter drawer (mobile) or hunt the
+           sidebar (desktop). Hidden when no filters are active.
+           "Clear all" pill appears once 2+ filters are active. -->
+      {#if activeFilterChips.length > 0}
+        <div class="px-3 py-1.5 border-b border-surface1 flex items-center gap-1 text-[11px] flex-shrink-0 flex-wrap bg-surface0/40">
+          <span class="text-[10px] uppercase tracking-wider text-dim mr-1 select-none">Filters</span>
+          {#each activeFilterChips as chip (chip.key)}
+            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-surface0 border border-surface1 font-mono tabular-nums {chip.tone ?? 'text-subtext'}">
+              <span class="select-none">{chip.label}</span>
+              <button
+                type="button"
+                onclick={chip.clear}
+                aria-label="clear {chip.key} filter"
+                title="Remove this filter"
+                class="text-dim hover:text-error leading-none px-1 -mx-1"
+              >×</button>
+            </span>
+          {/each}
+          {#if activeFilterChips.length >= 2}
+            <button
+              type="button"
+              onclick={clearAllFilters}
+              title="Reset every active filter to its default"
+              class="ml-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-warning hover:text-error border border-dashed border-warning hover:border-error"
+            >clear all</button>
+          {/if}
+          <span class="flex-1"></span>
+          <span class="text-[10px] text-dim font-mono tabular-nums select-none">{filtered.length} match{filtered.length === 1 ? '' : 'es'}</span>
         </div>
       {/if}
       <!-- Stats summary chips. Always reflect the unfiltered set so
