@@ -61,6 +61,21 @@
     `${String(editEndH).padStart(2, '0')}:${String(editEndM).padStart(2, '0')}`
   );
 
+  // Snapshot of date/time fields when edit-mode opens. Used by the
+  // save path to detect "user did NOT change time" so we can skip
+  // sending start/end to the ICS PATCH endpoint — which preserves
+  // floating-time events as floating (the writer emits ZONED UTC
+  // for everything it writes, so any round-trip through the wire
+  // converts floating → UTC and the displayed wall-clock drifts
+  // by the user's offset). Pre-fix the user reported "events shown
+  // on wrong times" after renaming a floating-time event with no
+  // time change.
+  let origEditDate = $state('');
+  let origEditStartH = $state(0);
+  let origEditStartM = $state(0);
+  let origEditEndH = $state(0);
+  let origEditEndM = $state(0);
+
   // ── Recurrence edit state ──────────────────────────────────────
   // Mirrors the picker in CreateEvent. We seed from the source
   // event's rrule on edit-start by parsing the FREQ + INTERVAL +
@@ -201,6 +216,13 @@
     // Tuesday' through the modal get the same conservative default
     // as the drag-move flow.
     editScope = 'instance';
+    // Snapshot the seeded date+time so the save handler can detect
+    // a no-op time change and skip the ICS PATCH start/end fields.
+    origEditDate = editDate;
+    origEditStartH = editStartH;
+    origEditStartM = editStartM;
+    origEditEndH = editEndH;
+    origEditEndM = editEndM;
     editing = true;
   }
 
@@ -228,12 +250,30 @@
     busy = true;
     try {
       if (event.type === 'ics_event' && event.source && event.eventId) {
-        await api.patchICSEvent(event.source, event.eventId, {
+        // Skip start/end on PATCH when the user didn't touch them.
+        // The icswriter always emits UTC-zoned timestamps, so any
+        // round-trip of an originally-floating event through the
+        // wire converts it to UTC — and a UTC+2 user later reading
+        // the same file in UTC+3 sees the wall-clock shifted by an
+        // hour. Conditionally omitting unchanged times leaves the
+        // floating-ness intact for the very common rename-only edit.
+        const timeChanged =
+          editDate !== origEditDate ||
+          editStartH !== origEditStartH ||
+          editStartM !== origEditStartM ||
+          editEndH !== origEditEndH ||
+          editEndM !== origEditEndM;
+        const patch: Parameters<typeof api.patchICSEvent>[2] = {
           summary: editTitle,
-          start: utcRFC3339FromLocalParts(editDate, editStartTime || '00:00'),
-          end: editEndTime ? utcRFC3339FromLocalParts(editDate, editEndTime) : undefined,
           location: editLocation
-        });
+        };
+        if (timeChanged) {
+          patch.start = utcRFC3339FromLocalParts(editDate, editStartTime || '00:00');
+          if (editEndTime) {
+            patch.end = utcRFC3339FromLocalParts(editDate, editEndTime);
+          }
+        }
+        await api.patchICSEvent(event.source, event.eventId, patch);
       } else if (event.eventId) {
         // Recurring + 'this only' scope: write a per-occurrence
         // override on the original anchor. Series base + rrule are
