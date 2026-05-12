@@ -153,9 +153,23 @@ func (s *Server) handleAIGenerateChapter(w http.ResponseWriter, r *http.Request)
 // inline AI editor's cleanAIEditOutput protects against, but here
 // for full-note generation rather than mid-line splicing.
 //
-// Also ensures the output starts with a `# Title` line — when the
-// model returned content without one, we prepend the chapter title
-// so the file is well-formed when saved.
+// Also normalises the leading heading:
+//   - When the model returned content WITHOUT a `# Title` line, we
+//     prepend `# <chapterTitle>` so the file is well-formed.
+//   - When the model returned `# <something else>` (a real failure
+//     mode — the model occasionally synthesises its own title from
+//     a misreading of the prompt), we REPLACE the first heading
+//     with the requested chapterTitle. Otherwise the file's title
+//     and the wikilink would diverge and the user would lose track.
+//   - When the model returned `# <chapterTitle>` (the happy path),
+//     we leave it alone.
+//
+// The "do these match" check is case-insensitive + trim — small
+// presentation drift (extra spaces, slight capitalization) shouldn't
+// trigger a rewrite, because the model's variant is often slightly
+// more polished prose ("Lexical Scoping & Closures" vs the user's
+// "Lexical scoping and closures"). We accept the polished form and
+// only intervene when the topic genuinely differs.
 func cleanGeneratedChapter(raw, chapterTitle string) string {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -182,11 +196,55 @@ func cleanGeneratedChapter(raw, chapterTitle string) string {
 			}
 		}
 	}
-	// Ensure the chapter starts with a heading line.
+	// Heading normalisation. Three cases:
 	if !strings.HasPrefix(s, "# ") {
-		s = "# " + chapterTitle + "\n\n" + s
+		// Case A: no heading — prepend the requested one.
+		return "# " + chapterTitle + "\n\n" + s
 	}
-	return s
+	// Case B/C: model emitted a heading. Read the heading text and
+	// compare to the requested title.
+	nl := strings.Index(s, "\n")
+	if nl < 0 {
+		nl = len(s)
+	}
+	headingLine := strings.TrimSpace(strings.TrimPrefix(s[:nl], "# "))
+	if topicallyEqual(headingLine, chapterTitle) {
+		// Case B: matches (possibly with cosmetic drift) — leave alone.
+		return s
+	}
+	// Case C: heading describes a different topic. Replace it.
+	// Defence: prevents the wikilink (still pointing at the user's
+	// requested title) from diverging from the saved note's heading.
+	rest := ""
+	if nl < len(s) {
+		rest = s[nl+1:]
+	}
+	return "# " + chapterTitle + "\n" + rest
+}
+
+// topicallyEqual is a forgiving title comparison: case-insensitive,
+// punctuation-elastic, whitespace-collapsed. "Lexical Scoping &
+// Closures" == "lexical scoping and closures" — both clearly point
+// at the same topic, the model just polished the prose.
+//
+// Only flags as "different" when the words themselves differ
+// (different lemmas, different topic words). A small heuristic but
+// catches the genuine "model wrote a different chapter" failure
+// without false-positiving on stylistic improvements.
+func topicallyEqual(a, b string) bool {
+	norm := func(s string) string {
+		s = strings.ToLower(s)
+		// Replace common conjunction punctuation with spaces so " & "
+		// and " and " normalise to the same token sequence.
+		s = strings.ReplaceAll(s, "&", " and ")
+		s = strings.ReplaceAll(s, ",", " ")
+		s = strings.ReplaceAll(s, ";", " ")
+		s = strings.ReplaceAll(s, ":", " ")
+		// Collapse runs of whitespace to single spaces.
+		fields := strings.Fields(s)
+		return strings.Join(fields, " ")
+	}
+	return norm(a) == norm(b)
 }
 
 // deriveChapterPath picks a sensible vault-relative path for a new

@@ -39,6 +39,62 @@ func TestCleanGeneratedChapter_PrependsHeadingWhenMissing(t *testing.T) {
 	}
 }
 
+// When the model returns the SAME topic with cosmetic drift (smart
+// punctuation, casing), keep the model's polished form.
+func TestCleanGeneratedChapter_AcceptsCosmeticTitleDrift(t *testing.T) {
+	requested := "lexical scoping and closures"
+	cases := []string{
+		"# Lexical Scoping and Closures\n\nA closure is...",
+		"# Lexical Scoping & Closures\n\nA closure is...",
+		"# Lexical scoping, and closures\n\nA closure is...",
+	}
+	for _, in := range cases {
+		got := cleanGeneratedChapter(in, requested)
+		// Must keep the model's heading, not rewrite to the user's
+		// lowercase form.
+		firstLine := strings.SplitN(got, "\n", 2)[0]
+		if firstLine == "# "+requested {
+			t.Errorf("cosmetic drift was rewritten to requested form, lost polish: %q from %q", firstLine, in)
+		}
+	}
+}
+
+// When the model wrote a different chapter entirely (real failure
+// mode), replace the heading with the requested title so the saved
+// file matches the wikilink the user clicked.
+func TestCleanGeneratedChapter_RewritesWrongTopic(t *testing.T) {
+	requested := "Closures"
+	in := "# Higher-order functions\n\nA higher-order function takes another function..."
+	got := cleanGeneratedChapter(in, requested)
+	if !strings.HasPrefix(got, "# Closures\n") {
+		t.Errorf("expected heading rewritten to # Closures, got %q", got[:40])
+	}
+	// Body content should survive intact (just the heading line changed).
+	if !strings.Contains(got, "A higher-order function takes another function") {
+		t.Errorf("body content lost: %q", got)
+	}
+}
+
+func TestTopicallyEqual(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"Closures", "closures", true},                    // case
+		{"A and B", "A & B", true},                        // & vs and
+		{"Foo: Bar", "Foo Bar", true},                     // colon vs none
+		{"  spaces  collapse  ", "spaces collapse", true}, // whitespace
+		{"Closures", "Higher-order functions", false},     // genuinely different
+		{"", "", true},
+		{"x", "", false},
+	}
+	for _, c := range cases {
+		if got := topicallyEqual(c.a, c.b); got != c.want {
+			t.Errorf("topicallyEqual(%q,%q) = %v, want %v", c.a, c.b, got, c.want)
+		}
+	}
+}
+
 func TestCleanGeneratedChapter_EmptyInput(t *testing.T) {
 	if got := cleanGeneratedChapter("", "Chapter"); got != "" {
 		t.Errorf("empty in → empty out; got %q", got)
