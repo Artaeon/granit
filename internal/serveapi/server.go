@@ -645,6 +645,42 @@ func (s *Server) Handler() http.Handler {
 		// Devices — authState.Sessions exposed for management.
 		r.Get("/api/v1/devices", s.handleListDevices)
 		r.Delete("/api/v1/devices/{id}", s.handleRevokeDevice)
+
+		// Stoicera intranet — management surface (the granit UI calls
+		// these). Reads/writes the on-disk integration config at
+		// .granit/stoicera-integration.json. The DATA endpoints that
+		// the intranet itself calls are mounted in a SEPARATE group
+		// below with token-based auth instead of cookie auth.
+		r.Get("/api/v1/stoicera-integration/settings", s.handleGetStoiceraSettings)
+		r.Patch("/api/v1/stoicera-integration/settings", s.handlePatchStoiceraSettings)
+		r.Get("/api/v1/stoicera-integration/token", s.handleGetStoiceraToken)
+	})
+
+	// Stoicera intranet data endpoints — separate group because:
+	//   1. Auth is Bearer-token (Integration token, not session cookie)
+	//   2. CORS allows intranet.stoicera.cyou cross-origin (the rest of
+	//      the API only allows the granit UI's same-origin or dev port)
+	//   3. Disabled → 404 (silently); the middleware decides
+	r.Group(func(r chi.Router) {
+		r.Use(cors.Handler(cors.Options{
+			AllowedOrigins: []string{
+				"https://intranet.stoicera.cyou",
+				// Dev variant — vite preview on a local LAN IP works
+				// against the same endpoints during integration testing.
+				"http://localhost:4173",
+				"http://127.0.0.1:4173",
+			},
+			AllowedMethods:   []string{"GET", "OPTIONS"},
+			AllowedHeaders:   []string{"Authorization", "Content-Type"},
+			AllowCredentials: false,
+			MaxAge:           300,
+		}))
+		r.Use(s.requireStoiceraToken)
+		r.Get("/api/v1/integrations/stoicera/summary", s.handleStoiceraSummary)
+		r.Get("/api/v1/integrations/stoicera/projects", s.handleStoiceraListProjects)
+		r.Get("/api/v1/integrations/stoicera/projects/{name}", s.handleStoiceraGetProject)
+		r.Get("/api/v1/integrations/stoicera/tasks", s.handleStoiceraListTasks)
+		r.Get("/api/v1/integrations/stoicera/goals", s.handleStoiceraListGoals)
 	})
 
 	// SPA fallback — last resort. Two early exits before we serve
