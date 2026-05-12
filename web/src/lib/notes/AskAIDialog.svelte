@@ -46,6 +46,14 @@
   // component level so the cancel button + Escape key can both
   // close the upstream connection promptly.
   let abortCtl: AbortController | null = $state(null);
+  // Stream timing — for the live throughput chip. startedAt is the
+  // performance.now() snapshot when ask() fires; elapsedMs ticks
+  // every 100ms while streaming so the chip moves visibly. We use
+  // performance.now() over Date.now() because the underlying clock
+  // can't jump backwards if the system time changes mid-stream.
+  let startedAt = $state(0);
+  let elapsedMs = $state(0);
+  let elapsedTimer: ReturnType<typeof setInterval> | null = null;
 
   // Quick-pick instructions, grouped by intent. Each is a complete
   // instruction that works across providers; the user can still
@@ -108,6 +116,48 @@
   }
   function saveLastInstruction(s: string): void {
     if (s.length > 0 && s.length < 500) saveStoredString(LAST_INSTRUCTION_KEY, s);
+  }
+
+  // Prompt history — a ring of the last N unique instructions the
+  // user has fired through the dialog. Surfaces in a "Recent" chip
+  // row above the standard preset groups so a power-user who
+  // alternates between a few custom prompts (e.g. "rewrite as bullet
+  // points for the meeting deck", "translate to Italian and keep
+  // technical terms in English") can re-fire any of them in one
+  // click. Stored as JSON so the typed shape stays clean even if
+  // someone hand-edits the key.
+  const HISTORY_KEY = 'granit.ai.promptHistory';
+  const HISTORY_MAX = 8;
+  let promptHistory = $state<string[]>([]);
+  // Seed from storage once on first render. Done in $effect rather
+  // than at module scope so SSR doesn't touch window/localStorage.
+  $effect(() => {
+    try {
+      const raw = loadStoredString(HISTORY_KEY, '');
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        promptHistory = parsed
+          .filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length < 500)
+          .slice(0, HISTORY_MAX);
+      }
+    } catch {
+      // Malformed history — start fresh rather than blow up the dialog.
+      promptHistory = [];
+    }
+  });
+  function pushHistory(s: string) {
+    const t = s.trim();
+    if (!t || t.length > 500) return;
+    // Move-to-front semantics: if t already exists, dedup; then prepend.
+    const next = [t, ...promptHistory.filter((x) => x !== t)].slice(0, HISTORY_MAX);
+    promptHistory = next;
+    try {
+      saveStoredString(HISTORY_KEY, JSON.stringify(next));
+    } catch {
+      // Storage quota / private-window fallthrough — history just
+      // won't persist this session, which is fine.
+    }
   }
 
   // Preset-path delay before auto-fire. The user picked the preset
@@ -189,6 +239,7 @@
     error = '';
     response = '';
     saveLastInstruction(instruction.trim());
+    pushHistory(instruction.trim());
     const userMessage = instruction.trim()
       ? `${instruction.trim()}\n\n---\n\n${request.text}`
       : `Help me with this:\n\n${request.text}`;
@@ -199,6 +250,20 @@
     // wires through to the upstream provider so a Stop click
     // closes the connection immediately.
     abortCtl = new AbortController();
+    startedAt = performance.now();
+    elapsedMs = 0;
+    if (elapsedTimer) clearInterval(elapsedTimer);
+    elapsedTimer = setInterval(() => {
+      // 100ms tick: fine-grained enough that the throughput chip
+      // moves visibly but cheap enough that we don't burn cycles
+      // re-rendering. Stops the moment pending flips false.
+      if (pending) {
+        elapsedMs = performance.now() - startedAt;
+      } else if (elapsedTimer) {
+        clearInterval(elapsedTimer);
+        elapsedTimer = null;
+      }
+    }, 100);
     await api.chatStream(
       [{ role: 'user', content: userMessage }],
       sourcePath || undefined,
@@ -209,11 +274,21 @@
         onDone: () => {
           pending = false;
           abortCtl = null;
+          elapsedMs = performance.now() - startedAt;
+          if (elapsedTimer) {
+            clearInterval(elapsedTimer);
+            elapsedTimer = null;
+          }
           if (!response) error = 'AI returned an empty response.';
         },
         onError: (err) => {
           pending = false;
           abortCtl = null;
+          elapsedMs = performance.now() - startedAt;
+          if (elapsedTimer) {
+            clearInterval(elapsedTimer);
+            elapsedTimer = null;
+          }
           error = err.message;
         }
       },
@@ -266,6 +341,17 @@
     void ask();
   }
 
+  function pickHistory(s: string) {
+    cancelAutoFire();
+    instruction = s;
+    // Picking from history fills the box but does NOT auto-fire.
+    // Power users alternate between near-identical prompts and want
+    // to tweak before sending — auto-fire would force a stop+retry
+    // dance for that workflow. Use the Ask AI button (or ⌘↵) to
+    // send.
+    inputEl?.focus();
+  }
+
   // Size + rough token estimate for the dialog header. ~4
   // chars/token is the industry rule of thumb across English
   // text and most LLM tokenisers; close enough for a "should
@@ -275,6 +361,38 @@
   const charCount = $derived(request?.text.length ?? 0);
   const tokenEstimate = $derived(Math.round(charCount / 4));
   const bigInput = $derived(charCount > 16000);
+
+  // Response stats — surfaced live in the response header chip row
+  // so the user can watch the reply grow. Power-UI: pre-fix the
+  // dialog was a sparse "spinner + paragraph" UI; these chips turn
+  // it into something a heavy user can actually steer with (e.g.
+  // "the reply is 800 words but I asked for 3 bullets — Stop and
+  // retighten the instruction").
+  const responseChars = $derived(response.length);
+  const responseTokens = $derived(Math.round(responseChars / 4));
+  const responseLines = $derived(response ? response.split('\n').length : 0);
+  // Word count: split on any whitespace run, filter empty. Cheap
+  // enough to recompute on every render (response is bounded by
+  // typical LLM completion ~4-8K tokens = 16-32K chars worst case).
+  const responseWords = $derived(
+    response.trim() ? response.trim().split(/\s+/).length : 0
+  );
+  // Throughput in tokens per second. Guard against division by zero
+  // for the first ~0.1s while elapsedMs is still 0.
+  const tokensPerSec = $derived(
+    elapsedMs > 100 ? Math.round((responseTokens / elapsedMs) * 1000) : 0
+  );
+  // Formatted elapsed time — sub-second shown as "0.4s", over a
+  // second as "12.3s", over a minute as "1m 12s". Compact so the
+  // chip stays one line.
+  const elapsedLabel = $derived.by(() => {
+    if (elapsedMs < 1000) return `${(elapsedMs / 1000).toFixed(1)}s`;
+    const s = elapsedMs / 1000;
+    if (s < 60) return `${s.toFixed(1)}s`;
+    const m = Math.floor(s / 60);
+    const rem = Math.round(s - m * 60);
+    return `${m}m ${rem}s`;
+  });
 
   function copyResponse() {
     if (!response) return;
@@ -415,6 +533,31 @@
                13 buttons reads as scannable categories. Group label
                on the left, chips flow on the right. -->
           <div class="space-y-1.5 mt-2">
+            {#if promptHistory.length > 0}
+              <!-- Recent — last N unique fired instructions, freshest
+                   first. Truncated to ~24 chars in the chip body but
+                   the full prompt is in the title for hover-reveal.
+                   Power-UI: the most-likely "what I want next" is
+                   often "what I just wanted" with one tweak, so this
+                   pushes the dialog from "13 generic presets" to
+                   "your N personal one-click prompts". Click fills
+                   the box without firing — see pickHistory. -->
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-[10px] uppercase tracking-wider text-dim w-16 flex-shrink-0">Recent</span>
+                {#each promptHistory as h}
+                  <button
+                    type="button"
+                    onclick={() => pickHistory(h)}
+                    disabled={pending}
+                    title={h}
+                    class="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-surface0 text-subtext hover:bg-surface1 hover:text-text disabled:opacity-50 transition-colors max-w-[14rem] truncate"
+                  >
+                    <span class="text-[9px] text-dim leading-none">↻</span>
+                    <span class="truncate">{h}</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
             {#each PRESET_GROUPS as group}
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-[10px] uppercase tracking-wider text-dim w-16 flex-shrink-0">{group.label}</span>
@@ -477,6 +620,31 @@
                     <span class="text-error ml-1">−{diffStatsView.removed}</span>
                   </span>
                 {/if}
+              {/if}
+              <!-- Stats chips — live while streaming, frozen final
+                   values after onDone. Power-UI density: lets the
+                   user see at a glance "the reply is 1.2K chars in
+                   60 words at 24 tok/s after 8s" without having to
+                   scroll-count anything. Hidden when response is
+                   empty (nothing to count yet). -->
+              {#if response}
+                <span class="text-[10px] font-mono tabular-nums text-dim flex items-center gap-1.5">
+                  <span title="characters in the AI response">{responseChars.toLocaleString()}c</span>
+                  <span class="text-surface2">·</span>
+                  <span title="words in the AI response">{responseWords.toLocaleString()}w</span>
+                  <span class="text-surface2">·</span>
+                  <span title="lines in the AI response">{responseLines}L</span>
+                  <span class="text-surface2">·</span>
+                  <span title="~tokens (chars ÷ 4)">~{responseTokens.toLocaleString()}tok</span>
+                  {#if elapsedMs > 0}
+                    <span class="text-surface2">·</span>
+                    <span title="time since the request started">{elapsedLabel}</span>
+                  {/if}
+                  {#if pending && tokensPerSec > 0}
+                    <span class="text-surface2">·</span>
+                    <span title="streaming throughput" class="text-secondary">{tokensPerSec}t/s</span>
+                  {/if}
+                </span>
               {/if}
               <span class="flex-1"></span>
               {#if pending}
