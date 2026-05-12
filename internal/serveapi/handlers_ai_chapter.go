@@ -96,6 +96,25 @@ func (s *Server) handleAIGenerateChapter(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Path validation runs BEFORE the LLM call so a bad targetPath
+	// fails fast — otherwise we waste tokens on content the server
+	// would refuse to save anyway. Validated path is reused below.
+	var resolvedPath string
+	if body.Save {
+		p, err := normaliseChapterTargetPath(body.TargetPath, body.ParentPath, chapterTitle)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		// Conflict check is also pre-LLM — same reasoning.
+		if existing := s.cfg.Vault.GetNote(p); existing != nil {
+			writeError(w, http.StatusConflict,
+				fmt.Sprintf("note %q already exists — refusing to overwrite", p))
+			return
+		}
+		resolvedPath = p
+	}
+
 	userPrompt := "PARENT OUTLINE (the framing for the whole topic; the chapter you're writing is one of these):\n\n" +
 		outline +
 		"\n\n----\n\nCHAPTER TO WRITE: " + chapterTitle +
@@ -112,25 +131,10 @@ func (s *Server) handleAIGenerateChapter(w http.ResponseWriter, r *http.Request)
 	resp := generateChapterResponse{Content: content}
 
 	// Optional save — write the result to disk so the next click on
-	// the same wikilink resolves to the new note.
+	// the same wikilink resolves to the new note. Path was already
+	// validated + conflict-checked above (pre-LLM); reuse it.
 	if body.Save {
-		targetPath := strings.TrimSpace(body.TargetPath)
-		if targetPath == "" {
-			targetPath = deriveChapterPath(body.ParentPath, chapterTitle)
-		}
-		// Defence-in-depth: refuse paths that try to escape the vault.
-		if strings.Contains(targetPath, "..") || strings.HasPrefix(targetPath, "/") {
-			writeError(w, http.StatusBadRequest, "invalid targetPath")
-			return
-		}
-		// Don't overwrite an existing note — the user's manually-
-		// written content always wins.
-		if existing := s.cfg.Vault.GetNote(targetPath); existing != nil {
-			writeError(w, http.StatusConflict,
-				fmt.Sprintf("note %q already exists — refusing to overwrite", targetPath))
-			return
-		}
-		abs := filepath.Join(s.cfg.Vault.Root, filepath.FromSlash(targetPath))
+		abs := filepath.Join(s.cfg.Vault.Root, filepath.FromSlash(resolvedPath))
 		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 			writeError(w, http.StatusInternalServerError, "mkdir: "+err.Error())
 			return
@@ -142,7 +146,7 @@ func (s *Server) handleAIGenerateChapter(w http.ResponseWriter, r *http.Request)
 		s.rescanMu.Lock()
 		_ = s.cfg.Vault.ScanFast()
 		s.rescanMu.Unlock()
-		resp.Path = targetPath
+		resp.Path = resolvedPath
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -247,6 +251,41 @@ func topicallyEqual(a, b string) bool {
 	return norm(a) == norm(b)
 }
 
+// normaliseChapterTargetPath produces the vault-relative path the
+// chapter will land at. Either uses the caller's explicit target,
+// or derives one from the parent + chapter title. Then runs all the
+// path-safety checks in one place so the handler stays linear:
+//
+//   - Backslashes → forward-slashes (Windows clients)
+//   - Absolute paths rejected (filepath.IsAbs catches Unix /etc/...
+//     and Windows C:\...; explicit leading-slash check is belt + braces)
+//   - Any segment of ".." rejected (path traversal). Segment-level
+//     check (not strings.Contains) so titles legitimately containing
+//     ".." in prose ("Patterns .. Anti-patterns") aren't rejected
+//   - ".md" suffix enforced so the file is indexable as a note
+//
+// Returns the validated path or a descriptive error suitable for a
+// 400 response body.
+func normaliseChapterTargetPath(targetPath, parentPath, chapterTitle string) (string, error) {
+	p := strings.TrimSpace(targetPath)
+	if p == "" {
+		p = deriveChapterPath(parentPath, chapterTitle)
+	}
+	p = strings.ReplaceAll(p, "\\", "/")
+	if filepath.IsAbs(p) || strings.HasPrefix(p, "/") {
+		return "", fmt.Errorf("targetPath must be vault-relative")
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." {
+			return "", fmt.Errorf("targetPath cannot traverse outside the vault")
+		}
+	}
+	if !strings.HasSuffix(strings.ToLower(p), ".md") {
+		p += ".md"
+	}
+	return p, nil
+}
+
 // deriveChapterPath picks a sensible vault-relative path for a new
 // chapter note based on the parent outline's path and the chapter
 // title. Rules:
@@ -277,6 +316,14 @@ func deriveChapterPath(parentPath, chapterTitle string) string {
 // (rejects /, \, :, *, ?, ", <, >, |) but ALSO collapses runs of
 // whitespace to single hyphens so the resulting filename feels like
 // a URL-style slug.
+//
+// Length cap: 100 runes. Some filesystems (eCryptfs, encrypted ZFS,
+// FAT32) limit individual segments to 143 bytes, and the chapter
+// filename is one segment of a path that may already include the
+// parent's directory (`Research/Outline/<slug>.md`). 100 leaves
+// generous headroom for the `.md` suffix and any future encoding
+// quirks. Cuts at a word boundary when possible so the truncated
+// title stays human-readable.
 func slugifyChapter(s string) string {
 	s = strings.TrimSpace(s)
 	for _, bad := range []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"} {
@@ -284,5 +331,21 @@ func slugifyChapter(s string) string {
 	}
 	// Collapse whitespace to single hyphens.
 	fields := strings.Fields(s)
-	return strings.Join(fields, "-")
+	slug := strings.Join(fields, "-")
+	const cap = 100
+	if len(slug) <= cap {
+		return slug
+	}
+	// Prefer a word-boundary cut: walk back from `cap` to the nearest
+	// hyphen so the truncation lands between fields rather than
+	// mid-word. Falls through to a hard cut if no hyphen within the
+	// last 30 chars (single-word title that's just very long).
+	cut := cap
+	for i := cap; i > cap-30 && i > 0; i-- {
+		if slug[i] == '-' {
+			cut = i
+			break
+		}
+	}
+	return slug[:cut]
 }

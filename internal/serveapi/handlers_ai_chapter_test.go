@@ -134,3 +134,116 @@ func TestSlugifyChapter_StripsBadCharsAndHyphenates(t *testing.T) {
 		}
 	}
 }
+
+// Long-title slug must be capped at 100 chars to stay
+// filesystem-safe (eCryptfs / FAT32 / some ZFS encrypted volumes
+// have segment-length limits around 143 bytes). Prefer a word-
+// boundary cut where possible.
+func TestSlugifyChapter_CapsLongTitleAtWordBoundary(t *testing.T) {
+	long := strings.Repeat("Foundations of asynchronous IO and event loops ", 5)
+	got := slugifyChapter(long)
+	if len(got) > 100 {
+		t.Errorf("slug exceeds 100 chars: %d (%q)", len(got), got)
+	}
+	// Word-boundary cut means the last char shouldn't be a partial word.
+	if strings.HasSuffix(got, "-") {
+		t.Errorf("slug ends in dangling hyphen, expected clean word-boundary cut: %q", got)
+	}
+}
+
+// A single-word title longer than 100 chars (no hyphens to cut at)
+// should still be capped — accepting a hard mid-word cut as the
+// fallback when no word boundary exists in the last 30 chars.
+func TestSlugifyChapter_CapsLongUnbrokenWord(t *testing.T) {
+	long := strings.Repeat("A", 200)
+	got := slugifyChapter(long)
+	if len(got) > 100 {
+		t.Errorf("slug exceeds 100 chars: %d", len(got))
+	}
+}
+
+func TestNormaliseChapterTargetPath_HappyPath(t *testing.T) {
+	got, err := normaliseChapterTargetPath("Research/Foo.md", "", "Foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Research/Foo.md" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestNormaliseChapterTargetPath_AppendsMdExtension(t *testing.T) {
+	got, err := normaliseChapterTargetPath("Research/Foo", "", "Foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Research/Foo.md" {
+		t.Errorf("expected .md appended, got %q", got)
+	}
+}
+
+func TestNormaliseChapterTargetPath_BackslashNormalised(t *testing.T) {
+	got, err := normaliseChapterTargetPath("Research\\Foo.md", "", "Foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Research/Foo.md" {
+		t.Errorf("backslash not normalised: got %q", got)
+	}
+}
+
+func TestNormaliseChapterTargetPath_RejectsAbsolute(t *testing.T) {
+	for _, in := range []string{
+		"/etc/passwd",
+		"/foo.md",
+		// On Windows filepath.IsAbs catches C:\... — the test
+		// passes the forward-slashed form; the function first
+		// normalises backslashes to forward slashes BEFORE
+		// IsAbs, so a Windows-style "C:/foo" would still be
+		// rejected because filepath.IsAbs("C:/foo")=true on
+		// Windows. On Linux we accept "C:/foo" as a relative
+		// path which is correct for non-Windows clients.
+	} {
+		_, err := normaliseChapterTargetPath(in, "", "x")
+		if err == nil {
+			t.Errorf("expected rejection for %q", in)
+		}
+	}
+}
+
+func TestNormaliseChapterTargetPath_RejectsParentSegment(t *testing.T) {
+	for _, in := range []string{
+		"../etc/passwd",
+		"Research/../../etc",
+		"..",
+		"foo/../bar/..",
+	} {
+		_, err := normaliseChapterTargetPath(in, "", "x")
+		if err == nil {
+			t.Errorf("expected rejection for %q", in)
+		}
+	}
+}
+
+// Chapter titles containing ".." in prose are NOT rejected — the
+// segment-level check distinguishes a real path-traversal attempt
+// from "Patterns .. Anti-patterns" or "Foo..Bar".
+func TestNormaliseChapterTargetPath_AcceptsTitlesWithDotDotInProse(t *testing.T) {
+	got, err := normaliseChapterTargetPath("Research/Patterns..Anti-patterns.md", "", "x")
+	if err != nil {
+		t.Fatalf("unexpected rejection: %v", err)
+	}
+	if got != "Research/Patterns..Anti-patterns.md" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestNormaliseChapterTargetPath_EmptyDerivesFromParent(t *testing.T) {
+	got, err := normaliseChapterTargetPath("", "Research/Outline.md", "First chapter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "Research/Outline/First-chapter.md" {
+		t.Errorf("expected derived nested path, got %q", got)
+	}
+}
