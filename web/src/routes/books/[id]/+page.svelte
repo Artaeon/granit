@@ -646,7 +646,7 @@
             </ul>
 
             {#if (sidecar?.bookmarks ?? []).length > 0}
-              <h3 class="text-xs uppercase tracking-wider text-dim mt-6 mb-2">Bookmarks</h3>
+              <h3 class="text-xs uppercase tracking-wider text-dim mt-4 mb-2">Bookmarks</h3>
               <ul class="space-y-1">
                 {#each sidecar?.bookmarks ?? [] as b (b.id)}
                   <li class="group flex items-center rounded hover:bg-surface1">
@@ -672,7 +672,7 @@
             {/if}
 
             {#if (sidecar?.highlights ?? []).length > 0}
-              <h3 class="text-xs uppercase tracking-wider text-dim mt-6 mb-2">Highlights</h3>
+              <h3 class="text-xs uppercase tracking-wider text-dim mt-4 mb-2">Highlights</h3>
               <ul class="space-y-2">
                 {#each sidecar?.highlights ?? [] as h (h.id)}
                   <li>
@@ -704,7 +704,7 @@
               <Skeleton class="h-6 w-1/3 mb-4" />
               <Skeleton class="h-4 w-full mb-2" />
               <Skeleton class="h-4 w-11/12 mb-2" />
-              <Skeleton class="h-4 w-9/12 mb-6" />
+              <Skeleton class="h-4 w-9/12 mb-4" />
               <Skeleton class="h-4 w-full mb-2" />
               <Skeleton class="h-4 w-10/12" />
             </div>

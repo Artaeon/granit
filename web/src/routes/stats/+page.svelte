@@ -46,12 +46,12 @@
     <PageHeader title="Vault statistics" subtitle="Live snapshot of what's in the vault" />
 
     {#if loading && !stats}
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         {#each Array(4) as _}<Skeleton class="h-20 w-full" />{/each}
       </div>
     {:else if stats}
       <!-- Headline numbers -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <div class="bg-surface0 border border-surface1 rounded-lg p-3">
           <div class="text-2xl sm:text-3xl font-semibold text-primary">{formatNum(stats.noteCount)}</div>
           <div class="text-[11px] uppercase tracking-wider text-dim mt-1">Notes</div>
@@ -71,7 +71,7 @@
       </div>
 
       <!-- Notes per month bar chart -->
-      <section class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-5 mb-6">
+      <section class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-5 mb-4">
         <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Notes edited per month — last 12</h2>
         <div class="grid grid-cols-12 gap-1 items-end h-32">
           {#each stats.notesPerMonth as m (m.name)}
@@ -148,7 +148,7 @@
       </div>
 
       <!-- Health -->
-      <section class="bg-surface0 border border-surface1 rounded-lg p-3 mt-6">
+      <section class="bg-surface0 border border-surface1 rounded-lg p-3 mt-4">
         <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Vault health</h2>
         <div class="grid grid-cols-3 gap-3 text-center">
           <div>

@@ -547,7 +547,7 @@
   <div class="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8">
     <PageHeader title="Finance" subtitle="Net worth, subscriptions, income streams, money goals" />
 
-    <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-6 flex-wrap">
+    <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-4 flex-wrap">
       {#each [
         { id: 'overview' as Tab, label: 'Overview' },
         { id: 'income' as Tab, label: 'Income', count: streams.length },
@@ -571,7 +571,7 @@
         <!-- Headline numbers: how much money I have, what's coming
              in, what's leaking out. Three cards instead of four so
              nothing competes with the headline net-worth figure. -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           <div class="bg-surface0 border border-surface1 rounded-lg p-3">
             <p class="text-xs uppercase tracking-wider text-dim">How much I have</p>
             <p class="text-2xl font-semibold mt-1 {overview.net_worth_cents >= 0 ? 'text-text' : 'text-error'}">
@@ -621,7 +621,7 @@
         {#if overview.income_monthly_actual_cents > 0 || overview.subscription_monthly_cents > 0}
           {@const recurringShoppingCents = shoppingTotals ? Math.round(shoppingTotals.recurring_monthly_estimate * 100) : 0}
           {@const net = overview.income_monthly_actual_cents - overview.subscription_monthly_cents - recurringShoppingCents}
-          <div class="mb-6 px-4 py-3 bg-surface0 border border-surface1 rounded text-sm">
+          <div class="mb-4 px-4 py-3 bg-surface0 border border-surface1 rounded text-sm">
             <span class="text-dim">Monthly run rate: </span>
             <span class="text-success">+{fmtMoney(overview.income_monthly_actual_cents, overview.currency)}</span>
             <span class="text-dim"> − </span>
@@ -652,7 +652,7 @@
              floats (EUR by default); fmtMoney here expects integer
              cents so we multiply by 100. -->
         {#if shoppingTotals && (shoppingTotals.planned_count > 0 || shoppingTotals.bought_month_count > 0)}
-          <div class="mb-6 px-4 py-3 bg-surface0 border border-surface1 rounded">
+          <div class="mb-4 px-4 py-3 bg-surface0 border border-surface1 rounded">
             <div class="flex items-baseline justify-between gap-3 flex-wrap">
               <div class="flex items-baseline gap-4 flex-wrap">
                 <span class="text-xs uppercase tracking-wider text-dim font-medium">Shopping</span>
@@ -685,7 +685,7 @@
              running net for detail. Hidden when nothing's coming up
              so empty vaults don't show a dead band. -->
         {#if cashflowEvents.length > 0 || undatedIncomeMonthly > 0}
-          <section class="mb-6 bg-surface0 border border-surface1 rounded-lg p-3">
+          <section class="mb-4 bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-3 flex-wrap mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Next 30 days</h3>
               <span class="text-xs text-dim">

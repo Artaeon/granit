@@ -712,7 +712,7 @@
            value = 1 when done, 0 otherwise — binary maxes the
            color scale at the brightest tone, which reads as a
            clean "completed" green. -->
-      <div class="space-y-6">
+      <div class="space-y-4">
         {#each sortedHabits as h (h.name)}
           <article class="bg-surface0 border border-surface1 rounded-lg p-3">
             <header class="flex items-baseline gap-2 mb-3">

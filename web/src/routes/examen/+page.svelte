@@ -258,7 +258,7 @@
 
 <div class="h-full overflow-y-auto">
   <div class="p-4 sm:p-6 lg:p-8 max-w-2xl mx-auto">
-    <header class="mb-5 sm:mb-6">
+    <header class="mb-5 sm:mb-4">
       <h1 class="text-2xl sm:text-3xl font-semibold text-text">Daily examen</h1>
       <p class="text-sm text-dim mt-1">
         Close the day before God. Where did you see Him? Where did you miss?
@@ -270,7 +270,7 @@
 
     <!-- Context strip: today's daily plan + intentions you carried -->
     {#if dailyLoaded && (dailyPlanText || activeIntentions.length > 0)}
-      <section class="mb-6 bg-surface0 border-l-2 border-primary rounded-r-lg p-4 space-y-3 text-sm">
+      <section class="mb-4 bg-surface0 border-l-2 border-primary rounded-r-lg p-4 space-y-3 text-sm">
         {#if dailyPlanText}
           <details class="text-subtext" open>
             <summary class="cursor-pointer text-xs uppercase tracking-wider text-dim hover:text-text font-medium">

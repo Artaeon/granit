@@ -228,7 +228,7 @@
           <div class="mb-2 flex items-center gap-2">
             <h2 class="text-xs uppercase tracking-wider text-dim font-semibold">Saved</h2>
           </div>
-          <ul class="space-y-1.5 mb-6">
+          <ul class="space-y-1.5 mb-4">
             {#each saved as s}
               <li class="flex items-stretch gap-1">
                 <button

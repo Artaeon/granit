@@ -208,7 +208,7 @@
       <!-- Card grid: one card per active series. Click selects for
            detail view + quick-log; current value + trend hints render
            inline. -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
         {#each activeSeries as s (s.id)}
           {@const cur = latest[s.id]}
           {@const isSelected = selectedId === s.id}
@@ -304,7 +304,7 @@
       {/if}
     {/if}
 
-    <p class="text-[11px] text-dim italic mt-6">
+    <p class="text-[11px] text-dim italic mt-4">
       Synced via <code>.granit/measurements/{'{series,entries}'}.json</code> — same files the granit TUI reads.
     </p>
   </div>

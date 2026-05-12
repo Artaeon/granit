@@ -276,7 +276,7 @@
           {#if current.level === 1 && position === 0}
             <h1 class="text-4xl sm:text-5xl font-bold mb-8 text-primary leading-tight">{current.title}</h1>
           {:else}
-            <h2 class="text-3xl sm:text-4xl font-semibold mb-6 text-text leading-tight">{current.title}</h2>
+            <h2 class="text-3xl sm:text-4xl font-semibold mb-4 text-text leading-tight">{current.title}</h2>
           {/if}
           <div class="slide-body text-lg sm:text-xl leading-relaxed">
             <MarkdownRenderer body={current.body} />

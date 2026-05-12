@@ -481,7 +481,7 @@
       </ul>
     {/if}
 
-    <p class="text-[11px] text-dim italic mt-6">
+    <p class="text-[11px] text-dim italic mt-4">
       Synced via <code>.granit/people.json</code> — same file the granit TUI reads.
     </p>
   </div>

@@ -389,7 +389,7 @@
     <!-- Header: greeting + scripture + date. The whole point of
          scripture being inline (not its own step) is that it's
          passive — read once, anchor the day, move on. -->
-    <header class="mb-6 sm:mb-8">
+    <header class="mb-4 sm:mb-8">
       <div class="flex items-baseline justify-between gap-3 mb-3">
         <h1 class="text-2xl sm:text-3xl font-semibold text-text">{greeting}</h1>
         <a href="/" class="text-xs text-dim hover:text-text">skip ritual →</a>

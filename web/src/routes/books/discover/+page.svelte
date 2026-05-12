@@ -229,7 +229,7 @@
   {/if}
 
   {#if busy && results.length === 0}
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
       {#each Array(6) as _, i (i)}
         <div class="flex gap-3 p-3 border border-surface1 rounded-lg">
           <Skeleton class="w-20 h-28 flex-shrink-0" />
@@ -247,7 +247,7 @@
       description="Try a different keyword, or toggle a source above. Title and author both work — Standard Ebooks also matches on subject."
     />
   {:else if results.length > 0}
-    <div class="mt-6">
+    <div class="mt-4">
       <header class="flex items-center gap-2 mb-3">
         <h2 class="text-sm font-medium text-text">Project Gutenberg</h2>
         <span class="text-xs text-dim">{results.length} result{results.length === 1 ? '' : 's'}</span>

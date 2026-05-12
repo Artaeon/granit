@@ -570,7 +570,7 @@
       </div>
 
       {#if editing && config}
-        <section class="mb-6 bg-mantle border border-surface1 rounded-lg p-4 space-y-3">
+        <section class="mb-4 bg-mantle border border-surface1 rounded-lg p-4 space-y-3">
           <h2 class="text-sm font-medium text-text">Widgets</h2>
           <ul class="space-y-1.5">
             {#each config.widgets as w, i (w.id)}
@@ -629,7 +629,7 @@
              complete widget list (order + enabled state); switching
              swaps them in. Save snapshots whatever's currently
              arranged. -->
-        <section class="mb-6 bg-mantle border border-surface1 rounded-lg p-4 space-y-3">
+        <section class="mb-4 bg-mantle border border-surface1 rounded-lg p-4 space-y-3">
           <div class="flex items-baseline justify-between">
             <h2 class="text-sm font-medium text-text">Layout presets</h2>
             <button

@@ -169,7 +169,7 @@
     />
   {:else}
     {#if resuming.length > 0 && !q}
-      <section class="mt-2 mb-6">
+      <section class="mt-2 mb-4">
         <h2 class="text-xs uppercase tracking-wider text-dim mb-2 px-1">Continue reading</h2>
         <div class="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
           {#each resuming as b (b.id + '-resume')}

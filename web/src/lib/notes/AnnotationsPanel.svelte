@@ -266,7 +266,7 @@
 </script>
 
 <div class="space-y-2">
-  <div class="flex justify-end -mt-6 mb-1 gap-1">
+  <div class="flex justify-end -mt-4 mb-1 gap-1">
     <!-- AI suggest — calls the audit-gated annotate-note feature.
          Cancellable while in flight. Disabled while suggestions are
          already on screen (the user reviews + clears those first

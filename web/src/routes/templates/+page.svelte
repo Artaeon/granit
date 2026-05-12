@@ -96,7 +96,7 @@
     {:else if templates.length === 0}
       <EmptyState icon="✎" title="No templates" description="Built-in templates should always be present — check the server logs." />
     {:else}
-      <div class="grid grid-cols-1 lg:grid-cols-[18rem_1fr] gap-4 sm:gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-[18rem_1fr] gap-4 sm:gap-4">
         <!-- Left: template list -->
         <aside class="space-y-4">
           <section>

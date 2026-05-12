@@ -376,7 +376,7 @@
     </PageHeader>
 
     <!-- Search + category chips -->
-    <div class="space-y-3 mb-6">
+    <div class="space-y-3 mb-4">
       <input
         bind:value={q}
         placeholder="search title, url, notes, username…"
@@ -417,7 +417,7 @@
     {:else if visibleItems.length === 0}
       <div class="text-sm text-dim italic">No matches.</div>
     {:else}
-      <div class="space-y-6">
+      <div class="space-y-4">
         {#each grouped as g (g.key)}
           <section>
             <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">

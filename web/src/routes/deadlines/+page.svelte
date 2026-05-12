@@ -1036,7 +1036,7 @@
 
       <!-- Body — view-mode switch -->
       {#if viewMode === 'list'}
-        <div class="space-y-6">
+        <div class="space-y-4">
           {#each Array.from(grouped.entries()) as [b, rows] (b)}
             {#if rows.length > 0}
               {@const tone = bucketTone(b)}

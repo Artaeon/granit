@@ -689,7 +689,7 @@
   </header>
 
   <div class="flex-1 overflow-y-auto">
-    <div class="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
+    <div class="max-w-3xl mx-auto p-4 sm:p-6 space-y-4">
       <!-- Classification strip — kind + venture at a glance. Only renders
            if at least one is set, so older projects don't get an empty
            row. The repo link doubles as a quick-launcher. -->

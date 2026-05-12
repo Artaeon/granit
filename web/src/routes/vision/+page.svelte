@@ -186,7 +186,7 @@
     {:else if editing}
       <!-- Edit form. Generous spacing, big inputs — discourages
            treating this like a quick form-fill. -->
-      <form onsubmit={(e) => { e.preventDefault(); saveEdit(); }} class="space-y-6">
+      <form onsubmit={(e) => { e.preventDefault(); saveEdit(); }} class="space-y-4">
         <section>
           <label for="mission" class="block text-xs uppercase tracking-wider text-dim mb-2">Life mission</label>
           <textarea

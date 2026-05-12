@@ -50,7 +50,7 @@
   }
 </script>
 
-<div class="space-y-6 max-w-3xl">
+<div class="space-y-4 max-w-3xl">
   {#if groups.length === 0}
     <div class="text-center py-16 px-4">
       <svg viewBox="0 0 64 64" class="w-12 h-12 mx-auto text-dim opacity-40 mb-3" fill="none" stroke="currentColor" stroke-width="2">

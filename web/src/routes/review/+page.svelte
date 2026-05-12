@@ -415,7 +415,7 @@
     {#if busy && !isExisting}
       <p class="text-sm text-dim">loading…</p>
     {:else}
-      <form onsubmit={(e) => { e.preventDefault(); save(); }} class="space-y-6">
+      <form onsubmit={(e) => { e.preventDefault(); save(); }} class="space-y-4">
         {#each QUESTIONS as q}
           <section>
             <label for="rv-{q.slug}" class="block text-xs uppercase tracking-wider text-dim mb-1">{q.heading}</label>
@@ -481,7 +481,7 @@
              deliberately don't auto-fill the form fields (the model
              often picks the wrong section per answer); leaving it as
              a side-by-side reference is simpler + harder to mis-route. -->
-        <div class="mt-6 p-4 bg-surface1 border border-surface2 rounded">
+        <div class="mt-4 p-4 bg-surface1 border border-surface2 rounded">
           <div class="flex items-center gap-2 mb-3">
             <span class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">AI synopsis</span>
             <button

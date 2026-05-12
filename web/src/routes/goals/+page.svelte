@@ -1356,7 +1356,7 @@
     {/if}
 
     <!-- Search + filter chips -->
-    <div class="mb-6 space-y-2">
+    <div class="mb-4 space-y-2">
       <input
         bind:value={q}
         placeholder="search title, description, notes…"

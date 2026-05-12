@@ -685,7 +685,7 @@
       </ul>
 
       <!-- Sentinel: when this enters the viewport, load the next page. -->
-      <div bind:this={sentinel} class="h-12 mt-6 flex items-center justify-center text-xs text-dim">
+      <div bind:this={sentinel} class="h-12 mt-4 flex items-center justify-center text-xs text-dim">
         {#if loading}
           loading more…
         {:else if done}

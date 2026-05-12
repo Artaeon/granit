@@ -795,7 +795,7 @@
 
 <div class="h-full overflow-y-auto">
   <div class="max-w-3xl mx-auto p-4 sm:p-6 lg:p-8">
-    <div class="flex flex-wrap items-baseline gap-3 mb-6">
+    <div class="flex flex-wrap items-baseline gap-3 mb-4">
       <div class="flex-1 min-w-0">
         <PageHeader title="Scripture" subtitle="Verse of the day, memorization drill, full bible (WEB)" />
       </div>
@@ -809,7 +809,7 @@
       </div>
     </div>
 
-    <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-6 flex-wrap">
+    <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-4 flex-wrap">
       <button
         class="px-4 py-2 {mode === 'read' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
         onclick={() => (mode = 'read')}
@@ -1010,7 +1010,7 @@
           {/if}
         {/if}
 
-        <div class="flex gap-2 mt-6 flex-wrap">
+        <div class="flex gap-2 mt-4 flex-wrap">
           {#if !revealed}
             <button
               onclick={checkDrill}
@@ -1215,7 +1215,7 @@
                 <span class="text-xs align-super text-dim mr-1 font-sans not-italic">{v.n}</span><span>{v.text}</span>{' '}
               {/each}
             </div>
-            <div class="flex gap-2 mt-6 flex-wrap">
+            <div class="flex gap-2 mt-4 flex-wrap">
               <button
                 onclick={bibleRandom}
                 class="px-3 py-1.5 text-sm bg-surface0 border border-surface1 rounded hover:border-primary"

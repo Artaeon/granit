@@ -383,7 +383,7 @@
   <div class="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
     {#if loading && !venture}
       <!-- Skeleton hero so the page doesn't reflow when data arrives. -->
-      <div class="mb-6 flex items-start gap-3">
+      <div class="mb-4 flex items-start gap-3">
         <div class="w-9 h-9 flex-shrink-0"></div>
         <Skeleton class="w-3 h-3 rounded-full mt-3" />
         <div class="flex-1 space-y-2">
@@ -392,7 +392,7 @@
           <Skeleton class="h-3 w-2/3" />
         </div>
       </div>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         {#each [0, 1, 2, 3] as i (i)}
           <Skeleton class="h-16 rounded" />
         {/each}
@@ -408,7 +408,7 @@
            status pill (with inline change), URL, tags. The hero leans
            heavily on whitespace; the metric strip below is where the
            dense data lives. -->
-      <header class="mb-6">
+      <header class="mb-4">
         <div class="flex items-start gap-3">
           <a
             href="/ventures"
@@ -493,7 +493,7 @@
 
       <!-- Aggregate row — at-a-glance momentum signal. Active projects,
            goals, next deadline tile (tone-coded to urgency), prayer count. -->
-      <section class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
+      <section class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         <a
           href={`/projects?venture=${encodeURIComponent(venture.name)}`}
           class="block px-3 py-3 bg-surface0 border border-surface1 rounded hover:border-primary transition-colors"
@@ -545,7 +545,7 @@
       <!-- Progress bar — averaged across active projects. Single
            anchor for "how are we doing on this venture". -->
       {#if activeProjects.length > 0}
-        <section class="mb-6">
+        <section class="mb-4">
           <div class="flex items-baseline justify-between mb-1.5">
             <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Overall progress</h2>
             <span class="text-xs text-subtext font-mono">
@@ -571,7 +571,7 @@
            skipping a markdown lib keeps the page small. -->
       {#if aiText || aiBusy || aiError}
         <section
-          class="mb-6 rounded-lg p-4 border"
+          class="mb-4 rounded-lg p-4 border"
           style="border-color: color-mix(in srgb, var(--color-primary) 30%, transparent); background: color-mix(in srgb, var(--color-primary) 4%, transparent);"
         >
           <div class="flex items-baseline justify-between gap-2 mb-2">
@@ -623,7 +623,7 @@
         <!-- Overview tab — compact preview of every section so the
              user can scan everything at once. Each preview links to
              its dedicated tab for the deep view. -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <!-- Projects preview -->
           <section>
             <div class="flex items-baseline justify-between mb-2">
@@ -950,7 +950,7 @@
       {:else if tab === 'links'}
         <!-- Links tab — deadlines + prayer side by side, each in full
              list form rather than the truncated overview preview. -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <section>
             <div class="flex items-baseline justify-between mb-2">
               <h2 class="text-sm font-medium text-text">Deadlines · {activeDeadlines.length}</h2>

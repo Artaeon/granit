@@ -232,7 +232,7 @@
 
 <div class="h-full overflow-y-auto">
   <div class="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
-    <header class="mb-6 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
+    <header class="mb-4 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
       <div>
         <h1 class="text-2xl sm:text-3xl font-semibold text-text">Ventures</h1>
         <p class="text-sm text-dim mt-1">
@@ -347,7 +347,7 @@
            eye lands on what's in motion. Sections are skipped when
            empty (when statusFilter is 'active' only the active section
            renders, etc.). -->
-      <div class="space-y-6">
+      <div class="space-y-4">
         {#each ['active', 'paused', 'archived'] as status (status)}
           {@const list = grouped[status as keyof typeof grouped]}
           {#if list.length > 0}

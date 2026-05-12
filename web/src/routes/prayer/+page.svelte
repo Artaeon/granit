@@ -349,7 +349,7 @@
     {#if verseToday}
       <a
         href="/scripture"
-        class="block bg-surface0 border-l-4 border-primary rounded-r-lg p-4 mb-6 hover:bg-surface1 transition-colors"
+        class="block bg-surface0 border-l-4 border-primary rounded-r-lg p-4 mb-4 hover:bg-surface1 transition-colors"
       >
         <p class="text-sm text-text leading-relaxed italic">"{verseToday.text}"</p>
         {#if verseToday.source}
@@ -365,7 +365,7 @@
     {#if !formOpen}
       <button
         onclick={() => (formOpen = true)}
-        class="w-full mb-6 px-4 py-3 bg-surface0 border border-dashed border-surface1 rounded text-sm text-subtext hover:border-primary hover:text-primary transition-colors"
+        class="w-full mb-4 px-4 py-3 bg-surface0 border border-dashed border-surface1 rounded text-sm text-subtext hover:border-primary hover:text-primary transition-colors"
       >+ New intention</button>
     {:else}
       <form onsubmit={submitCreate} class="bg-surface0 border border-surface1 rounded-lg p-3 mb-4 space-y-3">
@@ -520,7 +520,7 @@
       </div>
     {:else}
       <!-- Active intentions, grouped by what they're tied to. -->
-      <div class="space-y-6">
+      <div class="space-y-4">
         {#each groups as g (g.kind + ':' + g.key)}
           <section>
             <header class="flex items-baseline gap-2 mb-2 pb-1 border-b border-surface1">
@@ -610,7 +610,7 @@
 
       <!-- Archived. Hidden by default; shown on demand. -->
       {#if archived.length > 0}
-        <section class="mt-6">
+        <section class="mt-4">
           <button
             onclick={() => (showArchived = !showArchived)}
             class="w-full flex items-baseline gap-2 pb-1 border-b border-surface1 text-left text-dim"
