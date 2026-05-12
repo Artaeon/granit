@@ -2163,6 +2163,20 @@ export const api = {
       body: JSON.stringify({ enabled })
     }),
 
+  // AI chapter generation — fired from the "missing wikilink →
+  // generate with AI" affordance. Body shape mirrors handlers_ai_chapter.go.
+  generateChapter: (body: {
+    parentPath?: string;
+    chapterTitle: string;
+    outline?: string;
+    save?: boolean;
+    targetPath?: string;
+  }) =>
+    req<{ content: string; path?: string }>('/ai/generate-chapter', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    }),
+
   // Stoicera intranet integration. Exposes a read-only API surface
   // for the stoicera-intranet app (intranet.stoicera.cyou) to sync
   // projects/tasks/goals belonging to a specific venture. Off by

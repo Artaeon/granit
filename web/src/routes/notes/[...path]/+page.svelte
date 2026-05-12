@@ -16,6 +16,7 @@
   import NoteDeadlinesStrip from '$lib/deadlines/NoteDeadlinesStrip.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import { getDraft, setDraft, clearDraft, draftDivergesFromServer } from '$lib/notes/drafts';
   import {
     loadVisitedMap,
@@ -1071,7 +1072,66 @@
         return;
       }
     } catch {}
+    // Unresolved wikilink. If the user is on a note with substantial
+    // content + multiple wikilinks (likely a research outline / study
+    // plan), offer to generate the missing chapter via AI before
+    // falling back to "open empty note". The body has to be non-
+    // trivial because we ship it as the parent-outline context.
+    if (await offerAIChapterGenerationFor(title)) {
+      // The offer either navigated us to the new note or stayed
+      // put (user declined). Either way the navigation decision is
+      // already made.
+      return;
+    }
     goto(`/notes/${encodeURIComponent(title + '.md')}${hash}`);
+  }
+
+  // offerAIChapterGenerationFor: shows a confirm dialog when the
+  // current note looks like an outline (3+ wikilinks AND >= 80 chars
+  // of prose body). On confirm, calls the generate-chapter endpoint
+  // with the current note as parent context, then navigates to the
+  // newly-written chapter note.
+  //
+  // Returns true when the navigation has been handled (success OR
+  // user chose to abort entirely); false to let the caller fall
+  // through to the standard "open empty note" path.
+  async function offerAIChapterGenerationFor(chapterTitle: string): Promise<boolean> {
+    if (!note || !note.path) return false;
+    const outline = body ?? '';
+    // Heuristic gate: parent must have at least 3 wikilinks (so it
+    // really is a TOC-like note) and >= 80 chars of non-fluff
+    // content. Below that the model has nothing to ground in and
+    // we'd produce a generic chapter anyway.
+    const wikilinkCount = (outline.match(/\[\[/g) ?? []).length;
+    if (wikilinkCount < 3 || outline.trim().length < 80) return false;
+    const ok = confirm(
+      `The note "${chapterTitle}" doesn't exist yet.\n\n` +
+      `Generate it with AI using this outline as context?`
+    );
+    if (!ok) {
+      // User explicitly declined — fall through to the standard
+      // "open empty" path so they can write the chapter manually.
+      return false;
+    }
+    try {
+      toast.info(`Generating "${chapterTitle}"…`);
+      const r = await api.generateChapter({
+        parentPath: note.path,
+        chapterTitle,
+        save: true
+      });
+      if (r.path) {
+        toast.success(`Wrote ${r.path}`);
+        goto(`/notes/${encodeURIComponent(r.path)}`);
+        return true;
+      }
+      // No path returned — server didn't save for some reason.
+      // Fall through to empty-note creation so the user isn't stranded.
+      return false;
+    } catch (e) {
+      toast.error('Generation failed: ' + errorMessage(e));
+      return false;
+    }
   }
 
   $effect(() => {
