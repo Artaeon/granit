@@ -131,7 +131,7 @@
           class="text-dim hover:text-text text-lg leading-none ml-2"
         >×</button>
       </header>
-      <div class="flex-1 overflow-y-auto p-4 space-y-5">
+      <div class="flex-1 overflow-y-auto p-2 sm:p-3 space-y-3">
         {#each groups as g}
           <div>
             <h3 class="text-[11px] uppercase tracking-wider text-dim font-medium mb-2">{g.title}</h3>

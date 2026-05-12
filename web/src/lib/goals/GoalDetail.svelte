@@ -619,7 +619,7 @@
         <button onclick={() => (open = false)} aria-label="close" class="text-dim hover:text-text px-2">×</button>
       </header>
 
-      <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+      <div class="flex-1 overflow-y-auto p-2 sm:p-4 space-y-4">
         {#if goal.project || goal.venture}
           <!-- Cross-link chips. The goal carries free-text references
                to a project name and / or venture; the chips make

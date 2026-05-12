@@ -214,7 +214,7 @@
         >×</button>
       </header>
 
-      <div class="flex-1 overflow-y-auto p-4 space-y-3">
+      <div class="flex-1 overflow-y-auto p-2 sm:p-3 space-y-2">
         {#if parsed.length === 0}
           <p class="text-xs text-dim leading-relaxed">
             Export bookmarks from your browser as HTML, then paste the

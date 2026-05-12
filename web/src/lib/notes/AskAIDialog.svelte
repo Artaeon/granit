@@ -372,7 +372,7 @@
         >×</button>
       </header>
 
-      <div class="flex-1 overflow-y-auto p-4 space-y-3">
+      <div class="flex-1 overflow-y-auto p-2 sm:p-3 space-y-2">
         <!-- Selection preview — shows the user exactly what's being
              sent. Read-only so accidental clicks don't mutate it
              during the round-trip. -->

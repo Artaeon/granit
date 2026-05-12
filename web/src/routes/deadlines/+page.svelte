@@ -1319,7 +1319,7 @@
       >×</button>
     </header>
 
-    <div class="flex-1 overflow-y-auto p-4 space-y-4">
+    <div class="flex-1 overflow-y-auto p-2 sm:p-3 space-y-3">
       <div>
         <label for="d-title" class="block text-xs uppercase tracking-wider text-dim mb-1">Title</label>
         <input
