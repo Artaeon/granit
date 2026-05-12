@@ -129,6 +129,29 @@
       preset: 'Produce a markdown table of contents for the following note from its existing headings. Use indented bullet links (`- [Heading](#heading)`). Return only the TOC.' },
     { group: 'Build', id: 'frontmatter', label: 'Suggest frontmatter',
       preset: 'Suggest YAML frontmatter for the following note: a 1-line `title`, 3-6 `tags` (lowercase, hyphenated), and a 1-sentence `summary`. Return only the frontmatter block enclosed in `---` fences, nothing else.' },
+    // "Generate study plan" — turns the current note (typically a
+    // topic name + a few notes-to-self) into a structured learning
+    // outline whose chapter headings are [[wikilinks]]. The user
+    // then clicks each chapter wikilink and the "missing wikilink
+    // → AI generate" flow (handlers_ai_chapter.go) writes that
+    // chapter's full content as a new note. Closes the research
+    // workflow loop FROM the editor — previously discoverable only
+    // via the AI sidebar's Researcher mode.
+    { group: 'Build', id: 'study-plan', label: 'Generate study plan',
+      preset:
+        "Treat the following as a topic the user wants to learn about (the note title + any context the user has written). Produce a structured learning outline as markdown and ONLY a markdown outline.\n\n" +
+        "STRICT OUTPUT FORMAT:\n\n" +
+        "  # <Topic>\n\n" +
+        "  Brief 2-3 sentence overview of why this topic matters and what mastery looks like.\n\n" +
+        "  ## [[Chapter Title]]\n  One sentence describing what this chapter covers.\n\n" +
+        "  ## [[Next Chapter Title]]\n  One sentence...\n\n" +
+        "Rules:\n" +
+        " - EVERY chapter heading MUST be wrapped in [[double brackets]] so the user can click to generate that chapter's full content.\n" +
+        " - 5-9 chapters; foundational → advanced ordering.\n" +
+        " - Chapter titles specific enough to use as note filenames (no colons, slashes, or other path-unsafe characters).\n" +
+        " - End with one chapter titled [[Practice: ...]] or [[Project: ...]] that turns theory into a concrete exercise.\n" +
+        " - Do NOT write the chapter contents — only the outline. The user will click each [[wikilink]] to generate its content.\n" +
+        " - No preamble or sign-off. Return only the markdown outline." },
     { group: 'Build', id: 'next', label: 'Suggested next steps',
       preset: 'Based on the following note, what are the 3-5 most useful next steps for the author? Concrete actions, not vague advice. Return a short markdown bullet list. No preamble.' },
     { group: 'Build', id: 'faq', label: 'Generate FAQ',
