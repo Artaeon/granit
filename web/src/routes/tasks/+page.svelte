@@ -1800,7 +1800,7 @@
       />
     {/if}
 
-    <div class="flex-1 overflow-auto p-3 sm:p-4">
+    <div class="flex-1 overflow-auto p-2 sm:p-3">
       {#if loading && tasks.length === 0}
         <div class="text-sm text-dim">loading…</div>
       {:else if filtered.length === 0 && view === 'today'}
@@ -2139,7 +2139,7 @@
           </div>
         </div>
       {:else}
-        <div class="space-y-6 max-w-3xl">
+        <div class="space-y-4 max-w-3xl">
           {#each listGroups as g (g.key)}
             {@const dotColor = (
               g.key === 'overdue' ? 'bg-error' :
@@ -2174,7 +2174,7 @@
                   >open ↗</a>
                 {/if}
               </h2>
-              <div class="space-y-2">
+              <div class="space-y-1.5">
                 {#each g.tasks.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
                   <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
                     <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
