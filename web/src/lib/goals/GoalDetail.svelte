@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, fmtDateISO, type Goal, type Milestone, type Task } from '$lib/api';
+  import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import Drawer from '$lib/components/Drawer.svelte';
@@ -381,6 +382,35 @@
   }
 
   async function setStatus(s: Goal['status']) { await patch({ status: s }); }
+
+  // Open the AI overlay pre-seeded with this goal's context: title +
+  // status + target date + milestone progress + linked tasks. The
+  // model is grounded enough to answer "draft my next milestone",
+  // "what's blocking me on this?", "summarise my progress" without
+  // the user having to restate the goal each time.
+  function askAIAboutThisGoal(): void {
+    if (!goal) return;
+    const g = goal;
+    const lines = [`I'm working on this goal:`, '', `- ${g.title}`];
+    if (g.status) lines.push(`- status: ${g.status}`);
+    if (g.target_date) lines.push(`- target date: ${g.target_date}`);
+    if (g.category) lines.push(`- category: ${g.category}`);
+    if (g.description && g.description.trim() !== '') {
+      lines.push(`- description: ${g.description.trim()}`);
+    }
+    if (g.milestones && g.milestones.length > 0) {
+      const done = g.milestones.filter((m) => m.done).length;
+      lines.push(`- milestones: ${done}/${g.milestones.length} done`);
+      const next = g.milestones.find((m) => !m.done);
+      if (next) lines.push(`- next milestone: ${next.text}`);
+    }
+    const openTasks = goalTasks.filter((t) => !t.done);
+    if (openTasks.length > 0) {
+      lines.push(`- ${openTasks.length} open task${openTasks.length === 1 ? '' : 's'} linked`);
+    }
+    lines.push('', `What would help me move it forward?`);
+    openAIOverlay({ text: lines.join('\n'), send: false });
+  }
   async function setTargetDate(v: string) { await patch({ target_date: v }); }
   async function setCategory(v: string) { await patch({ category: v || undefined }); }
   async function setColor(v: string) { await patch({ color: v }); }
@@ -539,6 +569,21 @@
              delegate so the detail drawer stays unaware of how the
              dashboard mounts; the parent /goals page owns the
              ?focus=X&dashboard=1 URL state and renders the overlay. -->
+        <!-- Ask AI about this goal — opens the AIOverlay pre-seeded
+             with title + status + target date + milestone progress
+             + linked tasks. Model is grounded so the user can ask
+             "draft my next milestone" or "summarise my progress"
+             without re-stating context. send=false so the user can
+             edit the prompt before submitting. -->
+        <button
+          onclick={askAIAboutThisGoal}
+          title="ask AI about this goal"
+          aria-label="ask ai about this goal"
+          class="px-2.5 py-1.5 min-h-[36px] text-xs rounded border border-surface1 bg-surface0 text-subtext hover:border-primary hover:text-primary inline-flex items-center gap-1"
+        >
+          <span aria-hidden="true">✨</span>
+          <span class="hidden sm:inline">Ask AI</span>
+        </button>
         {#if onOpenDashboard}
           <button
             onclick={onOpenDashboard}
