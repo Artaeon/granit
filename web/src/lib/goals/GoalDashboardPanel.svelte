@@ -209,9 +209,9 @@
     <div class="max-w-7xl mx-auto p-3 sm:p-6">
       {#if loading && !bundle}
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-          <div class="md:col-span-2 xl:col-span-3 bg-surface0 border border-surface1 rounded-lg p-4 animate-pulse h-40"></div>
+          <div class="md:col-span-2 xl:col-span-3 bg-surface0 border border-surface1 rounded-lg p-3 animate-pulse h-40"></div>
           {#each [0, 1, 2, 3, 4] as i (i)}
-            <div class="bg-surface0 border border-surface1 rounded-lg p-4 animate-pulse h-48"></div>
+            <div class="bg-surface0 border border-surface1 rounded-lg p-3 animate-pulse h-48"></div>
           {/each}
         </div>
       {:else if loadError && !bundle}
@@ -229,7 +229,7 @@
                dashboard surfaces exactly what the AI sees. Review-
                due indicator surfaces when a cadence is set + an
                anchor (last_reviewed / created_at) is available. -->
-          <section class="md:col-span-2 xl:col-span-3 bg-surface0 border border-surface1 rounded-lg p-4 sm:p-5">
+          <section class="md:col-span-2 xl:col-span-3 bg-surface0 border border-surface1 rounded-lg p-3 sm:p-5">
             <div class="flex items-baseline gap-2 flex-wrap mb-2">
               <h2 class="text-lg sm:text-xl font-semibold text-text">{g.title}</h2>
               {#if g.status}
@@ -300,7 +300,7 @@
                and a "X of Y done" badge. When no milestones exist
                we surface a one-line hint pointing the user back to
                GoalDetail to add some. -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Milestones</h3>
               {#if msTotal > 0}
@@ -331,7 +331,7 @@
                rest. Empty state is honest — "nothing tagged with
                this goal yet" — and points the user at the action
                that would change it. -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Open tasks</h3>
               <span class="text-[11px] text-dim font-mono">{openTotal}</span>
@@ -369,7 +369,7 @@
                first (completedAt desc, fallback updatedAt) and caps
                at GOAL_DONE_TASK_CAP=8 — we trust that ordering and
                just render. -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Recently done</h3>
               <span class="text-[11px] text-dim font-mono">{bundle.totals?.doneTasks ?? bundle.doneTasks.length}</span>
@@ -395,7 +395,7 @@
                Last 3-5 review_log entries. Each shows date + the
                progress integer the TUI captured + the note text.
                No editing here — that lives in GoalDetail. -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Review history</h3>
               <span class="text-[11px] text-dim font-mono">{(g.review_log ?? []).length}</span>
@@ -427,7 +427,7 @@
                flipping back to GoalDetail. Progress is the share of
                milestones done; for a goal with no milestones we
                fall back to "completed" status = 100%. -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Snapshot</h3>
             </div>

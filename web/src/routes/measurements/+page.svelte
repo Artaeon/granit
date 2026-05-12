@@ -240,7 +240,7 @@
 
       <!-- Detail panel for the selected series -->
       {#if selectedSeries}
-        <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-6">
+        <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-4">
           <header class="flex items-baseline gap-3 mb-3 flex-wrap">
             <h2 class="text-base font-semibold text-text">{selectedSeries.name}</h2>
             <span class="text-xs text-dim">{detailEntries.length} entries</span>

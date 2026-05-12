@@ -142,7 +142,7 @@
         <!-- Right: form + preview -->
         <main class="space-y-4">
           {#if selected}
-            <div class="bg-surface0 border border-surface1 rounded-lg p-4 space-y-3">
+            <div class="bg-surface0 border border-surface1 rounded-lg p-3 space-y-3">
               <div>
                 <label class="block text-xs text-dim mb-1" for="t-title">Title</label>
                 <input

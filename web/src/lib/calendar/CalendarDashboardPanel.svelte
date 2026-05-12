@@ -215,9 +215,9 @@
     <div class="max-w-7xl mx-auto p-3 sm:p-6">
       {#if loading && !bundle}
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-          <div class="md:col-span-2 xl:col-span-3 bg-surface0 border border-surface1 rounded-lg p-4 animate-pulse h-40"></div>
+          <div class="md:col-span-2 xl:col-span-3 bg-surface0 border border-surface1 rounded-lg p-3 animate-pulse h-40"></div>
           {#each [0, 1, 2, 3, 4] as i (i)}
-            <div class="bg-surface0 border border-surface1 rounded-lg p-4 animate-pulse h-48"></div>
+            <div class="bg-surface0 border border-surface1 rounded-lg p-3 animate-pulse h-48"></div>
           {/each}
         </div>
       {:else if loadError && !bundle}
@@ -232,7 +232,7 @@
                count + overdue count + deep-work blocks. Numbers
                sourced from the bundle's totals so they match the
                AI prelude verbatim. -->
-          <section class="md:col-span-2 xl:col-span-3 bg-surface0 border border-surface1 rounded-lg p-4 sm:p-5">
+          <section class="md:col-span-2 xl:col-span-3 bg-surface0 border border-surface1 rounded-lg p-3 sm:p-5">
             <div class="flex items-baseline gap-2 flex-wrap mb-3">
               <h2 class="text-lg sm:text-xl font-semibold text-text">Next 14 days</h2>
               <span class="text-[11px] text-dim font-mono">today is {bundle.todayISO}</span>
@@ -262,7 +262,7 @@
                warm; lighter days neutral. Today's column primary-
                coloured so the eye locks onto "where the cursor is".
                aria-label communicates the bar's data to AT users. -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">This week</h3>
               <span class="text-[11px] text-dim font-mono">{weekHeat.reduce((s, b) => s + b.count, 0)} events</span>
@@ -292,7 +292,7 @@
                clickable rows fall back to /calendar; the URL
                carries ?focus=<id> for forward compatibility (a
                future EventDetail deep-link will pick it up). -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4 md:col-span-2">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3 md:col-span-2">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Upcoming events</h3>
               <span class="text-[11px] text-dim font-mono">{eventCount}</span>
@@ -352,7 +352,7 @@
                currently surface ?id=<id> deep-link; the link falls
                back to /tasks?status=overdue which the tasks page
                does honour. -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Overdue</h3>
               <span class="text-[11px] {overdueCount > 0 ? 'text-error' : 'text-dim'} font-mono">{overdueCount}</span>
@@ -391,7 +391,7 @@
                Sorted by scheduledStart so the timeline reads
                morning-first. Unscheduled tasks sink to the bottom
                so the user sees what's anchored vs. floating. -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Due today</h3>
               <span class="text-[11px] {dueTodayCount > 0 ? 'text-warning' : 'text-dim'} font-mono">{dueTodayCount}</span>
@@ -428,7 +428,7 @@
                to its duration so the eye can tell a 2-hour gap
                from a 1-hour one. Weekend rows are excluded by the
                helper (computeFreeSlots only emits weekdays). -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4 xl:col-span-3 md:col-span-2">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3 xl:col-span-3 md:col-span-2">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Free slot map · next 5 weekdays</h3>
               <span class="text-[11px] text-dim font-mono">≥ 60 min · 09:00–18:00</span>

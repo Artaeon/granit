@@ -572,7 +572,7 @@
              in, what's leaking out. Three cards instead of four so
              nothing competes with the headline net-worth figure. -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-          <div class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <div class="bg-surface0 border border-surface1 rounded-lg p-3">
             <p class="text-xs uppercase tracking-wider text-dim">How much I have</p>
             <p class="text-2xl font-semibold mt-1 {overview.net_worth_cents >= 0 ? 'text-text' : 'text-error'}">
               {fmtMoney(overview.net_worth_cents, overview.currency)}
@@ -584,7 +584,7 @@
               {/if}
             </p>
           </div>
-          <div class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <div class="bg-surface0 border border-surface1 rounded-lg p-3">
             <p class="text-xs uppercase tracking-wider text-dim">Income / month</p>
             <p class="text-2xl font-semibold mt-1 text-success">
               {fmtMoney(overview.income_monthly_actual_cents, overview.currency)}
@@ -596,7 +596,7 @@
               {/if}
             </p>
           </div>
-          <div class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <div class="bg-surface0 border border-surface1 rounded-lg p-3">
             <p class="text-xs uppercase tracking-wider text-dim">Subscriptions / month</p>
             <p class="text-2xl font-semibold mt-1 text-text">
               {fmtMoney(overview.subscription_monthly_cents, overview.currency)}
@@ -685,7 +685,7 @@
              running net for detail. Hidden when nothing's coming up
              so empty vaults don't show a dead band. -->
         {#if cashflowEvents.length > 0 || undatedIncomeMonthly > 0}
-          <section class="mb-6 bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="mb-6 bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-3 flex-wrap mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Next 30 days</h3>
               <span class="text-xs text-dim">

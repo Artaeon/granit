@@ -280,7 +280,7 @@
   onDestroy(() => { if (agoTick) clearInterval(agoTick); });
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-4">
+<section class="bg-surface0 border border-surface1 rounded-lg p-3">
   <header class="flex items-center gap-2 mb-3">
     <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Quick capture</h2>
     <span class="flex-1"></span>

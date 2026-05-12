@@ -199,7 +199,7 @@
         <div class="grid gap-3 grid-cols-1 sm:grid-cols-2">
           {#each filteredPresets as p (p.id)}
             {@const presetStats = stats[p.id]}
-            <article class="bg-surface0 border border-surface1 rounded-lg p-4 flex flex-col gap-2">
+            <article class="bg-surface0 border border-surface1 rounded-lg p-3 flex flex-col gap-2">
               <header class="flex items-baseline gap-2 mb-1">
                 <h3 class="text-base font-semibold text-text flex-1 truncate">{p.name}</h3>
                 {#if p.includeWrite}

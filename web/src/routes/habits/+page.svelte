@@ -455,7 +455,7 @@
     {#if loading && !data}
       <div class="space-y-4">
         {#each Array(3) as _}
-          <div class="bg-surface0 border border-surface1 rounded-lg p-4 space-y-3">
+          <div class="bg-surface0 border border-surface1 rounded-lg p-3 space-y-3">
             <div class="flex items-start gap-3">
               <Skeleton class="h-6 w-6 rounded flex-shrink-0" />
               <div class="flex-1 space-y-2">
@@ -623,7 +623,7 @@
         {#each sortedHabits as h (h.name)}
           {@const insight = bestDay(h)}
           {@const tgt = targetState(h)}
-          <article class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <article class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-start gap-3 mb-3">
               <button
                 onclick={() => toggleToday(h)}
@@ -714,7 +714,7 @@
            clean "completed" green. -->
       <div class="space-y-6">
         {#each sortedHabits as h (h.name)}
-          <article class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <article class="bg-surface0 border border-surface1 rounded-lg p-3">
             <header class="flex items-baseline gap-2 mb-3">
               <h3 class="text-sm font-medium text-text">{h.name}</h3>
               <span class="text-[11px] text-dim font-mono tabular-nums">

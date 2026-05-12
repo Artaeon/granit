@@ -70,7 +70,7 @@
 </script>
 
 {#if loaded && isStale}
-  <div class="bg-surface0 border border-surface1 rounded-lg p-4 hover:border-primary transition-colors">
+  <div class="bg-surface0 border border-surface1 rounded-lg p-3 hover:border-primary transition-colors">
     <header class="flex items-baseline gap-2 mb-3">
       <h3 class="text-sm font-medium text-text">Weekly review</h3>
       <span class="flex-1"></span>

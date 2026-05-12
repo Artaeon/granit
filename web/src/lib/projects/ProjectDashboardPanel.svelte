@@ -158,9 +158,9 @@
              the page doesn't jump on load. Six pulse cards matches the
              six real cards below. -->
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-          <div class="md:col-span-2 xl:col-span-3 bg-surface0 border border-surface1 rounded-lg p-4 animate-pulse h-40"></div>
+          <div class="md:col-span-2 xl:col-span-3 bg-surface0 border border-surface1 rounded-lg p-3 animate-pulse h-40"></div>
           {#each [0, 1, 2, 3, 4] as i (i)}
-            <div class="bg-surface0 border border-surface1 rounded-lg p-4 animate-pulse h-48"></div>
+            <div class="bg-surface0 border border-surface1 rounded-lg p-3 animate-pulse h-48"></div>
           {/each}
         </div>
       {:else if loadError && !bundle}
@@ -177,7 +177,7 @@
                (status / kind / venture / priority / due) mirrors the
                renderProjectContext markdown header so the dashboard
                surfaces exactly what the AI sees. -->
-          <section class="md:col-span-2 xl:col-span-3 bg-surface0 border border-surface1 rounded-lg p-4 sm:p-5">
+          <section class="md:col-span-2 xl:col-span-3 bg-surface0 border border-surface1 rounded-lg p-3 sm:p-5">
             <div class="flex items-baseline gap-2 flex-wrap mb-2">
               <h2 class="text-lg sm:text-xl font-semibold text-text">{p.name}</h2>
               {#if p.status}
@@ -238,7 +238,7 @@
           </section>
 
           <!-- ── 2. Linked goals ────────────────────────────────────── -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Linked goals</h3>
               <span class="text-[11px] text-dim font-mono">{bundle.goals.length}</span>
@@ -273,7 +273,7 @@
           </section>
 
           <!-- ── 3. Open tasks ──────────────────────────────────────── -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Open tasks</h3>
               <span class="text-[11px] text-dim font-mono">{openTotal}</span>
@@ -307,7 +307,7 @@
           </section>
 
           <!-- ── 4. Recently done ───────────────────────────────────── -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Recently done</h3>
               <span class="text-[11px] text-dim font-mono">{bundle.totals?.doneTasks ?? bundle.doneTasks.length}</span>
@@ -330,7 +330,7 @@
           </section>
 
           <!-- ── 5. Linked notes ────────────────────────────────────── -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Linked notes</h3>
               <span class="text-[11px] text-dim font-mono">{bundle.totals?.notes ?? bundle.notes.length}</span>
@@ -357,7 +357,7 @@
           </section>
 
           <!-- ── 6. Momentum (4-week bar chart) ─────────────────────── -->
-          <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+          <section class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-2 mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Momentum · last {MOMENTUM_WEEKS}w</h3>
               <span class="text-[11px] text-dim font-mono">{momentumTotal} done</span>

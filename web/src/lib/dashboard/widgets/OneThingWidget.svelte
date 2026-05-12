@@ -69,7 +69,7 @@
   });
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-4 hover:border-primary transition-colors">
+<section class="bg-surface0 border border-surface1 rounded-lg p-3 hover:border-primary transition-colors">
   {#if !loaded}
     <div class="text-xs text-dim">loading…</div>
   {:else if oneThing}

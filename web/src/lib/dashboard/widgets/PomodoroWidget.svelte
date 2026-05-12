@@ -121,7 +121,7 @@
   let isRunning = $derived(phase !== 'idle' && paused === 0);
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-4">
+<section class="bg-surface0 border border-surface1 rounded-lg p-3">
   <div class="flex items-baseline justify-between mb-3">
     <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Pomodoro</h2>
     <span class="text-[10px] uppercase tracking-wider {phase === 'work' ? 'text-error' : phase === 'break' ? 'text-success' : 'text-dim'}">

@@ -711,7 +711,7 @@
                  the grid doesn't reflow once each chunk lands. -->
             <div class={meta.span === 2 ? 'lg:col-span-2 xl:col-span-3' : ''}>
               {#await meta.load()}
-                <div class="bg-surface0 border border-surface1 rounded-lg p-4 animate-pulse h-24"></div>
+                <div class="bg-surface0 border border-surface1 rounded-lg p-3 animate-pulse h-24"></div>
               {:then Widget}
                 <Widget vaultPath={vault?.root ?? ''} />
               {:catch err}

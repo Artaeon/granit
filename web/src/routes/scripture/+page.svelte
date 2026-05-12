@@ -922,7 +922,7 @@
              gloss is intentionally short and ephemeral; the user can
              always fall through to "Reflect on this" or "AI reflection"
              when they want a saved devotional note. -->
-        <div class="bg-surface0 border border-surface1 rounded-lg p-4 mt-4">
+        <div class="bg-surface0 border border-surface1 rounded-lg p-3 mt-4">
           <div class="flex items-baseline gap-2 flex-wrap">
             <span class="text-xs uppercase tracking-wider text-dim font-medium">Ask AI</span>
             <button
@@ -1109,7 +1109,7 @@
              user can jump back into a sequential reading flow without
              scrolling the picker. Hidden until something's been read. -->
         {#if recent.length > 0}
-          <div class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+          <div class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
             <div class="flex items-baseline gap-3 mb-2">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Continue reading</h3>
               <button
@@ -1134,7 +1134,7 @@
         {/if}
 
         <!-- Random passage controls — primary action up top -->
-        <div class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+        <div class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
           <div class="flex flex-wrap gap-2 items-center">
             <button
               onclick={bibleRandom}
@@ -1171,7 +1171,7 @@
         </div>
 
         <!-- Search box -->
-        <div class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+        <div class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
           <div class="flex gap-2 items-center">
             <input
               bind:value={bibleSearchQ}
@@ -1367,7 +1367,7 @@
       {:else}
         <ul class="space-y-3">
           {#each bookmarks as b (b.id)}
-            <li class="bg-surface0 border border-surface1 rounded-lg p-4">
+            <li class="bg-surface0 border border-surface1 rounded-lg p-3">
               <div class="flex items-baseline gap-2 mb-2">
                 <button
                   type="button"

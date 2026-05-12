@@ -1432,7 +1432,7 @@
            goals once they're past day-one. -->
       <div class="space-y-4">
         {#each [0, 1, 2] as i (i)}
-          <div class="bg-surface0 border border-surface1 rounded-lg p-4 space-y-2.5">
+          <div class="bg-surface0 border border-surface1 rounded-lg p-3 space-y-2.5">
             <div class="flex items-start gap-3">
               <div class="flex-1 space-y-1.5">
                 <Skeleton class="h-5 w-2/3" />

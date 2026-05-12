@@ -65,7 +65,7 @@
 </script>
 
 {#if loaded}
-  <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+  <section class="bg-surface0 border border-surface1 rounded-lg p-3">
     <div class="flex items-baseline justify-between mb-3">
       <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Quick links</h2>
       <a href="/hub" class="text-xs text-secondary hover:underline">all →</a>

@@ -112,7 +112,7 @@
   const thisWeekCount = $derived(buckets[buckets.length - 1]?.count ?? 0);
 </script>
 
-<div class="bg-surface0 border border-surface1 rounded-lg p-4">
+<div class="bg-surface0 border border-surface1 rounded-lg p-3">
   <header class="flex items-baseline gap-2 mb-3">
     <h3 class="text-sm font-medium text-text">Task velocity</h3>
     <span class="flex-1"></span>

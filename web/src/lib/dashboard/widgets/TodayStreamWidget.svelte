@@ -251,7 +251,7 @@
   };
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-4 sm:p-5">
+<section class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-5">
   <!-- Header. Day + date on the left, "N left" pill on the right.
        Reads like a sentence; no decorative chrome. -->
   <header class="flex items-baseline gap-3 mb-3">

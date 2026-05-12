@@ -104,7 +104,7 @@
   let staleDeduped = $derived(staleSection.filter((t) => !todaySection.includes(t) && !quickWinsDeduped.includes(t)));
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-4">
+<section class="bg-surface0 border border-surface1 rounded-lg p-3">
   <div class="flex items-baseline justify-between mb-3">
     <h2 class="text-xs uppercase tracking-wider text-dim font-medium">
       Inbox

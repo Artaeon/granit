@@ -368,7 +368,7 @@
         class="w-full mb-6 px-4 py-3 bg-surface0 border border-dashed border-surface1 rounded text-sm text-subtext hover:border-primary hover:text-primary transition-colors"
       >+ New intention</button>
     {:else}
-      <form onsubmit={submitCreate} class="bg-surface0 border border-surface1 rounded-lg p-4 mb-6 space-y-3">
+      <form onsubmit={submitCreate} class="bg-surface0 border border-surface1 rounded-lg p-3 mb-4 space-y-3">
         <div class="flex items-center gap-2">
           <h2 class="text-sm font-medium text-text flex-1">New prayer intention</h2>
           <button

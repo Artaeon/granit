@@ -71,7 +71,7 @@
       </div>
 
       <!-- Notes per month bar chart -->
-      <section class="bg-surface0 border border-surface1 rounded-lg p-4 sm:p-5 mb-6">
+      <section class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-5 mb-6">
         <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Notes edited per month — last 12</h2>
         <div class="grid grid-cols-12 gap-1 items-end h-32">
           {#each stats.notesPerMonth as m (m.name)}
@@ -90,7 +90,7 @@
 
       <!-- 4-up grid: top tags, top linked, largest, recent -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+        <section class="bg-surface0 border border-surface1 rounded-lg p-3">
           <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Top tags</h2>
           {#if stats.topTags.length === 0}
             <div class="text-sm text-dim italic">no tags yet</div>
@@ -106,7 +106,7 @@
           {/if}
         </section>
 
-        <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+        <section class="bg-surface0 border border-surface1 rounded-lg p-3">
           <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Top linked-to notes</h2>
           {#if stats.topLinkedNotes.length === 0}
             <div class="text-sm text-dim italic">no incoming links yet</div>
@@ -122,7 +122,7 @@
           {/if}
         </section>
 
-        <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+        <section class="bg-surface0 border border-surface1 rounded-lg p-3">
           <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Largest notes (words)</h2>
           <ul class="space-y-1.5">
             {#each stats.largestNotes as n (n.name)}
@@ -134,7 +134,7 @@
           </ul>
         </section>
 
-        <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+        <section class="bg-surface0 border border-surface1 rounded-lg p-3">
           <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Recently edited</h2>
           <ul class="space-y-1.5">
             {#each stats.recentlyEdited as n (n.name)}
@@ -148,7 +148,7 @@
       </div>
 
       <!-- Health -->
-      <section class="bg-surface0 border border-surface1 rounded-lg p-4 mt-6">
+      <section class="bg-surface0 border border-surface1 rounded-lg p-3 mt-6">
         <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Vault health</h2>
         <div class="grid grid-cols-3 gap-3 text-center">
           <div>

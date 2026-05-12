@@ -617,7 +617,7 @@
     {#if jots.length === 0 && loading}
       <div class="space-y-4">
         {#each [0, 1, 2] as _}
-          <div class="bg-surface0 border border-surface1 rounded p-4">
+          <div class="bg-surface0 border border-surface1 rounded p-3">
             <Skeleton class="h-5 w-40 mb-3" />
             <Skeleton class="h-4 w-full mb-1.5" />
             <Skeleton class="h-4 w-5/6 mb-1.5" />
@@ -672,7 +672,7 @@
                   Open →
                 </a>
               </header>
-              <div class="bg-surface0 border border-surface1 rounded p-4">
+              <div class="bg-surface0 border border-surface1 rounded p-3">
                 {#if jot.body.trim()}
                   <MarkdownRenderer body={jot.body} onWikilink={handleWikilink} />
                 {:else}

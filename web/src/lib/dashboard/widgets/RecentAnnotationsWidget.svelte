@@ -61,7 +61,7 @@
   }
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-4">
+<section class="bg-surface0 border border-surface1 rounded-lg p-3">
   <header class="flex items-baseline justify-between mb-3">
     <h2 class="text-sm font-medium text-text">Margin notes</h2>
     <a href="/notes" class="text-xs text-dim hover:text-text">notes →</a>

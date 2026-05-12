@@ -74,7 +74,7 @@
 </script>
 
 {#if loaded && deadlines !== null}
-  <section class="bg-surface0 border border-surface1 rounded-lg p-4">
+  <section class="bg-surface0 border border-surface1 rounded-lg p-3">
     <div class="flex items-baseline justify-between mb-3">
       <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Top deadlines</h2>
       <a href="/deadlines" class="text-xs text-secondary hover:underline">all →</a>
