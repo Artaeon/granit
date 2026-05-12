@@ -1101,7 +1101,32 @@
 
   let stats = $derived.by(() => {
     const today = todayISO();
-    let open = 0, overdue = 0, todayCount = 0, doneToday = 0, snoozed = 0;
+    // Week boundary: completedAt within the last 7 calendar days
+    // (Sunday-relative would surprise users mid-week, so we keep it
+    // rolling-7d). Used by the "Done · 7d" chip.
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    let open = 0,
+      overdue = 0,
+      todayCount = 0,
+      doneToday = 0,
+      doneWeek = 0,
+      snoozed = 0,
+      // sumEstMin accumulates estimatedMinutes across OPEN, non-
+      // snoozed tasks. Power users budget their day in minutes —
+      // surfacing "1280m queued" tells them at a glance whether
+      // the filtered list is doable today (a typical focus day is
+      // ~5h = 300m). Tasks with no estimate contribute 0 — those
+      // get a separate "untouched" counter the user can act on.
+      sumEstMin = 0,
+      // Count of open non-snoozed tasks with no estimate — power-
+      // UI nudge to add estimates so the time budget chip becomes
+      // accurate. Shown only when > 0.
+      noEstCount = 0,
+      // priority accumulator for the average. Skips P0 (unset)
+      // because mixing "no priority" with P1/P2/P3 would skew
+      // the mean toward 0 and read as falsely-low urgency.
+      prioritySum = 0,
+      priorityCount = 0;
     for (const t of tasks) {
       const sn = isSnoozed(t);
       if (!t.done) {
@@ -1112,12 +1137,49 @@
           if (d && d < today) overdue++;
           else if (d === today) todayCount++;
         }
-      } else if (t.completedAt && t.completedAt.slice(0, 10) === today) {
-        doneToday++;
+        if (t.priority >= 1 && t.priority <= 3) {
+          prioritySum += t.priority;
+          priorityCount++;
+        }
+        if (t.estimatedMinutes && t.estimatedMinutes > 0) {
+          sumEstMin += t.estimatedMinutes;
+        } else {
+          noEstCount++;
+        }
+      } else if (t.completedAt) {
+        const day = t.completedAt.slice(0, 10);
+        if (day === today) doneToday++;
+        if (new Date(t.completedAt).getTime() > sevenDaysAgo) doneWeek++;
       }
     }
-    return { open, overdue, todayCount, doneToday, snoozed };
+    const avgPriority = priorityCount > 0 ? prioritySum / priorityCount : 0;
+    return {
+      open,
+      overdue,
+      todayCount,
+      doneToday,
+      doneWeek,
+      snoozed,
+      sumEstMin,
+      noEstCount,
+      avgPriority
+    };
   });
+
+  // Format minutes as a compact human-readable budget — "45m",
+  // "3h 20m", "1d 4h". 8h is one "day-block" by convention; the
+  // chip stays scannable even on overflowing backlogs.
+  function fmtEstBudget(mins: number): string {
+    if (mins < 60) return `${mins}m`;
+    if (mins < 8 * 60) {
+      const h = Math.floor(mins / 60);
+      const m = mins - h * 60;
+      return m === 0 ? `${h}h` : `${h}h ${m}m`;
+    }
+    const d = Math.floor(mins / (8 * 60));
+    const remH = Math.floor((mins - d * 8 * 60) / 60);
+    return remH === 0 ? `${d}d` : `${d}d ${remH}h`;
+  }
 
   // Per-smart-filter counts so the view tabs can show badges.
   // Derived from the unfiltered open task list (sourceFilter +
@@ -1742,7 +1804,9 @@
       <!-- Stats summary chips. Always reflect the unfiltered set so
            the user knows total load even with active filters. The
            overdue / today chips have urgency coloring; doneToday is
-           a positive-tone affirmation; snoozed is muted. -->
+           a positive-tone affirmation; snoozed is muted. Estimate
+           + week-velocity + avg-priority chips were added to give
+           power users a real-time read on workload + throughput. -->
       <div class="px-3 py-2 border-b border-surface1 flex items-center gap-1.5 text-xs flex-shrink-0 flex-wrap">
         <span class="px-2 py-1 rounded bg-surface0 text-subtext font-mono tabular-nums">
           <span class="text-text font-semibold">{stats.open}</span> open
@@ -1759,12 +1823,34 @@
         {/if}
         {#if stats.doneToday > 0}
           <span class="px-2 py-1 rounded bg-surface0 text-success font-mono tabular-nums" title="Completed today">
-            ✓ <span class="font-semibold">{stats.doneToday}</span>
+            ✓ <span class="font-semibold">{stats.doneToday}</span> today
+          </span>
+        {/if}
+        {#if stats.doneWeek > 0}
+          <span class="px-2 py-1 rounded bg-surface0 text-success font-mono tabular-nums" title="Completed in the last 7 days — rolling weekly velocity">
+            ✓ <span class="font-semibold">{stats.doneWeek}</span> 7d
+          </span>
+        {/if}
+        {#if stats.sumEstMin > 0}
+          <span class="px-2 py-1 rounded bg-surface0 text-secondary font-mono tabular-nums" title="Total estimated minutes across open, non-snoozed tasks ({stats.sumEstMin}m). 8h = one day-block.">
+            Σ <span class="font-semibold">{fmtEstBudget(stats.sumEstMin)}</span>
+          </span>
+        {/if}
+        {#if stats.noEstCount > 0}
+          <span class="px-2 py-1 rounded bg-surface0 text-dim font-mono tabular-nums" title="Open tasks with no time estimate — add `est:30m` so the total chip becomes accurate">
+            ? <span class="font-semibold">{stats.noEstCount}</span>
+          </span>
+        {/if}
+        {#if stats.avgPriority > 0}
+          {@const ap = stats.avgPriority}
+          {@const apTone = ap < 1.5 ? 'text-error' : ap < 2.5 ? 'text-warning' : 'text-info'}
+          <span class="px-2 py-1 rounded bg-surface0 font-mono tabular-nums {apTone}" title="Average priority across prioritised open tasks (1=high, 3=low). Lower = more urgent overall load.">
+            avg P<span class="font-semibold">{ap.toFixed(1)}</span>
           </span>
         {/if}
         {#if stats.snoozed > 0}
           <span class="px-2 py-1 rounded bg-surface0 text-dim font-mono tabular-nums" title="Currently snoozed">
-            💤 {stats.snoozed}
+            zZ {stats.snoozed}
           </span>
         {/if}
         <span class="flex-1"></span>
