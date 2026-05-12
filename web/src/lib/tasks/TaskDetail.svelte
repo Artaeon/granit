@@ -4,6 +4,7 @@
   import { toast } from '$lib/components/toast';
   import { cleanTaskText } from '$lib/util/taskParse';
   import Drawer from '$lib/components/Drawer.svelte';
+  import { openAIOverlay } from '$lib/stores/ai-overlay';
 
   // TaskDetail is the side-drawer that pops open when the user clicks
   // a task card. Editable fields not already inline-editable on the card:
@@ -19,6 +20,27 @@
     task: Task | null;
     onChanged?: () => void | Promise<void>;
   } = $props();
+
+  // Build the seed prompt that opens the AI overlay with this task's
+  // context pre-loaded. Pre-fills the composer (send=false) so the
+  // user can edit before submitting — the model has enough context
+  // to answer "help me break this down" or "draft a plan" without
+  // the user having to re-state the task.
+  function askAIAboutThisTask(): void {
+    if (!task) return;
+    const t = task;
+    const lines = [`I'm working on this task:`, '', `- ${cleanTaskText(t.text)}`];
+    if (t.dueDate) lines.push(`- due ${t.dueDate}`);
+    if (t.priority) lines.push(`- priority P${t.priority}`);
+    if (t.scheduledStart) lines.push(`- scheduled ${t.scheduledStart}`);
+    if (t.estimatedMinutes) lines.push(`- estimate ${t.estimatedMinutes}m`);
+    if (t.tags && t.tags.length > 0) lines.push(`- tags: ${t.tags.join(', ')}`);
+    if (t.notes && t.notes.trim() !== '') {
+      lines.push('', `My notes on it:`, t.notes.trim());
+    }
+    lines.push('', `What would help me move it forward?`);
+    openAIOverlay({ text: lines.join('\n'), send: false });
+  }
 
   let notesBuf = $state('');
   let recurrenceBuf = $state('');
@@ -379,6 +401,17 @@
         {#if snoozeActive}
           <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface0 text-info border border-info" title={`snoozed until ${task?.snoozedUntil}`}>snoozed</span>
         {/if}
+        <!-- Ask AI launcher: opens the AIOverlay pre-seeded with the
+             task's title + scheduling + notes as context so the user
+             can ask "help me decompose this" or "draft a plan" with
+             the model already grounded. send=false so the user can
+             edit the prompt before submitting. -->
+        <button
+          onclick={askAIAboutThisTask}
+          title="Ask AI about this task"
+          aria-label="ask ai about this task"
+          class="text-[11px] px-2 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary hover:text-primary transition-colors"
+        >Ask AI</button>
         <button onclick={close} aria-label="close" class="text-dim hover:text-text text-xl leading-none">×</button>
       </header>
 
