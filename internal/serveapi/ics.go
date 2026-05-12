@@ -189,7 +189,12 @@ func parseICSFile(path string) ([]icsEvent, error) {
 		case "LOCATION":
 			cur.Location = unescape(val)
 		case "UID":
-			cur.UID = val
+			// Trim: some exporters emit "UID: foo@bar" (leading
+			// space) or trailing whitespace. The match path at edit
+			// time trims too, but normalising at parse keeps the
+			// emitted EventID clean on the wire so the frontend
+			// echoes a canonical form back.
+			cur.UID = strings.TrimSpace(val)
 		case "RRULE":
 			cur.RRule = val
 		case "DTSTART":

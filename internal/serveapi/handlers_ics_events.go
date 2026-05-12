@@ -153,7 +153,12 @@ func readICSRecords(path string) ([]icsRecord, error) {
 		base, params := splitParams(key)
 		switch base {
 		case "UID":
-			cur.UID = val
+			// Mirror parseICSFile's TrimSpace so the round-trip-view
+			// matches the read-side UID byte-for-byte. The strict ==
+			// compare in the patch/delete handlers compares trimmed
+			// values too, but normalising here means subsequent
+			// writes through icswriter also emit the canonical form.
+			cur.UID = strings.TrimSpace(val)
 		case "SUMMARY":
 			cur.Summary = unescape(val)
 		case "LOCATION":
@@ -407,7 +412,7 @@ func (s *Server) handlePatchICSEvent(w http.ResponseWriter, r *http.Request) {
 	if src == nil {
 		return
 	}
-	uid := chi.URLParam(r, "uid")
+	uid := strings.TrimSpace(chi.URLParam(r, "uid"))
 	if uid == "" {
 		writeError(w, http.StatusBadRequest, "uid required")
 		return
@@ -421,7 +426,14 @@ func (s *Server) handlePatchICSEvent(w http.ResponseWriter, r *http.Request) {
 	found := false
 	err := s.rewriteICS(*src, func(records []icsRecord) ([]icsRecord, error) {
 		for i := range records {
-			if records[i].UID == uid {
+			// TrimSpace on the stored UID too: some inbound .ics files
+			// (Apple Calendar, certain sync apps) emit "UID: foo@bar"
+			// with a stray leading space the parser stored verbatim.
+			// Strict == match silently failed for those events on edit
+			// — the user saw "ics event not found" with no way to tell
+			// what was wrong. Tolerant match resolves it without
+			// rewriting the source file.
+			if strings.TrimSpace(records[i].UID) == uid {
 				if err := applyCRUDToRecord(&records[i], body); err != nil {
 					return nil, err
 				}
@@ -439,7 +451,7 @@ func (s *Server) handlePatchICSEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeError(w, http.StatusNotFound, "event not found")
+		writeError(w, http.StatusNotFound, fmt.Sprintf("event not found: uid=%q in %s (try refreshing — the calendar file may have been re-synced)", uid, src.Source))
 		return
 	}
 	s.broadcastICSChange(*src)
@@ -452,7 +464,7 @@ func (s *Server) handleDeleteICSEvent(w http.ResponseWriter, r *http.Request) {
 	if src == nil {
 		return
 	}
-	uid := chi.URLParam(r, "uid")
+	uid := strings.TrimSpace(chi.URLParam(r, "uid"))
 	if uid == "" {
 		writeError(w, http.StatusBadRequest, "uid required")
 		return
@@ -461,7 +473,8 @@ func (s *Server) handleDeleteICSEvent(w http.ResponseWriter, r *http.Request) {
 	err := s.rewriteICS(*src, func(records []icsRecord) ([]icsRecord, error) {
 		out := records[:0]
 		for _, r := range records {
-			if r.UID == uid {
+			// Same tolerant match as PATCH — see the note there.
+			if strings.TrimSpace(r.UID) == uid {
 				found = true
 				continue
 			}
@@ -474,7 +487,7 @@ func (s *Server) handleDeleteICSEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		writeError(w, http.StatusNotFound, "event not found")
+		writeError(w, http.StatusNotFound, fmt.Sprintf("event not found: uid=%q in %s (try refreshing — the calendar file may have been re-synced)", uid, src.Source))
 		return
 	}
 	s.broadcastICSChange(*src)
