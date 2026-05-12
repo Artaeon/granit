@@ -698,8 +698,8 @@
     <!-- Theme — two simple modes plus system-follow. Granit is
          a strict monochrome surface; this control picks the side
          of black/white you read against. -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Theme</h2>
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">Theme</h2>
       <div class="grid grid-cols-3 gap-2">
         {#each themeOptions as t}
           {@const active = $theme === t}
@@ -734,7 +734,7 @@
          self-hosted calendar tool: reminders that fire when the
          tab is closed. Opt-in because the subscribe flow needs
          permission + a stored endpoint. -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
       <header class="flex items-baseline justify-between mb-2">
         <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Reminders</h2>
         {#if pushBusy}
@@ -947,8 +947,8 @@
          into what data MIGHT leave the device. Foundation pieces
          (Context Engine, redaction, audit) are always-on; the
          features themselves are opt-in via the toggles below. -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <header class="flex items-baseline justify-between mb-3">
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <header class="flex items-baseline justify-between mb-2">
         <h2 class="text-xs uppercase tracking-wider text-dim font-medium">AI features</h2>
         <span class="text-[10px] text-dim">opt-in · redacted · audited</span>
       </header>
@@ -1184,7 +1184,7 @@
          be hostile. The status line tells the user whether the
          vault is actually a git repo so they don't toggle on
          expecting magic in a non-repo directory. -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
       <header class="flex items-baseline justify-between mb-2">
         <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Git autocommit</h2>
         {#if autocommitSaving}
@@ -1219,8 +1219,8 @@
          routable. Backed by .granit/modules.json (same file the TUI
          registry persists to). Core surfaces (notes, tasks, calendar,
          settings) are always-on and rendered with a lock icon. -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <header class="flex items-baseline justify-between mb-3">
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <header class="flex items-baseline justify-between mb-2">
         <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Modules</h2>
         {#if moduleSaving}
           <span class="text-[10px] uppercase tracking-wider text-dim">saving…</span>
@@ -1276,7 +1276,7 @@
     {#if tab === 'ai'}
     <!-- AI provider — same config the TUI reads. Setting up either
          surface is enough; both pick up changes automatically. -->
-    <section class="bg-surface0 border-2 border-surface2 rounded-lg p-4 mb-4">
+    <section class="bg-surface0 border-2 border-surface2 rounded-lg p-3 mb-2.5">
       <header class="flex items-baseline gap-3 mb-3">
         <h2 class="text-base font-semibold text-text">AI provider</h2>
         {#if appCfg}
@@ -1436,8 +1436,8 @@
 
     {#if tab === 'general'}
     <!-- Daily / weekly notes -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Daily notes</h2>
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">Daily notes</h2>
       {#if !appCfg}
         <Skeleton class="h-4 w-1/2" />
       {:else}
@@ -1480,14 +1480,14 @@
     </section>
 
     <!-- Recurring tasks -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Recurring tasks</h2>
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">Recurring tasks</h2>
       <RecurringEditor />
     </section>
 
     <!-- Editor / behavior -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Editor & behavior</h2>
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">Editor & behavior</h2>
       {#if !appCfg}
         <Skeleton class="h-4 w-1/2" />
       {:else}
@@ -1588,8 +1588,8 @@
 
     {#if tab === 'vault'}
     <!-- Security -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Security</h2>
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">Security</h2>
       {#if !authStatus}
         <Skeleton class="h-4 w-1/2" />
       {:else}
@@ -1647,8 +1647,8 @@
     <!-- Devices — every browser/laptop with an active session. The
          current device is highlighted. Each row can be revoked, which
          signs that device out without touching the password. -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <div class="flex items-baseline justify-between mb-3">
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <div class="flex items-baseline justify-between mb-2">
         <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Devices</h2>
         <span class="text-xs text-dim">{devices.length} active</span>
       </div>
@@ -1701,8 +1701,8 @@
 
     {#if tab === 'vault'}
     <!-- Vault info -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Vault</h2>
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">Vault</h2>
       {#if !vault}
         <Skeleton class="h-4 w-2/3 mb-2" />
         <Skeleton class="h-4 w-1/2" />
@@ -1731,8 +1731,8 @@
 
     {#if tab === 'sync'}
     <!-- Sync status -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <div class="flex items-baseline justify-between mb-3">
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <div class="flex items-baseline justify-between mb-2">
         <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Git auto-sync</h2>
         {#if sync?.enabled}
           <button
@@ -1792,8 +1792,8 @@ git push</code></pre>
 
     {#if tab === 'general'}
     <!-- Keyboard shortcuts -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4 mb-4">
-      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">Keyboard shortcuts</h2>
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">Keyboard shortcuts</h2>
       <ul class="space-y-1.5 text-sm">
         {#each shortcuts as s}
           <li class="flex items-baseline gap-3">
@@ -1805,8 +1805,8 @@ git push</code></pre>
     </section>
 
     <!-- About -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-4">
-      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-3">About</h2>
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">About</h2>
       <p class="text-sm text-subtext leading-relaxed">
         Granit web — your vault, anywhere. Powered by the same data layer as the granit TUI;
         learn more at <a href="https://github.com/artaeon/granit" rel="noreferrer" target="_blank">github.com/artaeon/granit</a>.
