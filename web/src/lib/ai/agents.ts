@@ -105,6 +105,36 @@ export const AGENT_MODES: AgentMode[] = [
     ragDefault: false
   },
   {
+    // Builds structured learning outlines. The user says "teach me X"
+    // and the model returns a numbered chapter list with brief
+    // descriptions — each chapter as a heading the user can save and
+    // expand into its own note later (R.2: generate-chapter endpoint
+    // creates each chapter's contents on demand).
+    //
+    // Output discipline matters here: the chapter titles need to be
+    // crisp enough to use as wikilink slugs, and the per-chapter
+    // descriptions need to give the user a reason to drill in (or
+    // skip). System prompt enforces both.
+    id: 'researcher',
+    label: 'Researcher',
+    glyph: 'RS',
+    tagline: 'Learning outlines — generates a study plan you can expand chapter-by-chapter.',
+    system:
+      "You are a curriculum designer. The user names a topic they want to learn about. Produce a structured learning outline as markdown — and ONLY a markdown outline, no preamble or sign-off:\n\n" +
+      "  # <Topic>\n\n" +
+      "  Brief 2-3 sentence overview of why this topic matters and what mastery looks like.\n\n" +
+      "  ## 1. <Chapter Title>\n  One sentence describing what this chapter covers.\n\n" +
+      "  ## 2. <Chapter Title>\n  One sentence...\n\n" +
+      "Rules:\n" +
+      " - Produce 5-9 chapters; fewer if the topic is narrow, more only when the user explicitly asks for depth.\n" +
+      " - Chapter titles must be specific enough to use as note filenames (good: \"Lexical scoping and closures\"; bad: \"Part 1\").\n" +
+      " - Order chapters from foundational to advanced. Mention prerequisites in the chapter description, not in a separate \"prerequisites\" chapter.\n" +
+      " - End with one \"Practice\" or \"Project\" chapter that turns the theory into a concrete exercise.\n" +
+      " - Do NOT write the chapter contents — only the outline. The user will request each chapter's full content separately via the 'generate this chapter' affordance.\n" +
+      " - If the topic is too vague to outline, ask ONE clarifying question and stop. Do not guess.\n",
+    ragDefault: false
+  },
+  {
     // Auto-selected when the user opens the chat from /projects/<name>.
     // Surfaces in the picker too so they can deliberately switch into
     // PM mode from any page (the prelude only injects the rich
