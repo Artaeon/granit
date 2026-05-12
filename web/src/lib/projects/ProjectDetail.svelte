@@ -7,6 +7,7 @@
   import ProjectStarterPack from './ProjectStarterPack.svelte';
   import TaskRow from '$lib/components/TaskRow.svelte';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
+  import { openAIOverlay } from '$lib/stores/ai-overlay';
 
   let { project, onClose, onUpdated, onDeleted, onOpenDashboard }: {
     project: Project;
@@ -127,6 +128,32 @@
 
   async function updateGoals(goals: ProjectGoal[]) {
     await patch({ goals });
+  }
+
+  // Open the AI overlay pre-seeded with this project's context.
+  // The seed includes name + status + description + open-task count
+  // + linked goals so the model can answer "what's blocking this?",
+  // "what should I work on next?", "draft a status update" without
+  // the user having to re-state the project's basics.
+  function askAIAboutThisProject(): void {
+    const lines = [`I'm working on this project:`, '', `- ${project.name}`];
+    if (project.status) lines.push(`- status: ${project.status}`);
+    if (project.description && project.description.trim() !== '') {
+      lines.push(`- description: ${project.description.trim()}`);
+    }
+    if (project.next_action && project.next_action.trim() !== '') {
+      lines.push(`- next action: ${project.next_action.trim()}`);
+    }
+    const openTasks = projectTasks.filter((t) => !t.done);
+    if (openTasks.length > 0) {
+      lines.push(`- ${openTasks.length} open task${openTasks.length === 1 ? '' : 's'}`);
+    }
+    if (linkedGoals.length > 0) {
+      const titles = linkedGoals.map((g) => g.title).join('; ');
+      lines.push(`- linked goals: ${titles}`);
+    }
+    lines.push('', `What would help me move this forward?`);
+    openAIOverlay({ text: lines.join('\n'), send: false });
   }
 
   async function deleteProject() {
@@ -610,6 +637,20 @@
          delegate so the detail drawer stays unaware of how the
          dashboard mounts; the parent /projects page owns the
          ?dashboard=1 URL state and renders the overlay. -->
+    <!-- Ask AI about this project — opens the AIOverlay seeded
+         with project name + status + open-task count + linked
+         goals so the model is grounded before the first user
+         message. send=false: prompt is pre-filled but not yet
+         submitted; the user can edit before pressing Enter. -->
+    <button
+      onclick={askAIAboutThisProject}
+      title="ask AI about this project"
+      aria-label="ask ai about this project"
+      class="px-2.5 py-1.5 min-h-[36px] text-xs rounded border border-surface1 bg-surface0 text-subtext hover:border-primary hover:text-primary inline-flex items-center gap-1"
+    >
+      <span aria-hidden="true">✨</span>
+      <span class="hidden sm:inline">Ask AI</span>
+    </button>
     {#if onOpenDashboard}
       <button
         onclick={onOpenDashboard}
