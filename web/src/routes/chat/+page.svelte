@@ -6,6 +6,14 @@
   import { classifyAiError } from '$lib/util/aiErrors';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { loadStored, saveStored } from '$lib/util/storage';
+  import {
+    AGENT_MODES,
+    GENERIC_MODES,
+    PERSONAS,
+    findMode,
+    loadModeId,
+    persistModeId
+  } from '$lib/ai/agents';
 
   // Multi-turn chat with the configured LLM. History lives in localStorage
   // (one current conversation; the user "saves" via "save as note" to keep
@@ -13,7 +21,7 @@
   // every turn.
 
   const STORAGE_KEY = 'granit.chat.current';
-  type Stored = { messages: ChatMessage[]; updatedAt: number };
+  type Stored = { messages: ChatMessage[]; updatedAt: number; modeId?: string };
 
   let messages = $state<ChatMessage[]>([]);
   let input = $state('');
@@ -21,18 +29,40 @@
   let scrollEl: HTMLDivElement | undefined = $state();
   let inputEl: HTMLTextAreaElement | undefined = $state();
 
+  // Mode (posture / persona) — same catalogue + storage as AIOverlay
+  // so a conversation started in the sidebar can be continued in the
+  // full page with the same mode applied. Persisted to localStorage
+  // via persistModeId so the choice survives reloads.
+  let modeId = $state<string>(loadModeId());
+  let mode = $derived(findMode(modeId));
+  // Sticky mode picker — collapsed-by-default chip strip that the
+  // user expands when they want to switch. Mirrors the AIOverlay's
+  // compact mode-pill UX (no full picker dialog on a 320px phone).
+  let modePickerOpen = $state(false);
+
   // Restore the in-progress conversation on first paint so a refresh
   // doesn't lose context. Save after every message exchange.
   onMount(() => {
     const stored = loadStored<Stored | null>(STORAGE_KEY, null);
     if (stored && Array.isArray(stored.messages)) messages = stored.messages;
+    if (stored?.modeId) modeId = stored.modeId;
     inputEl?.focus();
   });
 
   $effect(() => {
     void messages;
-    saveStored<Stored>(STORAGE_KEY, { messages, updatedAt: Date.now() });
+    void modeId;
+    saveStored<Stored>(STORAGE_KEY, { messages, modeId, updatedAt: Date.now() });
   });
+
+  // When the user changes mode, persist for the next page-load (so
+  // AIOverlay sees it too — same store key).
+  function pickMode(id: string) {
+    modeId = id;
+    persistModeId(id);
+    modePickerOpen = false;
+    inputEl?.focus();
+  }
 
   // Auto-scroll to bottom on new messages.
   $effect(() => {
@@ -52,7 +82,14 @@
     messages = [...messages, userMsg];
     input = '';
     try {
-      const r = await api.chat(messages);
+      // Prepend the mode's system prompt on every turn (matches the
+      // AIOverlay's pattern). The server is stateless and we ship the
+      // whole history each request, so we add it fresh each time —
+      // letting the user change mode mid-conversation simply switches
+      // the posture for subsequent turns without contaminating prior
+      // ones with conflicting system messages.
+      const sys: ChatMessage = { role: 'system', content: mode.system };
+      const r = await api.chat([sys, ...messages]);
       messages = [...messages, r.message];
     } catch (err) {
       // Surface the server error inline so the user can see what went
@@ -185,25 +222,78 @@
        chrome buttons share the same flex-wrap rules. Avoids the
        previous nested-<header> + arm-twisted flex layout that
        caused the subtitle to crowd the buttons on narrow screens. -->
-  <div class="px-4 pt-3 border-b border-surface1 flex-shrink-0 max-w-3xl w-full mx-auto">
-    <PageHeader title="Chat" subtitle="Talk to your AI — same provider as the agents">
+  <div class="px-3 pt-2 border-b border-surface1 flex-shrink-0 max-w-3xl w-full mx-auto">
+    <PageHeader title="Chat" subtitle={mode.tagline}>
       {#snippet actions()}
+        <!-- Mode chip: shows current glyph + label; tap to expand the
+             picker below. Mirrors AIOverlay's compact-mode-pill UX —
+             a thin row of selectable chips appears underneath when
+             open, instead of a full modal dialog.  -->
+        <button
+          onclick={() => (modePickerOpen = !modePickerOpen)}
+          title="switch mode (posture / persona)"
+          class="text-xs px-2.5 py-1.5 bg-surface0 border border-surface1 rounded text-subtext hover:border-primary inline-flex items-center gap-1.5"
+        >
+          <span class="font-mono text-primary">{mode.glyph}</span>
+          <span class="hidden sm:inline">{mode.label}</span>
+          <svg viewBox="0 0 24 24" class="w-3 h-3 transition-transform {modePickerOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
         {#if messages.length > 0}
-          <button onclick={saveAsNote} class="text-xs px-3 py-1.5 bg-surface0 border border-surface1 rounded text-subtext hover:border-primary">
+          <button onclick={saveAsNote} class="text-xs px-2.5 py-1.5 bg-surface0 border border-surface1 rounded text-subtext hover:border-primary">
             Save as note
           </button>
-          <button onclick={reset} class="text-xs px-3 py-1.5 text-dim hover:text-error">
+          <button onclick={reset} class="text-xs px-2.5 py-1.5 text-dim hover:text-error">
             Clear
           </button>
         {/if}
       {/snippet}
     </PageHeader>
+    {#if modePickerOpen}
+      <!-- Expanded picker: two compact rows (modes + personas). Each
+           chip is a tap-target on mobile (~36px high via py-2). The
+           current mode is highlighted with primary text + a bottom
+           rule. Hover hint surfaces the tagline so the user can
+           preview what each posture does. -->
+      <div class="pb-2 pt-1 space-y-1">
+        <div class="flex flex-wrap gap-1">
+          {#each GENERIC_MODES as m}
+            <button
+              onclick={() => pickMode(m.id)}
+              title={m.tagline}
+              class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 transition-colors
+                {modeId === m.id ? 'bg-primary/15 text-primary border border-primary' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary'}"
+            >
+              <span class="font-mono">{m.glyph}</span>
+              <span>{m.label}</span>
+            </button>
+          {/each}
+        </div>
+        {#if PERSONAS.length > 0}
+          <div class="flex flex-wrap gap-1 pt-0.5 border-t border-surface1/40">
+            <span class="text-[10px] uppercase tracking-wider text-dim self-center mr-1">Personas</span>
+            {#each PERSONAS as m}
+              <button
+                onclick={() => pickMode(m.id)}
+                title={m.tagline}
+                class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 transition-colors
+                  {modeId === m.id ? 'bg-primary/15 text-primary border border-primary' : 'bg-surface0 border border-surface1 text-subtext hover:border-primary'}"
+              >
+                <span class="font-mono">{m.glyph}</span>
+                <span>{m.label}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
   </div>
 
   <div bind:this={scrollEl} class="flex-1 min-h-0 overflow-y-auto">
     <div class="max-w-3xl mx-auto px-4 py-6">
       {#if messages.length === 0}
-        <div class="text-center py-12">
+        <div class="text-center py-6">
           <p class="text-sm text-dim">Say hi. The model has no vault context unless you mention notes by name or paste excerpts.</p>
           <p class="text-[11px] text-dim/70 italic mt-2">
             Conversations are stored locally — nothing leaves the server (except your messages going to the AI provider).
