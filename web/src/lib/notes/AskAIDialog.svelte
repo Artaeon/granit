@@ -517,6 +517,22 @@
                   {/if}
                 {/each}
               </div>
+            {:else if pending}
+              <!-- Streaming branch: raw text only, NO markdown parse.
+                   The user reported "Generate study plan" freezing the
+                   app — root cause was that MarkdownRenderer re-ran
+                   preprocess + marked.parse + postprocess (and a
+                   debounced embed-hydrate $effect) on every streamed
+                   chunk. For a typical 2-3KB AI reply that streams in
+                   hundreds of chunks, this is O(N²) work against a
+                   growing string → main thread chokes for several
+                   seconds and the UI appears frozen. Plain <pre>
+                   while streaming is O(1) per chunk; markdown
+                   rendering happens once when the stream completes
+                   ({:else} below). -->
+              <div class="bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text break-words max-h-72 overflow-y-auto">
+                <pre class="whitespace-pre-wrap font-sans text-sm m-0 p-0">{response}</pre>
+              </div>
             {:else}
               <!-- Markdown-rendered response. AI replies are typically
                    markdown — bullets, headers, code blocks — and the
