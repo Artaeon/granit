@@ -44,6 +44,13 @@ const (
 	// returns line + anchor + text + color so the existing
 	// annotations store can accept them with minimal client work.
 	FeatureAnnotateNote Feature = "annotate_note"
+	// FeatureGenerateChapter — given a parent note (typically a
+	// "research" or learning outline) + a target chapter title, write
+	// the chapter as a fresh note. Used by the wikilink-resolver
+	// "generate with AI" affordance: user clicks an unresolved
+	// [[Chapter Title]] inside an outline, granit fires this with
+	// the outline body as context and creates the new note.
+	FeatureGenerateChapter Feature = "generate_chapter"
 )
 
 // FeatureConfig is the per-feature setting record.
@@ -85,6 +92,10 @@ func Defaults() Preferences {
 			// proposes a batch of edits" features (inbox triage,
 			// deadline detect). User opts in via Settings → AI.
 			FeatureAnnotateNote: {Enabled: false, Provider: "ollama"},
+			// On by default — non-destructive, only fires when user
+			// explicitly clicks "generate with AI" on an unresolved
+			// wikilink, and writes ONE note per click.
+			FeatureGenerateChapter: {Enabled: true, Provider: ""},
 		},
 		RedactionEnabled: true,
 		DefaultProvider:  "ollama",

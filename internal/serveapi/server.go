@@ -564,6 +564,12 @@ func (s *Server) Handler() http.Handler {
 		// JSON the user reviews + accepts via the existing
 		// /annotations create endpoint.
 		r.Post("/api/v1/ai/annotate-note", s.handleAISuggestAnnotations)
+		// AI chapter generator — given a parent outline + a chapter
+		// title, writes a focused markdown note for that chapter
+		// grounded in the parent's framing. Powers the "click a
+		// missing wikilink → generate with AI" affordance in
+		// research / learning-plan workflows.
+		r.Post("/api/v1/ai/generate-chapter", s.handleAIGenerateChapter)
 
 		// Recurring tasks — same .granit/recurring.json file the TUI's
 		// recurringtasks overlay edits. Server fires due rules at
