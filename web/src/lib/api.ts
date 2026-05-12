@@ -2163,6 +2163,21 @@ export const api = {
       body: JSON.stringify({ enabled })
     }),
 
+  // Stoicera intranet integration. Exposes a read-only API surface
+  // for the stoicera-intranet app (intranet.stoicera.cyou) to sync
+  // projects/tasks/goals belonging to a specific venture. Off by
+  // default; the user enables + names the venture in Settings.
+  getStoiceraSettings: () =>
+    req<{ enabled: boolean; venture_name: string; token_masked: string; has_token: boolean }>(
+      '/stoicera-integration/settings'
+    ),
+  patchStoiceraSettings: (body: { enabled?: boolean; venture_name?: string; regenerate?: boolean }) =>
+    req<{ enabled: boolean; venture_name: string; token_masked: string; has_token: boolean }>(
+      '/stoicera-integration/settings',
+      { method: 'PATCH', body: JSON.stringify(body) }
+    ),
+  getStoiceraToken: () => req<{ token: string }>('/stoicera-integration/token'),
+
   // Templates (built-in + vault user templates)
   listTemplates: () => req<{ templates: NoteTemplate[]; total: number }>('/templates'),
   createFromTemplate: (body: { templateName: string; path: string; title?: string }) =>

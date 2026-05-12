@@ -237,6 +237,7 @@
     void modulesStore.ensureLoaded();
     void loadCalSources();
     void loadAutocommit();
+    void loadStoiceraSettings();
     void loadPush();
     void loadPrefs();
     void loadAIPrefs();
@@ -598,6 +599,80 @@
       autocommit = { ...autocommit };
     } finally {
       autocommitSaving = false;
+    }
+  }
+
+  // ── Stoicera intranet integration ─────────────────────────────────
+  // Off by default. When enabled, granit serves a read-only API at
+  // /api/v1/integrations/stoicera/* that the stoicera-intranet app
+  // calls with a Bearer token. Token is generated on first enable;
+  // user can regenerate to invalidate prior tokens.
+  let stoiceraSettings = $state<{
+    enabled: boolean;
+    venture_name: string;
+    token_masked: string;
+    has_token: boolean;
+  }>({ enabled: false, venture_name: '', token_masked: '', has_token: false });
+  let stoiceraSaving = $state(false);
+  let stoiceraVentureBuf = $state('');
+  let stoiceraTokenRevealed = $state<string | null>(null);
+
+  async function loadStoiceraSettings() {
+    try {
+      stoiceraSettings = await api.getStoiceraSettings();
+      stoiceraVentureBuf = stoiceraSettings.venture_name;
+    } catch {}
+  }
+  async function toggleStoicera(enabled: boolean) {
+    stoiceraSaving = true;
+    try {
+      stoiceraSettings = await api.patchStoiceraSettings({ enabled });
+      stoiceraTokenRevealed = null;
+    } catch (e) {
+      toast.error('Stoicera: ' + errorMessage(e));
+    } finally {
+      stoiceraSaving = false;
+    }
+  }
+  async function commitStoiceraVenture() {
+    if (stoiceraVentureBuf === stoiceraSettings.venture_name) return;
+    stoiceraSaving = true;
+    try {
+      stoiceraSettings = await api.patchStoiceraSettings({ venture_name: stoiceraVentureBuf });
+    } catch (e) {
+      toast.error('Stoicera: ' + errorMessage(e));
+      stoiceraVentureBuf = stoiceraSettings.venture_name;
+    } finally {
+      stoiceraSaving = false;
+    }
+  }
+  async function regenerateStoiceraToken() {
+    if (!confirm('Regenerate the integration token? The current token will stop working immediately and the intranet app will need to be updated with the new value.')) return;
+    stoiceraSaving = true;
+    try {
+      stoiceraSettings = await api.patchStoiceraSettings({ regenerate: true });
+      stoiceraTokenRevealed = null;
+    } catch (e) {
+      toast.error('Regenerate: ' + errorMessage(e));
+    } finally {
+      stoiceraSaving = false;
+    }
+  }
+  async function revealStoiceraToken() {
+    try {
+      const r = await api.getStoiceraToken();
+      stoiceraTokenRevealed = r.token;
+    } catch (e) {
+      toast.error('Show token: ' + errorMessage(e));
+    }
+  }
+  async function copyStoiceraToken() {
+    try {
+      const r = await api.getStoiceraToken();
+      await navigator.clipboard.writeText(r.token);
+      toast.success('Token copied to clipboard');
+    } catch (e) {
+      toast.error('Copy: ' + errorMessage(e));
     }
   }
 
@@ -1210,6 +1285,74 @@
           </div>
         </div>
       </label>
+    </section>
+
+    <!-- Stoicera intranet integration — exposes read-only API at
+         /api/v1/integrations/stoicera/* for the intranet.stoicera.cyou
+         app to sync projects/tasks/goals belonging to a configured
+         venture. Off by default — explicit enable + name your venture.
+         Token is auto-generated on first enable; regenerate to
+         invalidate prior tokens. -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <header class="flex items-baseline justify-between mb-2">
+        <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Stoicera intranet</h2>
+        {#if stoiceraSaving}
+          <span class="text-[10px] uppercase tracking-wider text-dim">saving…</span>
+        {/if}
+      </header>
+      <p class="text-xs text-dim mb-2">
+        Expose a read-only API at <code class="text-[10px]">/api/v1/integrations/stoicera/*</code> for the stoicera-intranet app. Off until you name a venture and enable below.
+      </p>
+      <label class="flex items-start gap-3 cursor-pointer py-1 mb-2">
+        <input
+          type="checkbox"
+          checked={stoiceraSettings.enabled}
+          onchange={(e) => void toggleStoicera((e.target as HTMLInputElement).checked)}
+          class="w-4 h-4 mt-0.5 accent-primary cursor-pointer"
+        />
+        <div class="flex-1 min-w-0">
+          <div class="text-sm text-text">Enable integration</div>
+          <div class="text-[11px] text-dim">
+            When off, all integration endpoints return 404 — the existence of the feature is hidden behind a reverse proxy.
+          </div>
+        </div>
+      </label>
+      <div class="space-y-2">
+        <div>
+          <label class="text-[11px] uppercase tracking-wider text-dim block mb-1" for="stoicera-venture">Venture name</label>
+          <input
+            id="stoicera-venture"
+            type="text"
+            bind:value={stoiceraVentureBuf}
+            onblur={() => void commitStoiceraVenture()}
+            onkeydown={(e) => { if (e.key === 'Enter') void commitStoiceraVenture(); }}
+            placeholder="Stoicera"
+            disabled={!stoiceraSettings.enabled}
+            class="w-full px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm font-mono disabled:opacity-50"
+          />
+          <div class="text-[11px] text-dim mt-1">
+            Only projects + goals whose <code>venture:</code> field matches this string (case-insensitive) surface through the integration. Empty means nothing — failsafe against accidental over-share.
+          </div>
+        </div>
+        {#if stoiceraSettings.has_token}
+          <div>
+            <div class="text-[11px] uppercase tracking-wider text-dim mb-1">Integration token</div>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <code class="text-xs font-mono px-2 py-1 bg-mantle border border-surface1 rounded text-text flex-1 min-w-0 break-all">{stoiceraTokenRevealed ?? stoiceraSettings.token_masked}</code>
+              {#if stoiceraTokenRevealed === null}
+                <button onclick={() => void revealStoiceraToken()} class="text-[11px] px-2 py-1 bg-surface0 border border-surface1 rounded text-subtext hover:border-primary">Show</button>
+              {:else}
+                <button onclick={() => (stoiceraTokenRevealed = null)} class="text-[11px] px-2 py-1 bg-surface0 border border-surface1 rounded text-subtext hover:border-primary">Hide</button>
+              {/if}
+              <button onclick={() => void copyStoiceraToken()} class="text-[11px] px-2 py-1 bg-surface0 border border-surface1 rounded text-subtext hover:border-primary">Copy</button>
+              <button onclick={() => void regenerateStoiceraToken()} class="text-[11px] px-2 py-1 bg-surface0 border border-error rounded text-error hover:bg-error/10">Regenerate</button>
+            </div>
+            <div class="text-[11px] text-dim mt-1">
+              Configure the stoicera-intranet app to send <code>Authorization: Bearer &lt;token&gt;</code>. Regenerating invalidates the current token immediately.
+            </div>
+          </div>
+        {/if}
+      </div>
     </section>
 
     {/if}
