@@ -411,7 +411,7 @@
     onclick={() => (drawerOpen = false)}
     title={isCompact ? (badge ? `${item.label} — ${badge.label}` : item.label) : undefined}
     aria-label={badge ? `${item.label}, ${badge.label}` : item.label}
-    class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm transition-colors
+    class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-1.5'} rounded text-sm transition-colors
       {active
         ? 'text-primary bg-surface1 font-medium'
         : 'text-subtext hover:bg-surface0 hover:text-text focus-visible:bg-surface0 focus-visible:text-text focus-visible:outline-none'}"
@@ -508,7 +508,7 @@
       <button
         onclick={() => { palette?.show(); drawerOpen = false; }}
         title={isCompact ? 'Quick jump (⌘K)' : undefined}
-        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm text-subtext hover:bg-surface0 hover:text-text transition-colors"
+        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-1.5'} rounded text-sm text-subtext hover:bg-surface0 hover:text-text transition-colors"
       >
         <NavIcon name="search" class="w-5 h-5 flex-shrink-0" />
         {#if !isCompact}
@@ -680,7 +680,7 @@
       <button
         onclick={() => theme.set(nextTheme($theme))}
         title={isCompact ? `Theme: ${themeLabel($theme)} — tap to cycle` : undefined}
-        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm text-subtext hover:bg-surface0 hover:text-text transition-colors"
+        class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-1.5'} rounded text-sm text-subtext hover:bg-surface0 hover:text-text transition-colors"
       >
         <svg viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           {#if $theme === 'dark'}
