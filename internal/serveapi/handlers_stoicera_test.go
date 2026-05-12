@@ -228,6 +228,55 @@ func TestStoicera_EmptyVentureClosesDoor(t *testing.T) {
 	}
 }
 
+// TestStoicera_TasksFilterByProjectFolder: tasks living under a
+// stoicera-tagged project's folder surface through /tasks; tasks
+// in unrelated folders don't. Cross-reference uses the same
+// projectMatches helper the /api/v1/projects endpoint uses, so the
+// integration sees the same task → project mapping the UI does.
+func TestStoicera_TasksFilterByProjectFolder(t *testing.T) {
+	s, h, root := stoiceraTestServer(t)
+	seedProjects(t, root, []granitmeta.Project{
+		{Name: "Apollo", Venture: "Stoicera", Status: "active", Folder: "Projects/Apollo"},
+		{Name: "Gemini", Venture: "Other", Status: "active", Folder: "Projects/Gemini"},
+	})
+	// Seed tasks via direct manipulation of the store's reload —
+	// inject NoteContent fixtures that the parser will turn into Task
+	// records. Each task line follows the standard `- [ ] text` shape.
+	notes := []tasks.NoteContent{
+		{Path: "Projects/Apollo/plan.md", Content: "# Plan\n- [ ] launch rocket\n- [x] book launchpad\n"},
+		{Path: "Projects/Gemini/plan.md", Content: "# Plan\n- [ ] write spec\n"},
+		{Path: "Inbox.md", Content: "- [ ] orphan task\n"},
+	}
+	// Replace the store's scan func so Reload pulls our fixtures.
+	scanned := notes
+	store, _ := tasks.Load(root, func() []tasks.NoteContent { return scanned })
+	s.cfg.TaskStore = store
+
+	tok := enableAndGetToken(t, h, "Stoicera")
+	code, body := doStoiceraJSON(t, h, "GET", "/api/v1/integrations/stoicera/tasks", tok, nil)
+	if code != http.StatusOK {
+		t.Fatalf("tasks returned %d: %s", code, body)
+	}
+	var resp struct {
+		Items []map[string]interface{} `json:"items"`
+	}
+	_ = json.Unmarshal(body, &resp)
+	// 2 tasks under Projects/Apollo/ (one done, one open). Both
+	// should be surfaced — the Stoicera endpoint doesn't filter by
+	// done status, that's the intranet's job.
+	if len(resp.Items) != 2 {
+		t.Fatalf("expected 2 Apollo tasks, got %d: %+v", len(resp.Items), resp.Items)
+	}
+	// All surfaced tasks must come from the Apollo folder; orphan +
+	// Gemini tasks must be excluded.
+	for _, it := range resp.Items {
+		path := it["note_path"].(string)
+		if !strings.HasPrefix(path, "Projects/Apollo/") {
+			t.Errorf("task from wrong folder surfaced: %q", path)
+		}
+	}
+}
+
 // TestStoicera_RegenerateInvalidatesOldToken: PATCH regenerate=true
 // replaces the token; old token no longer authenticates.
 func TestStoicera_RegenerateInvalidatesOldToken(t *testing.T) {

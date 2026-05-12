@@ -420,9 +420,13 @@ func (s *Server) handleStoiceraGetProject(w http.ResponseWriter, r *http.Request
 	http.NotFound(w, r)
 }
 
-// allTasksForVenture collects tasks whose Project belongs to the
-// given venture. Cross-references the project list once and indexes
-// the names for O(1) lookup as we iterate tasks.
+// allTasksForVenture collects tasks belonging to any project in the
+// given venture. Uses the same projectMatches helper the /projects
+// list endpoints use — that way the Stoicera integration sees the
+// same task counts the granit UI shows. projectMatches considers
+// BOTH Folder-prefix match (task lives under Projects/Apollo/...)
+// AND Project name match on Task.Project (free-text marker in the
+// markdown line).
 func (s *Server) allTasksForVenture(venture string) []tasks.Task {
 	if s.cfg.TaskStore == nil || venture == "" {
 		return nil
@@ -431,16 +435,23 @@ func (s *Server) allTasksForVenture(venture string) []tasks.Task {
 	if err != nil {
 		return nil
 	}
-	keep := map[string]bool{}
+	keep := []granitmeta.Project{}
 	for _, p := range projs {
 		if matchesVenture(p.Venture, venture) {
-			keep[strings.ToLower(strings.TrimSpace(p.Name))] = true
+			keep = append(keep, p)
 		}
 	}
+	if len(keep) == 0 {
+		return nil
+	}
+	all := s.cfg.TaskStore.All()
 	out := []tasks.Task{}
-	for _, t := range s.cfg.TaskStore.All() {
-		if keep[strings.ToLower(strings.TrimSpace(t.Project))] {
-			out = append(out, t)
+	for _, t := range all {
+		for _, p := range keep {
+			if projectMatches(p, t) {
+				out = append(out, t)
+				break
+			}
 		}
 	}
 	return out
