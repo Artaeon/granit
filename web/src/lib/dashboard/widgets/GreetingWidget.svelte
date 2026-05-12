@@ -19,7 +19,9 @@
   onDestroy(() => { if (tick) clearInterval(tick); });
 
   let dateLong = $derived(now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }));
-  let timeStr = $derived(now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+  // hour12:false — power users want 24-hour everywhere, regardless of
+  // OS locale (an en-US machine would otherwise render "02:14 PM").
+  let timeStr = $derived(now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }));
 
   // Greet by hour bucket. Slightly varied within each bucket so the
   // dashboard doesn't read the same sentence every day. Picks a
