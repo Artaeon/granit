@@ -34,6 +34,13 @@
 
   type View = 'list' | 'kanban' | 'today' | 'triage' | 'inbox' | 'stale' | 'quickwins' | 'review' | 'eisenhower';
   type Group = 'due' | 'priority' | 'note' | 'project' | 'tag' | 'goal' | 'deadline';
+  // Explicit sort overrides the per-group "auto" sort (which sorts
+  // every bucket by due-then-priority). Set to anything other than
+  // 'auto' and the same sort applies inside every group so the user
+  // gets consistent ordering regardless of which group-by is active.
+  // 'age' is by createdAt ascending (oldest first — the
+  // procrastination tell); the others are obvious from the label.
+  type SortBy = 'auto' | 'priority' | 'due' | 'age' | 'alpha' | 'estimate';
 
   let tasks = $state<Task[]>([]);
   let projects = $state<Project[]>([]);
@@ -53,9 +60,12 @@
   // Persist view + groupBy to localStorage so the user comes back to where they left off.
   const VIEW_KEY = 'granit.tasks.view';
   const GROUP_KEY = 'granit.tasks.groupBy';
+  const SORT_KEY = 'granit.tasks.sortBy';
 
   let view = $state<View>(loadStoredString(VIEW_KEY, 'list') as View);
   let groupBy = $state<Group>(loadStoredString(GROUP_KEY, 'due') as Group);
+  let sortBy = $state<SortBy>(loadStoredString(SORT_KEY, 'auto') as SortBy);
+  $effect(() => saveStoredString(SORT_KEY, sortBy));
   let kanbanMode = $state<'priority' | 'due' | 'triage' | 'config'>('priority');
   let kanbanSwimlane = $state<'none' | 'project' | 'tag' | 'priority'>('none');
   let helpOpen = $state(false);
@@ -1166,6 +1176,67 @@
     };
   });
 
+  // Per-bucket task comparator. Routed through a derived so every
+  // group-by branch can sort buckets through one place — pick a
+  // different sortBy and the entire list reshapes consistently.
+  // 'auto' preserves the historical due-then-priority shape so
+  // existing users aren't surprised on first load.
+  let taskComparator = $derived.by(() => {
+    const dueOf = (t: Task) => t.dueDate ?? (t.scheduledStart?.slice(0, 10) ?? '');
+    const prioOf = (t: Task) => t.priority || 99;
+    const ageOf = (t: Task) => t.createdAt ?? '';
+    const estOf = (t: Task) => t.estimatedMinutes ?? 0;
+    const textOf = (t: Task) => t.text.toLowerCase();
+    switch (sortBy) {
+      case 'priority':
+        // P1 → P2 → P3 → no-priority. Stable tiebreaker on due to
+        // keep "same priority" tasks in a sensible order.
+        return (a: Task, x: Task) => {
+          const d = prioOf(a) - prioOf(x);
+          if (d !== 0) return d;
+          const ad = dueOf(a), xd = dueOf(x);
+          return ad === xd ? 0 : ad < xd ? -1 : 1;
+        };
+      case 'due':
+        // Earliest due first; no-date pushed to the end.
+        return (a: Task, x: Task) => {
+          const ad = dueOf(a), xd = dueOf(x);
+          if (!ad && xd) return 1;
+          if (ad && !xd) return -1;
+          if (ad !== xd) return ad < xd ? -1 : 1;
+          return prioOf(a) - prioOf(x);
+        };
+      case 'age':
+        // Oldest first — surfaces tasks that have been sitting.
+        return (a: Task, x: Task) => {
+          const aa = ageOf(a), xa = ageOf(x);
+          if (aa !== xa) return aa < xa ? -1 : 1;
+          return prioOf(a) - prioOf(x);
+        };
+      case 'alpha':
+        // Title A→Z. Locale-aware so accented characters land in
+        // the spot a native speaker expects.
+        return (a: Task, x: Task) => textOf(a).localeCompare(textOf(x));
+      case 'estimate':
+        // Smallest estimate first — pair with the Quick-wins view
+        // to surface a list of fast tasks for a fragmented hour.
+        return (a: Task, x: Task) => {
+          const d = estOf(a) - estOf(x);
+          if (d !== 0) return d;
+          return prioOf(a) - prioOf(x);
+        };
+      default:
+        // 'auto' — date asc, then priority asc. Matches the previous
+        // hardcoded sort so a user upgrading from before this option
+        // sees identical output.
+        return (a: Task, x: Task) => {
+          const ad = dueOf(a), xd = dueOf(x);
+          if (ad !== xd) return ad < xd ? -1 : 1;
+          return prioOf(a) - prioOf(x);
+        };
+    }
+  });
+
   // Format minutes as a compact human-readable budget — "45m",
   // "3h 20m", "1d 4h". 8h is one "day-block" by convention; the
   // chip stays scannable even on overflowing backlogs.
@@ -1236,17 +1307,11 @@
         else if (d < weekEnd) b.this_week.push(t);
         else b.later.push(t);
       }
-      // Sort each bucket by date asc, then priority asc — so the
-      // user sees the most urgent / most important task first.
-      const sortByDateThenPrio = (a: Task, x: Task) => {
-        const ad = a.dueDate ?? (a.scheduledStart?.slice(0, 10) ?? '');
-        const xd = x.dueDate ?? (x.scheduledStart?.slice(0, 10) ?? '');
-        if (ad !== xd) return ad < xd ? -1 : 1;
-        const ap = a.priority || 99;
-        const xp = x.priority || 99;
-        return ap - xp;
-      };
-      Object.values(b).forEach((arr) => arr.sort(sortByDateThenPrio));
+      // Per-bucket ordering: 'auto' uses the legacy "date asc, then
+      // priority asc" rule; an explicit sortBy choice applies the
+      // selected criterion to EVERY bucket so the user gets the
+      // same shape regardless of which group they look at.
+      Object.values(b).forEach((arr) => arr.sort(taskComparator));
       return [
         { key: 'overdue',   label: 'Overdue',   tasks: b.overdue },
         { key: 'today',     label: 'Today',     tasks: b.today },
@@ -1978,8 +2043,12 @@
         {/if}
         <span class="flex-1"></span>
         {#if view === 'list'}
-          <span class="text-dim">group</span>
-          <select bind:value={groupBy} class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text">
+          <span class="text-dim select-none">group</span>
+          <select
+            bind:value={groupBy}
+            title="How to split the list into groups"
+            class="bg-surface0 border border-surface1 px-2 py-1 text-text"
+          >
             <option value="due">due date</option>
             <option value="priority">priority</option>
             <option value="tag">tag</option>
@@ -1987,6 +2056,19 @@
             <option value="goal">goal</option>
             <option value="deadline">deadline</option>
             <option value="note">note</option>
+          </select>
+          <span class="text-dim select-none">sort</span>
+          <select
+            bind:value={sortBy}
+            title="How to order tasks inside each group. 'auto' uses due-then-priority (the historical default); other choices apply the same rule across every group."
+            class="bg-surface0 border border-surface1 px-2 py-1 text-text"
+          >
+            <option value="auto">auto</option>
+            <option value="priority">priority</option>
+            <option value="due">due</option>
+            <option value="age">age (oldest first)</option>
+            <option value="alpha">A → Z</option>
+            <option value="estimate">estimate (smallest)</option>
           </select>
         {:else}
           <span class="text-dim">columns</span>
