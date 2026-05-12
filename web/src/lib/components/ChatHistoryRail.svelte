@@ -167,7 +167,7 @@
                   <span class="text-[9px] text-dim flex-shrink-0" title={findMode(t.modeId).label}>{findMode(t.modeId).glyph}</span>
                 </div>
                 <div class="text-[10px] text-dim mt-0.5 flex items-center gap-2">
-                  <span>{new Date(t.updatedAt).toLocaleDateString()} {new Date(t.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span>{new Date(t.updatedAt).toLocaleDateString()} {new Date(t.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                   <span>· {t.messages.filter((m) => m.role !== 'system').length} msgs</span>
                 </div>
               </button>

@@ -157,7 +157,7 @@
         {lastFiredAt ? 'Suggest again' : 'Suggest links'}
       </button>
       {#if lastFiredAt}
-        <span class="text-[10px] text-dim">fired {new Date(lastFiredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        <span class="text-[10px] text-dim">fired {new Date(lastFiredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
       {/if}
     {/if}
   </div>
