@@ -43,6 +43,85 @@
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover" class="bg-base text-text antialiased">
+    <!-- Pre-hydration splash. Visible the instant the document parses
+         until the SPA's root component mounts and sets
+         data-app-ready on <html> (done in +layout.svelte's onMount).
+         Black-or-white background depending on the bootstrapped
+         theme so the splash never flashes the wrong palette on a
+         slow connection. No rounded corners, no gradients, no
+         shadows — flat power-UI grammar. The indeterminate bar gives
+         a single liveness cue without dominating the screen. -->
+    <div id="app-splash" aria-hidden="true">
+      <div class="app-splash__center">
+        <svg viewBox="0 0 512 512" width="44" height="44" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="32" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M 256 76 L 432 184 L 432 360 L 256 436 L 80 360 L 80 184 Z" />
+            <path d="M 80 184 L 432 184" />
+            <path d="M 256 76 L 256 184" />
+          </g>
+        </svg>
+        <div class="app-splash__title">Granit</div>
+        <div class="app-splash__bar"><div class="app-splash__bar-fill"></div></div>
+      </div>
+    </div>
+    <style>
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #000;
+        color: #eee;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      }
+      [data-theme='light'] #app-splash {
+        background: #fff;
+        color: #111;
+      }
+      [data-app-ready] #app-splash {
+        display: none;
+      }
+      .app-splash__center {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.875rem;
+      }
+      .app-splash__title {
+        font-size: 0.75rem;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        font-weight: 600;
+        opacity: 0.8;
+      }
+      .app-splash__bar {
+        width: 120px;
+        height: 2px;
+        background: rgba(127, 127, 127, 0.18);
+        overflow: hidden;
+      }
+      .app-splash__bar-fill {
+        width: 30%;
+        height: 100%;
+        background: currentColor;
+        opacity: 0.65;
+        animation: app-splash-slide 1.2s ease-in-out infinite;
+      }
+      @keyframes app-splash-slide {
+        0% { transform: translateX(-120%); }
+        100% { transform: translateX(440%); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .app-splash__bar-fill {
+          animation: none;
+          width: 100%;
+          opacity: 0.4;
+        }
+      }
+    </style>
     <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>

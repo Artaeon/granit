@@ -68,6 +68,18 @@
   // reload-during-edit can't lose data.
   let updateAvailable = $state(false);
   onMount(() => {
+    // Pre-hydration splash hide. Setting data-app-ready on <html>
+    // triggers the `[data-app-ready] #app-splash { display: none }`
+    // rule in app.html. Done in the root onMount so EVERY child page
+    // benefits — even ones that have their own loading states only
+    // start showing them after this fires. Wrapped in a defensive
+    // try so an SSR or test environment without document doesn't
+    // crash.
+    try {
+      document.documentElement.setAttribute('data-app-ready', '1');
+    } catch (_) {
+      // No document — ignore.
+    }
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
     const onMessage = (event: MessageEvent) => {
       if (event?.data?.type !== 'sw-updated') return;
