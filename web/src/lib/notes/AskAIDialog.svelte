@@ -264,14 +264,46 @@
         elapsedTimer = null;
       }
     }, 100);
+    // rAF coalescer — every chunk lands in `chunkBuffer` and we
+    // commit it to the reactive `response` state at most once per
+    // animation frame. Even with the <pre> streaming branch (cheap
+    // per-render), a fast model that emits 100+ tokens/sec was
+    // triggering 100+ Svelte component re-renders per second; each
+    // re-render touches several $derived chains and the dialog's
+    // template. The user reported the app freezing on long
+    // responses despite the earlier markdown-deferral fix — same
+    // class of bug at a different layer. One state write per frame
+    // (≤60 Hz) is the natural cap.
+    let chunkBuffer = '';
+    let chunkFrame = 0;
+    const flushChunks = () => {
+      chunkFrame = 0;
+      if (chunkBuffer.length === 0) return;
+      response += chunkBuffer;
+      chunkBuffer = '';
+    };
     await api.chatStream(
       [{ role: 'user', content: userMessage }],
       sourcePath || undefined,
       {
         onChunk: (chunk) => {
-          response += chunk;
+          chunkBuffer += chunk;
+          if (chunkFrame === 0) {
+            chunkFrame = requestAnimationFrame(flushChunks);
+          }
         },
         onDone: () => {
+          // Flush any trailing buffer SYNCHRONOUSLY so the post-
+          // stream branch ({:else}) sees the complete reply, not a
+          // version missing the last frame's chunks.
+          if (chunkFrame !== 0) {
+            cancelAnimationFrame(chunkFrame);
+            chunkFrame = 0;
+          }
+          if (chunkBuffer.length > 0) {
+            response += chunkBuffer;
+            chunkBuffer = '';
+          }
           pending = false;
           abortCtl = null;
           elapsedMs = performance.now() - startedAt;
@@ -282,6 +314,14 @@
           if (!response) error = 'AI returned an empty response.';
         },
         onError: (err) => {
+          if (chunkFrame !== 0) {
+            cancelAnimationFrame(chunkFrame);
+            chunkFrame = 0;
+          }
+          if (chunkBuffer.length > 0) {
+            response += chunkBuffer;
+            chunkBuffer = '';
+          }
           pending = false;
           abortCtl = null;
           elapsedMs = performance.now() - startedAt;
