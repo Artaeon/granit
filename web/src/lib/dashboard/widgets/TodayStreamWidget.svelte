@@ -82,13 +82,54 @@
     if (nowTick) clearInterval(nowTick);
   });
 
+  // ICS events come down the wire in two shapes:
+  //   - Zoned/UTC RFC3339:  "2026-05-12T11:00:00Z"
+  //   - Floating wall-clock: "2026-05-12T13:00:00" (no Z, no offset)
+  //
+  // For zoned strings, a slice(11, 16) returns the UTC hour, which
+  // for a UTC+2 user is 2h earlier than the wall-clock the calendar
+  // grid actually displays (the grid uses new Date(...).getHours()
+  // — local interpretation). The user reported an ICS event showing
+  // 09-14 on the dashboard but 11-15 on the calendar; same root
+  // cause as the prior calendar drift bug, different surface.
+  //
+  // Floating strings parse fine either way because the browser's
+  // Date constructor treats no-offset ISO strings as local — we
+  // also fall through to the cheap slice path for those so we
+  // don't pay a Date() per row when the wire shape already matches
+  // the wall clock.
+  function isFloatingISO(s: string): boolean {
+    // No trailing Z and no offset suffix (matches RFC3339 §5.6
+    // shapes "+02:00", "-05:30"). Five-char suffix check covers
+    // every offset form.
+    if (s.endsWith('Z')) return false;
+    const tail = s.slice(-6);
+    if (/^[+-]\d{2}:\d{2}$/.test(tail)) return false;
+    return true;
+  }
   function eventDateKey(e: CalendarEvent): string {
-    return e.date ?? (e.start ? e.start.slice(0, 10) : '');
+    if (e.date) return e.date;
+    if (!e.start) return '';
+    // Zoned timestamps need to be reinterpreted in local TZ to pick
+    // the right day — an event at 23:30 UTC is "tomorrow" for a
+    // UTC+2 user but slice(0,10) would say "today".
+    if (isFloatingISO(e.start)) return e.start.slice(0, 10);
+    const d = new Date(e.start);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
   function timeOf(e: CalendarEvent): string {
     if (!e.start) return ''; // all-day
-    return e.start.slice(11, 16); // "HH:MM"
+    if (isFloatingISO(e.start)) return e.start.slice(11, 16);
+    // Zoned → local wall-clock via Date.
+    const d = new Date(e.start);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+  function endTimeOf(e: CalendarEvent): string {
+    if (!e.end) return '';
+    if (isFloatingISO(e.end)) return e.end.slice(11, 16);
+    const d = new Date(e.end);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
 
   function nowHHMM(): string {
@@ -183,8 +224,13 @@
     for (const e of events) {
       if (eventDateKey(e) !== today) continue;
       if (!e.start || !e.end) continue;
-      const s = e.start.slice(11, 16);
-      const en = e.end.slice(11, 16);
+      // timeOf / endTimeOf go through Date for zoned strings so
+      // the comparison happens in the user's local wall clock,
+      // matching `cutoff` (also local). Pre-fix this slice'd the
+      // UTC digits and a UTC+2 user saw "happening now" land 2h
+      // late (or early, depending on which event was current).
+      const s = timeOf(e);
+      const en = endTimeOf(e);
       if (s <= cutoff && cutoff < en) return e;
     }
     return null;
