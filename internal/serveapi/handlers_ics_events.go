@@ -93,6 +93,11 @@ type icsRecord struct {
 	Sequence     int
 	DTStamp      time.Time
 	RecurrenceID string
+	// ExDates is the verbatim list of RFC 5545 EXDATE values (one
+	// "skip" entry per cancelled occurrence). Preserved on round-
+	// trip so a series the user "Skip this occurrence"'d through
+	// us doesn't lose the EXDATE when we rewrite the file.
+	ExDates []string
 	// Extra carries verbatim "KEY:VALUE" lines we didn't model — emitted
 	// back into the VEVENT block on round-trip so a custom X-MOZ-* or
 	// CATEGORIES doesn't get silently dropped.
@@ -186,6 +191,18 @@ func readICSRecords(path string) ([]icsRecord, error) {
 			}
 		case "RECURRENCE-ID":
 			cur.RecurrenceID = val
+		case "EXDATE":
+			// 5545 §3.8.5.1: EXDATE may pack multiple comma-separated
+			// values on one line. Preserve them verbatim in the
+			// record so the writer can re-emit the same wire shape;
+			// the comparison logic in the calendar feed
+			// (parseICSFile + isExcluded) already normalises.
+			for _, v := range strings.Split(val, ",") {
+				v = strings.TrimSpace(v)
+				if v != "" {
+					cur.ExDates = append(cur.ExDates, v)
+				}
+			}
 		default:
 			cur.Extra = append(cur.Extra, line)
 		}
@@ -251,6 +268,7 @@ func recordToWriterEvent(r icsRecord) icswriter.Event {
 		Sequence:     r.Sequence,
 		DTStamp:      r.DTStamp,
 		RecurrenceID: r.RecurrenceID,
+		ExDates:      r.ExDates,
 	}
 }
 
@@ -492,6 +510,98 @@ func (s *Server) handleDeleteICSEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	s.broadcastICSChange(*src)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleSkipICSOccurrence adds an EXDATE entry to a recurring ICS
+// event so a single occurrence is excluded from the rendered series.
+// This is the ICS counterpart of events.json's /events/{id}/skip —
+// the user's "cancel this one Tuesday standup" gesture without
+// touching the rest of the series.
+//
+// Body: { "date": "YYYY-MM-DDTHH:MM:SSZ" } (timed) or
+//
+//	{ "date": "YYYY-MM-DD" } (all-day)
+//
+// The value is converted to 5545's compact ICS-time form
+// (YYYYMMDDTHHMMSSZ or YYYYMMDD) before being appended to ExDates.
+// Idempotent: appending the same date twice yields one EXDATE entry
+// in the rewritten file (the writer dedups).
+func (s *Server) handleSkipICSOccurrence(w http.ResponseWriter, r *http.Request) {
+	src := s.requireWritableICS(w, chi.URLParam(r, "source"))
+	if src == nil {
+		return
+	}
+	uid := strings.TrimSpace(chi.URLParam(r, "uid"))
+	if uid == "" {
+		writeError(w, http.StatusBadRequest, "uid required")
+		return
+	}
+	var body struct {
+		Date string `json:"date"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	body.Date = strings.TrimSpace(body.Date)
+	if body.Date == "" {
+		writeError(w, http.StatusBadRequest, "date required")
+		return
+	}
+	// Accept RFC3339 timed and plain YYYY-MM-DD all-day. Normalise
+	// to the wire form the writer expects (no dashes, no colons).
+	var ics string
+	if len(body.Date) == 10 {
+		t, err := time.Parse("2006-01-02", body.Date)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "date must be RFC3339 or YYYY-MM-DD")
+			return
+		}
+		ics = t.Format("20060102")
+	} else {
+		t, err := time.Parse(time.RFC3339, body.Date)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "date must be RFC3339 or YYYY-MM-DD")
+			return
+		}
+		ics = t.UTC().Format("20060102T150405Z")
+	}
+
+	var updated icsRecord
+	found := false
+	var notRecurring bool
+	err := s.rewriteICS(*src, func(records []icsRecord) ([]icsRecord, error) {
+		for i := range records {
+			if strings.TrimSpace(records[i].UID) != uid {
+				continue
+			}
+			if records[i].RRULE == "" {
+				notRecurring = true
+				return records, nil
+			}
+			records[i].ExDates = append(records[i].ExDates, ics)
+			records[i].Sequence++
+			records[i].DTStamp = time.Now().UTC()
+			updated = records[i]
+			found = true
+			return records, nil
+		}
+		return records, nil
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		if notRecurring {
+			writeError(w, http.StatusBadRequest, "event is not recurring — use DELETE for a single VEVENT")
+			return
+		}
+		writeError(w, http.StatusNotFound, fmt.Sprintf("event not found: uid=%q in %s", uid, src.Source))
+		return
+	}
+	s.broadcastICSChange(*src)
+	writeJSON(w, http.StatusOK, recordToCRUDResponse(updated))
 }
 
 // broadcastICSChange notifies subscribers that the .ics file mutated so

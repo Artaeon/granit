@@ -250,30 +250,75 @@
     busy = true;
     try {
       if (event.type === 'ics_event' && event.source && event.eventId) {
-        // Skip start/end on PATCH when the user didn't touch them.
-        // The icswriter always emits UTC-zoned timestamps, so any
-        // round-trip of an originally-floating event through the
-        // wire converts it to UTC — and a UTC+2 user later reading
-        // the same file in UTC+3 sees the wall-clock shifted by an
-        // hour. Conditionally omitting unchanged times leaves the
-        // floating-ness intact for the very common rename-only edit.
-        const timeChanged =
-          editDate !== origEditDate ||
-          editStartH !== origEditStartH ||
-          editStartM !== origEditStartM ||
-          editEndH !== origEditEndH ||
-          editEndM !== origEditEndM;
-        const patch: Parameters<typeof api.patchICSEvent>[2] = {
-          summary: editTitle,
-          location: editLocation
-        };
-        if (timeChanged) {
-          patch.start = utcRFC3339FromLocalParts(editDate, editStartTime || '00:00');
-          if (editEndTime) {
-            patch.end = utcRFC3339FromLocalParts(editDate, editEndTime);
+        // ICS recurring + "this occurrence only": detach the
+        // occurrence from the series via EXDATE, then create a new
+        // standalone VEVENT in the same .ics file carrying the
+        // edited properties. Two sequential calls — backend doesn't
+        // bundle them, but the order matters: skip FIRST so the
+        // user's rendered grid still shows ONE event for that day
+        // (the new one) and not both. If create-event fails after
+        // skip, the user sees a hole in the series — surfaced as
+        // a clear toast so they can re-add manually.
+        if (event.rrule && editScope === 'instance' && event.start) {
+          // Pick the date of the occurrence currently shown — the
+          // backend turns RFC3339 / date-only into the right EXDATE
+          // form. Use the ORIGINAL start (event.start), not the
+          // edited time, since EXDATE targets the source anchor.
+          const skipDate = event.start;
+          try {
+            await api.skipICSOccurrence(event.source, event.eventId, skipDate);
+          } catch (err) {
+            toast.error('Skip failed: ' + errorMessage(err));
+            return;
           }
+          // Build the replacement VEVENT body using the edited fields.
+          // No rrule — this is a one-off occurrence, not a new series.
+          const start = utcRFC3339FromLocalParts(editDate, editStartTime || '00:00');
+          const end = editEndTime
+            ? utcRFC3339FromLocalParts(editDate, editEndTime)
+            : undefined;
+          try {
+            await api.createICSEvent(event.source, {
+              summary: editTitle,
+              start,
+              end,
+              location: editLocation
+            });
+          } catch (err) {
+            toast.error(
+              'Standalone create failed (skip went through — the original occurrence is now hidden): ' +
+                errorMessage(err)
+            );
+            return;
+          }
+        } else {
+          // ICS series path: rewrite the base VEVENT.
+          //
+          // Skip start/end on PATCH when the user didn't touch them.
+          // The icswriter always emits UTC-zoned timestamps, so any
+          // round-trip of an originally-floating event through the
+          // wire converts it to UTC — and a UTC+2 user later reading
+          // the same file in UTC+3 sees the wall-clock shifted by an
+          // hour. Conditionally omitting unchanged times leaves the
+          // floating-ness intact for the very common rename-only edit.
+          const timeChanged =
+            editDate !== origEditDate ||
+            editStartH !== origEditStartH ||
+            editStartM !== origEditStartM ||
+            editEndH !== origEditEndH ||
+            editEndM !== origEditEndM;
+          const patch: Parameters<typeof api.patchICSEvent>[2] = {
+            summary: editTitle,
+            location: editLocation
+          };
+          if (timeChanged) {
+            patch.start = utcRFC3339FromLocalParts(editDate, editStartTime || '00:00');
+            if (editEndTime) {
+              patch.end = utcRFC3339FromLocalParts(editDate, editEndTime);
+            }
+          }
+          await api.patchICSEvent(event.source, event.eventId, patch);
         }
-        await api.patchICSEvent(event.source, event.eventId, patch);
       } else if (event.eventId) {
         // Recurring + 'this only' scope: write a per-occurrence
         // override on the original anchor. Series base + rrule are
@@ -666,7 +711,7 @@
                slot. Defaults to 'this' on open — same conservative
                default as the drag-move flow. -->
           {#if event?.type === 'event' && event?.rrule}
-            <fieldset class="border border-surface1 rounded p-2 space-y-1">
+            <fieldset class="border border-surface1 p-2 space-y-1">
               <legend class="text-[10px] uppercase tracking-wider text-dim px-1">Apply to</legend>
               <label class="flex items-center gap-2 text-xs text-text cursor-pointer">
                 <input type="radio" bind:group={editScope} value="instance" name="ev-edit-scope" />
@@ -677,6 +722,28 @@
                 <input type="radio" bind:group={editScope} value="series" name="ev-edit-scope" />
                 <span>The entire series</span>
                 <span class="text-[10px] text-dim">— shifts every instance</span>
+              </label>
+            </fieldset>
+          {/if}
+          <!-- ICS recurring scope picker. ICS events have no
+               first-class override path in our schema, but we can
+               approximate "this occurrence only" by EXDATE'ing the
+               source series and creating a standalone replacement
+               VEVENT in the same .ics file — same observable result
+               from the user's perspective. The series option keeps
+               the existing path (rewrite the base VEVENT). -->
+          {#if event?.type === 'ics_event' && event?.rrule && icsWritable}
+            <fieldset class="border border-surface1 p-2 space-y-1">
+              <legend class="text-[10px] uppercase tracking-wider text-dim px-1">Apply to · ICS</legend>
+              <label class="flex items-center gap-2 text-xs text-text cursor-pointer">
+                <input type="radio" bind:group={editScope} value="instance" name="ev-edit-scope-ics" />
+                <span>Just this occurrence</span>
+                <span class="text-[10px] text-dim">— EXDATE + new standalone VEVENT</span>
+              </label>
+              <label class="flex items-center gap-2 text-xs text-text cursor-pointer">
+                <input type="radio" bind:group={editScope} value="series" name="ev-edit-scope-ics" />
+                <span>The entire series</span>
+                <span class="text-[10px] text-dim">— rewrites the base VEVENT</span>
               </label>
             </fieldset>
           {/if}

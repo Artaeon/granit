@@ -1307,6 +1307,17 @@ export const api = {
     req<void>(`/calendars/${encodeURIComponent(source)}/events/${encodeURIComponent(uid)}`, {
       method: 'DELETE'
     }),
+  // Append an EXDATE entry to a recurring ICS series so the named
+  // occurrence is excluded from the rendered calendar. Pairs with
+  // createICSEvent to implement "edit only this occurrence" — the
+  // UI calls skip + create-standalone sequentially to detach a
+  // single instance from a series. `date` is RFC3339 for timed
+  // events or YYYY-MM-DD for all-day.
+  skipICSOccurrence: (source: string, uid: string, date: string) =>
+    req<ICSEvent>(`/calendars/${encodeURIComponent(source)}/events/${encodeURIComponent(uid)}/skip`, {
+      method: 'POST',
+      body: JSON.stringify({ date })
+    }),
 
   // Projects
   listProjects: () => req<{ projects: Project[]; total: number }>('/projects'),

@@ -267,6 +267,7 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/api/v1/calendars/{source}/events", s.handleCreateICSEvent)
 		r.Patch("/api/v1/calendars/{source}/events/{uid}", s.handlePatchICSEvent)
 		r.Delete("/api/v1/calendars/{source}/events/{uid}", s.handleDeleteICSEvent)
+		r.Post("/api/v1/calendars/{source}/events/{uid}/skip", s.handleSkipICSOccurrence)
 
 		r.Get("/api/v1/projects", s.handleListProjects)
 		// Read-only scanner: given a local git-repo path (under the

@@ -53,6 +53,14 @@ type Event struct {
 	Sequence     int
 	DTStamp      time.Time
 	RecurrenceID string // optional — for individual instance overrides (RFC 5545 §3.8.4.4)
+	// ExDates is the set of skipped occurrences for a recurring
+	// event. Each entry is an RFC 5545 §3.3.5 ICS-time string —
+	// AllDay events use YYYYMMDD; timed events use
+	// YYYYMMDDTHHMMSSZ. Emitted as a single
+	// "EXDATE:val1,val2,..." line (or "EXDATE;VALUE=DATE:..."
+	// for AllDay events) per 5545's comma-separated form.
+	// Empty / nil → no EXDATE line.
+	ExDates []string
 }
 
 // RRULEOptions feeds BuildRRULE. Freq is required; the rest are
@@ -195,6 +203,34 @@ func writeEvent(b *strings.Builder, ev Event) {
 	}
 	if ev.RRULE != "" {
 		writeLine(b, "RRULE:"+ev.RRULE)
+	}
+	if len(ev.ExDates) > 0 {
+		// 5545 §3.8.5.1: EXDATE may carry multiple comma-separated
+		// values on one line. We dedup + filter empties so a caller
+		// that appends without checking doesn't produce malformed
+		// output. AllDay events need the VALUE=DATE parameter so
+		// downstream parsers know to interpret as YYYYMMDD rather
+		// than a malformed timestamp.
+		seen := make(map[string]struct{}, len(ev.ExDates))
+		clean := make([]string, 0, len(ev.ExDates))
+		for _, x := range ev.ExDates {
+			x = strings.TrimSpace(x)
+			if x == "" {
+				continue
+			}
+			if _, dup := seen[x]; dup {
+				continue
+			}
+			seen[x] = struct{}{}
+			clean = append(clean, x)
+		}
+		if len(clean) > 0 {
+			prefix := "EXDATE:"
+			if ev.AllDay {
+				prefix = "EXDATE;VALUE=DATE:"
+			}
+			writeLine(b, prefix+strings.Join(clean, ","))
+		}
 	}
 	writeLine(b, "END:VEVENT")
 }
