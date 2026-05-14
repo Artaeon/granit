@@ -380,6 +380,25 @@
   const tokenEstimate = $derived(Math.round(charCount / 4));
   const bigInput = $derived(charCount > 16000);
 
+  // Selection-preview cap. The actual request.text is unchanged
+  // (the AI still sees the whole note) — only the visible preview
+  // is truncated. Pre-fix, opening the dialog over a large note
+  // (whole-note actions hand the entire body as `text`, including
+  // for "Generate study plan" + every preset in the More menu)
+  // rendered the full body inside `<pre whitespace-pre-wrap>`. A
+  // 50-200KB text node with that layout shape locks Chromium /
+  // WebKit's layout engine for seconds — exactly the freeze the
+  // user reported on EVERY AI feature, not just streaming. Capping
+  // at 4000 chars keeps the preview useful (the user can still see
+  // what they sent) while keeping initial render cheap.
+  const PREVIEW_CHAR_CAP = 4000;
+  const previewText = $derived.by(() => {
+    const t = request?.text ?? '';
+    if (t.length <= PREVIEW_CHAR_CAP) return t;
+    return t.slice(0, PREVIEW_CHAR_CAP);
+  });
+  const previewTruncated = $derived(charCount > PREVIEW_CHAR_CAP);
+
   // Response stats — surfaced live in the response header chip row.
   // Pre-fix these were $derived(...) recomputed on EVERY reactive
   // state write (response change OR elapsedMs tick OR pending flip),
@@ -593,10 +612,18 @@
       <div class="flex-1 overflow-y-auto p-2 sm:p-3 space-y-2">
         <!-- Selection preview — shows the user exactly what's being
              sent. Read-only so accidental clicks don't mutate it
-             during the round-trip. -->
+             during the round-trip. Cap the rendered text at
+             PREVIEW_CHAR_CAP (4000) to keep the browser's layout
+             engine from choking on a 100KB+ note body — the AI
+             still sees the full request.text. -->
         <div>
-          <span class="block text-[11px] uppercase tracking-wider text-dim mb-1">Your selection</span>
-          <pre class="bg-surface0 border border-surface1 rounded px-3 py-2 text-xs text-subtext whitespace-pre-wrap break-words max-h-32 overflow-y-auto font-mono">{request.text}</pre>
+          <span class="block text-[11px] uppercase tracking-wider text-dim mb-1 flex items-baseline gap-2">
+            <span>Your selection</span>
+            {#if previewTruncated}
+              <span class="text-[10px] text-warning normal-case tracking-normal" title="The full text is sent to the AI; only this preview is truncated for speed.">preview truncated · {(charCount - PREVIEW_CHAR_CAP).toLocaleString()} more chars sent</span>
+            {/if}
+          </span>
+          <pre class="bg-surface0 border border-surface1 rounded px-3 py-2 text-xs text-subtext whitespace-pre-wrap break-words max-h-32 overflow-y-auto font-mono">{previewText}{#if previewTruncated}…{/if}</pre>
         </div>
 
         <!-- Instruction field. Empty = generic "help me with this".
