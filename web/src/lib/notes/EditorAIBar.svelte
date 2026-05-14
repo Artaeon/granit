@@ -293,21 +293,29 @@
 
   let { selection, onAskWholeNote, onAskRange, onChord }: Props = $props();
 
+  // Defensive: selection is typed SelectionState but during the
+  // brief mount window before the parent's $effect populates
+  // aiBarSelection, OR if a future caller forgets to pass it, the
+  // prop could be undefined. Guard every read so a missing prop
+  // can't crash the bar with "Cannot read of null (length)".
+  // The fallback shape matches an empty selection so the rest of
+  // the chip layout renders cleanly.
+  let selText = $derived(selection?.text ?? '');
   // Has-selection branch: surface verbs that operate on the slice.
   // Length read off selection.text rather than (to - from) so a
   // selection that crosses a CRLF normalises to the visible char
   // count the user sees in the status bar.
-  let hasSelection = $derived(selection.text.length > 0);
-  let selLen = $derived(selection.text.length);
+  let hasSelection = $derived(selText.length > 0);
+  let selLen = $derived(selText.length);
   // Word + line counts for the selection — surfaced alongside the
   // chars chip so a power user picking text for a "shorten" or
   // "rewrite as bullets" pass can size their selection at a glance
   // without scrolling to the status bar. Cheap to derive every
   // render; the selection text is bounded by what fits in memory.
   let selWords = $derived(
-    selection.text.trim() ? selection.text.trim().split(/\s+/).length : 0
+    selText.trim() ? selText.trim().split(/\s+/).length : 0
   );
-  let selLines = $derived(selection.text ? selection.text.split('\n').length : 0);
+  let selLines = $derived(selText ? selText.split('\n').length : 0);
   // ~4 chars/token is the industry rule of thumb. Lets the user
   // tell when a selection is too big for a cheap model or when it
   // crosses into "this is going to take a while" territory.

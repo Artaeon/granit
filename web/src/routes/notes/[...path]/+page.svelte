@@ -1272,11 +1272,17 @@
     };
   });
 
+  // Defensive: body is $state('') so it should never be null, but
+  // the user reported a 'Cannot read of null (length)' on note open
+  // that matched this $derived chain's profile. Guard every body
+  // read so a transient mid-mount state can't crash the page —
+  // the empty-string fallback collapses everything to zero, which
+  // is the visually correct count for "no content".
   let wordCount = $derived.by(() => {
-    const t = body.trim();
+    const t = (body ?? '').trim();
     return t ? t.split(/\s+/).length : 0;
   });
-  let charCount = $derived(body.length);
+  let charCount = $derived((body ?? '').length);
   let lineCount = $derived(body ? body.split('\n').length : 0);
   // Reading time at ~225 wpm — average silent reading speed. Floor of
   // 1 minute so a short note doesn't read "0 min". Hidden under 50
