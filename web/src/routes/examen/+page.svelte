@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
+  import { rafThrottle } from '$lib/util/streamThrottle';
   import { api, todayISO, type Note, type PrayerIntention } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { loadStored, saveStored } from '$lib/util/storage';
@@ -215,20 +216,24 @@
           { role: 'user', content: user }
         ],
         undefined,
-        {
-          onChunk: (c) => {
-            buf += c;
-            const lines = buf.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 0);
+        (() => {
+          // rAF throttle — rebuilds the prompt list per chunk.
+          const exT = rafThrottle((full) => {
+            const lines = full.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 0);
             if (aiPrompts && aiPrompts.scope === scope) {
               aiPrompts = { scope, lines };
             }
-          },
-          onDone: () => {},
-          onError: (err) => {
-            aiError = err.message;
-            aiPrompts = null;
-          }
-        },
+          });
+          return {
+            onChunk: exT.onChunk,
+            onDone: () => { exT.flush(); },
+            onError: (err: Error) => {
+              exT.flush();
+              aiError = err.message;
+              aiPrompts = null;
+            }
+          };
+        })(),
         aiAbort.signal
       );
     } finally {

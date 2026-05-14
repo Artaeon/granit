@@ -32,6 +32,7 @@
 	} from './projectAgent';
 	import { addIntentToHistory, normaliseHistory } from '$lib/agents/intentHistory';
 	import { loadStored, saveStored } from '$lib/util/storage';
+	import { rafThrottle } from '$lib/util/streamThrottle';
 
 	interface Props {
 		open: boolean;
@@ -109,21 +110,24 @@
 					{ role: 'user', content: user }
 				],
 				undefined,
-				{
-					onChunk: (c) => {
-						raw += c;
-						const block = extractJsonBlock(raw);
+				(() => {
+					// rAF throttle — same shape as the other agents.
+					const projT = rafThrottle((full) => {
+						raw = full;
+						const block = extractJsonBlock(full);
 						if (!block) return;
 						const parsed = parseProjectAgentResponse(block);
 						if (parsed.length > 0) {
 							const valid = validateProjectActions(parsed, projects);
 							proposals = mergeProjectProposals(proposals, valid) as ProposalRow[];
 						}
-					},
-					onError: (err) => {
-						error = err.message;
-					}
-				},
+					});
+					return {
+						onChunk: projT.onChunk,
+						onDone: () => { projT.flush(); },
+						onError: (err: Error) => { projT.flush(); error = err.message; }
+					};
+				})(),
 				abort.signal
 			);
 		} finally {

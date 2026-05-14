@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, type HabitInfo, type HabitsResponse , todayISO } from '$lib/api';
+  import { rafThrottle } from '$lib/util/streamThrottle';
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import Heatmap from '$lib/components/Heatmap.svelte';
@@ -85,14 +86,18 @@
           { role: 'user', content: user }
         ],
         undefined,
-        {
-          onChunk: (c) => {
-            buf += c;
-            aiInsights = buf.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 0);
-          },
-          onDone: () => {},
-          onError: (err) => { aiError = err.message; }
-        },
+        (() => {
+          // rAF throttle — split + filter + reactive aiInsights write
+          // per chunk repaints the insights list per token.
+          const habitT = rafThrottle((full) => {
+            aiInsights = full.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 0);
+          });
+          return {
+            onChunk: habitT.onChunk,
+            onDone: () => { habitT.flush(); },
+            onError: (err: Error) => { habitT.flush(); aiError = err.message; }
+          };
+        })(),
         aiAbort.signal
       );
     } finally {

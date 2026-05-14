@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, type Person } from '$lib/api';
+  import { rafThrottle } from '$lib/util/streamThrottle';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
@@ -157,6 +158,8 @@
     const user = `People list:\n\n\`\`\`json\n${seed}\n\`\`\``;
     let buf = '';
     try {
+      // rAF throttle — aiRaw is rendered live.
+      const peopleT = rafThrottle((full) => { aiRaw = full; });
       await api.chatStream(
         [
           { role: 'system', content: system },
@@ -164,17 +167,16 @@
         ],
         undefined,
         {
-          onChunk: (c) => { buf += c; aiRaw = buf; },
+          onChunk: peopleT.onChunk,
           onDone: () => {
-            // Try parse on done. Strip fences defensively.
-            let cleaned = buf.trim();
+            peopleT.flush();
+            let cleaned = aiRaw.trim();
             if (cleaned.startsWith('```')) {
               cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
             }
             try {
               const arr = JSON.parse(cleaned) as AIPick[];
               if (Array.isArray(arr)) {
-                // Filter to picks that match a real person on the list.
                 const known = new Map(people.map((p) => [p.name.toLowerCase(), p]));
                 aiPicks = arr.filter((x) => known.has((x.name ?? '').toLowerCase()));
               }
@@ -182,7 +184,7 @@
               aiError = 'Model didn\'t return parseable JSON.';
             }
           },
-          onError: (err) => { aiError = err.message; }
+          onError: (err) => { peopleT.flush(); aiError = err.message; }
         },
         aiAbort.signal
       );

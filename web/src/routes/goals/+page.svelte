@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
   import { api, type Goal, type Project, type Task , todayISO } from '$lib/api';
+  import { rafThrottle } from '$lib/util/streamThrottle';
   import { onWsEvent } from '$lib/ws';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
@@ -546,13 +547,16 @@
       '- Output the milestone text only — no preamble, no quotes, no bullet, no period.\n\n' +
       'Goal context:\n\n' + ctx;
 
+    // rAF throttle — aiText is rendered live.
+    const goalT = rafThrottle((full) => { aiText = full; });
     try {
       await api.chatStream(
         [{ role: 'user', content: userMessage }],
         undefined,
         {
-          onChunk: (c) => { aiText += c; },
+          onChunk: goalT.onChunk,
           onDone: () => {
+            goalT.flush();
             aiBusy = false;
             aiAbort = null;
             // Trim once at end so the streaming UI shows tokens
@@ -561,6 +565,7 @@
             if (!aiText) aiError = 'AI returned an empty suggestion.';
           },
           onError: (err) => {
+            goalT.flush();
             aiBusy = false;
             aiAbort = null;
             aiError = err.message;

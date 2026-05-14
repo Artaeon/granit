@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, type PrayerIntention, type Project, type Venture, type Goal, type Scripture } from '$lib/api';
+  import { rafThrottle } from '$lib/util/streamThrottle';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -142,6 +143,8 @@
     const ctx = ctxBits.length > 0 ? `Context: ${ctxBits.join(', ')}.\n\n` : '';
     const system = 'You suggest 2-3 scripture passages (Bible references) that fit the user\'s intention. Return STRICTLY a JSON array, no fences, no prose: [{"ref": "<passage like Phil 4:6-7 or Ps 23>", "reason": "<under 14 words, why this passage fits>"}]. Prefer short, well-known passages. Pick passages that genuinely speak to the intention\'s situation, not generic comfort verses.';
     const user = `${ctx}Intention: "${nText.trim()}"\n\nGive me 2-3 verse picks.`;
+    // rAF throttle — aiRaw is rendered live.
+    const prayerT = rafThrottle((full) => { aiRaw = full; });
     try {
       await api.chatStream(
         [
@@ -150,9 +153,10 @@
         ],
         undefined,
         {
-          onChunk: (c) => { buf += c; aiRaw = buf; },
+          onChunk: prayerT.onChunk,
           onDone: () => {
-            let cleaned = buf.trim();
+            prayerT.flush();
+            let cleaned = aiRaw.trim();
             if (cleaned.startsWith('```')) {
               cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
             }
@@ -163,7 +167,7 @@
               aiError = 'Model didn\'t return parseable JSON.';
             }
           },
-          onError: (err) => { aiError = err.message; }
+          onError: (err) => { prayerT.flush(); aiError = err.message; }
         },
         aiAbort.signal
       );

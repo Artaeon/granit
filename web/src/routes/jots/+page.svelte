@@ -4,6 +4,7 @@
   import { auth } from '$lib/stores/auth';
   import { api, fmtDateISO, type Jot, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
+  import { rafThrottle } from '$lib/util/streamThrottle';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
@@ -122,6 +123,8 @@
     const system = 'You analyse recent daily-note entries and surface 3-5 recurring themes. A theme is a topic, person, project, struggle, or joy that shows up across multiple entries. Return STRICTLY a JSON array, no fences, no prose: [{"label": "<short title, 1-3 words, lowercase>", "query": "<single-word search term that finds the theme>"}]. Pick search terms that actually appear in the entries (a hashtag, a name, a recurring word) — not synonyms.';
     const user = `Recent jots:\n\`\`\`json\n${seed}\n\`\`\`\n\nGive me 3-5 themes.`;
     try {
+      // rAF throttle — aiRaw is rendered live as a preview.
+      const jotsT = rafThrottle((full) => { aiRaw = full; });
       await api.chatStream(
         [
           { role: 'system', content: system },
@@ -129,9 +132,10 @@
         ],
         undefined,
         {
-          onChunk: (c) => { buf += c; aiRaw = buf; },
+          onChunk: jotsT.onChunk,
           onDone: () => {
-            let cleaned = buf.trim();
+            jotsT.flush();
+            let cleaned = aiRaw.trim();
             if (cleaned.startsWith('```')) {
               cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
             }
@@ -142,7 +146,7 @@
               aiError = 'Model didn\'t return parseable JSON.';
             }
           },
-          onError: (err) => { aiError = err.message; }
+          onError: (err) => { jotsT.flush(); aiError = err.message; }
         },
         aiAbort.signal
       );
