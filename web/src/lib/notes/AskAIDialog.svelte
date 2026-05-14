@@ -3,479 +3,206 @@
   import { api } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import type { AskAIRequest } from '$lib/editor/ask-ai';
-  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
-  import { lineDiff } from '$lib/util/lineDiff';
-  import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import { rafThrottle } from '$lib/util/streamThrottle';
 
-  // AskAIDialog — modal that opens when the user fires Mod-Shift-A
-  // (or clicks the AI button on the floating toolbar) on a text
-  // selection. Sends the selection to /chat as a single-turn
-  // user message and shows the response with four action buttons:
-  // Copy / Replace / Insert below / Cancel.
+  // AskAIDialog — MINIMAL REWRITE (2026-05-15).
   //
-  // Optional "instruction" line lets the user steer the AI:
-  //   "summarise this in three bullets"
-  //   "translate to German"
-  //   "make this more concise"
-  // When set, it's prepended as a system-style preface before the
-  // selection. The system prompt the server adds (granit context)
-  // stays — this is a layer on top, not a replacement.
+  // The previous version was ~950 lines and the user kept reporting
+  // the browser freezing for 5+ seconds on click — bad enough that
+  // Chrome showed the "Page Unresponsive" dialog. Multiple targeted
+  // fixes (lineDiff cap, preview cap, rAF chunk throttle, null-safe
+  // reads, stat-derive memoisation) didn't resolve it. Five parallel
+  // exploration agents converged on the same diagnosis: the dialog
+  // accumulated too many simultaneously-active hot paths (live diff
+  // view, live markdown render, live per-frame stats, history chip
+  // row, ~30 preset chips, dismiss timer, throughput chip ticker)
+  // and the cumulative cost was the freeze.
+  //
+  // This rewrite strips the dialog to the absolute essentials:
+  //
+  //   - Selection preview, capped at 2000 chars rendered. The full
+  //     selection text is what we send to the AI; the on-screen
+  //     <pre> only renders the cap.
+  //   - Instruction textarea (manual or auto-filled from preset).
+  //   - DURING STREAMING: a centered spinner + Stop button only.
+  //     No live response text. No stats. No diff. No markdown
+  //     parse. The buffer accumulates in memory; nothing renders.
+  //   - POST-STREAM: response in a plain <pre> with a small length
+  //     line. No diff. No markdown render. Plain text rendering is
+  //     near-free even for 10K-char responses.
+  //   - Action buttons: Cancel · Copy · Save as note · Insert below
+  //     · Replace selection.
+  //
+  // Removed entirely (relative to the prior version):
+  //   - Diff view (lineDiff is O(N*M); even with size caps it was
+  //     a hot path during streaming for medium-sized inputs).
+  //   - Live markdown render of streaming response.
+  //   - Per-chunk stats $derived chain (chars / words / lines /
+  //     tokens / throughput) — the timer alone caused dozens of
+  //     re-renders per second.
+  //   - Preset chip grid (~13 chips × 4 groups). The editor's More
+  //     menu is the canonical preset entry; this dialog stays
+  //     focused on the "show me the response" surface.
+  //   - Recent-prompt history row.
+  //   - Auto-fire countdown indicator.
+  //   - Big-input warning chip.
+  //   - Provider / model metadata strip.
+  //
+  // Auto-fire (from presetInstruction) is preserved so existing
+  // bar/menu wiring keeps working with no caller changes.
+  //
+  // If a user wants the rich features back later, they live in git
+  // history (commits up to ~e5e2e9fc) — re-introduce one at a time
+  // with profiling each step so the freeze doesn't recur.
 
   interface Props {
     request: AskAIRequest | null;
     /** Path of the source note — passed to /chat so the AI has note
-     *  context for free, same as the morning routine's AI suggestion. */
+     *  context for free. Same shape as the previous component. */
     sourcePath: string;
     onDismiss: () => void;
   }
-
   let { request, sourcePath, onDismiss }: Props = $props();
 
+  // ── State machine ────────────────────────────────────────────────
+  // Simple finite states: 'idle' (waiting for user to send) →
+  // 'pending' (streaming) → 'done' (response ready). Errors set
+  // 'done' with `error` populated. Reset to 'idle' on close.
+  type DialogState = 'idle' | 'pending' | 'done';
+  let dialogState = $state<DialogState>('idle');
   let instruction = $state('');
   let response = $state('');
-  let pending = $state(false);
   let error = $state('');
-  // View toggle for the response panel — 'preview' renders as
-  // markdown (the default), 'diff' shows a line-by-line LCS diff
-  // of the original selection against the AI response. Diff is the
-  // killer view for Improve / Fix grammar / Shorten where you want
-  // to see exactly what changed before hitting Replace.
-  let viewMode = $state<'preview' | 'diff'>('preview');
-  let inputEl: HTMLTextAreaElement | undefined = $state();
-  // AbortController for the in-flight streaming call. Stored at the
-  // component level so the cancel button + Escape key can both
-  // close the upstream connection promptly.
   let abortCtl: AbortController | null = $state(null);
-  // Stream timing — for the live throughput chip. startedAt is the
-  // performance.now() snapshot when ask() fires; elapsedMs ticks
-  // every 100ms while streaming so the chip moves visibly. We use
-  // performance.now() over Date.now() because the underlying clock
-  // can't jump backwards if the system time changes mid-stream.
-  let startedAt = $state(0);
-  let elapsedMs = $state(0);
-  let elapsedTimer: ReturnType<typeof setInterval> | null = null;
-
-  // Quick-pick instructions, grouped by intent. Each is a complete
-  // instruction that works across providers; the user can still
-  // tweak the field before submitting. Grouping makes the chip wall
-  // scannable instead of looking like 13 random buttons in a row.
-  const PRESET_GROUPS: { label: string; items: { label: string; text: string }[] }[] = [
-    {
-      label: 'Transform',
-      items: [
-        { label: 'Improve', text: 'Improve the writing of the following — clearer, tighter, same voice. Return only the improved text, no preamble.' },
-        { label: 'Fix grammar', text: 'Fix grammar and typos in the following. Preserve voice, structure, and meaning. Return only the corrected text.' },
-        { label: 'Shorten', text: 'Shorten the following while preserving the key points. Return only the shorter version.' },
-        { label: 'Expand', text: 'Expand the following with more detail and context. Keep the same voice. Return only the expanded text.' },
-        { label: 'Make formal', text: 'Rewrite the following in a more formal, professional register. Return only the rewritten text.' },
-        { label: 'Make casual', text: 'Rewrite the following in a more casual, conversational register. Return only the rewritten text.' }
-      ]
-    },
-    {
-      label: 'Extract',
-      items: [
-        { label: 'Summarise', text: 'Summarise the following in 3 concise bullet points.' },
-        { label: 'Outline', text: 'Generate a markdown outline (## headings + bulleted sub-points) of the key ideas in the following. Return only the outline.' },
-        { label: 'Tasks', text: 'Extract the actionable items from the following as a markdown task list (`- [ ] task` lines). Each line should be a concrete action. Return ONLY the markdown checklist, no preamble.' },
-        { label: 'Tags', text: 'Suggest 5-7 short, lowercase, hyphenated hashtags relevant to the topic of the following. Return ONLY a single line of space-separated tags starting with `#`. Example: `#research #notes-app #productivity`.' },
-        { label: 'Continue', text: 'Continue writing from where the following text leaves off, in the same voice and style. Return only the continuation, no preamble.' }
-      ]
-    },
-    {
-      label: 'Translate',
-      items: [
-        { label: 'EN', text: 'Translate the following to English. Return only the translation.' },
-        { label: 'DE', text: 'Translate the following to German. Return only the translation.' },
-        { label: 'Bullet list', text: 'Rewrite the following as a markdown bullet list. Return only the list.' }
-      ]
-    },
-    {
-      // Reflect — the dialog's "thinking" surface as opposed to its
-      // "rewriting" surface. Output here is meant to be READ next to
-      // the original (replace mode rarely makes sense), so each
-      // prompt frames the response as commentary rather than a
-      // drop-in rewrite. Insert-Below is the natural action.
-      label: 'Reflect',
-      items: [
-        { label: 'Explain', text: 'Explain the following clearly. Assume the reader knows the broad surrounding context but not this specific topic. Return a short markdown explanation — definitions, intuition, one concrete example. No preamble.' },
-        { label: 'Steel-man', text: 'Steel-man the argument in the following. Begin with "**Strongest version:**" and write the most charitable, most rigorous version of the argument. Then on a new line "**Weak points:**" with 2-3 honest weaknesses. Return only this markdown block.' },
-        { label: 'Counter', text: 'Argue the opposite of the position in the following. Make the strongest possible case for the contrary view in 2-4 sentences. Return only the counter-argument prose, no preamble.' },
-        { label: 'Connect', text: 'What ideas, concepts, or fields does the following connect to? Return a markdown bullet list of 5 connections, each with one line of why. Return ONLY the list.' },
-        { label: 'Question', text: 'Generate 5 sharp, non-leading questions that would deepen understanding of the following. Return ONLY a numbered markdown list, one question per line, no preamble.' }
-      ]
-    }
-  ];
-
-  // Last-used instruction persists across sessions so a re-open of
-  // the dialog over a different selection lets the user re-run the
-  // same prompt with one click. localStorage-backed; size-bounded so
-  // a giant prompt doesn't blow the quota.
-  const LAST_INSTRUCTION_KEY = 'granit.ai.lastInstruction';
-  function loadLastInstruction(): string {
-    return loadStoredString(LAST_INSTRUCTION_KEY, '');
-  }
-  function saveLastInstruction(s: string): void {
-    if (s.length > 0 && s.length < 500) saveStoredString(LAST_INSTRUCTION_KEY, s);
-  }
-
-  // Prompt history — a ring of the last N unique instructions the
-  // user has fired through the dialog. Surfaces in a "Recent" chip
-  // row above the standard preset groups so a power-user who
-  // alternates between a few custom prompts (e.g. "rewrite as bullet
-  // points for the meeting deck", "translate to Italian and keep
-  // technical terms in English") can re-fire any of them in one
-  // click. Stored as JSON so the typed shape stays clean even if
-  // someone hand-edits the key.
-  const HISTORY_KEY = 'granit.ai.promptHistory';
-  const HISTORY_MAX = 8;
-  let promptHistory = $state<string[]>([]);
-  // Seed from storage once on first render. Done in $effect rather
-  // than at module scope so SSR doesn't touch window/localStorage.
-  $effect(() => {
-    try {
-      const raw = loadStoredString(HISTORY_KEY, '');
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed)) {
-        promptHistory = parsed
-          .filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length < 500)
-          .slice(0, HISTORY_MAX);
-      }
-    } catch {
-      // Malformed history — start fresh rather than blow up the dialog.
-      promptHistory = [];
-    }
-  });
-  function pushHistory(s: string) {
-    const t = s.trim();
-    if (!t || t.length > 500) return;
-    // Move-to-front semantics: if t already exists, dedup; then prepend.
-    const next = [t, ...promptHistory.filter((x) => x !== t)].slice(0, HISTORY_MAX);
-    promptHistory = next;
-    try {
-      saveStoredString(HISTORY_KEY, JSON.stringify(next));
-    } catch {
-      // Storage quota / private-window fallthrough — history just
-      // won't persist this session, which is fine.
-    }
-  }
-
-  // Preset-path delay before auto-fire. The user picked the preset
-  // on the bar so they EXPECT a request to fire — but flashing the
-  // dialog open and immediately streaming gives no window for "wait,
-  // I meant a different selection" / "let me tweak the instruction".
-  // 400ms is long enough to read what's about to be sent + reach
-  // for the input, short enough that the user doesn't feel like
-  // they're waiting. Any keystroke in the instruction box cancels
-  // the timer (the user is editing; that IS their cancel).
-  let autoFireTimer: ReturnType<typeof setTimeout> | null = $state(null);
-  let autoFireCountdown = $state(false);
+  let inputEl: HTMLTextAreaElement | undefined = $state();
+  let autoFireTimer: ReturnType<typeof setTimeout> | null = null;
   const AUTO_FIRE_DELAY_MS = 400;
 
-  function cancelAutoFire() {
+  // Reset the dialog state when `request` flips from null → set
+  // (a new AI feature was clicked). Bounded set of state writes:
+  // everything resets to a known idle baseline. The preset is
+  // applied here, and an auto-fire is scheduled if one is present.
+  $effect(() => {
+    if (!request) return;
+    // Always reset before applying the new request — the previous
+    // session's state can't leak into this one.
+    response = '';
+    error = '';
+    dialogState = 'idle';
+    abortCtl?.abort();
+    abortCtl = null;
     if (autoFireTimer !== null) {
       clearTimeout(autoFireTimer);
       autoFireTimer = null;
     }
-    autoFireCountdown = false;
-  }
-
-  $effect(() => {
-    if (request) {
-      response = '';
-      // Cancel any leftover countdown from a previous open before
-      // we (maybe) start a new one — protects against rapid
-      // preset → close → different-preset opens stacking timers.
-      cancelAutoFire();
-      // When the bar (or any host) passed a presetInstruction, honour
-      // it AND auto-fire AFTER a short cancellable delay. The user
-      // already picked the action on the bar; the delay gives them
-      // a beat to edit if they want.
-      if (request.presetInstruction && request.presetInstruction.trim()) {
-        instruction = request.presetInstruction.trim();
-        viewMode = request.presetView ?? (isRewriteInstruction(instruction) ? 'diff' : 'preview');
-        error = '';
-        pending = false;
-        autoFireCountdown = true;
-        tick().then(() => {
-          inputEl?.focus();
-          autoFireTimer = setTimeout(() => {
-            autoFireTimer = null;
-            autoFireCountdown = false;
-            void ask();
-          }, AUTO_FIRE_DELAY_MS);
-        });
-      } else {
-        // Pre-fill with last-used instruction so a "summarise this"
-        // workflow becomes one click on subsequent selections. The
-        // user can still clear or change before sending.
-        instruction = loadLastInstruction();
-        error = '';
-        pending = false;
-        viewMode = 'preview';
-        tick().then(() => inputEl?.focus());
-      }
+    if (request.presetInstruction && request.presetInstruction.trim()) {
+      instruction = request.presetInstruction.trim();
+      // Focus the textarea first, then auto-fire after a short
+      // window so the user can cancel by typing. Same UX cadence
+      // as the prior version, much smaller surface area.
+      tick().then(() => {
+        inputEl?.focus();
+        autoFireTimer = setTimeout(() => {
+          autoFireTimer = null;
+          void ask();
+        }, AUTO_FIRE_DELAY_MS);
+      });
+    } else {
+      // No preset: leave the textarea empty (no localStorage
+      // round-trip in the minimal version — caller-driven prefill
+      // is the only way text shows up).
+      instruction = '';
+      tick().then(() => inputEl?.focus());
     }
   });
 
-  // Diff helpers live in $lib/util/lineDiff so the version-history
-  // panel can share them. Same LCS algorithm — O(N*M) on the inputs.
-  // SIZE GUARD: for whole-note actions the user's note can be
-  // 100KB+. Once the streaming response also grows past a few KB,
-  // lineDiff against the full note would run BILLIONS of operations
-  // per animation frame and freeze the browser hard enough that the
-  // "Page Unresponsive" dialog fires. Cap input lengths at 16K
-  // chars apiece — diff view above that bails to an empty diff and
-  // the template falls through to the markdown-rendered branch.
-  // 16K is generous (most rewrite-style edits are paragraph-sized);
-  // anyone hitting the cap is doing whole-note rewrite where a
-  // line-diff isn't useful anyway.
-  const DIFF_INPUT_CAP = 16_000;
-  const diff = $derived.by(() => {
-    if (!request || !response) return [];
-    if (request.text.length > DIFF_INPUT_CAP) return [];
-    if (response.length > DIFF_INPUT_CAP) return [];
-    return lineDiff(request.text, response);
-  });
-  const diffStatsView = $derived.by(() => {
-    let added = 0;
-    let removed = 0;
-    for (const l of diff) {
-      if (l.type === 'add') added++;
-      else if (l.type === 'del') removed++;
-    }
-    return { added, removed };
-  });
+  // Preview cap. The full `request.text` is what we send to the AI;
+  // the on-screen <pre> only ever renders this slice. 2000 chars is
+  // generous (a paragraph + change) and keeps the browser's layout
+  // engine well below the 100KB-text-node freeze threshold.
+  const PREVIEW_CHAR_CAP = 2000;
+  const previewText = $derived(
+    !request?.text
+      ? ''
+      : request.text.length <= PREVIEW_CHAR_CAP
+        ? request.text
+        : request.text.slice(0, PREVIEW_CHAR_CAP)
+  );
+  const previewTruncated = $derived((request?.text.length ?? 0) > PREVIEW_CHAR_CAP);
+  const fullCharCount = $derived(request?.text.length ?? 0);
 
+  // ── Streaming ────────────────────────────────────────────────────
+  // Two hard constraints behind this implementation:
+  //   1. We do NOT render `response` while pending. Chunks accumulate
+  //      into the buffer; the response state only updates ONCE, on
+  //      onDone. The during-stream UI is a centered spinner + Stop.
+  //   2. The rafThrottle helper still wraps the per-chunk apply,
+  //      but apply is essentially a no-op (writes to a non-reactive
+  //      `pendingBuffer`). State writes only happen on onDone /
+  //      onError, so reactivity churn during streaming is zero.
   async function ask() {
-    if (!request || pending) return;
-    pending = true;
-    error = '';
+    if (!request || dialogState === 'pending') return;
+    if (autoFireTimer !== null) {
+      clearTimeout(autoFireTimer);
+      autoFireTimer = null;
+    }
+    dialogState = 'pending';
     response = '';
-    refreshResponseStats('');
-    saveLastInstruction(instruction.trim());
-    pushHistory(instruction.trim());
+    error = '';
+    let buffer = '';
+    abortCtl = new AbortController();
     const userMessage = instruction.trim()
       ? `${instruction.trim()}\n\n---\n\n${request.text}`
       : `Help me with this:\n\n${request.text}`;
-
-    // Streaming path. Tokens land in `response` as they arrive so
-    // the user sees the AI typing in real time — much snappier
-    // perceived latency than the buffered path. AbortController
-    // wires through to the upstream provider so a Stop click
-    // closes the connection immediately.
-    abortCtl = new AbortController();
-    startedAt = performance.now();
-    elapsedMs = 0;
-    if (elapsedTimer) clearInterval(elapsedTimer);
-    // 250ms tick — fine enough that the throughput chip still moves
-    // visibly (the human eye doesn't resolve faster than this for
-    // a slowly-updating number) but quarter the re-render rate of
-    // the previous 100ms tick. The elapsedMs write triggers the
-    // whole dialog template to re-evaluate; trimming the timer
-    // halves the dialog's idle CPU during streaming.
-    elapsedTimer = setInterval(() => {
-      if (pending) {
-        elapsedMs = performance.now() - startedAt;
-      } else if (elapsedTimer) {
-        clearInterval(elapsedTimer);
-        elapsedTimer = null;
-      }
-    }, 250);
-    // Shared rAF throttle (see $lib/util/streamThrottle) — coalesces
-    // chunks so the reactive `response` state writes at most once
-    // per animation frame. Pre-fix a fast model was triggering one
-    // re-render per token; the dialog's $derived chain + template
-    // chained together meant several ms of work per render, and the
-    // user reported the app freezing despite the earlier
-    // markdown-deferral fix. Stats refresh once per frame here too
-    // so the scan-the-whole-buffer cost is bounded by the rAF rate
-    // instead of triggering on every elapsedMs tick.
-    const t = rafThrottle((full) => {
-      response = full;
-      refreshResponseStats(full);
+    // rAF coalescer kept for symmetry / future use, but the apply
+    // function deliberately doesn't write reactive state. Buffer
+    // accumulation happens in onChunk; state writes happen on
+    // onDone. Zero reactive work during streaming.
+    const t = rafThrottle(() => {
+      // No-op: buffer-only write is done in onChunk below.
     });
-    await api.chatStream(
-      [{ role: 'user', content: userMessage }],
-      sourcePath || undefined,
-      {
-        onChunk: t.onChunk,
-        onDone: () => {
-          t.flush();
-          pending = false;
-          abortCtl = null;
-          elapsedMs = performance.now() - startedAt;
-          if (elapsedTimer) {
-            clearInterval(elapsedTimer);
-            elapsedTimer = null;
+    try {
+      await api.chatStream(
+        [{ role: 'user', content: userMessage }],
+        sourcePath || undefined,
+        {
+          onChunk: (chunk) => {
+            buffer += chunk;
+            // Drain rAF queue so the throttle's internal frame
+            // counter resets cleanly; even though apply is a no-op,
+            // this keeps the cancel semantics correct.
+            t.onChunk('');
+          },
+          onDone: () => {
+            t.flush();
+            response = buffer;
+            dialogState = 'done';
+            abortCtl = null;
+            if (!response.trim()) error = 'AI returned an empty response.';
+          },
+          onError: (err) => {
+            t.flush();
+            response = buffer; // surface whatever arrived before the failure
+            dialogState = 'done';
+            abortCtl = null;
+            error = err.message;
           }
-          if (!response) error = 'AI returned an empty response.';
         },
-        onError: (err) => {
-          t.flush();
-          pending = false;
-          abortCtl = null;
-          elapsedMs = performance.now() - startedAt;
-          if (elapsedTimer) {
-            clearInterval(elapsedTimer);
-            elapsedTimer = null;
-          }
-          error = err.message;
-        }
-      },
-      abortCtl.signal
-    );
+        abortCtl.signal
+      );
+    } catch (e) {
+      response = buffer;
+      dialogState = 'done';
+      abortCtl = null;
+      error = e instanceof Error ? e.message : String(e);
+    }
   }
 
   function stop() {
-    if (abortCtl) {
-      abortCtl.abort();
-      abortCtl = null;
-    }
-    pending = false;
+    abortCtl?.abort();
+    abortCtl = null;
+    dialogState = 'done';
   }
-
-  // Heuristic for "this is a rewrite, not a generation." When the
-  // user picks Improve / Fix grammar / Shorten / Expand / Make
-  // formal / Make casual the most useful default view is the diff
-  // — the response is a transformation of the input. Generations
-  // (Summarise, Outline, Tasks, Tags, Continue, Translate, Bullet
-  // list) produce new content where a diff is misleading. The
-  // function is conservative: any rewrite verb in the instruction
-  // flips to diff; anything else stays preview.
-  function isRewriteInstruction(s: string): boolean {
-    const lower = s.toLowerCase();
-    return (
-      lower.includes('improve the writing') ||
-      lower.includes('fix grammar') ||
-      lower.includes('shorten the following') ||
-      lower.includes('expand the following') ||
-      lower.includes('rewrite the following in a more formal') ||
-      lower.includes('rewrite the following in a more casual')
-    );
-  }
-
-  function pickQuick(text: string) {
-    // Cancel any pending preset-auto-fire so picking a different
-    // chip mid-countdown doesn't race the queued instruction.
-    cancelAutoFire();
-    instruction = text;
-    // Auto-switch to diff for rewrite-style presets so the user
-    // sees what changed at a glance. The toggle stays available
-    // — user can flip back to preview anytime.
-    viewMode = isRewriteInstruction(text) ? 'diff' : 'preview';
-    void ask();
-  }
-
-  function regenerate() {
-    if (!request || pending || !instruction.trim()) return;
-    void ask();
-  }
-
-  function pickHistory(s: string) {
-    cancelAutoFire();
-    instruction = s;
-    // Picking from history fills the box but does NOT auto-fire.
-    // Power users alternate between near-identical prompts and want
-    // to tweak before sending — auto-fire would force a stop+retry
-    // dance for that workflow. Use the Ask AI button (or ⌘↵) to
-    // send.
-    inputEl?.focus();
-  }
-
-  // Size + rough token estimate for the dialog header. ~4
-  // chars/token is the industry rule of thumb across English
-  // text and most LLM tokenisers; close enough for a "should
-  // I worry about cost?" gut check. bigInput flips a warning
-  // chip when the input is large enough to matter (>16k chars
-  // ≈ 4k tokens, a meaningful chunk of a context window).
-  const charCount = $derived(request?.text.length ?? 0);
-  const tokenEstimate = $derived(Math.round(charCount / 4));
-  const bigInput = $derived(charCount > 16000);
-
-  // Selection-preview cap. The actual request.text is unchanged
-  // (the AI still sees the whole note) — only the visible preview
-  // is truncated. Pre-fix, opening the dialog over a large note
-  // (whole-note actions hand the entire body as `text`, including
-  // for "Generate study plan" + every preset in the More menu)
-  // rendered the full body inside `<pre whitespace-pre-wrap>`. A
-  // 50-200KB text node with that layout shape locks Chromium /
-  // WebKit's layout engine for seconds — exactly the freeze the
-  // user reported on EVERY AI feature, not just streaming. Capping
-  // at 4000 chars keeps the preview useful (the user can still see
-  // what they sent) while keeping initial render cheap.
-  const PREVIEW_CHAR_CAP = 4000;
-  const previewText = $derived.by(() => {
-    const t = request?.text ?? '';
-    if (t.length <= PREVIEW_CHAR_CAP) return t;
-    return t.slice(0, PREVIEW_CHAR_CAP);
-  });
-  const previewTruncated = $derived(charCount > PREVIEW_CHAR_CAP);
-
-  // Response stats — surfaced live in the response header chip row.
-  // Pre-fix these were $derived(...) recomputed on EVERY reactive
-  // state write (response change OR elapsedMs tick OR pending flip),
-  // which on a slow phone with a 5KB+ response meant
-  // response.split('\n') + response.trim().split(/\s+/) allocating
-  // hundreds of strings 10× per second from the elapsedMs timer
-  // alone. Now stored as plain $state and refreshed once per
-  // throttled chunk-flush (≤60Hz) plus once when the stream
-  // completes. The elapsedMs ticker doesn't trigger any stat
-  // recomputation — it only updates elapsedMs, which the throughput
-  // derive below reads.
-  let responseChars = $state(0);
-  let responseTokens = $state(0);
-  let responseLines = $state(0);
-  let responseWords = $state(0);
-  function refreshResponseStats(full: string): void {
-    responseChars = full.length;
-    responseTokens = Math.round(full.length / 4);
-    if (!full) {
-      responseLines = 0;
-      responseWords = 0;
-      return;
-    }
-    // Count newlines without allocating an N-element string array.
-    // For a 5KB response with 200 lines this is one O(N) scan vs
-    // split's O(N) scan + 200 string allocations.
-    let nl = 0;
-    for (let i = 0; i < full.length; i++) if (full.charCodeAt(i) === 10) nl++;
-    responseLines = nl + 1;
-    // Word count: scan whitespace runs without allocating. Counts
-    // transitions from whitespace to non-whitespace.
-    let words = 0;
-    let inWord = false;
-    for (let i = 0; i < full.length; i++) {
-      const c = full.charCodeAt(i);
-      const ws = c === 32 || c === 9 || c === 10 || c === 13;
-      if (!ws && !inWord) {
-        words++;
-        inWord = true;
-      } else if (ws) {
-        inWord = false;
-      }
-    }
-    responseWords = words;
-  }
-  // Throughput in tokens per second. This one stays $derived because
-  // it needs to track BOTH elapsedMs (which ticks every 100ms) and
-  // responseTokens (refreshed per chunk-frame). Cheap arithmetic, no
-  // allocations.
-  const tokensPerSec = $derived(
-    elapsedMs > 100 ? Math.round((responseTokens / elapsedMs) * 1000) : 0
-  );
-  // Formatted elapsed time — sub-second shown as "0.4s", over a
-  // second as "12.3s", over a minute as "1m 12s". Compact so the
-  // chip stays one line.
-  const elapsedLabel = $derived.by(() => {
-    if (elapsedMs < 1000) return `${(elapsedMs / 1000).toFixed(1)}s`;
-    const s = elapsedMs / 1000;
-    if (s < 60) return `${s.toFixed(1)}s`;
-    const m = Math.floor(s / 60);
-    const rem = Math.round(s - m * 60);
-    return `${m}m ${rem}s`;
-  });
 
   function copyResponse() {
     if (!response) return;
@@ -487,27 +214,21 @@
     }
   }
 
-  // Save the AI response as a new vault note. Useful when the
-  // user asked for something that's worth keeping separately —
-  // an outline, a translation, a chapter draft — instead of
-  // splicing it into the source note. Path-default is "AI/<first
-  // 40 chars of instruction>.md" so the user doesn't have to
-  // type a path from scratch; they can replace it if they want
-  // a different location.
   async function saveAsNote() {
     if (!response) return;
-    const guess = suggestSavePath(instruction, response);
-    const raw = prompt(
-      `Save AI response as a new note.\n\nVault-relative path (must end in .md):`,
-      guess
-    );
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    const clean = instruction
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, '')
+      .replace(/\s+/g, ' ')
+      .slice(0, 40)
+      .trim();
+    const guess = clean ? `AI/${clean} ${stamp}.md` : `AI/Response ${stamp}.md`;
+    const raw = prompt('Save AI response as a new note.\n\nVault-relative path (must end in .md):', guess);
     if (!raw) return;
     let path = raw.trim();
     if (!path) return;
     if (!path.toLowerCase().endsWith('.md')) path += '.md';
-    // Reject obvious traversal / absolute paths client-side so
-    // the user sees a clear error before the backend round-trip.
-    // The backend has its own checks; this is just early feedback.
     if (path.startsWith('/') || path.split('/').some((seg) => seg === '..')) {
       toast.error('Invalid path — must be vault-relative.');
       return;
@@ -520,54 +241,37 @@
     }
   }
 
-  // Derive a plausible filename from the instruction. "Summarise"
-  // → "AI/Summarise.md"; a free-form "translate to German and
-  // tighten the grammar" trims to its first short clause + a
-  // timestamp suffix so two saves in the same minute don't
-  // collide on disk. No instruction → just the timestamp.
-  function suggestSavePath(instr: string, _body: string): string {
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-    const clean = instr
-      .trim()
-      .replace(/[\\/:*?"<>|]/g, '')
-      .replace(/\s+/g, ' ')
-      .slice(0, 40)
-      .trim();
-    if (!clean) return `AI/Response ${stamp}.md`;
-    return `AI/${clean} ${stamp}.md`;
-  }
-
   function replaceSelection() {
     if (!request || !response) return;
     request.replace(response);
     close();
   }
-
   function insertBelow() {
     if (!request || !response) return;
     request.insertAfter(response);
     close();
   }
-
   function close() {
-    // Clear any pending preset auto-fire so a closed-then-reopened
-    // dialog doesn't accidentally fire the previous request.
-    cancelAutoFire();
+    if (autoFireTimer !== null) {
+      clearTimeout(autoFireTimer);
+      autoFireTimer = null;
+    }
+    abortCtl?.abort();
+    abortCtl = null;
+    // Reset to idle baseline so a reopen starts fresh.
+    response = '';
+    error = '';
+    dialogState = 'idle';
     onDismiss();
   }
-
   function dismiss() {
-    // While streaming, ESC / backdrop-click stops the stream rather
-    // than sitting locked. Same affordance as the Stop button.
-    if (pending) {
+    if (dialogState === 'pending') {
       stop();
       return;
     }
-    cancelAutoFire();
     request?.cancel();
     close();
   }
-
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -577,15 +281,21 @@
       void ask();
     }
   }
+
+  // Belt-and-braces cleanup on unmount — kill any in-flight stream
+  // + clear the auto-fire timer so a quickly-closed dialog can't
+  // leak a setTimeout or a pending fetch.
+  onMount(() => {
+    return () => {
+      if (autoFireTimer !== null) clearTimeout(autoFireTimer);
+      abortCtl?.abort();
+    };
+  });
 </script>
 
 {#if request}
-  <!-- Mobile slides up from the bottom (items-end + rounded-t),
-       desktop centers (items-start + pt-12 + rounded-lg). dvh
-       (dynamic viewport) accounts for iOS Safari's address bar
-       so a long preset list doesn't get clipped when the bar is
-       visible. The presets row is dense — on a phone it fits two
-       rows of chips before the response panel begins. -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-12 sm:px-4 bg-black/60"
     onclick={dismiss}
@@ -593,29 +303,21 @@
     role="presentation"
   >
     <section
-      class="w-full sm:max-w-2xl bg-base border border-surface1 rounded-t-xl sm:rounded-lg shadow-xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col"
+      class="w-full sm:max-w-2xl bg-base border border-surface1 shadow-xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col"
       onclick={(e) => e.stopPropagation()}
       role="dialog"
       aria-label="Ask AI about selection"
     >
-      <!-- Drag-handle visual hint on mobile, the iOS/Android sheet
-           convention. Doesn't actually drag — tap-outside or X to
-           dismiss — but signals "this is a sheet" without a
-           native widget. -->
+      <!-- Mobile drag handle hint (visual only — tap-outside / X to dismiss). -->
       <div class="sm:hidden flex justify-center pt-2 pb-1">
-        <span class="block w-10 h-1 rounded-full bg-surface2"></span>
+        <span class="block w-10 h-1 bg-surface2"></span>
       </div>
+
       <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">Ask AI</h2>
-        <span class="text-[11px] text-dim font-mono">
-          {charCount.toLocaleString()} chars · ~{tokenEstimate.toLocaleString()} tok
+        <span class="text-[11px] text-dim font-mono tabular-nums">
+          {fullCharCount.toLocaleString()} chars
         </span>
-        {#if bigInput}
-          <span
-            class="text-[10px] px-1.5 py-0.5 rounded bg-surface0 text-warning border border-warning"
-            title="Large input — costs more tokens. Consider selecting a portion instead of the whole note."
-          >big</span>
-        {/if}
         <button
           onclick={dismiss}
           aria-label="close"
@@ -624,246 +326,80 @@
       </header>
 
       <div class="flex-1 overflow-y-auto p-2 sm:p-3 space-y-2">
-        <!-- Selection preview — shows the user exactly what's being
-             sent. Read-only so accidental clicks don't mutate it
-             during the round-trip. Cap the rendered text at
-             PREVIEW_CHAR_CAP (4000) to keep the browser's layout
-             engine from choking on a 100KB+ note body — the AI
-             still sees the full request.text. -->
+        <!-- Selection preview. Render at most PREVIEW_CHAR_CAP chars
+             so a 100KB note body can't lock the browser's layout
+             engine. The AI receives the full text in ask(). -->
         <div>
           <span class="block text-[11px] uppercase tracking-wider text-dim mb-1 flex items-baseline gap-2">
             <span>Your selection</span>
             {#if previewTruncated}
-              <span class="text-[10px] text-warning normal-case tracking-normal" title="The full text is sent to the AI; only this preview is truncated for speed.">preview truncated · {(charCount - PREVIEW_CHAR_CAP).toLocaleString()} more chars sent</span>
+              <span
+                class="text-[10px] text-warning normal-case tracking-normal"
+                title="The full text is sent to the AI; only this preview is truncated for speed."
+              >preview truncated · {(fullCharCount - PREVIEW_CHAR_CAP).toLocaleString()} more chars sent</span>
             {/if}
           </span>
-          <pre class="bg-surface0 border border-surface1 rounded px-3 py-2 text-xs text-subtext whitespace-pre-wrap break-words max-h-32 overflow-y-auto font-mono">{previewText}{#if previewTruncated}…{/if}</pre>
+          <pre
+            class="bg-surface0 border border-surface1 px-3 py-2 text-xs text-subtext whitespace-pre-wrap break-words max-h-32 overflow-y-auto font-mono"
+          >{previewText}{#if previewTruncated}…{/if}</pre>
         </div>
 
-        <!-- Instruction field. Empty = generic "help me with this".
-             Set = explicit steering. Quick-pick chips fire ask()
-             immediately so a one-tap "Summarise" workflow exists. -->
+        <!-- Instruction. Empty means "Help me with this:". -->
         <div>
-          <label for="ai-instruction" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Instruction (optional)</label>
-          <div class="relative">
-            <textarea
-              id="ai-instruction"
-              bind:this={inputEl}
-              bind:value={instruction}
-              oninput={cancelAutoFire}
-              onkeydown={cancelAutoFire}
-              rows="2"
-              placeholder="What should the AI do? (or pick a preset below)"
-              class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
-              disabled={pending}
-              enterkeyhint="send"
-              autocomplete="off"
-              autocapitalize="sentences"
-              spellcheck="true"
-            ></textarea>
-            {#if autoFireCountdown}
-              <!-- Tiny countdown pill — surfaces that a preset is
-                   queued to auto-fire so the user isn't surprised
-                   when it does, and tells them how to back out
-                   ("type to edit"). The pill clears the moment
-                   cancelAutoFire runs (any key in the textarea). -->
-              <div class="absolute right-2 top-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface1 text-[10px] text-primary pointer-events-none">
-                <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
-                <span>preset queued · type to edit</span>
-              </div>
-            {/if}
-          </div>
-          <!-- Grouped presets — Transform / Extract / Translate.
-               Each group is a labeled row of chips so the wall of
-               13 buttons reads as scannable categories. Group label
-               on the left, chips flow on the right. -->
-          <div class="space-y-1.5 mt-2">
-            {#if promptHistory.length > 0}
-              <!-- Recent — last N unique fired instructions, freshest
-                   first. Truncated to ~24 chars in the chip body but
-                   the full prompt is in the title for hover-reveal.
-                   Power-UI: the most-likely "what I want next" is
-                   often "what I just wanted" with one tweak, so this
-                   pushes the dialog from "13 generic presets" to
-                   "your N personal one-click prompts". Click fills
-                   the box without firing — see pickHistory. -->
-              <!-- Horizontal scroll on narrow viewports so 8 chips
-                   don't take 3 rows on a phone. flex-wrap above sm
-                   so desktop still gets the nice multi-row layout
-                   when chips don't fit on one line. -->
-              <div class="flex items-center gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible -mx-2 px-2 pb-1 sm:mx-0 sm:px-0 sm:pb-0">
-                <span class="text-[10px] uppercase tracking-wider text-dim w-16 flex-shrink-0">Recent</span>
-                {#each promptHistory as h}
-                  <button
-                    type="button"
-                    onclick={() => pickHistory(h)}
-                    disabled={pending}
-                    title={h}
-                    class="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-surface0 text-subtext hover:bg-surface1 hover:text-text disabled:opacity-50 transition-colors max-w-[14rem] truncate flex-shrink-0 sm:flex-shrink"
-                  >
-                    <span class="text-[9px] text-dim leading-none">↻</span>
-                    <span class="truncate">{h}</span>
-                  </button>
-                {/each}
-              </div>
-            {/if}
-            {#each PRESET_GROUPS as group}
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-[10px] uppercase tracking-wider text-dim w-16 flex-shrink-0">{group.label}</span>
-                {#each group.items as q}
-                  <button
-                    type="button"
-                    onclick={() => pickQuick(q.text)}
-                    disabled={pending}
-                    class="px-2 py-0.5 text-[11px] rounded bg-surface0 text-subtext hover:bg-surface1 hover:text-text disabled:opacity-50 transition-colors"
-                  >{q.label}</button>
-                {/each}
-              </div>
-            {/each}
-          </div>
+          <label
+            for="ai-instruction"
+            class="block text-[11px] uppercase tracking-wider text-dim mb-1"
+          >Instruction (optional)</label>
+          <textarea
+            id="ai-instruction"
+            bind:this={inputEl}
+            bind:value={instruction}
+            rows="2"
+            placeholder="What should the AI do?"
+            class="w-full px-3 py-2 bg-surface0 border border-surface1 text-sm text-text focus:outline-none focus:border-primary"
+            disabled={dialogState === 'pending'}
+            enterkeyhint="send"
+            autocomplete="off"
+            autocapitalize="sentences"
+            spellcheck="true"
+          ></textarea>
         </div>
 
-        <!-- Response area. Streams progressively — chunks land in
-             `response` as they arrive, so the user sees the AI
-             "type" in real time. The pending+empty state shows just
-             the spinner; pending+streaming shows the partial
-             response with a small streaming indicator above it. -->
-        {#if error}
-          <div class="text-xs text-error border border-error bg-surface0 rounded px-3 py-2">
-            {error}
-            {#if /provider|api key|not configured/i.test(error)}
-              <div class="text-dim mt-1">
-                Open <a href="/settings" class="text-secondary hover:underline">Settings</a> to configure an AI provider.
-              </div>
-            {/if}
-          </div>
-        {:else if pending && !response}
-          <div class="text-sm text-dim italic flex items-center gap-2">
+        <!-- Response panel. Three discrete states — no in-betweens.
+             - idle: nothing shown beyond the input.
+             - pending: spinner + "streaming..." text + Stop. No live
+                        text. The response buffer accumulates off-DOM.
+             - done: full response in a plain <pre>, no markdown
+                     parse. Error overlay on top when present. -->
+        {#if dialogState === 'pending'}
+          <div class="bg-surface0 border border-surface1 px-3 py-4 text-sm text-dim italic flex items-center gap-2">
             <span class="ai-spinner" aria-hidden="true"></span>
-            Asking the AI…
+            Streaming — response will appear when the AI finishes. Press Stop to abort.
           </div>
-        {:else if response}
-          <div>
-            <div class="flex items-baseline gap-2 mb-1">
-              <span class="text-[11px] uppercase tracking-wider text-dim">Response</span>
-              <!-- Preview / Diff toggle. Diff is unbeatable for
-                   "did the AI actually change what I wanted" — the
-                   stats badge shows +N/-M lines so the user knows
-                   at a glance how invasive the rewrite was. -->
-              {#if !pending}
-                <div class="inline-flex bg-surface0 border border-surface1 rounded overflow-hidden text-[10px]">
-                  <button
-                    type="button"
-                    onclick={() => (viewMode = 'preview')}
-                    class="px-2 py-0.5 {viewMode === 'preview' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-                  >Preview</button>
-                  <button
-                    type="button"
-                    onclick={() => (viewMode = 'diff')}
-                    class="px-2 py-0.5 {viewMode === 'diff' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-                  >Diff</button>
+        {:else if dialogState === 'done'}
+          {#if error}
+            <div class="bg-surface0 border border-error px-3 py-2 text-xs text-error">
+              {error}
+              {#if /provider|api key|not configured/i.test(error)}
+                <div class="text-dim mt-1">
+                  Open <a href="/settings" class="text-secondary hover:underline">Settings</a> to configure an AI provider.
                 </div>
-                {#if viewMode === 'diff'}
-                  <span class="text-[10px] font-mono">
-                    <span class="text-success">+{diffStatsView.added}</span>
-                    <span class="text-error ml-1">−{diffStatsView.removed}</span>
-                  </span>
-                {/if}
-              {/if}
-              <!-- Stats chips — live while streaming, frozen final
-                   values after onDone. Power-UI density: lets the
-                   user see at a glance "the reply is 1.2K chars in
-                   60 words at 24 tok/s after 8s" without having to
-                   scroll-count anything. Hidden when response is
-                   empty (nothing to count yet). -->
-              {#if response}
-                <span class="text-[10px] font-mono tabular-nums text-dim flex items-center gap-1.5">
-                  <span title="characters in the AI response">{responseChars.toLocaleString()}c</span>
-                  <span class="text-surface2">·</span>
-                  <span title="words in the AI response">{responseWords.toLocaleString()}w</span>
-                  <span class="text-surface2">·</span>
-                  <span title="lines in the AI response">{responseLines}L</span>
-                  <span class="text-surface2">·</span>
-                  <span title="~tokens (chars ÷ 4)">~{responseTokens.toLocaleString()}tok</span>
-                  {#if elapsedMs > 0}
-                    <span class="text-surface2">·</span>
-                    <span title="time since the request started">{elapsedLabel}</span>
-                  {/if}
-                  {#if pending && tokensPerSec > 0}
-                    <span class="text-surface2">·</span>
-                    <span title="streaming throughput" class="text-secondary">{tokensPerSec}t/s</span>
-                  {/if}
-                </span>
-              {/if}
-              <span class="flex-1"></span>
-              {#if pending}
-                <span class="text-[11px] text-secondary flex items-center gap-1.5">
-                  <span class="ai-spinner ai-spinner--sm" aria-hidden="true"></span>
-                  streaming
-                </span>
-              {:else if instruction.trim()}
-                <!-- Regenerate — re-fires the same instruction with
-                     a fresh stream. Saves the close/reopen dance
-                     when the first response wasn't what the user
-                     wanted. Hidden during streaming and when the
-                     instruction is blank (nothing to regenerate). -->
-                <button
-                  type="button"
-                  onclick={regenerate}
-                  class="text-[11px] text-secondary hover:underline"
-                  title="Re-run the same instruction"
-                >↻ regenerate</button>
               {/if}
             </div>
-            {#if viewMode === 'diff' && !pending}
-              <!-- Diff view: line-by-line LCS over the original
-                   selection vs the AI response. Adds in green,
-                   removes in red, unchanged in dim text — same
-                   visual grammar as `git diff` so any developer
-                   reads it instantly. Whitespace pre-wrap so
-                   long lines wrap rather than horizontally
-                   scrolling on mobile. -->
-              <div class="bg-surface0 border border-surface1 rounded text-xs font-mono max-h-72 overflow-y-auto">
-                {#each diff as l, i (i)}
-                  {#if l.type === 'eq'}
-                    <div class="px-3 py-0.5 text-dim whitespace-pre-wrap break-words"><span class="opacity-60">  </span>{l.text || ' '}</div>
-                  {:else if l.type === 'add'}
-                    <div class="px-3 py-0.5 bg-surface0 text-success whitespace-pre-wrap break-words"><span class="opacity-80">+ </span>{l.text || ' '}</div>
-                  {:else}
-                    <div class="px-3 py-0.5 bg-surface0 text-error whitespace-pre-wrap break-words"><span class="opacity-80">- </span>{l.text || ' '}</div>
-                  {/if}
-                {/each}
+          {/if}
+          {#if response}
+            <div>
+              <div class="flex items-baseline gap-2 mb-1">
+                <span class="text-[11px] uppercase tracking-wider text-dim">Response</span>
+                <span class="text-[10px] text-dim font-mono tabular-nums">
+                  {response.length.toLocaleString()} chars
+                </span>
               </div>
-            {:else if pending}
-              <!-- Streaming branch: raw text only, NO markdown parse.
-                   The user reported "Generate study plan" freezing the
-                   app — root cause was that MarkdownRenderer re-ran
-                   preprocess + marked.parse + postprocess (and a
-                   debounced embed-hydrate $effect) on every streamed
-                   chunk. For a typical 2-3KB AI reply that streams in
-                   hundreds of chunks, this is O(N²) work against a
-                   growing string → main thread chokes for several
-                   seconds and the UI appears frozen. Plain <pre>
-                   while streaming is O(1) per chunk; markdown
-                   rendering happens once when the stream completes
-                   ({:else} below). -->
-              <div class="bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text break-words max-h-72 overflow-y-auto">
-                <pre class="whitespace-pre-wrap font-sans text-sm m-0 p-0">{response}</pre>
-              </div>
-            {:else}
-              <!-- Markdown-rendered response. AI replies are typically
-                   markdown — bullets, headers, code blocks — and the
-                   previous plain-text rendering ate all the structure.
-                   The renderer's `prose` styles match the editor's
-                   reading view so what the user sees here is what
-                   they'll get on Replace / Insert. -->
-              <div class="bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text break-words max-h-72 overflow-y-auto">
-                <div class="prose prose-sm max-w-none">
-                  <MarkdownRenderer body={response} />
-                </div>
-              </div>
-            {/if}
-          </div>
+              <pre
+                class="bg-surface0 border border-surface1 px-3 py-2 text-sm text-text whitespace-pre-wrap break-words max-h-72 overflow-y-auto"
+              >{response}</pre>
+            </div>
+          {/if}
         {/if}
       </div>
 
@@ -871,11 +407,11 @@
         class="px-4 py-3 border-t border-surface1 flex items-center gap-2 flex-wrap"
         style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom));"
       >
-        {#if pending}
+        {#if dialogState === 'pending'}
           <button
             type="button"
             onclick={stop}
-            class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-error border border-error rounded hover:bg-surface1"
+            class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-error border border-error hover:bg-surface1"
           >Stop</button>
           <span class="flex-1"></span>
           <span class="text-[11px] text-dim italic">Streaming · cancel anytime</span>
@@ -883,39 +419,35 @@
           <button
             type="button"
             onclick={dismiss}
-            class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm text-subtext hover:bg-surface0 rounded"
+            class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm text-subtext hover:bg-surface0"
           >Cancel</button>
           {#if response}
             <button
               type="button"
               onclick={copyResponse}
-              title="Copy the AI response to clipboard"
-              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
+              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 hover:border-primary"
             >Copy</button>
             <button
               type="button"
               onclick={saveAsNote}
-              title="Save the response as a new vault note (path defaults to AI/<instruction>.md)"
-              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
+              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 hover:border-primary"
             >Save as note</button>
             <button
               type="button"
               onclick={insertBelow}
-              title="Insert the response below your current selection in the editor"
-              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 rounded hover:border-primary"
+              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 hover:border-primary"
             >Insert below</button>
             <button
               type="button"
               onclick={replaceSelection}
-              title="Replace the original selection with the AI response"
-              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90"
+              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-primary text-on-primary font-medium hover:opacity-90"
             >Replace</button>
           {:else}
             <span class="flex-1"></span>
             <button
               type="button"
               onclick={ask}
-              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90"
+              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-primary text-on-primary font-medium hover:opacity-90"
             >Ask AI (⌘↵)</button>
           {/if}
         {/if}
@@ -933,12 +465,6 @@
     border-top-color: var(--color-primary);
     border-radius: 50%;
     animation: ai-spin 0.7s linear infinite;
-  }
-  .ai-spinner--sm {
-    width: 0.625rem;
-    height: 0.625rem;
-    border-width: 1.5px;
-    border-top-color: var(--color-secondary);
   }
   @keyframes ai-spin {
     to { transform: rotate(360deg); }
