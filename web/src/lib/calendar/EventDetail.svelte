@@ -379,6 +379,87 @@
 
   async function deleteEvent() {
     if (!event?.eventId) return;
+    // Recurring events: ask whether to nuke just this occurrence or
+    // the whole series. Pre-fix this jumped straight to a DELETE of
+    // the base VEVENT — for an ICS series that removed EVERY past
+    // and future occurrence at once, which the user reported as
+    // catastrophic data loss. Default to "just this one" so a
+    // mis-click can't blow up the whole series. confirm() returns
+    // true for OK so we mirror the move-flow ordering: OK = the
+    // safe default (instance), cancel-bypass = destructive (series).
+    if (event.rrule && event.type === 'ics_event' && event.source) {
+      const justThisOne = confirm(
+        `"${event.title}" is a recurring event.\n\nOK: Delete just this occurrence (EXDATE the source series — every other instance stays)\nCancel: Delete the entire series (every past and future occurrence is removed)\n\nClose this dialog to abort.`
+      );
+      busy = true;
+      try {
+        if (justThisOne) {
+          // EXDATE the source series at this occurrence's anchor.
+          if (!event.start) {
+            toast.error('Can\'t identify this occurrence — please use Skip or edit the series.');
+            return;
+          }
+          await api.skipICSOccurrence(event.source, event.eventId, event.start);
+          onChanged?.();
+          open = false;
+          toast.success('this occurrence skipped');
+        } else {
+          // Cancel-bypass — second confirm because deleting the whole
+          // series destroys past instances too. The user must explicitly
+          // accept that risk.
+          const confirmSeries = confirm(
+            `Delete ALL occurrences of "${event.title}"? This wipes every past + future instance from the .ics file and CANNOT be undone.`
+          );
+          if (!confirmSeries) return;
+          await api.deleteICSEvent(event.source, event.eventId);
+          onChanged?.();
+          open = false;
+          toast.success('entire series deleted');
+        }
+      } catch (err) {
+        toast.error('delete failed: ' + errorMessage(err));
+      } finally {
+        busy = false;
+      }
+      return;
+    }
+    // Native recurring events: same shape, different endpoints.
+    // /events/{id}/skip writes an ExDate via granitmeta; the series
+    // base + RRULE stay untouched.
+    if (event.rrule && event.type === 'event' && event.eventId && event.start) {
+      const justThisOne = confirm(
+        `"${event.title}" is a recurring event.\n\nOK: Delete just this occurrence (the series stays)\nCancel: Delete the entire series (every past and future occurrence is removed)\n\nClose this dialog to abort.`
+      );
+      busy = true;
+      try {
+        if (justThisOne) {
+          const key = exDateKey();
+          if (!key) {
+            toast.error('Can\'t identify this occurrence — please use Skip or edit the series.');
+            return;
+          }
+          await api.skipEventOccurrence(event.eventId, key);
+          onChanged?.();
+          open = false;
+          toast.success('this occurrence skipped');
+        } else {
+          const confirmSeries = confirm(
+            `Delete ALL occurrences of "${event.title}"? This wipes every past + future instance and CANNOT be undone.`
+          );
+          if (!confirmSeries) return;
+          await api.deleteEvent(event.eventId);
+          onChanged?.();
+          open = false;
+          toast.success('entire series deleted');
+        }
+      } catch (err) {
+        toast.error('delete failed: ' + errorMessage(err));
+      } finally {
+        busy = false;
+      }
+      return;
+    }
+    // Non-recurring path — single VEVENT, simple confirm + DELETE.
     if (!confirm(`Delete event "${event.title}"?`)) return;
     busy = true;
     try {
