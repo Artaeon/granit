@@ -397,10 +397,12 @@
         // + deadlines never carry a kind and always pass through so
         // a "show only Focus events" filter doesn't hide today's
         // overdue task. The '__untyped' sentinel id lets the user
-        // also include kind-less events.
+        // also include kind-less events. Trim+lowercase the stored
+        // kind defensively so a hand-edited " Meeting " or "FOCUS"
+        // value still matches against the lowercase catalog ids.
         if (kindFilter.size === 0) return true;
         if (e.type !== 'event' && e.type !== 'ics_event') return true;
-        const k = e.kind ?? '';
+        const k = (e.kind ?? '').trim().toLowerCase();
         return k ? kindFilter.has(k) : kindFilter.has('__untyped');
       })
       .map((e) => applySourceColor(e, $sourceColors))

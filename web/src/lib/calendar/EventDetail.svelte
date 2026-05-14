@@ -5,7 +5,7 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import { onMount } from 'svelte';
   import { eventStartDate, eventEndDate, fmtTime, eventTypeColor } from './utils';
-  import { EVENT_TYPES } from './eventTypes';
+  import { EVENT_TYPES, findEventType } from './eventTypes';
 
   let {
     open = $bindable(false),
@@ -408,11 +408,15 @@
       try {
         if (justThisOne) {
           // EXDATE the source series at this occurrence's anchor.
-          if (!event.start) {
+          // For timed events that's event.start; for all-day events
+          // the feed emits `date` instead (no start/end). Backend
+          // skipICSOccurrence accepts either RFC3339 or YYYY-MM-DD.
+          const anchor = event.start ?? event.date;
+          if (!anchor) {
             toast.error('Can\'t identify this occurrence — please use Skip or edit the series.');
             return;
           }
-          await api.skipICSOccurrence(event.source, event.eventId, event.start);
+          await api.skipICSOccurrence(event.source, event.eventId, anchor);
           onChanged?.();
           open = false;
           toast.success('this occurrence skipped');
@@ -703,7 +707,7 @@
           <div class="text-xs uppercase tracking-wider text-dim flex items-center gap-1.5">
             <span>{event.type.replace('_', ' ')}</span>
             {#if event.kind}
-              {@const evType = EVENT_TYPES.find((t) => t.id === event.kind?.toLowerCase())}
+              {@const evType = findEventType(event.kind)}
               {#if evType}
               <span aria-hidden="true">·</span>
               <span

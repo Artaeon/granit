@@ -88,10 +88,15 @@ const BY_ID = new Map(EVENT_TYPES.map((t) => [t.id, t]));
 
 /** Look up a type by id. Returns null for empty / unknown ids so
  *  callers can render generic styling. The frontend never blocks an
- *  unknown kind — it just shows it as un-typed. */
+ *  unknown kind — it just shows it as un-typed. Defensive trim +
+ *  lowercase so a hand-edited events.json with `"kind": " Meeting "`
+ *  still resolves; backend write-path already canonicalises but
+ *  we don't trust the read path to never see drift. */
 export function findEventType(id: string | undefined | null): EventTypeDef | null {
   if (!id) return null;
-  return BY_ID.get(id.toLowerCase()) ?? null;
+  const norm = id.trim().toLowerCase();
+  if (!norm) return null;
+  return BY_ID.get(norm) ?? null;
 }
 
 /** Glyph for a kind id, '' if unknown / empty. Used by chip

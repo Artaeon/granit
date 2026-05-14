@@ -76,6 +76,15 @@ describe('findEventType', () => {
     expect(findEventType(null)).toBeNull();
     expect(findEventType('some-fake-kind')).toBeNull();
   });
+
+  it('is whitespace-tolerant (handles legacy events.json shape)', () => {
+    // Backend canonicalises on write, but a hand-edited
+    // events.json or an X-GRANIT-KIND line with stray spaces in an
+    // external .ics shouldn't make the frontend lose the type.
+    expect(findEventType(' meeting ')?.id).toBe('meeting');
+    expect(findEventType('\tfocus\n')?.id).toBe('focus');
+    expect(findEventType('   ')).toBeNull();
+  });
 });
 
 describe('glyphForKind / colorForKind', () => {
