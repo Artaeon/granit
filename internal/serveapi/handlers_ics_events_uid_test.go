@@ -1,12 +1,16 @@
 package serveapi
 
 import (
+	"context"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/artaeon/granit/internal/icswriter"
 )
@@ -107,6 +111,44 @@ func TestICS_PatchTolerantOfWhitespaceInStoredUID(t *testing.T) {
 	})
 	if code != http.StatusOK {
 		t.Fatalf("PATCH with canonical UID: got %d, body=%s", code, b)
+	}
+}
+
+// TestChiURLParamDecoded exercises the new helper directly: chi
+// v5 returns URLParam values still percent-encoded when the URL
+// has any percent escapes (it routes off URL.RawPath in that
+// case, not URL.Path). The previous handlers compared the still-
+// encoded form against the decoded UID in the .ics file → silent
+// mismatch + the diagnostic "event not found" 404 the user saw
+// in production (uid="wu-vienna-project%40daily-structure").
+// Decode-then-trim is the canonical compare path now.
+func TestChiURLParamDecoded(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want string
+	}{
+		{"wu-vienna-project%40daily-structure", "wu-vienna-project@daily-structure"},
+		{"foo%2Fbar", "foo/bar"},
+		{"plain-uid-no-escapes", "plain-uid-no-escapes"},
+		{"with%20spaces", "with spaces"},
+		// Malformed escape → fall back to the raw value rather than
+		// dropping the request (the matcher's TrimSpace will still
+		// run; tolerant beats hostile here).
+		{"bad%G0escape", "bad%G0escape"},
+	}
+	for _, c := range cases {
+		t.Run(c.raw, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/test", nil)
+			// chi reads from RouteContext, which is normally populated
+			// by the mux. For a unit test we set it manually.
+			rctx := chi.NewRouteContext()
+			rctx.URLParams.Add("uid", c.raw)
+			r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+			got := chiURLParamDecoded(r, "uid")
+			if got != c.want {
+				t.Errorf("got %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 

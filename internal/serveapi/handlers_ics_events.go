@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,6 +18,29 @@ import (
 	"github.com/artaeon/granit/internal/icswriter"
 	"github.com/artaeon/granit/internal/wshub"
 )
+
+// chiURLParamDecoded reads a chi URL parameter and percent-decodes
+// it. Chi v5 returns the raw (still-encoded) form when the URL
+// contains percent escapes anywhere in the path — so a UID like
+// "wu-vienna-project@daily-structure" comes through as
+// "wu-vienna-project%40daily-structure". The handler then compares
+// the encoded string against the decoded UID stored in the .ics
+// file → silent mismatch + the diagnostic "event not found" 404.
+//
+// PathUnescape is forgiving: malformed escapes (lone "%") return an
+// error, in which case we fall back to the raw value rather than
+// dropping the request. The match path's strings.TrimSpace covers
+// any whitespace introduced by an odd encoder.
+func chiURLParamDecoded(r *http.Request, name string) string {
+	raw := chi.URLParam(r, name)
+	if raw == "" {
+		return ""
+	}
+	if dec, err := url.PathUnescape(raw); err == nil {
+		return dec
+	}
+	return raw
+}
 
 // icsEventCRUD is the wire-side shape for create/patch on a writable
 // .ics calendar. Times are RFC3339 (matches events.json + the calendar
@@ -367,7 +391,7 @@ func (s *Server) requireWritableICS(w http.ResponseWriter, source string) *icsSo
 // handleCreateICSEvent creates a new VEVENT in the named writable
 // calendar. UID is auto-generated when missing; SEQUENCE starts at 0.
 func (s *Server) handleCreateICSEvent(w http.ResponseWriter, r *http.Request) {
-	src := s.requireWritableICS(w, chi.URLParam(r, "source"))
+	src := s.requireWritableICS(w, chiURLParamDecoded(r, "source"))
 	if src == nil {
 		return
 	}
@@ -426,11 +450,11 @@ func (s *Server) handleCreateICSEvent(w http.ResponseWriter, r *http.Request) {
 // by its UID. SEQUENCE bumps by one; DTSTAMP refreshes — both are
 // required for downstream calendar clients to accept the modification.
 func (s *Server) handlePatchICSEvent(w http.ResponseWriter, r *http.Request) {
-	src := s.requireWritableICS(w, chi.URLParam(r, "source"))
+	src := s.requireWritableICS(w, chiURLParamDecoded(r, "source"))
 	if src == nil {
 		return
 	}
-	uid := strings.TrimSpace(chi.URLParam(r, "uid"))
+	uid := strings.TrimSpace(chiURLParamDecoded(r, "uid"))
 	if uid == "" {
 		writeError(w, http.StatusBadRequest, "uid required")
 		return
@@ -478,11 +502,11 @@ func (s *Server) handlePatchICSEvent(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteICSEvent removes a VEVENT by UID.
 func (s *Server) handleDeleteICSEvent(w http.ResponseWriter, r *http.Request) {
-	src := s.requireWritableICS(w, chi.URLParam(r, "source"))
+	src := s.requireWritableICS(w, chiURLParamDecoded(r, "source"))
 	if src == nil {
 		return
 	}
-	uid := strings.TrimSpace(chi.URLParam(r, "uid"))
+	uid := strings.TrimSpace(chiURLParamDecoded(r, "uid"))
 	if uid == "" {
 		writeError(w, http.StatusBadRequest, "uid required")
 		return
@@ -527,11 +551,11 @@ func (s *Server) handleDeleteICSEvent(w http.ResponseWriter, r *http.Request) {
 // Idempotent: appending the same date twice yields one EXDATE entry
 // in the rewritten file (the writer dedups).
 func (s *Server) handleSkipICSOccurrence(w http.ResponseWriter, r *http.Request) {
-	src := s.requireWritableICS(w, chi.URLParam(r, "source"))
+	src := s.requireWritableICS(w, chiURLParamDecoded(r, "source"))
 	if src == nil {
 		return
 	}
-	uid := strings.TrimSpace(chi.URLParam(r, "uid"))
+	uid := strings.TrimSpace(chiURLParamDecoded(r, "uid"))
 	if uid == "" {
 		writeError(w, http.StatusBadRequest, "uid required")
 		return
