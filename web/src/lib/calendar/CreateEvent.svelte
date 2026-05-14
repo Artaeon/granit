@@ -56,10 +56,33 @@
   // calendar use; "Custom" lets a power user paste a raw rule.
   // 'until' is a separate date input that the picker concatenates
   // to whichever frequency is active.
-  type Repeat = 'none' | 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | 'yearly' | 'custom';
+  type Repeat = 'none' | 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | 'yearly' | 'bydays' | 'custom';
   let repeat = $state<Repeat>('none');
   let untilDate = $state(''); // YYYY-MM-DD; empty = forever
   let customRule = $state(''); // raw RRULE the user typed for 'custom'
+  // BYDAY picker state — set of 5545 weekday codes the user toggled
+  // on. Only applies when repeat === 'bydays'. Order doesn't matter
+  // for correctness (we sort on serialisation), but Mon→Sun feels
+  // natural for the grid layout.
+  type WD = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU';
+  const WEEKDAYS: { code: WD; label: string; isWeekend: boolean }[] = [
+    { code: 'MO', label: 'Mon', isWeekend: false },
+    { code: 'TU', label: 'Tue', isWeekend: false },
+    { code: 'WE', label: 'Wed', isWeekend: false },
+    { code: 'TH', label: 'Thu', isWeekend: false },
+    { code: 'FR', label: 'Fri', isWeekend: false },
+    { code: 'SA', label: 'Sat', isWeekend: true },
+    { code: 'SU', label: 'Sun', isWeekend: true }
+  ];
+  // Default: Mon-Fri checked so flipping to "Specific days" looks
+  // like the previous "weekdays" preset. User can toggle individuals.
+  let bydaysSet = $state<Set<WD>>(new Set<WD>(['MO', 'TU', 'WE', 'TH', 'FR']));
+  function toggleBYDay(code: WD) {
+    const next = new Set(bydaysSet);
+    if (next.has(code)) next.delete(code);
+    else next.add(code);
+    bydaysSet = next;
+  }
 
   // Compose the RRULE the backend will store. Empty = no recurrence.
   // UNTIL is encoded per RFC 5545 as YYYYMMDDT235959Z (UTC end-of-day
@@ -68,6 +91,13 @@
     if (!untilDate || !/^\d{4}-\d{2}-\d{2}$/.test(untilDate)) return '';
     const compact = untilDate.replace(/-/g, '');
     return `;UNTIL=${compact}T235959Z`;
+  }
+  // Serialise the byday set in canonical MO→SU order so two equivalent
+  // selections produce the same RRULE on disk (helps diffs + dedup).
+  function bydaysSuffix(): string {
+    if (bydaysSet.size === 0) return '';
+    const order: WD[] = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+    return order.filter((d) => bydaysSet.has(d)).join(',');
   }
   const rrule = $derived.by((): string => {
     switch (repeat) {
@@ -78,6 +108,14 @@
       case 'biweekly': return 'FREQ=WEEKLY;INTERVAL=2' + untilSuffix();
       case 'monthly': return 'FREQ=MONTHLY' + untilSuffix();
       case 'yearly': return 'FREQ=YEARLY' + untilSuffix();
+      case 'bydays': {
+        // Empty selection → fall back to a plain weekly so the rule
+        // is still valid. Surfacing a warning on the form would be
+        // overkill; the user can clearly see no days are picked.
+        const days = bydaysSuffix();
+        if (!days) return 'FREQ=WEEKLY' + untilSuffix();
+        return 'FREQ=WEEKLY;BYDAY=' + days + untilSuffix();
+      }
       case 'custom': return customRule.trim();
     }
   });
@@ -476,11 +514,62 @@
             <option value="weekdays">Every weekday (Mon–Fri)</option>
             <option value="weekly">Every week</option>
             <option value="biweekly">Every 2 weeks</option>
+            <option value="bydays">Specific weekdays…</option>
             <option value="monthly">Every month</option>
             <option value="yearly">Every year</option>
             <option value="custom">Custom RRULE…</option>
           </select>
         </div>
+        {#if repeat === 'bydays'}
+          <!-- Weekday grid — seven toggleable chips. The user picks
+               an arbitrary subset (e.g. Mon/Wed/Fri only). Selected
+               chips fill with primary; unselected stay quiet so the
+               picked set scans at a glance. Pre-fix, only the
+               hardcoded "weekdays" preset existed and there was no
+               way to do "Tuesday + Thursday" or "Sat/Sun only"
+               without dropping to the custom-RRULE field. -->
+          <div>
+            <span class="block text-[11px] uppercase tracking-wider text-dim mb-1.5">Days of week</span>
+            <div class="flex items-center gap-1 flex-wrap">
+              {#each WEEKDAYS as wd (wd.code)}
+                {@const on = bydaysSet.has(wd.code)}
+                <button
+                  type="button"
+                  onclick={() => toggleBYDay(wd.code)}
+                  aria-pressed={on}
+                  title={wd.label + (wd.isWeekend ? ' (weekend)' : '')}
+                  class="min-w-[2.75rem] px-2 py-1.5 text-xs font-medium border transition-colors {on ? 'bg-primary text-on-primary border-primary' : wd.isWeekend ? 'bg-surface0 text-dim border-surface1 hover:border-secondary' : 'bg-surface0 text-text border-surface1 hover:border-primary'}"
+                >{wd.label}</button>
+              {/each}
+            </div>
+            <!-- Quick presets that flip multiple chips at once. Mon-Fri
+                 is the most-asked "weekdays only" workflow; Sat-Sun is
+                 the converse for weekend-only events. -->
+            <div class="flex items-center gap-1.5 mt-1.5 text-[10px]">
+              <button
+                type="button"
+                onclick={() => (bydaysSet = new Set<WD>(['MO', 'TU', 'WE', 'TH', 'FR']))}
+                class="px-1.5 py-0.5 text-dim hover:text-primary border border-dashed border-surface1 hover:border-primary"
+              >Mon–Fri</button>
+              <button
+                type="button"
+                onclick={() => (bydaysSet = new Set<WD>(['SA', 'SU']))}
+                class="px-1.5 py-0.5 text-dim hover:text-primary border border-dashed border-surface1 hover:border-primary"
+              >Sat–Sun</button>
+              <button
+                type="button"
+                onclick={() => (bydaysSet = new Set<WD>(['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']))}
+                class="px-1.5 py-0.5 text-dim hover:text-primary border border-dashed border-surface1 hover:border-primary"
+              >All</button>
+              <button
+                type="button"
+                onclick={() => (bydaysSet = new Set<WD>())}
+                class="px-1.5 py-0.5 text-dim hover:text-error border border-dashed border-surface1 hover:border-error"
+              >Clear</button>
+              <span class="text-dim ml-2">{bydaysSet.size} day{bydaysSet.size === 1 ? '' : 's'} selected</span>
+            </div>
+          </div>
+        {/if}
         {#if repeat !== 'none'}
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {#if repeat !== 'custom'}
