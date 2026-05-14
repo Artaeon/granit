@@ -58,6 +58,9 @@ type icsEventCRUD struct {
 	Location    *string `json:"location,omitempty"`
 	Description *string `json:"description,omitempty"`
 	RRULE       *string `json:"rrule,omitempty"`
+	// Kind round-trips granit's event-type extension. Empty string
+	// clears the X-GRANIT-KIND line (the writer skips empty Kind).
+	Kind *string `json:"kind,omitempty"`
 }
 
 // findICSSource matches a source name case-insensitively, with or
@@ -122,6 +125,11 @@ type icsRecord struct {
 	// trip so a series the user "Skip this occurrence"'d through
 	// us doesn't lose the EXDATE when we rewrite the file.
 	ExDates []string
+	// Kind is granit's event-type extension surfaced via the
+	// X-GRANIT-KIND custom property. Preserved on round-trip so a
+	// `meeting`/`focus`/`personal`/etc. tag survives PATCH + DELETE.
+	// Empty string for un-typed (generic) events.
+	Kind string
 	// Extra carries verbatim "KEY:VALUE" lines we didn't model — emitted
 	// back into the VEVENT block on round-trip so a custom X-MOZ-* or
 	// CATEGORIES doesn't get silently dropped.
@@ -215,6 +223,14 @@ func readICSRecords(path string) ([]icsRecord, error) {
 			}
 		case "RECURRENCE-ID":
 			cur.RecurrenceID = val
+		case "X-GRANIT-KIND":
+			// Granit's event-type extension. Stored verbatim and
+			// round-tripped through Extra-less, so a `meeting`
+			// tag set in the web UI survives a TUI edit + a
+			// PATCH round-trip without ending up in Extra (where
+			// it'd be re-emitted as the raw line, fine, but the
+			// frontend would lose access to it via the .Kind field).
+			cur.Kind = strings.TrimSpace(val)
 		case "EXDATE":
 			// 5545 §3.8.5.1: EXDATE may pack multiple comma-separated
 			// values on one line. Preserve them verbatim in the
@@ -293,6 +309,7 @@ func recordToWriterEvent(r icsRecord) icswriter.Event {
 		DTStamp:      r.DTStamp,
 		RecurrenceID: r.RecurrenceID,
 		ExDates:      r.ExDates,
+		Kind:         r.Kind,
 	}
 }
 
@@ -336,6 +353,13 @@ func applyCRUDToRecord(rec *icsRecord, body icsEventCRUD) error {
 	}
 	if body.RRULE != nil {
 		rec.RRULE = *body.RRULE
+	}
+	if body.Kind != nil {
+		// Trim + lowercase the wire value so a stray space or
+		// "Meeting" capitalisation lands in a canonical form on
+		// disk. The frontend's allowlist is lowercase; unknown
+		// values pass through but display as "generic".
+		rec.Kind = strings.ToLower(strings.TrimSpace(*body.Kind))
 	}
 	if body.AllDay != nil {
 		rec.AllDay = *body.AllDay
@@ -656,6 +680,8 @@ func recordToCRUDResponse(r icsRecord) icsEventCRUD {
 	out.Description = &desc
 	rule := r.RRULE
 	out.RRULE = &rule
+	kind := r.Kind
+	out.Kind = &kind
 	if !r.Start.IsZero() {
 		var s string
 		if r.AllDay {

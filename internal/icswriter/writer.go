@@ -53,6 +53,12 @@ type Event struct {
 	Sequence     int
 	DTStamp      time.Time
 	RecurrenceID string // optional — for individual instance overrides (RFC 5545 §3.8.4.4)
+	// Kind is granit's event-type extension (meeting / focus /
+	// personal / travel / break / blocker). Emitted as
+	// X-GRANIT-KIND so RFC 5545 §3.8.8.1 keeps the property
+	// addressable + skippable by other calendar apps that don't
+	// recognise it. Empty string = no type, line skipped.
+	Kind string
 	// ExDates is the set of skipped occurrences for a recurring
 	// event. Each entry is an RFC 5545 §3.3.5 ICS-time string —
 	// AllDay events use YYYYMMDD; timed events use
@@ -203,6 +209,21 @@ func writeEvent(b *strings.Builder, ev Event) {
 	}
 	if ev.RRULE != "" {
 		writeLine(b, "RRULE:"+ev.RRULE)
+	}
+	if ev.Kind != "" {
+		// X-GRANIT-KIND is RFC 5545 §3.8.8.1 X-prefixed extension.
+		// Sanitised: strip any chars that would break ICS line shape
+		// (CR/LF), so a hand-edited Event.Kind can't inject a fake
+		// VEVENT. The set of valid kinds is small + lowercase
+		// ASCII; values outside that are accepted but treated as
+		// "generic" by the frontend display.
+		clean := strings.Map(func(r rune) rune {
+			if r == '\r' || r == '\n' {
+				return -1
+			}
+			return r
+		}, ev.Kind)
+		writeLine(b, "X-GRANIT-KIND:"+clean)
 	}
 	if len(ev.ExDates) > 0 {
 		// 5545 §3.8.5.1: EXDATE may carry multiple comma-separated

@@ -5,6 +5,7 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import { onMount } from 'svelte';
   import { eventStartDate, eventEndDate, fmtTime, eventTypeColor } from './utils';
+  import { EVENT_TYPES } from './eventTypes';
 
   let {
     open = $bindable(false),
@@ -22,6 +23,9 @@
   let editDate = $state('');
   let editLocation = $state('');
   let editColor = $state('cyan');
+  // Event type — same catalog as CreateEvent. Empty string means
+  // "generic / no type", matching the storage convention.
+  let editKind = $state('');
   let editProjectId = $state('');
 
   // Project list — loaded once on mount so the picker is populated by
@@ -212,6 +216,7 @@
     // Seed the project link from the event so unchanged saves
     // round-trip. Empty when the event isn't linked.
     editProjectId = event.project_id ?? '';
+    editKind = event.kind ?? '';
     // Default scope: this-occurrence-only. Users editing 'this
     // Tuesday' through the modal get the same conservative default
     // as the drag-move flow.
@@ -282,7 +287,8 @@
               summary: editTitle,
               start,
               end,
-              location: editLocation
+              location: editLocation,
+              kind: editKind || undefined
             });
           } catch (err) {
             toast.error(
@@ -309,7 +315,11 @@
             editEndM !== origEditEndM;
           const patch: Parameters<typeof api.patchICSEvent>[2] = {
             summary: editTitle,
-            location: editLocation
+            location: editLocation,
+            // Send kind unconditionally so clearing it (editKind='')
+            // sends "" through to the backend and removes the
+            // X-GRANIT-KIND line.
+            kind: editKind
           };
           if (timeChanged) {
             patch.start = utcRFC3339FromLocalParts(editDate, editStartTime || '00:00');
@@ -356,7 +366,10 @@
             // (editProjectId='') must overwrite a previously-linked
             // project on disk, not be silently dropped by omitempty
             // round-tripping through Partial<>.
-            project_id: editProjectId
+            project_id: editProjectId,
+            // Same reasoning for kind — empty must clear the type
+            // server-side, not be skipped as "no change".
+            kind: editKind
           });
         }
       } else {
@@ -687,7 +700,25 @@
       <div class="flex items-start gap-3">
         <div class="w-1 self-stretch rounded-full" style="background: {c.border}"></div>
         <div class="flex-1">
-          <div class="text-xs uppercase tracking-wider text-dim">{event.type.replace('_', ' ')}</div>
+          <div class="text-xs uppercase tracking-wider text-dim flex items-center gap-1.5">
+            <span>{event.type.replace('_', ' ')}</span>
+            {#if event.kind}
+              {@const evType = EVENT_TYPES.find((t) => t.id === event.kind?.toLowerCase())}
+              {#if evType}
+              <span aria-hidden="true">·</span>
+              <span
+                class="inline-flex items-center gap-1 px-1 py-0.5 text-[10px] font-medium border"
+                style:color={`var(--color-${evType.color})`}
+                style:border-color={`color-mix(in srgb, var(--color-${evType.color}) 45%, transparent)`}
+                style:background={`color-mix(in srgb, var(--color-${evType.color}) 12%, transparent)`}
+                title={evType.description}
+              >
+                <span class="font-mono">{evType.glyph}</span>
+                <span>{evType.label}</span>
+              </span>
+              {/if}
+            {/if}
+          </div>
           <h2 class="text-lg font-semibold text-text {event.done ? 'line-through opacity-70' : ''}">{event.title}</h2>
           {#if start}
             <div class="text-sm text-subtext mt-1">
@@ -898,6 +929,38 @@
               </select>
             </div>
           {/if}
+          <!-- Event-type picker. Same catalog + chip shape as
+               CreateEvent so the muscle memory is identical. Empty
+               state = no type; clicking the active chip clears it. -->
+          <div>
+            <span class="block text-[11px] uppercase tracking-wider text-dim mb-1.5">Type</span>
+            <div class="flex items-center gap-1 flex-wrap">
+              {#each EVENT_TYPES as t (t.id)}
+                {@const on = editKind === t.id}
+                <button
+                  type="button"
+                  onclick={() => (editKind = on ? '' : t.id)}
+                  aria-pressed={on}
+                  title={t.description}
+                  class="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium border transition-colors {on ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-text border-surface1 hover:border-primary'}"
+                >
+                  <span
+                    class="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold font-mono leading-none"
+                    style:background={on ? 'transparent' : `color-mix(in srgb, var(--color-${t.color}) 22%, transparent)`}
+                    style:color={on ? undefined : `var(--color-${t.color})`}
+                  >{t.glyph}</span>
+                  <span>{t.label}</span>
+                </button>
+              {/each}
+              {#if editKind}
+                <button
+                  type="button"
+                  onclick={() => (editKind = '')}
+                  class="text-[10px] text-dim hover:text-error px-1.5 py-0.5 border border-dashed border-surface1 hover:border-error"
+                >clear</button>
+              {/if}
+            </div>
+          </div>
           <div class="flex items-center gap-2">
             <span class="text-[11px] text-dim uppercase tracking-wider">Color</span>
             {#each colorOptions as c (c.name)}

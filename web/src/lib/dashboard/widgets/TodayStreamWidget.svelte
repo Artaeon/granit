@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { api, fmtDateISO, todayISO, type CalendarEvent, type Task, type Deadline } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
+  import { glyphForKind } from '$lib/calendar/eventTypes';
 
   // TodayStreamWidget — single span-2 widget that answers "what's
   // happening today" in one chronological feed. Today's events,
@@ -31,6 +32,9 @@
     meta?: string;
     /** Optional id for keyed iteration. */
     id?: string;
+    /** Single-char glyph for the event's type (meeting/focus/...).
+     *  Empty when the event has no type or the row isn't an event. */
+    typeGlyph?: string;
   };
 
   let events = $state<CalendarEvent[]>([]);
@@ -160,7 +164,8 @@
         label: e.title,
         href: '/calendar',
         meta: e.location || (t === '' ? 'all-day' : undefined),
-        id: `event-${e.title}-${t}-${e.start ?? e.date ?? ''}`
+        id: `event-${e.title}-${t}-${e.start ?? e.date ?? ''}`,
+        typeGlyph: glyphForKind(e.kind)
       });
     }
 
@@ -354,7 +359,7 @@
               {KIND_ICON[r.kind]}
             </span>
             <span class="flex-1 text-sm text-text truncate {r.past ? 'line-through decoration-dim/40' : ''}">
-              {r.label}
+              {#if r.typeGlyph}<span class="font-mono text-[10px] text-dim mr-1.5">{r.typeGlyph}</span>{/if}{r.label}
             </span>
             {#if r.meta}
               <span class="text-[11px] text-dim flex-shrink-0 hidden sm:inline">{r.meta}</span>

@@ -382,6 +382,7 @@ func (s *Server) handlePatchEvent(w http.ResponseWriter, r *http.Request) {
 	apply("ex_dates", &ev.ExDates)
 	apply("project_id", &ev.ProjectID)
 	apply("overrides", &ev.Overrides)
+	apply("kind", &ev.Kind)
 	// Validate AFTER apply so a partial patch (e.g. just start_time)
 	// gets validated against the merged record. Catches "user shifted
 	// the start past the end" without forcing them to also patch end.

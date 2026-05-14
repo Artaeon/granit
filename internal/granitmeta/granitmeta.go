@@ -22,6 +22,14 @@ type Event struct {
 	EndTime   string `json:"end_time"`
 	Location  string `json:"location,omitempty"`
 	Color     string `json:"color,omitempty"`
+	// Kind is the optional event type — meeting / focus / personal /
+	// travel / break / blocker / "" (generic). Drives a small glyph
+	// prefix on calendar chips + a default colour band so users can
+	// scan a packed day and see at a glance "two meetings, a focus
+	// block, a workout" without reading every title. Empty string
+	// is the default (no type), unrecognised strings round-trip
+	// through but display as generic.
+	Kind string `json:"kind,omitempty"`
 	// RemindMinutesBefore — Web Push reminder offset. 0 means
 	// "no reminder". Common values: 5, 10, 15, 30, 60. The push
 	// scheduler reads this to know when to fire a notification.

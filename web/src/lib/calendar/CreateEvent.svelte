@@ -3,6 +3,7 @@
   import { api, type CalendarEvent, type Project } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
+  import { EVENT_TYPES, findEventType } from './eventTypes';
 
   let {
     open = $bindable(false),
@@ -32,9 +33,43 @@
   // Empty default lets eventTypeColor rotate by title hash so a fresh
   // calendar fills with distinct hues automatically.
   let color = $state('');
+  // Event type — meeting / focus / personal / travel / break /
+  // blocker / '' (generic). Drives the chip glyph + default tint on
+  // the calendar grid. When the user toggles a type AND hasn't yet
+  // set start/end, the form pre-fills the default duration so the
+  // common "drop a 60-min focus block" workflow is one click.
+  let kind = $state('');
   let remindMinutes = $state(0); // 0 = no reminder
   let projectId = $state('');
   let saving = $state(false);
+  function pickKind(next: string) {
+    if (kind === next) {
+      // Tapping the same chip clears it — escape hatch for the user
+      // who picked a type and decided "actually, generic".
+      kind = '';
+      return;
+    }
+    kind = next;
+    // Auto-suggest end time when the user picked a duration-defining
+    // type AND start is set AND end is still empty (or matches the
+    // previous type's default). Don't overwrite a hand-picked end.
+    const def = findEventType(next);
+    if (def?.defaultDurationMin && startTime && !endTime) {
+      endTime = addMinutesToHHMM(startTime, def.defaultDurationMin);
+    }
+  }
+  // Add minutes to an HH:MM 24h string. Clamps to 23:59 so a long
+  // type pushed past midnight doesn't underflow into the previous
+  // day (events.json schema is single-date; cross-midnight is a
+  // separate constraint enforced at submit time).
+  function addMinutesToHHMM(hhmm: string, addMin: number): string {
+    const [h, m] = hhmm.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
+    const total = Math.min(h * 60 + m + addMin, 23 * 60 + 59);
+    const hh = Math.floor(total / 60);
+    const mm = total - hh * 60;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  }
 
   // Project list — loaded once on mount, kept until the page reloads.
   // Failure degrades silently (the picker shows the "(no project)"
@@ -181,6 +216,7 @@
     endTime = '';
     location = '';
     color = '';
+    kind = '';
     remindMinutes = 0;
     projectId = '';
     aiInput = '';
@@ -281,7 +317,8 @@
         color,
         remind_minutes_before: remindMinutes || undefined,
         rrule: rrule || undefined,
-        project_id: projectId || undefined
+        project_id: projectId || undefined,
+        kind: kind || undefined
       });
       close();
       await onCreated();
@@ -388,6 +425,43 @@
               Date / time / location resolve from natural language. Review the fields below and click Create.
             </p>
           {/if}
+        </div>
+
+        <!-- Event type. Optional — leaving it generic still creates
+             a valid event, just without the glyph prefix + auto-tint
+             on the grid. Tapping the same chip twice clears it.
+             Picking a type with a defaultDurationMin pre-fills the
+             end time if start is set + end is still empty (so a
+             one-click "60-min focus block at 14:00" workflow exists
+             from the create form). -->
+        <div>
+          <label class="block text-[11px] uppercase tracking-wider text-dim mb-1.5">Type <span class="text-dim normal-case tracking-normal">(optional)</span></label>
+          <div class="flex items-center gap-1 flex-wrap">
+            {#each EVENT_TYPES as t (t.id)}
+              {@const on = kind === t.id}
+              <button
+                type="button"
+                onclick={() => pickKind(t.id)}
+                aria-pressed={on}
+                title={t.description}
+                class="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium border transition-colors {on ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-text border-surface1 hover:border-primary'}"
+              >
+                <span
+                  class="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold font-mono leading-none"
+                  style:background={on ? 'transparent' : `color-mix(in srgb, var(--color-${t.color}) 22%, transparent)`}
+                  style:color={on ? undefined : `var(--color-${t.color})`}
+                >{t.glyph}</span>
+                <span>{t.label}</span>
+              </button>
+            {/each}
+            {#if kind}
+              <button
+                type="button"
+                onclick={() => (kind = '')}
+                class="text-[10px] text-dim hover:text-error px-1.5 py-1 border border-dashed border-surface1 hover:border-error"
+              >clear</button>
+            {/if}
+          </div>
         </div>
 
         <!-- Title — bigger touch target than the rest since it's

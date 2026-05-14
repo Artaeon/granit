@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api, type CalendarEvent, fmtDateISO } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
+  import { glyphForKind } from '$lib/calendar/eventTypes';
 
   // NowWidget answers "what's happening right now?" — current local
   // time + the upcoming event/scheduled task. Big and quiet so it sits
@@ -80,7 +81,7 @@
   {#if current}
     <div class="rounded p-2.5 mb-2" style="background: color-mix(in srgb, var(--color-{tone(current.type)}) 14%, transparent); border-left: 3px solid var(--color-{tone(current.type)})">
       <div class="text-[10px] uppercase tracking-wider text-dim">happening now</div>
-      <div class="text-sm text-text font-medium truncate">{current.title}</div>
+      <div class="text-sm text-text font-medium truncate">{#if glyphForKind(current.kind)}<span class="font-mono text-[10px] text-dim mr-1.5">{glyphForKind(current.kind)}</span>{/if}{current.title}</div>
       {#if current.location}<div class="text-xs text-dim truncate">@ {current.location}</div>{/if}
     </div>
   {/if}
@@ -90,7 +91,7 @@
       <div class="text-[10px] uppercase tracking-wider text-dim mb-1">up next</div>
       <div class="flex items-baseline gap-2">
         <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: var(--color-{tone(next.type)})"></span>
-        <span class="text-sm text-text flex-1 truncate">{next.title}</span>
+        <span class="text-sm text-text flex-1 truncate">{#if glyphForKind(next.kind)}<span class="font-mono text-[10px] text-dim mr-1.5">{glyphForKind(next.kind)}</span>{/if}{next.title}</span>
         <span class="text-xs text-dim font-mono">{fmtTime(new Date(next.start!))}</span>
       </div>
       <div class="text-[11px] text-dim ml-4">{relTime(new Date(next.start!).getTime())}</div>

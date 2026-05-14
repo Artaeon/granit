@@ -47,6 +47,11 @@ type icsEvent struct {
 	// of the emitted instances. Stored as a map keyed by the date or
 	// datetime form so lookup stays O(1) per iteration.
 	ExDates map[string]struct{}
+	// Kind is granit's event-type extension surfaced via the
+	// X-GRANIT-KIND custom property on the source VEVENT. Drives
+	// the chip glyph + default tint on the calendar grid; empty
+	// for events that don't declare a kind.
+	Kind string
 }
 
 // icsSource is one .ics file discovered in the vault. Source is what the
@@ -211,6 +216,11 @@ func parseICSFile(path string) ([]icsEvent, error) {
 			if t, _, ok := parseICSTime(val, params["TZID"]); ok {
 				cur.End = t
 			}
+		case "X-GRANIT-KIND":
+			// Granit's event-type extension. Lowercase normalised so a
+			// hand-edited "Meeting" reads the same as the canonical
+			// "meeting" the web UI emits.
+			cur.Kind = strings.ToLower(strings.TrimSpace(val))
 		case "EXDATE":
 			// EXDATE can carry multiple values separated by commas
 			// (RFC 5545 §3.8.5.1) and may use VALUE=DATE or a TZID

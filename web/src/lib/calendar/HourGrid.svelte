@@ -12,6 +12,7 @@
     layoutDay
   } from './utils';
   import { dragStore, type DraggedTask } from './dragStore';
+  import { glyphForKind } from './eventTypes';
 
   let {
     days,
@@ -541,12 +542,13 @@
           <div class="border-l border-surface1 p-1 space-y-0.5 min-w-0">
             {#each visible as ev}
               {@const c = eventTypeColor(ev)}
+              {@const glyph = glyphForKind(ev.kind)}
               <button
                 onclick={() => onClickEvent(ev)}
                 class="block w-full text-left text-[10px] leading-tight py-0.5 rounded-sm truncate font-semibold"
                 style="background: {c.bg}; color: {c.fg}; padding-left: 7px; padding-right: 5px; box-shadow: inset 3px 0 0 rgba(0,0,0,0.28); {ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}"
               >
-                {ev.title}
+                {#if glyph}<span class="font-mono opacity-80 mr-1">{glyph}</span>{/if}{ev.title}
               </button>
             {/each}
             {#if hidden > 0}
@@ -680,6 +682,7 @@
               {@const widthPct = 100 / item.groupSize}
               {@const draggable = isMovable(item.ev)}
               {@const resizable = isResizable(item.ev)}
+              {@const glyph = glyphForKind(item.ev.kind)}
               <div
                 class="absolute z-10"
                 style="top: {top}px; height: {height}px; left: {item.col * widthPct}%; width: calc({widthPct}% - 2px);"
@@ -694,7 +697,7 @@
                   class="absolute inset-0 rounded-sm text-left text-[11px] overflow-hidden leading-tight hover:brightness-110 transition {draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} {isDragging ? 'opacity-30' : ''} {isResizing ? 'ring-2 ring-primary ring-offset-1' : ''}"
                   style="background: {c.bg}; color: {c.fg}; padding: 3px 5px 3px 8px; touch-action: none; box-shadow: inset 3px 0 0 rgba(0,0,0,0.28);"
                 >
-                  <div class="font-semibold truncate {item.ev.done ? 'line-through opacity-70' : ''}">{item.ev.title}</div>
+                  <div class="font-semibold truncate {item.ev.done ? 'line-through opacity-70' : ''}">{#if glyph}<span class="font-mono opacity-80 mr-1">{glyph}</span>{/if}{item.ev.title}</div>
                   {#if height > 30}
                     <div class="text-[10px] opacity-85 truncate mt-px">
                       {fmtTime(eventStartDate(item.ev)!)}
@@ -727,11 +730,12 @@
           {@const c = eventTypeColor(drag.ev)}
           {@const top = drag.ghostMinutes * (HOUR_PX / 60)}
           {@const height = Math.max(drag.durationMinutes * (HOUR_PX / 60), 18)}
+          {@const ghostGlyph = glyphForKind(drag.ev.kind)}
           <div
             class="absolute rounded-sm text-left text-[11px] overflow-hidden z-30 pointer-events-none ring-2 ring-primary shadow-lg leading-tight"
             style="top: {top}px; height: {height}px; left: calc({railPx}px + {drag.ghostDayIdx} * (100% - {railPx}px) / {days.length}); width: calc((100% - {railPx}px) / {days.length} - 4px); background: {c.bg}; color: {c.fg}; padding: 3px 5px 3px 8px; margin-left: 1px; box-shadow: inset 3px 0 0 rgba(0,0,0,0.28), 0 8px 16px rgba(0,0,0,0.35);"
           >
-            <div class="font-medium truncate">{drag.ev.title}</div>
+            <div class="font-medium truncate">{#if ghostGlyph}<span class="font-mono opacity-80 mr-1">{ghostGlyph}</span>{/if}{drag.ev.title}</div>
             <div class="text-[10px] opacity-80">
               {String(Math.floor(drag.ghostMinutes / 60)).padStart(2, '0')}:{String(drag.ghostMinutes % 60).padStart(2, '0')}
               {days[drag.ghostDayIdx].toLocaleDateString(undefined, { weekday: 'short' })}

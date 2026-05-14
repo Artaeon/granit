@@ -24,6 +24,12 @@ type calendarEvent struct {
 	Priority        int     `json:"priority,omitempty"`
 	DurationMinutes int     `json:"durationMinutes,omitempty"`
 	Color           string  `json:"color,omitempty"`
+	// Kind is the optional event type (meeting / focus / personal /
+	// travel / break / blocker). Drives the glyph prefix + default
+	// tint on calendar chips. Empty for generic / no-type events.
+	// Set on type="event" + type="ics_event"; not meaningful for
+	// task_due / task_scheduled / deadline.
+	Kind string `json:"kind,omitempty"`
 	Location        string  `json:"location,omitempty"`
 	// Source is the .ics filename for ICS-derived events (e.g.
 	// "faith.ics") — the web uses it to color-by-source so different
@@ -306,6 +312,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 						Location:  location,
 						RRule:     ev.RRule,
 						ProjectID: ev.ProjectID,
+						Kind:      ev.Kind,
 					}
 					if hasOvr {
 						ce.OverrideKey = ovrKey
@@ -351,6 +358,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 					Location:  location,
 					RRule:     ev.RRule,
 					ProjectID: ev.ProjectID,
+					Kind:      ev.Kind,
 				}
 				if hasOvr {
 					ce.OverrideKey = ovrKey
@@ -471,6 +479,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 						Date:     dayISO,
 						RRule:    ev.RRule,
 						Editable: &editable,
+						Kind:     ev.Kind,
 					})
 				}
 				continue
@@ -495,6 +504,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				Source:   ev.Source,
 				RRule:    ev.RRule,
 				Editable: &editable,
+				Kind:     ev.Kind,
 			}
 			// Floating ICS times (no Z, no TZID) emit as RFC3339-style
 			// WITHOUT an offset so the browser's Date parser uses its

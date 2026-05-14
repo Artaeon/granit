@@ -184,6 +184,9 @@ export interface CalendarEvent {
    *  recurring event. Repeated on every occurrence so the chip can
    *  show a ↻ indicator and the edit modal can target the series. */
   rrule?: string;
+  /** Optional event type — drives the glyph prefix + default tint on
+   *  the calendar chip. Empty / undefined for generic events. */
+  kind?: string;
   /** Optional project name this event/task is linked to. For events
    *  it comes from granitmeta.Event.ProjectID; for tasks it's the
    *  task's project_id (sidecar) or Project (markdown-extracted)
@@ -337,6 +340,10 @@ export interface CalendarEventEntry {
    *  calendar page folds these in alongside scheduled tasks. Empty
    *  for unlinked events. */
   project_id?: string;
+  /** Optional event type — meeting / focus / personal / travel /
+   *  break / blocker. Drives the chip glyph + default tint on the
+   *  calendar grid. Empty / undefined for generic events. */
+  kind?: string;
   /** Per-occurrence overrides for a recurring event. Keyed by the
    *  occurrence's UTC anchor (YYYY-MM-DDTHH:MM:SS for timed,
    *  YYYY-MM-DD for all-day) — the same shape as ex_dates. The
@@ -1048,6 +1055,9 @@ export type ICSEventCreate = {
   location?: string;
   description?: string;
   rrule?: string;
+  /** Granit's X-GRANIT-KIND extension — empty string clears the
+   *  property; unknown values display as generic. */
+  kind?: string;
 };
 
 export type ICSEventPatch = Partial<ICSEventCreate>;
