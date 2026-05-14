@@ -25,6 +25,7 @@ import { EditorView, Decoration, type DecorationSet, WidgetType } from '@codemir
 import { StateField, StateEffect, type Extension } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { api, type ChatMessage } from '$lib/api';
+import { rafThrottle } from '$lib/util/streamThrottle';
 
 // ─── State ─────────────────────────────────────────────────────────
 
@@ -162,57 +163,25 @@ export function continueWriting(view: EditorView): boolean {
   });
 
   const messages = buildContextMessages(view);
-  let acc = '';
-  // Throttle the ghost-widget re-paint to once per animation frame.
-  // Pre-fix this dispatched a fresh setGhost on every streamed
-  // chunk — for a typical 100-300 chunk LLM stream that's hundreds
-  // of CodeMirror transactions in quick succession, each rebuilding
-  // the ghost decoration widget DOM. The user reported the app
-  // freezing during "continue writing" (and the user-perceptible
-  // symptom of other AI features that stream into the editor was
-  // the same root cause). rAF coalesces multiple chunks into one
-  // visible frame: visible typing rate is unchanged, CPU usage
-  // drops by an order of magnitude.
-  let pendingFrame = 0;
-  let dirty = false;
-  const paint = () => {
-    pendingFrame = 0;
-    if (!dirty) return;
-    dirty = false;
-    const display = acc.replace(/^\s+/, '');
+  // Shared rAF throttle so the ghost-widget DOM only rebuilds once
+  // per animation frame regardless of token rate. Without this the
+  // CodeMirror transaction dispatch fired per chunk → hundreds of
+  // widget rebuilds for a long continuation → main thread choke.
+  const t = rafThrottle((full) => {
+    const display = full.replace(/^\s+/, '');
     view.dispatch({ effects: setGhost.of({ text: display, active: true }) });
-  };
+  });
   void api.chatStream(
     messages,
     undefined,
     {
-      onChunk: (chunk) => {
-        acc += chunk;
-        dirty = true;
-        if (pendingFrame === 0) {
-          pendingFrame = requestAnimationFrame(paint);
-        }
-      },
+      onChunk: t.onChunk,
       onDone: () => {
-        // Flush the trailing buffer immediately so the user sees the
-        // FULL continuation the moment the stream ends, not on the
-        // next frame after.
-        if (pendingFrame !== 0) {
-          cancelAnimationFrame(pendingFrame);
-          pendingFrame = 0;
-        }
-        if (dirty) {
-          dirty = false;
-          const display = acc.replace(/^\s+/, '');
-          view.dispatch({ effects: setGhost.of({ text: display, active: true }) });
-        }
+        t.flush();
         activeAbort = null;
       },
       onError: (err) => {
-        if (pendingFrame !== 0) {
-          cancelAnimationFrame(pendingFrame);
-          pendingFrame = 0;
-        }
+        t.flush();
         activeAbort = null;
         view.dispatch({ effects: clearGhost.of(null) });
         // Surface as console + optional toast hook? We keep it

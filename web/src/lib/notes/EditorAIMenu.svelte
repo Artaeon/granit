@@ -23,6 +23,7 @@
 <script lang="ts">
   import { api } from '$lib/api';
   import { toast } from '$lib/components/toast';
+  import { rafThrottle } from '$lib/util/streamThrottle';
 
   interface Props {
     notePath: string;
@@ -187,7 +188,15 @@
     titleSuggestions = [];
     titleAbort?.abort();
     titleAbort = new AbortController();
-    let buf = '';
+    // Throttle the per-chunk list rebuild — every token re-split the
+    // growing buffer + re-rendered the suggestion buttons. Cheap per
+    // chunk but compounds badly on slow phones.
+    const t = rafThrottle((full) => {
+      titleSuggestions = full
+        .split(/\n+/)
+        .map((l) => l.trim().replace(/^[-•*\d.\s"']+|["']\s*$/g, ''))
+        .filter((l) => l.length > 0 && l.length < 120);
+    });
     try {
       await api.chatStream(
         [
@@ -200,15 +209,10 @@
         ],
         undefined,
         {
-          onChunk: (c) => {
-            buf += c;
-            titleSuggestions = buf
-              .split(/\n+/)
-              .map((l) => l.trim().replace(/^[-•*\d.\s"']+|["']\s*$/g, ''))
-              .filter((l) => l.length > 0 && l.length < 120);
-          },
-          onDone: () => {},
+          onChunk: t.onChunk,
+          onDone: () => { t.flush(); },
           onError: (err) => {
+            t.flush();
             toast.error(err.message);
             titleSuggestions = [];
           }
@@ -279,7 +283,9 @@
     busy = 'study';
     studyCards = [];
     studyRaw = '';
-    let buf = '';
+    const studyT = rafThrottle((full) => {
+      studyRaw = full;
+    });
     try {
       await api.chatStream(
         [
@@ -292,8 +298,10 @@
         ],
         undefined,
         {
-          onChunk: (c) => { buf += c; studyRaw = buf; },
+          onChunk: studyT.onChunk,
           onDone: () => {
+            studyT.flush();
+            const buf = studyT.value();
             let cleaned = buf.trim();
             if (cleaned.startsWith('```')) {
               cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
@@ -348,7 +356,10 @@
     gapsAbort = new AbortController();
     busy = 'gaps';
     gaps = [];
-    let buf = '';
+    // Same shape as suggestTitle — rebuild the list once per frame.
+    const gapsT = rafThrottle((full) => {
+      gaps = full.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 0);
+    });
     try {
       await api.chatStream(
         [
@@ -361,12 +372,9 @@
         ],
         undefined,
         {
-          onChunk: (c) => {
-            buf += c;
-            gaps = buf.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 0);
-          },
-          onDone: () => {},
-          onError: (err) => toast.error(err.message)
+          onChunk: gapsT.onChunk,
+          onDone: () => { gapsT.flush(); },
+          onError: (err) => { gapsT.flush(); toast.error(err.message); }
         },
         gapsAbort.signal
       );
@@ -613,8 +621,13 @@ Return [] if nothing in the note rises to the bar.`
     translateAbort?.abort();
     translateAbort = new AbortController();
     translatePreview = { to: target, text: '' };
-    let buf = '';
     const targetName = target === 'de' ? 'German' : 'English';
+    // Same throttle — for a multi-paragraph note the model emits
+    // hundreds of tokens, and re-rendering the preview block per
+    // token was directly observable as the freeze on translate.
+    const translateT = rafThrottle((full) => {
+      translatePreview = { to: target, text: full };
+    });
     try {
       await api.chatStream(
         [
@@ -627,14 +640,10 @@ Return [] if nothing in the note rises to the bar.`
         ],
         undefined,
         {
-          onChunk: (c) => {
-            buf += c;
-            // Stream into the preview so the user can watch the
-            // translation arrive — apply happens on Accept.
-            translatePreview = { to: target, text: buf };
-          },
-          onDone: () => {},
+          onChunk: translateT.onChunk,
+          onDone: () => { translateT.flush(); },
           onError: (err) => {
+            translateT.flush();
             toast.error(err.message);
             translatePreview = null;
           }
