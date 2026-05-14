@@ -5,6 +5,7 @@
   import { auth } from '$lib/stores/auth';
   import { api, type CalendarEvent, type CalendarEventEntry, type CalendarFeed, type CalendarSource, type HabitInfo, type Project, type Task } from '$lib/api';
   import CalendarAgent from '$lib/calendar/CalendarAgent.svelte';
+  import { EVENT_TYPES } from '$lib/calendar/eventTypes';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { mediaQuery } from '$lib/util/mediaQuery';
@@ -149,6 +150,35 @@
   const PROJECT_FILTER_KEY = 'granit.calendar.project';
   let projectFilter = $state<string>(loadStoredString(PROJECT_FILTER_KEY, ''));
   $effect(() => saveStoredString(PROJECT_FILTER_KEY, projectFilter));
+
+  // Event-type filter — JSON-encoded Set of catalog ids. Empty = no
+  // filter (all types + untyped show). When non-empty, the calendar
+  // only shows events whose kind is in the set; untyped events (no
+  // kind set) only show when the special '' id is also in the set,
+  // controlled by a dedicated "Untyped" chip. Persisted per-device.
+  const KIND_FILTER_KEY = 'granit.calendar.kindFilter';
+  function loadKindFilterFromStorage(): Set<string> {
+    const raw = loadStoredString(KIND_FILTER_KEY, '');
+    if (!raw) return new Set();
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) return new Set(parsed.filter((x): x is string => typeof x === 'string'));
+    } catch {
+      // Malformed — fall through to empty set.
+    }
+    return new Set();
+  }
+  let kindFilter = $state<Set<string>>(loadKindFilterFromStorage());
+  $effect(() => saveStoredString(KIND_FILTER_KEY, JSON.stringify([...kindFilter])));
+  function toggleKindFilter(id: string) {
+    const next = new Set(kindFilter);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    kindFilter = next;
+  }
+  function clearKindFilter() {
+    kindFilter = new Set();
+  }
 
   // Project list — used by the filter dropdown + the "colour by
   // project" overlay. Loaded once on mount; refreshed on demand if a
@@ -359,6 +389,19 @@
       .filter((e) => {
         if (!projectFilter) return true;
         return e.project_id === projectFilter;
+      })
+      .filter((e) => {
+        // Empty kindFilter = show everything (no filter applied).
+        // Non-empty set: only events whose type is calendar-related
+        // (event / ics_event) participate in the type filter; tasks
+        // + deadlines never carry a kind and always pass through so
+        // a "show only Focus events" filter doesn't hide today's
+        // overdue task. The '__untyped' sentinel id lets the user
+        // also include kind-less events.
+        if (kindFilter.size === 0) return true;
+        if (e.type !== 'event' && e.type !== 'ics_event') return true;
+        const k = e.kind ?? '';
+        return k ? kindFilter.has(k) : kindFilter.has('__untyped');
       })
       .map((e) => applySourceColor(e, $sourceColors))
       .map((e) => {
@@ -958,6 +1001,49 @@
          project X shows up only when the filter is empty or set to X.
          "Colour by project" toggle below tints linked rows with the
          project's saved colour for at-a-glance visual grouping. -->
+    <!-- Event-type filter strip. Each chip toggles a single type
+         into the filter set; empty set = no filter (everything
+         visible). The 'Untyped' chip includes events with no kind
+         declared so a user can isolate the legacy un-tagged subset. -->
+    <div class="space-y-1.5 text-xs">
+      <h3 class="text-dim uppercase tracking-wider mb-2 flex items-center gap-2">
+        <span>Event type</span>
+        {#if kindFilter.size > 0}
+          <button
+            type="button"
+            onclick={clearKindFilter}
+            class="ml-auto text-[10px] text-warning hover:text-error normal-case"
+          >clear ({kindFilter.size})</button>
+        {/if}
+      </h3>
+      <div class="flex items-center gap-1 flex-wrap">
+        {#each EVENT_TYPES as t (t.id)}
+          {@const on = kindFilter.has(t.id)}
+          <button
+            type="button"
+            onclick={() => toggleKindFilter(t.id)}
+            aria-pressed={on}
+            title={t.description}
+            class="inline-flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium border transition-colors {on ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-text border-surface1 hover:border-primary'}"
+          >
+            <span
+              class="inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] font-bold font-mono leading-none"
+              style:background={on ? 'transparent' : `color-mix(in srgb, var(--color-${t.color}) 22%, transparent)`}
+              style:color={on ? undefined : `var(--color-${t.color})`}
+            >{t.glyph}</span>
+            <span>{t.label}</span>
+          </button>
+        {/each}
+        <button
+          type="button"
+          onclick={() => toggleKindFilter('__untyped')}
+          aria-pressed={kindFilter.has('__untyped')}
+          title="Events with no type set"
+          class="inline-flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium border transition-colors {kindFilter.has('__untyped') ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-dim border-surface1 hover:border-primary'}"
+        >Untyped</button>
+      </div>
+    </div>
+
     {#if allProjects.length > 0}
       <div class="space-y-1.5 text-xs">
         <h3 class="text-dim uppercase tracking-wider mb-2">Project board</h3>
