@@ -16,6 +16,7 @@
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
+  import { rafThrottle } from '$lib/util/streamThrottle';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import {
     AGENT_MODES,
@@ -1953,16 +1954,25 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
       perTurnRagHits = { ...perTurnRagHits, [idx]: lastRagHits.slice() };
     }
     try {
+      // rAF throttle — the assistant message is rendered live as a
+      // MarkdownRenderer block (one per message in the thread).
+      // Pre-fix the messages array was rebuilt + re-rendered + the
+      // assistant message's markdown re-parsed PER token, freezing
+      // long replies. The throttle commits the latest buffer once
+      // per animation frame; flush() runs on stream completion so
+      // the final state lands before auto-save fires.
+      const t = rafThrottle((full) => {
+        acc = full;
+        messages = messages.map((m, i) => (i === idx ? { ...m, content: full } : m));
+      });
       await api.chatStream(
         history,
         attachNote && currentNotePath ? currentNotePath : undefined,
         {
-          onChunk: (c) => {
-            acc += c;
-            // Reassign through map so $state picks up the change.
-            messages = messages.map((m, i) => (i === idx ? { ...m, content: acc } : m));
-          },
+          onChunk: t.onChunk,
+          onDone: () => { t.flush(); },
           onError: (err) => {
+            t.flush();
             messages = messages.map((m, i) =>
               i === idx ? { ...m, content: `_error:_ ${err.message}` } : m
             );

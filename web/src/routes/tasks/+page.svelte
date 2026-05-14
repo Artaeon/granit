@@ -20,6 +20,7 @@
   import TaskAgent from '$lib/tasks/TaskAgent.svelte';
   import { isTypingTarget } from '$lib/util/isTypingTarget';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
+  import { rafThrottle } from '$lib/util/streamThrottle';
   import { saveProposals, loadProposals } from '$lib/util/proposalCache';
   import { extractJsonBlock } from '$lib/util/jsonExtract';
   import {
@@ -221,6 +222,25 @@
     aiFocusSkipped = '';
     aiFocusAbort = new AbortController();
     const { system, user: userMessage } = buildPlanDayPrompt(tasks, todayISO(), aiFocusHours);
+    // rAF throttle — aiFocusResponse is rendered live through
+    // MarkdownRenderer in the streaming branch (1871). Pre-fix this
+    // re-parsed the whole growing buffer per chunk → main thread
+    // choke. Throttle commits the latest buffer + tries the JSON
+    // parse at most once per frame.
+    const t = rafThrottle((full) => {
+      aiFocusResponse = full;
+      const block = extractJsonBlock(full);
+      if (!block) return;
+      try {
+        const parsed = JSON.parse(block) as { plan?: PlanItem[]; skipped_reasons?: string };
+        if (Array.isArray(parsed.plan)) {
+          aiFocusPlan = validatePlanItems(parsed.plan, tasks);
+          aiFocusSkipped = typeof parsed.skipped_reasons === 'string' ? parsed.skipped_reasons : '';
+        }
+      } catch {
+        // Partial JSON — wait for more chunks.
+      }
+    });
     try {
       await api.chatStream(
         [
@@ -229,26 +249,9 @@
         ],
         undefined,
         {
-          onChunk: (c) => {
-            aiFocusResponse += c;
-            // Try to parse the structured plan as it streams. Most
-            // models emit the closing brace late, so this only
-            // succeeds toward the end — but it lets a fast local
-            // model populate the panel before the stream officially
-            // finishes.
-            const block = extractJsonBlock(aiFocusResponse);
-            if (!block) return;
-            try {
-              const parsed = JSON.parse(block) as { plan?: PlanItem[]; skipped_reasons?: string };
-              if (Array.isArray(parsed.plan)) {
-                aiFocusPlan = validatePlanItems(parsed.plan, tasks);
-                aiFocusSkipped = typeof parsed.skipped_reasons === 'string' ? parsed.skipped_reasons : '';
-              }
-            } catch {
-              // Partial JSON — wait for more chunks.
-            }
-          },
-          onError: (err) => { aiFocusError = err.message; }
+          onChunk: t.onChunk,
+          onDone: () => { t.flush(); },
+          onError: (err) => { t.flush(); aiFocusError = err.message; }
         },
         aiFocusAbort.signal
       );
@@ -389,6 +392,19 @@
       return;
     }
     const { system, user } = buildStaleVerdictPrompt(candidates, todayISO());
+    // Same shape as runAIFocus — coalesce per-frame so the JSON
+    // parser doesn't run on every token of a growing buffer.
+    const stT = rafThrottle((full) => {
+      aiStaleRaw = full;
+      const block = extractJsonBlock(full);
+      if (!block) return;
+      try {
+        const parsed = JSON.parse(block) as { verdicts?: StaleVerdict[] };
+        if (Array.isArray(parsed.verdicts)) {
+          aiStaleVerdicts = validateStaleVerdicts(parsed.verdicts, tasks);
+        }
+      } catch {}
+    });
     try {
       await api.chatStream(
         [
@@ -397,18 +413,9 @@
         ],
         undefined,
         {
-          onChunk: (c) => {
-            aiStaleRaw += c;
-            const block = extractJsonBlock(aiStaleRaw);
-            if (!block) return;
-            try {
-              const parsed = JSON.parse(block) as { verdicts?: StaleVerdict[] };
-              if (Array.isArray(parsed.verdicts)) {
-                aiStaleVerdicts = validateStaleVerdicts(parsed.verdicts, tasks);
-              }
-            } catch {}
-          },
-          onError: (err) => { aiStaleError = err.message; }
+          onChunk: stT.onChunk,
+          onDone: () => { stT.flush(); },
+          onError: (err) => { stT.flush(); aiStaleError = err.message; }
         },
         aiStaleAbort.signal
       );

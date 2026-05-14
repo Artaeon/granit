@@ -29,6 +29,7 @@
   import { api } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
+  import { rafThrottle } from '$lib/util/streamThrottle';
 
   interface CachedSummary {
     text: string;
@@ -136,7 +137,13 @@
     pending = true;
     response = '';
     error = '';
-    let buf = '';
+    // Shared rAF throttle — without this, every streamed token wrote
+    // the growing buffer to `response` (rendered live in the card)
+    // and triggered a full Svelte re-render of the card. Same
+    // root-cause class as the freezes in AskAIDialog / EditorAIMenu.
+    const t = rafThrottle((full) => {
+      response = full;
+    });
     try {
       await api.chatStream(
         [
@@ -152,12 +159,10 @@
         ],
         notePath || undefined,
         {
-          onChunk: (c) => {
-            buf += c;
-            response = buf;
-          },
+          onChunk: t.onChunk,
           onDone: async () => {
-            const text = buf.trim();
+            t.flush();
+            const text = t.value().trim();
             if (text) {
               try {
                 const next = { ...frontmatter, ai_summary: { text, generated_at: new Date().toISOString() } };
@@ -177,7 +182,7 @@
               error = 'AI returned an empty summary.';
             }
           },
-          onError: (err) => { error = err.message; }
+          onError: (err) => { t.flush(); error = err.message; }
         },
         abort.signal
       );

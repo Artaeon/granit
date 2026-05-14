@@ -20,6 +20,7 @@
   import { onWsEvent } from '$lib/ws';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { toast } from '$lib/components/toast';
+  import { rafThrottle } from '$lib/util/streamThrottle';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   let {
@@ -189,7 +190,15 @@
     cmpError = '';
     cmpResponse = '';
     cmpOpen = true;
-    let buf = '';
+    // rAF throttle — the comparison output is rendered live through
+    // MarkdownRenderer (which re-parses the whole body each render).
+    // Without coalescing, a long compare on a fast model recomputed
+    // marked.parse + the whole MarkdownRenderer effect chain per
+    // token = same freeze class as the rest of the editor's AI
+    // surfaces.
+    const t = rafThrottle((full) => {
+      cmpResponse = full;
+    });
     try {
       await api.chatStream(
         [
@@ -206,9 +215,9 @@
         ],
         undefined,
         {
-          onChunk: (c) => { buf += c; cmpResponse = buf; },
-          onDone: () => {},
-          onError: (err) => { cmpError = err.message; }
+          onChunk: t.onChunk,
+          onDone: () => { t.flush(); },
+          onError: (err) => { t.flush(); cmpError = err.message; }
         },
         cmpAbort.signal
       );
