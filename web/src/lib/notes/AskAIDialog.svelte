@@ -220,10 +220,24 @@
   });
 
   // Diff helpers live in $lib/util/lineDiff so the version-history
-  // panel can share them. Same LCS algorithm, same DiffLine shape.
-  const diff = $derived(
-    request && response ? lineDiff(request.text, response) : []
-  );
+  // panel can share them. Same LCS algorithm — O(N*M) on the inputs.
+  // SIZE GUARD: for whole-note actions the user's note can be
+  // 100KB+. Once the streaming response also grows past a few KB,
+  // lineDiff against the full note would run BILLIONS of operations
+  // per animation frame and freeze the browser hard enough that the
+  // "Page Unresponsive" dialog fires. Cap input lengths at 16K
+  // chars apiece — diff view above that bails to an empty diff and
+  // the template falls through to the markdown-rendered branch.
+  // 16K is generous (most rewrite-style edits are paragraph-sized);
+  // anyone hitting the cap is doing whole-note rewrite where a
+  // line-diff isn't useful anyway.
+  const DIFF_INPUT_CAP = 16_000;
+  const diff = $derived.by(() => {
+    if (!request || !response) return [];
+    if (request.text.length > DIFF_INPUT_CAP) return [];
+    if (response.length > DIFF_INPUT_CAP) return [];
+    return lineDiff(request.text, response);
+  });
   const diffStatsView = $derived.by(() => {
     let added = 0;
     let removed = 0;
