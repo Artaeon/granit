@@ -15,6 +15,15 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import { rafThrottle } from '$lib/util/streamThrottle';
+  import { classifyAiError } from '$lib/util/aiErrors';
+  import { errorMessage } from '$lib/util/errorMessage';
+  import {
+    SNAPSHOT_SYSTEM_PROMPT,
+    SUB_AUDIT_SYSTEM_PROMPT,
+    buildSnapshotPrompt,
+    buildSubAuditPrompt
+  } from '$lib/finance/aiPrompts';
 
   // /finance covers the four things that actually matter for tracking
   // a financial life: how much money I have (Accounts → Net worth),
@@ -49,6 +58,136 @@
   // a follow-up fetch when the user clicks "+ New".
   let projects = $state<Project[]>([]);
   let loading = $state(false);
+
+  // ── AI snapshot ─────────────────────────────────────────────────
+  // 3-paragraph "where you stand financially" read at the top of
+  // the overview tab. Distinct from the sub-audit below (which is
+  // a focused cancellation candidate list). Streamed via
+  // api.chatStream + rafThrottle so a fast model doesn't choke the
+  // page. Dismiss is per-day so a refresh doesn't re-show the brief
+  // the user already read.
+  let snapshotText = $state('');
+  let snapshotBusy = $state(false);
+  let snapshotError = $state('');
+  let snapshotAbort: AbortController | null = null;
+  // ── Subscription audit ──────────────────────────────────────────
+  // Bullet-list audit of the user's subscriptions vs. monthly
+  // income. Rendered on the subscriptions tab.
+  let auditText = $state('');
+  let auditBusy = $state(false);
+  let auditError = '';
+  let auditAbort: AbortController | null = null;
+
+  async function runSnapshot() {
+    if (!overview || snapshotBusy) return;
+    snapshotError = '';
+    snapshotText = '';
+    snapshotBusy = true;
+    snapshotAbort?.abort();
+    snapshotAbort = new AbortController();
+    const user = buildSnapshotPrompt({
+      overview,
+      subscriptions: subs,
+      streams,
+      goals
+    });
+    const t = rafThrottle((full) => {
+      snapshotText = full;
+    });
+    try {
+      await api.chatStream(
+        [
+          { role: 'system', content: SNAPSHOT_SYSTEM_PROMPT },
+          { role: 'user', content: user }
+        ],
+        undefined,
+        {
+          onChunk: t.onChunk,
+          onDone: () => {
+            t.flush();
+            snapshotBusy = false;
+            snapshotAbort = null;
+            if (!snapshotText.trim()) snapshotError = 'AI returned an empty snapshot.';
+          },
+          onError: (err) => {
+            t.flush();
+            snapshotBusy = false;
+            snapshotAbort = null;
+            snapshotError = classifyAiError(err.message).headline;
+          }
+        },
+        snapshotAbort.signal
+      );
+    } catch (e) {
+      snapshotBusy = false;
+      snapshotAbort = null;
+      snapshotError = errorMessage(e);
+    }
+  }
+  function cancelSnapshot() {
+    snapshotAbort?.abort();
+    snapshotAbort = null;
+    snapshotBusy = false;
+  }
+  function dismissSnapshot() {
+    snapshotText = '';
+    snapshotError = '';
+  }
+
+  async function runSubAudit() {
+    if (auditBusy) return;
+    auditError = '';
+    auditText = '';
+    auditBusy = true;
+    auditAbort?.abort();
+    auditAbort = new AbortController();
+    const user = buildSubAuditPrompt({
+      subscriptions: subs,
+      monthlyIncomeCents: overview?.income_monthly_actual_cents ?? 0,
+      currency: overview?.currency ?? 'EUR'
+    });
+    const t = rafThrottle((full) => {
+      auditText = full;
+    });
+    try {
+      await api.chatStream(
+        [
+          { role: 'system', content: SUB_AUDIT_SYSTEM_PROMPT },
+          { role: 'user', content: user }
+        ],
+        undefined,
+        {
+          onChunk: t.onChunk,
+          onDone: () => {
+            t.flush();
+            auditBusy = false;
+            auditAbort = null;
+            if (!auditText.trim()) auditError = 'AI returned an empty audit.';
+          },
+          onError: (err) => {
+            t.flush();
+            auditBusy = false;
+            auditAbort = null;
+            auditError = classifyAiError(err.message).headline;
+          }
+        },
+        auditAbort.signal
+      );
+    } catch (e) {
+      auditBusy = false;
+      auditAbort = null;
+      auditError = errorMessage(e);
+    }
+  }
+  function cancelSubAudit() {
+    auditAbort?.abort();
+    auditAbort = null;
+    auditBusy = false;
+  }
+  function dismissSubAudit() {
+    auditText = '';
+    auditError = '';
+  }
 
   // Account color → CSS variable. Empty / unknown falls through to
   // surface1 so the row pip is just visible without yelling.
@@ -643,6 +782,57 @@
           </div>
         {/if}
 
+        <!-- AI financial snapshot — 3-paragraph read of where the
+             user stands. Calm, frank, names specific levers. Same
+             rafThrottle pattern as the morning brief so a fast
+             model can't choke the page. -->
+        <div class="mb-4 px-3 py-3 bg-mantle border border-surface1 rounded">
+          <div class="flex items-baseline gap-2 mb-2">
+            <span class="text-[10px] uppercase tracking-wider text-dim">AI snapshot</span>
+            {#if snapshotBusy}
+              <span class="text-[10px] text-secondary">streaming…</span>
+            {/if}
+            <span class="flex-1"></span>
+            {#if snapshotBusy}
+              <button
+                type="button"
+                onclick={cancelSnapshot}
+                class="text-[11px] text-warning hover:text-error"
+              >cancel</button>
+            {:else if snapshotText.trim() || snapshotError}
+              <button
+                type="button"
+                onclick={runSnapshot}
+                class="text-[11px] text-secondary hover:underline"
+                title="Re-run the snapshot"
+              >↻ regenerate</button>
+              <button
+                type="button"
+                onclick={dismissSnapshot}
+                class="text-[11px] text-dim hover:text-error"
+              >dismiss</button>
+            {/if}
+          </div>
+          {#if snapshotError}
+            <p class="text-sm text-error">{snapshotError}</p>
+          {:else if snapshotText.trim()}
+            <div class="text-sm text-text leading-relaxed space-y-2">
+              {#each snapshotText.trim().split(/\n{2,}/) as para}
+                {#if para.trim()}<p>{para.trim()}</p>{/if}
+              {/each}
+            </div>
+          {:else if snapshotBusy}
+            <p class="text-sm text-dim italic">Reading the numbers…</p>
+          {:else}
+            <p class="text-sm text-dim mb-2">A frank 70-130 word read of net worth, run rate, biggest lever, and one thing to watch next month.</p>
+            <button
+              type="button"
+              onclick={runSnapshot}
+              class="text-xs px-2 py-1 bg-surface0 hover:bg-surface1 text-secondary border border-secondary"
+            >Generate snapshot</button>
+          {/if}
+        </div>
+
         <!-- Shopping rollup — bridges the user's plan-to-buy list into
              the money picture. Shows planned spend (the queued purchases
              not yet bought) and bought-this-month spend (one-off
@@ -864,8 +1054,54 @@
     {:else if tab === 'subscriptions'}
       <div class="flex justify-between items-center mb-3">
         <p class="text-xs text-dim">{subs.length} subscriptions · {fmtMoney(overview?.subscription_monthly_cents ?? 0, overview?.currency ?? '')}/mo</p>
-        <button onclick={openSub} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New subscription</button>
+        <div class="flex items-center gap-1">
+          {#if subs.length >= 3}
+            <button
+              onclick={runSubAudit}
+              disabled={auditBusy}
+              class="text-xs px-2.5 py-1 bg-surface0 hover:bg-surface1 text-secondary border border-secondary disabled:opacity-50"
+              title="AI audit: surfaces 3-6 candidates to cancel / downgrade / consolidate, ordered by annual saving"
+            >{auditBusy ? 'auditing…' : 'AI audit'}</button>
+          {/if}
+          <button onclick={openSub} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New subscription</button>
+        </div>
       </div>
+      {#if auditText.trim() || auditError || auditBusy}
+        <div class="mb-3 px-3 py-3 bg-mantle border border-surface1 rounded">
+          <div class="flex items-baseline gap-2 mb-2">
+            <span class="text-[10px] uppercase tracking-wider text-dim">AI audit</span>
+            {#if auditBusy}
+              <span class="text-[10px] text-secondary">streaming…</span>
+            {/if}
+            <span class="flex-1"></span>
+            {#if auditBusy}
+              <button
+                type="button"
+                onclick={cancelSubAudit}
+                class="text-[11px] text-warning hover:text-error"
+              >cancel</button>
+            {:else if auditText.trim() || auditError}
+              <button
+                type="button"
+                onclick={runSubAudit}
+                class="text-[11px] text-secondary hover:underline"
+              >↻ regenerate</button>
+              <button
+                type="button"
+                onclick={dismissSubAudit}
+                class="text-[11px] text-dim hover:text-error"
+              >dismiss</button>
+            {/if}
+          </div>
+          {#if auditError}
+            <p class="text-sm text-error">{auditError}</p>
+          {:else if auditText.trim()}
+            <pre class="text-xs text-text leading-relaxed whitespace-pre-wrap font-sans m-0">{auditText.trim()}</pre>
+          {:else}
+            <p class="text-sm text-dim italic">Auditing your subscriptions…</p>
+          {/if}
+        </div>
+      {/if}
       {#if subs.length === 0}
         <p class="text-sm text-dim italic">No subscriptions yet — add your first to start tracking recurring outflows.</p>
       {:else}
