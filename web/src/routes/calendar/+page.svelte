@@ -613,13 +613,61 @@
             recurringMode = 'series';
           }
         } else {
-          // ICS branch — only series supported via patchICSEvent.
-          const ok = confirm(
-            `"${ev.title}" is a recurring ICS event. Moving it shifts the entire series. Per-instance overrides aren't supported for ICS calendars yet.\n\nContinue?`
+          // ICS branch — same scope picker as native events. The
+          // backend grew skip + create-standalone primitives so we
+          // can now offer "just this one" for ICS too. EventDetail
+          // already uses the same pattern; this is the drag-move
+          // counterpart so the UX stays consistent across surfaces.
+          const justThisOne = confirm(
+            `"${ev.title}" is a recurring ICS event.\n\nOK: Move just this occurrence (the original date is EXDATE'd; a standalone VEVENT lands at the new time)\nCancel: Move the entire series (every occurrence shifts by the same delta)\n\nClose this dialog to abort.`
           );
-          if (!ok) return;
-          recurringMode = 'series';
+          if (justThisOne) {
+            recurringMode = 'instance';
+          } else {
+            const confirmSeries = confirm(
+              `Move ALL occurrences of "${ev.title}"? This rewrites the series base — every past and future instance shifts.`
+            );
+            if (!confirmSeries) return;
+            recurringMode = 'series';
+          }
         }
+      }
+      // ICS "just this one" — fire skip + create-standalone in the
+      // same order EventDetail uses. Falls through on failure with a
+      // toast so the user can retry; the source occurrence is only
+      // EXDATE'd AFTER the standalone create succeeds wouldn't be
+      // safer here because the user already accepted the move, and a
+      // partial state (extra event, no skip) leaves both visible —
+      // less confusing than (skip done, no replacement) which leaves
+      // a hole.
+      if (recurringMode === 'instance' && ev.type === 'ics_event' && ev.eventId && ev.source && ev.start) {
+        try {
+          // Skip the ORIGINAL anchor date so the series no longer
+          // renders the occurrence the user dragged.
+          await api.skipICSOccurrence(ev.source, ev.eventId, ev.start);
+        } catch (e) {
+          toast.error('Move (skip) failed: ' + errorMessage(e));
+          return;
+        }
+        const dur = ev.durationMinutes ?? 60;
+        const endD = new Date(newStart.getTime() + dur * 60_000);
+        try {
+          await api.createICSEvent(ev.source, {
+            summary: ev.title,
+            start: newStart.toISOString(),
+            end: endD.toISOString(),
+            location: ev.location ?? undefined
+          });
+        } catch (e) {
+          toast.error(
+            'Move (create standalone) failed — the original occurrence is now hidden: ' +
+              errorMessage(e)
+          );
+          return;
+        }
+        await load();
+        toast.success(`Moved this occurrence to ${fmt(newStart)}`);
+        return;
       }
       // Per-instance override path: write a single override entry
       // keyed by the occurrence's UTC ANCHOR (the series-base time
@@ -716,7 +764,6 @@
   async function resizeEvent(ev: CalendarEvent, durationMinutes: number) {
     try {
       // Mirrors moveEvent's recurring chooser: this-one vs whole-series.
-      // ICS resize stays series-only (patch endpoint has no override).
       let recurringMode: 'series' | 'instance' | null = null;
       if (ev.rrule && !ev.taskId && ev.eventId) {
         if (ev.type === 'event') {
@@ -733,12 +780,50 @@
             recurringMode = 'series';
           }
         } else {
-          const ok = confirm(
-            `"${ev.title}" is a recurring ICS event. Resizing affects the entire series. Continue?`
+          // ICS: same skip + create-standalone pattern as moveEvent.
+          // Resize-just-this is detach the occurrence and write a
+          // replacement VEVENT with the new end time.
+          const justThisOne = confirm(
+            `"${ev.title}" is a recurring ICS event.\n\nOK: Resize just this occurrence (the original date is EXDATE'd; a standalone VEVENT lands with the new duration)\nCancel: Resize the entire series\n\nClose this dialog to abort.`
           );
-          if (!ok) return;
-          recurringMode = 'series';
+          if (justThisOne) {
+            recurringMode = 'instance';
+          } else {
+            const confirmSeries = confirm(
+              `Resize ALL occurrences of "${ev.title}"?`
+            );
+            if (!confirmSeries) return;
+            recurringMode = 'series';
+          }
         }
+      }
+      // ICS "just this one" resize — skip + create-standalone with the
+      // edited duration. Same failure ordering as moveEvent.
+      if (recurringMode === 'instance' && ev.type === 'ics_event' && ev.eventId && ev.source && ev.start) {
+        try {
+          await api.skipICSOccurrence(ev.source, ev.eventId, ev.start);
+        } catch (e) {
+          toast.error('Resize (skip) failed: ' + errorMessage(e));
+          return;
+        }
+        const startD = new Date(ev.start);
+        const endD = new Date(startD.getTime() + durationMinutes * 60_000);
+        try {
+          await api.createICSEvent(ev.source, {
+            summary: ev.title,
+            start: startD.toISOString(),
+            end: endD.toISOString(),
+            location: ev.location ?? undefined
+          });
+        } catch (e) {
+          toast.error(
+            'Resize (create standalone) failed — the original occurrence is now hidden: ' +
+              errorMessage(e)
+          );
+          return;
+        }
+        await load();
+        return;
       }
       if (recurringMode === 'instance' && ev.type === 'event' && ev.eventId && ev.start) {
         const startD = new Date(ev.start);
