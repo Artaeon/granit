@@ -239,6 +239,7 @@
     pending = true;
     error = '';
     response = '';
+    refreshResponseStats('');
     saveLastInstruction(instruction.trim());
     pushHistory(instruction.trim());
     const userMessage = instruction.trim()
@@ -254,26 +255,32 @@
     startedAt = performance.now();
     elapsedMs = 0;
     if (elapsedTimer) clearInterval(elapsedTimer);
+    // 250ms tick — fine enough that the throughput chip still moves
+    // visibly (the human eye doesn't resolve faster than this for
+    // a slowly-updating number) but quarter the re-render rate of
+    // the previous 100ms tick. The elapsedMs write triggers the
+    // whole dialog template to re-evaluate; trimming the timer
+    // halves the dialog's idle CPU during streaming.
     elapsedTimer = setInterval(() => {
-      // 100ms tick: fine-grained enough that the throughput chip
-      // moves visibly but cheap enough that we don't burn cycles
-      // re-rendering. Stops the moment pending flips false.
       if (pending) {
         elapsedMs = performance.now() - startedAt;
       } else if (elapsedTimer) {
         clearInterval(elapsedTimer);
         elapsedTimer = null;
       }
-    }, 100);
+    }, 250);
     // Shared rAF throttle (see $lib/util/streamThrottle) — coalesces
     // chunks so the reactive `response` state writes at most once
     // per animation frame. Pre-fix a fast model was triggering one
     // re-render per token; the dialog's $derived chain + template
     // chained together meant several ms of work per render, and the
     // user reported the app freezing despite the earlier
-    // markdown-deferral fix.
+    // markdown-deferral fix. Stats refresh once per frame here too
+    // so the scan-the-whole-buffer cost is bounded by the rAF rate
+    // instead of triggering on every elapsedMs tick.
     const t = rafThrottle((full) => {
       response = full;
+      refreshResponseStats(full);
     });
     await api.chatStream(
       [{ role: 'user', content: userMessage }],
@@ -373,23 +380,55 @@
   const tokenEstimate = $derived(Math.round(charCount / 4));
   const bigInput = $derived(charCount > 16000);
 
-  // Response stats — surfaced live in the response header chip row
-  // so the user can watch the reply grow. Power-UI: pre-fix the
-  // dialog was a sparse "spinner + paragraph" UI; these chips turn
-  // it into something a heavy user can actually steer with (e.g.
-  // "the reply is 800 words but I asked for 3 bullets — Stop and
-  // retighten the instruction").
-  const responseChars = $derived(response.length);
-  const responseTokens = $derived(Math.round(responseChars / 4));
-  const responseLines = $derived(response ? response.split('\n').length : 0);
-  // Word count: split on any whitespace run, filter empty. Cheap
-  // enough to recompute on every render (response is bounded by
-  // typical LLM completion ~4-8K tokens = 16-32K chars worst case).
-  const responseWords = $derived(
-    response.trim() ? response.trim().split(/\s+/).length : 0
-  );
-  // Throughput in tokens per second. Guard against division by zero
-  // for the first ~0.1s while elapsedMs is still 0.
+  // Response stats — surfaced live in the response header chip row.
+  // Pre-fix these were $derived(...) recomputed on EVERY reactive
+  // state write (response change OR elapsedMs tick OR pending flip),
+  // which on a slow phone with a 5KB+ response meant
+  // response.split('\n') + response.trim().split(/\s+/) allocating
+  // hundreds of strings 10× per second from the elapsedMs timer
+  // alone. Now stored as plain $state and refreshed once per
+  // throttled chunk-flush (≤60Hz) plus once when the stream
+  // completes. The elapsedMs ticker doesn't trigger any stat
+  // recomputation — it only updates elapsedMs, which the throughput
+  // derive below reads.
+  let responseChars = $state(0);
+  let responseTokens = $state(0);
+  let responseLines = $state(0);
+  let responseWords = $state(0);
+  function refreshResponseStats(full: string): void {
+    responseChars = full.length;
+    responseTokens = Math.round(full.length / 4);
+    if (!full) {
+      responseLines = 0;
+      responseWords = 0;
+      return;
+    }
+    // Count newlines without allocating an N-element string array.
+    // For a 5KB response with 200 lines this is one O(N) scan vs
+    // split's O(N) scan + 200 string allocations.
+    let nl = 0;
+    for (let i = 0; i < full.length; i++) if (full.charCodeAt(i) === 10) nl++;
+    responseLines = nl + 1;
+    // Word count: scan whitespace runs without allocating. Counts
+    // transitions from whitespace to non-whitespace.
+    let words = 0;
+    let inWord = false;
+    for (let i = 0; i < full.length; i++) {
+      const c = full.charCodeAt(i);
+      const ws = c === 32 || c === 9 || c === 10 || c === 13;
+      if (!ws && !inWord) {
+        words++;
+        inWord = true;
+      } else if (ws) {
+        inWord = false;
+      }
+    }
+    responseWords = words;
+  }
+  // Throughput in tokens per second. This one stays $derived because
+  // it needs to track BOTH elapsedMs (which ticks every 100ms) and
+  // responseTokens (refreshed per chunk-frame). Cheap arithmetic, no
+  // allocations.
   const tokensPerSec = $derived(
     elapsedMs > 100 ? Math.round((responseTokens / elapsedMs) * 1000) : 0
   );
