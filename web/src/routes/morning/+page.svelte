@@ -20,7 +20,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
-  import { api, todayISO, type Task, type HabitInfo, type Goal, type Deadline, type PrayerIntention } from '$lib/api';
+  import { api, todayISO, type Task, type HabitInfo, type Goal, type Deadline, type PrayerIntention, type CalendarEvent } from '$lib/api';
   import { scriptures, scriptureOfTheDay } from '$lib/morning/scriptures';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
@@ -28,6 +28,8 @@
   import { classifyAiError } from '$lib/util/aiErrors';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
   import { loadStored, saveStored } from '$lib/util/storage';
+  import { rafThrottle } from '$lib/util/streamThrottle';
+  import { BRIEFING_SYSTEM_PROMPT, buildBriefingUserPrompt } from '$lib/morning/briefingPrompt';
 
   // ─── Data ─────────────────────────────────────────────────────────
   let activeGoals = $state<Goal[]>([]);
@@ -60,6 +62,22 @@
   let suggesting = $state(false);
   let suggestion = $state('');
   let error = $state('');
+
+  // AI morning briefing — a 60-100 word read of "what today looks
+  // like and where to focus". Distinct from the single-sentence
+  // focus suggestion (which fills the #1 focus field): this is a
+  // narrative orient that the user reads ONCE and then dismisses,
+  // analogous to a personal-assistant note dropped on the desk.
+  // Pulls calendar events for today + upcoming deadlines + a slice
+  // of urgent open tasks + active goals.
+  let briefingText = $state('');
+  let briefingBusy = $state(false);
+  let briefingError = $state('');
+  let briefingAbort: AbortController | null = null;
+  let todayEvents = $state<CalendarEvent[]>([]);
+  // briefingDismissed key gets initialised after `today` is set,
+  // below — kept as a let so the load() block can populate.
+  let briefingDismissed = $state(false);
 
   // ─── Persistence ──────────────────────────────────────────────────
   // Per-day localStorage so a closed tab doesn't lose progress, but
@@ -127,12 +145,16 @@
   async function load() {
     if (!$auth) return;
     try {
-      const [t, h, g, d, p] = await Promise.all([
+      const [t, h, g, d, p, cal] = await Promise.all([
         api.listTasks({ status: 'open' }),
         api.listHabits(),
         api.listGoals().catch((): { goals: Goal[]; total: number } => ({ goals: [], total: 0 })),
         api.tryListDeadlines(),
-        api.listPrayer().catch(() => ({ intentions: [] as PrayerIntention[], total: 0 }))
+        api.listPrayer().catch(() => ({ intentions: [] as PrayerIntention[], total: 0 })),
+        // Today's events power the AI briefing's "shape of the day"
+        // paragraph + the stat-row event count. Tolerate failure —
+        // morning page is still useful without the calendar feed.
+        api.calendar(today, today).catch(() => ({ events: [] }))
       ]);
       openTasks = t.tasks;
       knownHabits = h.habits;
@@ -142,6 +164,16 @@
       for (const ge of g.goals) map[ge.id] = ge.title;
       allGoalsById = map;
       upcomingDeadlines = d;
+      // Filter the feed to events+ics_events only (skip tasks +
+      // deadlines, which we summarise from their own data). Sort
+      // by start time so the brief reads in chronological order.
+      todayEvents = (cal.events ?? [])
+        .filter((e) => e.type === 'event' || e.type === 'ics_event')
+        .sort((a, b) => (a.start ?? a.date ?? '').localeCompare(b.start ?? b.date ?? ''));
+      // Restore the per-day dismissed flag now that `today` is set.
+      briefingDismissed =
+        typeof localStorage !== 'undefined' &&
+        localStorage.getItem(`granit.morning.briefDismissed.${today}`) === '1';
       // Pre-tick today's habits (only if no restored snapshot — don't
       // clobber the user's deliberate choices).
       const hadSnapshot = !!localStorage.getItem(STORAGE_KEY);
@@ -290,6 +322,92 @@
       return `- ${p}${t.text}${due}`;
     }).join('\n');
   }
+
+  async function runBriefing() {
+    if (briefingBusy) return;
+    briefingError = '';
+    briefingText = '';
+    briefingBusy = true;
+    briefingAbort?.abort();
+    briefingAbort = new AbortController();
+    const system = BRIEFING_SYSTEM_PROMPT;
+    const user = buildBriefingUserPrompt({
+      todayISO: today,
+      events: todayEvents,
+      tasks: sortedTasks,
+      goals: activeGoals,
+      deadlines: upcomingNear
+    });
+    // rAF throttle so a fast model doesn't repaint the rendered brief
+    // per token — same shape as the other AI dialogs.
+    const t = rafThrottle((full) => {
+      briefingText = full;
+    });
+    try {
+      await api.chatStream(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        undefined,
+        {
+          onChunk: t.onChunk,
+          onDone: () => {
+            t.flush();
+            briefingBusy = false;
+            briefingAbort = null;
+            if (!briefingText.trim()) briefingError = 'AI returned an empty brief.';
+          },
+          onError: (err) => {
+            t.flush();
+            briefingBusy = false;
+            briefingAbort = null;
+            const hint = classifyAiError(err.message);
+            briefingError = hint.headline;
+          }
+        },
+        briefingAbort.signal
+      );
+    } catch (e) {
+      briefingBusy = false;
+      briefingAbort = null;
+      briefingError = errorMessage(e);
+    }
+  }
+  function cancelBriefing() {
+    briefingAbort?.abort();
+    briefingAbort = null;
+    briefingBusy = false;
+  }
+  function dismissBriefing() {
+    briefingDismissed = true;
+    try {
+      localStorage.setItem(`granit.morning.briefDismissed.${today}`, '1');
+    } catch {
+      // private mode / quota — ignore; brief stays dismissed in
+      // memory until reload, which is the right fallback.
+    }
+  }
+
+  // Morning stat row — quick at-a-glance numbers the user sees
+  // before they decide what to plan. Derived from the same data
+  // arrays the rest of the page reads.
+  const stats = $derived.by(() => {
+    let overdue = 0;
+    let dueToday = 0;
+    for (const t of openTasks) {
+      if (!t.dueDate) continue;
+      if (t.dueDate < today) overdue++;
+      else if (t.dueDate === today) dueToday++;
+    }
+    return {
+      openTasks: openTasks.length,
+      overdue,
+      dueToday,
+      events: todayEvents.length,
+      deadlinesThisWeek: upcomingNear.length
+    };
+  });
   async function suggestFocus() {
     suggesting = true;
     suggestion = '';
@@ -440,6 +558,106 @@
 
     {#if error}
       <div class="mb-5 text-sm text-error p-3 bg-surface0 border border-error rounded">{error}</div>
+    {/if}
+
+    <!-- Stat strip — quick read of what today looks like before any
+         AI call. Numbers come from the same data arrays the rest of
+         the page reads, so they're consistent with the lower
+         sections. Hidden when everything is zero — a brand-new
+         vault doesn't need this row taking space. -->
+    {#if stats.openTasks + stats.events + stats.deadlinesThisWeek > 0}
+      <section class="mb-4 flex flex-wrap items-center gap-1.5 text-xs">
+        <span class="px-2 py-1 rounded bg-surface0 text-subtext font-mono tabular-nums">
+          <span class="text-text font-semibold">{stats.openTasks}</span> open
+        </span>
+        {#if stats.overdue > 0}
+          <span class="px-2 py-1 rounded bg-surface0 text-error font-mono tabular-nums" title="Past their due date">
+            <span class="font-semibold">{stats.overdue}</span> overdue
+          </span>
+        {/if}
+        {#if stats.dueToday > 0}
+          <span class="px-2 py-1 rounded bg-surface0 text-warning font-mono tabular-nums" title="Tasks due today">
+            <span class="font-semibold">{stats.dueToday}</span> due today
+          </span>
+        {/if}
+        {#if stats.events > 0}
+          <span class="px-2 py-1 rounded bg-surface0 text-info font-mono tabular-nums" title="Events scheduled today">
+            <span class="font-semibold">{stats.events}</span> event{stats.events === 1 ? '' : 's'}
+          </span>
+        {/if}
+        {#if stats.deadlinesThisWeek > 0}
+          <span class="px-2 py-1 rounded bg-surface0 text-secondary font-mono tabular-nums" title="Deadlines within 7 days">
+            <span class="font-semibold">{stats.deadlinesThisWeek}</span> deadline{stats.deadlinesThisWeek === 1 ? '' : 's'}
+          </span>
+        {/if}
+      </section>
+    {/if}
+
+    <!-- AI morning brief — a 60-110 word read of "what today looks
+         like and where to focus". Distinct from the single-sentence
+         #1 focus suggester below: the brief is narrative orientation
+         the user reads once and then dismisses (the dismissed flag
+         is per-day so tomorrow starts clean). Streamed via
+         api.chatStream + rafThrottle so a fast model doesn't choke
+         the page. Sabbath / consent gates fire server-side; the
+         error toast surfaces classifyAiError's headline. -->
+    {#if !briefingDismissed}
+      <section class="mb-7 p-3 sm:p-4 bg-mantle border border-surface1 rounded">
+        <div class="flex items-baseline gap-2 mb-2">
+          <span class="text-[10px] uppercase tracking-wider text-dim">AI brief</span>
+          {#if briefingBusy}
+            <span class="text-[10px] text-secondary">streaming…</span>
+          {/if}
+          <span class="flex-1"></span>
+          {#if briefingBusy}
+            <button
+              type="button"
+              onclick={cancelBriefing}
+              class="text-[11px] text-warning hover:text-error"
+            >cancel</button>
+          {:else if briefingText.trim()}
+            <button
+              type="button"
+              onclick={runBriefing}
+              class="text-[11px] text-secondary hover:underline"
+              title="Re-run the brief with fresh context"
+            >↻ regenerate</button>
+            <button
+              type="button"
+              onclick={dismissBriefing}
+              class="text-[11px] text-dim hover:text-error"
+              title="Hide for the rest of today"
+            >dismiss</button>
+          {/if}
+        </div>
+        {#if briefingError}
+          <div class="text-sm text-error">{briefingError}</div>
+        {:else if briefingText.trim()}
+          <!-- Render as paragraph-split prose so the three-paragraph
+               structure the prompt asks for reads correctly. -->
+          <div class="text-sm text-text leading-relaxed space-y-2">
+            {#each briefingText.trim().split(/\n{2,}/) as para}
+              {#if para.trim()}<p>{para.trim()}</p>{/if}
+            {/each}
+          </div>
+        {:else if briefingBusy}
+          <p class="text-sm text-dim italic">Reading the calendar + tasks…</p>
+        {:else}
+          <p class="text-sm text-dim mb-2">A 60-110 word read of how today looks and where to focus, grounded in your calendar + open tasks.</p>
+          <button
+            type="button"
+            onclick={runBriefing}
+            class="text-xs px-2 py-1 bg-surface0 hover:bg-surface1 text-secondary border border-secondary"
+            title="Generate a morning brief"
+          >Generate brief</button>
+          <button
+            type="button"
+            onclick={dismissBriefing}
+            class="ml-1 text-[11px] text-dim hover:text-text px-1.5 py-1"
+            title="Hide the brief section for today"
+          >not today</button>
+        {/if}
+      </section>
     {/if}
 
     <!-- Anchors strip — passive context. Active goals + nearest
