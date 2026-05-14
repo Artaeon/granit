@@ -614,6 +614,109 @@
     open = false;
   }
 
+  // Duplicate the event one week later. Common workflow: "repeat
+  // last Monday's standup format for next Monday" without setting
+  // up a full recurring series. Drops the rrule + override key
+  // so the duplicate is a fresh standalone event; keeps title /
+  // time / location / kind / project_id.
+  //
+  // Native events (events.json) → POST /events. ICS events
+  // (writable source) → POST /calendars/{source}/events. Read-only
+  // ICS sources can't be duplicated through this path; the chip
+  // hides for those.
+  async function duplicateEvent() {
+    if (!event) return;
+    busy = true;
+    try {
+      if (event.type === 'ics_event' && event.source) {
+        // Shift the start/end by exactly 7 days. Use the floating
+        // wire shape we already accept (RFC3339 or YYYY-MM-DD per
+        // parseClientTime); add 7d in UTC ms.
+        const advance = 7 * 24 * 60 * 60 * 1000;
+        let start: string | undefined;
+        let end: string | undefined;
+        let allDay: boolean | undefined;
+        if (event.start) {
+          const s = new Date(event.start);
+          s.setTime(s.getTime() + advance);
+          start = s.toISOString();
+        }
+        if (event.end) {
+          const e = new Date(event.end);
+          e.setTime(e.getTime() + advance);
+          end = e.toISOString();
+        }
+        if (event.date && !event.start) {
+          // All-day shape: shift the date string by 7 days. parse
+          // YYYY-MM-DD locally so DST doesn't introduce drift.
+          const [y, m, d] = event.date.split('-').map(Number);
+          const shifted = new Date(y, m - 1, d);
+          shifted.setDate(shifted.getDate() + 7);
+          const yy = shifted.getFullYear();
+          const mm = String(shifted.getMonth() + 1).padStart(2, '0');
+          const dd = String(shifted.getDate()).padStart(2, '0');
+          start = `${yy}-${mm}-${dd}`;
+          allDay = true;
+        }
+        if (!start) {
+          toast.error('Could not derive a start date for the duplicate.');
+          return;
+        }
+        await api.createICSEvent(event.source, {
+          summary: event.title,
+          start,
+          end,
+          allDay,
+          location: event.location,
+          kind: event.kind || undefined
+        });
+        onChanged?.();
+        close();
+        toast.success('Duplicated +1 week.');
+        return;
+      }
+      if (event.type === 'event' && event.eventId) {
+        if (!event.date) {
+          toast.error('Event has no date — cannot duplicate.');
+          return;
+        }
+        const [y, m, d] = event.date.split('-').map(Number);
+        const shifted = new Date(y, m - 1, d);
+        shifted.setDate(shifted.getDate() + 7);
+        const yy = shifted.getFullYear();
+        const mm = String(shifted.getMonth() + 1).padStart(2, '0');
+        const dd = String(shifted.getDate()).padStart(2, '0');
+        const newDate = `${yy}-${mm}-${dd}`;
+        await api.createEvent({
+          title: event.title,
+          date: newDate,
+          // The feed surfaces ICS-style start/end on `start`/`end`,
+          // but events.json events carry the rendered HH:MM via the
+          // feed too — derive from the existing start string when
+          // present. For all-day events both stay empty.
+          start_time: event.start ? new Date(event.start).toTimeString().slice(0, 5) : undefined,
+          end_time: event.end ? new Date(event.end).toTimeString().slice(0, 5) : undefined,
+          location: event.location,
+          color: event.color,
+          kind: event.kind,
+          project_id: event.project_id
+          // Intentionally drops: rrule (the duplicate is one-off),
+          // override_key (the original's per-instance state), reminder
+          // (let the user re-set if they want it).
+        });
+        onChanged?.();
+        close();
+        toast.success('Duplicated +1 week.');
+        return;
+      }
+      toast.info('This event type cannot be duplicated.');
+    } catch (e) {
+      toast.error('Duplicate failed: ' + errorMessage(e));
+    } finally {
+      busy = false;
+    }
+  }
+
   // Create a meeting note for this event and navigate to it. The
   // note lands at Meetings/<YYYY-MM-DD> · <slug-of-title>.md with
   // frontmatter that captures the event metadata so the note is
@@ -999,6 +1102,16 @@
         {/if}
         {#if editable}
           <button onclick={startEdit} class="px-3 py-1.5 text-sm bg-surface0 text-subtext rounded hover:bg-surface1">edit</button>
+          <!-- Duplicate the event +1 week ahead — common "repeat
+               last week's structure for next week" workflow without
+               needing to set up a full RRULE. Hidden for tasks /
+               deadlines / read-only ICS sources via `editable`. -->
+          <button
+            onclick={duplicateEvent}
+            disabled={busy}
+            class="px-3 py-1.5 text-sm bg-surface0 text-subtext rounded hover:bg-surface1"
+            title="Create a copy of this event one week from now"
+          >+1 week</button>
           {#if event.type === 'event' && event.rrule}
             <!-- Skip THIS occurrence only — adds an EXDATE so the
                  expander filters this single instance from future

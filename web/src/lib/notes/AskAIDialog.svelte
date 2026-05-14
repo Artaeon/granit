@@ -615,6 +615,10 @@
               placeholder="What should the AI do? (or pick a preset below)"
               class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
               disabled={pending}
+              enterkeyhint="send"
+              autocomplete="off"
+              autocapitalize="sentences"
+              spellcheck="true"
             ></textarea>
             {#if autoFireCountdown}
               <!-- Tiny countdown pill — surfaces that a preset is
@@ -642,7 +646,11 @@
                    pushes the dialog from "13 generic presets" to
                    "your N personal one-click prompts". Click fills
                    the box without firing — see pickHistory. -->
-              <div class="flex items-center gap-2 flex-wrap">
+              <!-- Horizontal scroll on narrow viewports so 8 chips
+                   don't take 3 rows on a phone. flex-wrap above sm
+                   so desktop still gets the nice multi-row layout
+                   when chips don't fit on one line. -->
+              <div class="flex items-center gap-2 overflow-x-auto sm:flex-wrap sm:overflow-visible -mx-2 px-2 pb-1 sm:mx-0 sm:px-0 sm:pb-0">
                 <span class="text-[10px] uppercase tracking-wider text-dim w-16 flex-shrink-0">Recent</span>
                 {#each promptHistory as h}
                   <button
@@ -650,7 +658,7 @@
                     onclick={() => pickHistory(h)}
                     disabled={pending}
                     title={h}
-                    class="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-surface0 text-subtext hover:bg-surface1 hover:text-text disabled:opacity-50 transition-colors max-w-[14rem] truncate"
+                    class="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded bg-surface0 text-subtext hover:bg-surface1 hover:text-text disabled:opacity-50 transition-colors max-w-[14rem] truncate flex-shrink-0 sm:flex-shrink"
                   >
                     <span class="text-[9px] text-dim leading-none">↻</span>
                     <span class="truncate">{h}</span>

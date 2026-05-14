@@ -122,10 +122,63 @@
       preset: 'Read the following note as a critical editor. What is missing, unclear, or assumed without evidence? Return 3-6 specific gaps as a markdown bullet list — each gap names what\'s missing and what would close it. No preamble.' },
     { group: 'Improve', id: 'tighten', label: 'Tighten prose',
       preset: 'Tighten the prose of the following note — drop filler, sharpen verbs, prefer concrete nouns. Preserve the structure and meaning. Return the full tightened note, ready to paste back.' },
+    { group: 'Improve', id: 'polish', label: 'Polish writing',
+      preset:
+        'Polish the writing of the following note WITHOUT changing the structure, the claims, or the author\'s voice. Specifically:\n' +
+        ' - Fix grammar, typos, awkward phrasings.\n' +
+        ' - Replace hedge words ("kind of", "I think maybe") with declarative statements when the surrounding text supports it; keep them when they signal genuine uncertainty.\n' +
+        ' - Standardise punctuation (smart quotes ↔ straight, oxford commas) to match the dominant style in the note.\n' +
+        ' - Do NOT shorten or expand. Do NOT add transitions or section breaks. Do NOT change technical terms.\n' +
+        'Return the polished note in full, ready to paste back. No preamble.' },
     { group: 'Improve', id: 'abstract', label: 'Write abstract',
       preset: 'Write a 3-5 sentence abstract of the following note suitable for the top of the document. Lead with the central claim; cover scope and findings; no preamble.' },
+    { group: 'Improve', id: 'exec-summary', label: 'Executive summary',
+      preset:
+        'Write a 3-paragraph executive summary of the following note for a busy stakeholder who will not read the full text. Structure:\n\n' +
+        '  Paragraph 1 (50-80 words) — Context + the single most important finding/decision. No preamble, no "This document…".\n' +
+        '  Paragraph 2 (50-80 words) — Supporting evidence or argument. Concrete numbers / examples preferred over abstractions.\n' +
+        '  Paragraph 3 (40-60 words) — Implications + recommended next step.\n\n' +
+        'Total: 140-220 words. Plain prose, no bullets, no markdown headers. Return only the three paragraphs.' },
+    { group: 'Improve', id: 'key-takeaways', label: 'Key takeaways',
+      preset:
+        'Distil the following note into 4-7 key takeaways as a markdown bullet list. Rules:\n' +
+        ' - Each bullet stands on its own — readable without the rest of the note.\n' +
+        ' - Lead with the WHAT (a concrete claim), then optionally a colon-separated WHY in ≤8 words.\n' +
+        ' - Prefer specific over general ("Auth must rotate every 90d" beats "Security matters").\n' +
+        ' - Order by importance, not appearance in the note.\n' +
+        'Return only the markdown bullet list, no preamble.' },
     { group: 'Improve', id: 'titles', label: 'Alternative titles',
       preset: 'Suggest 5 alternative titles for the following note. Mix registers: precise, evocative, descriptive. Return only the titles as a numbered list — no commentary.' },
+    { group: 'Meeting', id: 'meeting-enhance', label: 'Enhance meeting notes',
+      preset:
+        'The following is raw notes from a meeting (likely a stream-of-thought dump captured during the call). Restructure into the standard four-section format every meeting note should have:\n\n' +
+        '  ## Context\n  1-2 sentences: who met, what for, when (if mentioned).\n\n' +
+        '  ## Decisions\n  Markdown bullet list of decisions actually made (not just discussed). Each: a single sentence stating WHAT was decided. Empty if no decisions surfaced — write "_None recorded._".\n\n' +
+        '  ## Action items\n  Markdown task list (`- [ ] ...`). Each item: imperative verb + concrete deliverable. When an assignee was named in the notes, prepend "**@name**". When a due date / week / "by Friday" was mentioned, append " (by YYYY-MM-DD)" or " (by Friday)".\n\n' +
+        '  ## Open questions\n  Markdown bullet list of questions raised but NOT resolved. Each: a real question that someone needs to answer. Empty section is fine — write "_None._" if nothing.\n\n' +
+        'Rules:\n' +
+        ' - Preserve everything substantive from the input; do not invent decisions, owners, or dates that aren\'t there.\n' +
+        ' - Cut filler ("we kind of talked about...", "and then someone said...") — restructure the content, don\'t paraphrase the meandering.\n' +
+        ' - Return ONLY the four sections in the order above. No preamble.' },
+    { group: 'Meeting', id: 'meeting-actions', label: 'Extract action items',
+      preset:
+        'Read the following meeting notes and extract ONLY the action items. Return a markdown task list (`- [ ] ...`). Format each item:\n' +
+        ' - Imperative verb + concrete deliverable.\n' +
+        ' - When an assignee was named, prepend "**@name** — ".\n' +
+        ' - When a due date / "by Friday" was mentioned, append " (by YYYY-MM-DD)" or " (by Friday)".\n' +
+        ' - Drop anything that\'s just discussion or status update — keep only the asks that map to a follow-up.\n' +
+        'Return ONLY the markdown task list. No preamble, no header, no totals.' },
+    { group: 'Meeting', id: 'meeting-followup', label: 'Draft follow-up email',
+      preset:
+        'Based on the following meeting notes, draft a follow-up email the meeting organiser would send to attendees. Structure:\n\n' +
+        '  Subject: <short, action-oriented>\n\n' +
+        '  Body:\n' +
+        '   - 1-sentence thanks + meeting reference (don\'t belabour).\n' +
+        '   - "Decisions" — bulleted, only the decisions actually made.\n' +
+        '   - "Action items" — bulleted with **@name** owner where named.\n' +
+        '   - "Next meeting" — date + topic if any was set, otherwise omit.\n' +
+        '   - One-line sign-off (no name; the sender adds theirs).\n\n' +
+        'Plain text email — no markdown bold/italic in the body, just bullets with "- ". Subject line on the first line, then a blank, then the body. Return ONLY the email — no preamble.' },
     { group: 'Build', id: 'toc', label: 'Table of contents',
       preset: 'Produce a markdown table of contents for the following note from its existing headings. Use indented bullet links (`- [Heading](#heading)`). Return only the TOC.' },
     { group: 'Build', id: 'frontmatter', label: 'Suggest frontmatter',
