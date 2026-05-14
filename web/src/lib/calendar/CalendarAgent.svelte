@@ -32,6 +32,7 @@
 	} from './calendarAgent';
 	import { addIntentToHistory, normaliseHistory } from '$lib/agents/intentHistory';
 	import { loadStored, saveStored } from '$lib/util/storage';
+	import { rafThrottle } from '$lib/util/streamThrottle';
 
 	interface Props {
 		open: boolean;
@@ -100,6 +101,17 @@
 		abort = new AbortController();
 		const { system, user } = buildCalendarAgentPrompt(events, intent, todayISO, knownProjects);
 		try {
+			// rAF throttle — same shape as TaskAgent + GoalAgent.
+			const calT = rafThrottle((full) => {
+				raw = full;
+				const block = extractJsonBlock(full);
+				if (!block) return;
+				const parsed = parseCalendarAgentResponse(block);
+				if (parsed.length > 0) {
+					const valid = validateCalendarActions(parsed, events, todayISO);
+					proposals = mergeCalendarProposals(proposals, valid) as ProposalRow[];
+				}
+			});
 			await api.chatStream(
 				[
 					{ role: 'system', content: system },
@@ -107,19 +119,9 @@
 				],
 				undefined,
 				{
-					onChunk: (c) => {
-						raw += c;
-						const block = extractJsonBlock(raw);
-						if (!block) return;
-						const parsed = parseCalendarAgentResponse(block);
-						if (parsed.length > 0) {
-							const valid = validateCalendarActions(parsed, events, todayISO);
-							proposals = mergeCalendarProposals(proposals, valid) as ProposalRow[];
-						}
-					},
-					onError: (err) => {
-						error = err.message;
-					}
+					onChunk: calT.onChunk,
+					onDone: () => { calT.flush(); },
+					onError: (err) => { calT.flush(); error = err.message; }
 				},
 				abort.signal
 			);

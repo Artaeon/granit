@@ -32,6 +32,7 @@
 	} from './agent';
 	import { addIntentToHistory, normaliseHistory } from '$lib/agents/intentHistory';
 	import { loadStored, saveStored } from '$lib/util/storage';
+	import { rafThrottle } from '$lib/util/streamThrottle';
 
 	interface Props {
 		open: boolean;
@@ -139,6 +140,20 @@
 		abort = new AbortController();
 		const { system, user } = buildAgentPrompt(tasks, intent, todayISO, availableProjects);
 		try {
+			// rAF throttle — JSON parse + validate + merge runs per
+			// chunk against the growing raw buffer. Same shape as
+			// plan-day; throttle keeps the proposal list from
+			// re-rebuilding hundreds of times during a fast stream.
+			const tagT = rafThrottle((full) => {
+				raw = full;
+				const block = extractJsonBlock(full);
+				if (!block) return;
+				const parsed = parseAgentResponse(block);
+				if (parsed.length > 0) {
+					const valid = validateActions(parsed, tasks);
+					proposals = mergeProposals(proposals, valid) as ProposalRow[];
+				}
+			});
 			await api.chatStream(
 				[
 					{ role: 'system', content: system },
@@ -146,29 +161,9 @@
 				],
 				undefined,
 				{
-					onChunk: (c) => {
-						raw += c;
-						// Try to parse the JSON block as it streams. The
-						// closing brace usually only arrives at the end,
-						// so this typically populates once — but fast
-						// local models can populate mid-stream and that's
-						// the nicer UX (see plan-day for the precedent).
-						const block = extractJsonBlock(raw);
-						if (!block) return;
-						const parsed = parseAgentResponse(block);
-						if (parsed.length > 0) {
-							const valid = validateActions(parsed, tasks);
-							// mergeProposals preserves applied/rejected rows even
-							// if the new parse no longer mentions them — protects
-							// the audit trail from disappearing when an accept
-							// triggers a parent reload that filters the task out
-							// of scope. Pure helper, see agent.ts tests.
-							proposals = mergeProposals(proposals, valid) as ProposalRow[];
-						}
-					},
-					onError: (err) => {
-						error = err.message;
-					}
+					onChunk: tagT.onChunk,
+					onDone: () => { tagT.flush(); },
+					onError: (err) => { tagT.flush(); error = err.message; }
 				},
 				abort.signal
 			);

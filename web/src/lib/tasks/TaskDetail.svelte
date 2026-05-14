@@ -5,6 +5,7 @@
   import { cleanTaskText } from '$lib/util/taskParse';
   import Drawer from '$lib/components/Drawer.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
+  import { rafThrottle } from '$lib/util/streamThrottle';
 
   // TaskDetail is the side-drawer that pops open when the user clicks
   // a task card. Editable fields not already inline-editable on the card:
@@ -142,6 +143,23 @@
         : '') +
       '\nReturn the strict JSON now.';
     try {
+      // rAF throttle — aiDecompRaw + the JSON-parse + filter ran on
+      // every token. Stream a 50-subtask decomposition through a
+      // fast model and the per-token re-render of the proposals
+      // list freezes the dialog.
+      const decompT = rafThrottle((full) => {
+        aiDecompRaw = full;
+        const block = extractDecompJson(full);
+        if (block) {
+          try {
+            const parsed = JSON.parse(block) as { subtasks?: Subtask[] };
+            if (Array.isArray(parsed.subtasks)) {
+              aiDecompSubtasks = parsed.subtasks
+                .filter((s) => s && typeof s.text === 'string' && s.text.trim().length > 0);
+            }
+          } catch {}
+        }
+      });
       await api.chatStream(
         [
           { role: 'system', content: system },
@@ -149,20 +167,9 @@
         ],
         task.notePath,
         {
-          onChunk: (c) => {
-            aiDecompRaw += c;
-            const block = extractDecompJson(aiDecompRaw);
-            if (block) {
-              try {
-                const parsed = JSON.parse(block) as { subtasks?: Subtask[] };
-                if (Array.isArray(parsed.subtasks)) {
-                  aiDecompSubtasks = parsed.subtasks
-                    .filter((s) => s && typeof s.text === 'string' && s.text.trim().length > 0);
-                }
-              } catch {}
-            }
-          },
-          onError: (err) => { aiDecompError = err.message; }
+          onChunk: decompT.onChunk,
+          onDone: () => { decompT.flush(); },
+          onError: (err) => { decompT.flush(); aiDecompError = err.message; }
         },
         aiDecompAbort.signal
       );

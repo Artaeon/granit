@@ -30,6 +30,7 @@
 	} from './goalAgent';
 	import { addIntentToHistory, normaliseHistory } from '$lib/agents/intentHistory';
 	import { loadStored, saveStored } from '$lib/util/storage';
+	import { rafThrottle } from '$lib/util/streamThrottle';
 
 	interface Props {
 		open: boolean;
@@ -98,6 +99,17 @@
 		abort = new AbortController();
 		const { system, user } = buildGoalAgentPrompt(goals, intent, todayISO, knownVentures);
 		try {
+			// rAF throttle — same shape as CalendarAgent + TaskAgent.
+			const goalT = rafThrottle((full) => {
+				raw = full;
+				const block = extractJsonBlock(full);
+				if (!block) return;
+				const parsed = parseGoalAgentResponse(block);
+				if (parsed.length > 0) {
+					const valid = validateGoalActions(parsed, goals);
+					proposals = mergeGoalProposals(proposals, valid) as ProposalRow[];
+				}
+			});
 			await api.chatStream(
 				[
 					{ role: 'system', content: system },
@@ -105,19 +117,9 @@
 				],
 				undefined,
 				{
-					onChunk: (c) => {
-						raw += c;
-						const block = extractJsonBlock(raw);
-						if (!block) return;
-						const parsed = parseGoalAgentResponse(block);
-						if (parsed.length > 0) {
-							const valid = validateGoalActions(parsed, goals);
-							proposals = mergeGoalProposals(proposals, valid) as ProposalRow[];
-						}
-					},
-					onError: (err) => {
-						error = err.message;
-					}
+					onChunk: goalT.onChunk,
+					onDone: () => { goalT.flush(); },
+					onError: (err) => { goalT.flush(); error = err.message; }
 				},
 				abort.signal
 			);

@@ -8,6 +8,7 @@
   import TaskRow from '$lib/components/TaskRow.svelte';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
+  import { rafThrottle } from '$lib/util/streamThrottle';
 
   let { project, onClose, onUpdated, onDeleted, onOpenDashboard }: {
     project: Project;
@@ -423,6 +424,9 @@
 
     const user = `Project context:\n\n${ctx}\n\nReturn the JSON verdict.`;
 
+    // rAF throttle so the pre-rendered raw stream doesn't
+    // re-render the card per token.
+    const healthT = rafThrottle((full) => { aiHealthRaw = full; });
     try {
       await api.chatStream(
         [
@@ -431,12 +435,9 @@
         ],
         undefined,
         {
-          onChunk: (c) => {
-            aiHealthRaw += c;
-          },
-          onError: (err) => {
-            aiHealthError = err.message;
-          }
+          onChunk: healthT.onChunk,
+          onDone: () => { healthT.flush(); },
+          onError: (err) => { healthT.flush(); aiHealthError = err.message; }
         },
         aiHealthAbort.signal
       );
@@ -510,6 +511,8 @@
     aiBriefError = '';
     aiBrief = '';
     aiBriefAbort = new AbortController();
+    // rAF throttle so the live brief render isn't repainted per token.
+    const briefT = rafThrottle((full) => { aiBrief = full; });
 
     const ctx = [
       `Project name: ${project.name}`,
@@ -559,12 +562,9 @@
         ],
         undefined,
         {
-          onChunk: (c) => {
-            aiBrief += c;
-          },
-          onError: (err) => {
-            aiBriefError = err.message;
-          }
+          onChunk: briefT.onChunk,
+          onDone: () => { briefT.flush(); },
+          onError: (err) => { briefT.flush(); aiBriefError = err.message; }
         },
         aiBriefAbort.signal
       );
