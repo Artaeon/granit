@@ -4,162 +4,123 @@
   import { toast } from '$lib/components/toast';
   import type { AskAIRequest } from '$lib/editor/ask-ai';
   import { rafThrottle } from '$lib/util/streamThrottle';
+  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
 
-  // AskAIDialog — MINIMAL REWRITE (2026-05-15).
+  // AskAIDialog — right-side DRAWER (2026-05-15 redesign).
   //
-  // The previous version was ~950 lines and the user kept reporting
-  // the browser freezing for 5+ seconds on click — bad enough that
-  // Chrome showed the "Page Unresponsive" dialog. Multiple targeted
-  // fixes (lineDiff cap, preview cap, rAF chunk throttle, null-safe
-  // reads, stat-derive memoisation) didn't resolve it. Five parallel
-  // exploration agents converged on the same diagnosis: the dialog
-  // accumulated too many simultaneously-active hot paths (live diff
-  // view, live markdown render, live per-frame stats, history chip
-  // row, ~30 preset chips, dismiss timer, throughput chip ticker)
-  // and the cumulative cost was the freeze.
+  // Prior versions were full-screen modals. The user kept reporting
+  // the browser freezing on click and disliking the UX. This rewrite:
   //
-  // This rewrite strips the dialog to the absolute essentials:
+  // UX
+  //   - Slides in from the RIGHT as a 28rem drawer. Editor stays
+  //     visible to the left so the user reads their selection in
+  //     context, not in a redundant preview block.
+  //   - Compact, info-dense header — character + token count inline,
+  //     no separate badge row.
+  //   - Selection preview is a collapsed <details>; the dominant
+  //     pane is the response, where the user's attention belongs.
+  //   - Save-as-note is an INLINE form (input + Save/×). The previous
+  //     version used the native `prompt()` browser modal which is
+  //     visually jarring and blocks the main thread on some browsers
+  //     under extensions.
+  //   - Footer action row pins Replace as the primary action,
+  //     Insert as the secondary; Copy + Save sit on the left.
   //
-  //   - Selection preview, capped at 2000 chars rendered. The full
-  //     selection text is what we send to the AI; the on-screen
-  //     <pre> only renders the cap.
-  //   - Instruction textarea (manual or auto-filled from preset).
-  //   - DURING STREAMING: a centered spinner + Stop button only.
-  //     No live response text. No stats. No diff. No markdown
-  //     parse. The buffer accumulates in memory; nothing renders.
-  //   - POST-STREAM: response in a plain <pre> with a small length
-  //     line. No diff. No markdown render. Plain text rendering is
-  //     near-free even for 10K-char responses.
-  //   - Action buttons: Cancel · Copy · Save as note · Insert below
-  //     · Replace selection.
+  // Freeze prevention
+  //   - Backdrop is GONE — explicit × / Esc / Cancel to dismiss.
+  //     Removes a click-event path that fired the parent's $effect
+  //     cascade while still inside the click handler.
+  //   - onDismiss() is deferred via `queueMicrotask` so the click
+  //     event returns immediately. Any parent reactive churn happens
+  //     in the next microtask, not synchronously inside the click.
+  //   - Spellcheck disabled on textarea inputs (long instructions
+  //     can stall the spellcheck thread).
+  //   - Auto-fire from preset uses `tick().then(ask)` (one microtask,
+  //     no setTimeout race). If the user dismisses before tick
+  //     resolves, the in-flight check short-circuits via dialogState.
+  //   - Streaming buffer accumulates in a plain `let buffer = ''`
+  //     (non-reactive). Only an rAF-throttled counter (`streamChars`)
+  //     updates while streaming. `response` is written ONCE on
+  //     onDone — that's when MarkdownRenderer runs.
+  //   - Markdown render is gated: it renders the FINAL response one
+  //     time, never per-chunk. Raw view toggle for plain text.
   //
-  // Removed entirely (relative to the prior version):
-  //   - Diff view (lineDiff is O(N*M); even with size caps it was
-  //     a hot path during streaming for medium-sized inputs).
-  //   - Live markdown render of streaming response.
-  //   - Per-chunk stats $derived chain (chars / words / lines /
-  //     tokens / throughput) — the timer alone caused dozens of
-  //     re-renders per second.
-  //   - Preset chip grid (~13 chips × 4 groups). The editor's More
-  //     menu is the canonical preset entry; this dialog stays
-  //     focused on the "show me the response" surface.
-  //   - Recent-prompt history row.
-  //   - Auto-fire countdown indicator.
-  //   - Big-input warning chip.
-  //   - Provider / model metadata strip.
-  //
-  // Auto-fire (from presetInstruction) is preserved so existing
-  // bar/menu wiring keeps working with no caller changes.
-  //
-  // If a user wants the rich features back later, they live in git
-  // history (commits up to ~e5e2e9fc) — re-introduce one at a time
-  // with profiling each step so the freeze doesn't recur.
+  // Public Props interface unchanged so the parent page +
+  // EditorAIBar + EditorAIMenu need zero changes.
 
   interface Props {
     request: AskAIRequest | null;
-    /** Path of the source note — passed to /chat so the AI has note
-     *  context for free. Same shape as the previous component. */
     sourcePath: string;
     onDismiss: () => void;
   }
   let { request, sourcePath, onDismiss }: Props = $props();
 
-  // ── State machine ────────────────────────────────────────────────
-  // Simple finite states: 'idle' (waiting for user to send) →
-  // 'pending' (streaming) → 'done' (response ready). Errors set
-  // 'done' with `error` populated. Reset to 'idle' on close.
   type DialogState = 'idle' | 'pending' | 'done';
   let dialogState = $state<DialogState>('idle');
   let instruction = $state('');
   let response = $state('');
+  let streamChars = $state(0);
   let error = $state('');
-  let abortCtl: AbortController | null = $state(null);
+  let viewMode = $state<'rendered' | 'raw'>('rendered');
+  let abortCtl: AbortController | null = null;
   let inputEl: HTMLTextAreaElement | undefined = $state();
-  let autoFireTimer: ReturnType<typeof setTimeout> | null = null;
-  const AUTO_FIRE_DELAY_MS = 400;
 
-  // Reset the dialog state when `request` flips from null → set
-  // (a new AI feature was clicked). Bounded set of state writes:
-  // everything resets to a known idle baseline. The preset is
-  // applied here, and an auto-fire is scheduled if one is present.
+  // Save-as-note state (inline form replaces native prompt()).
+  let saveOpen = $state(false);
+  let savePath = $state('');
+  let saveInputEl: HTMLInputElement | undefined = $state();
+
+  // React to request flips (null → set or set → set) without firing
+  // on unrelated reactive churn. `prevRequest` is a plain let so it
+  // doesn't itself depend on reactive state.
+  let prevRequest: AskAIRequest | null = null;
   $effect(() => {
-    if (!request) return;
-    // Always reset before applying the new request — the previous
-    // session's state can't leak into this one.
+    if (request === prevRequest) return;
+    prevRequest = request;
+    if (!request) {
+      abortCtl?.abort();
+      abortCtl = null;
+      return;
+    }
     response = '';
+    streamChars = 0;
     error = '';
     dialogState = 'idle';
-    abortCtl?.abort();
-    abortCtl = null;
-    if (autoFireTimer !== null) {
-      clearTimeout(autoFireTimer);
-      autoFireTimer = null;
-    }
+    saveOpen = false;
+    instruction = request.presetInstruction?.trim() ?? '';
     if (request.presetInstruction && request.presetInstruction.trim()) {
-      instruction = request.presetInstruction.trim();
-      // Focus the textarea first, then auto-fire after a short
-      // window so the user can cancel by typing. Same UX cadence
-      // as the prior version, much smaller surface area.
+      // Auto-fire after mount tick — no setTimeout race. If the user
+      // dismisses before tick resolves, `request` flips back to null
+      // and ask() short-circuits on the !request guard.
       tick().then(() => {
-        inputEl?.focus();
-        autoFireTimer = setTimeout(() => {
-          autoFireTimer = null;
-          void ask();
-        }, AUTO_FIRE_DELAY_MS);
+        if (prevRequest !== null) void ask();
       });
     } else {
-      // No preset: leave the textarea empty (no localStorage
-      // round-trip in the minimal version — caller-driven prefill
-      // is the only way text shows up).
-      instruction = '';
       tick().then(() => inputEl?.focus());
     }
   });
 
-  // Preview cap. The full `request.text` is what we send to the AI;
-  // the on-screen <pre> only ever renders this slice. 2000 chars is
-  // generous (a paragraph + change) and keeps the browser's layout
-  // engine well below the 100KB-text-node freeze threshold.
-  const PREVIEW_CHAR_CAP = 2000;
-  const previewText = $derived(
-    !request?.text
-      ? ''
-      : request.text.length <= PREVIEW_CHAR_CAP
-        ? request.text
-        : request.text.slice(0, PREVIEW_CHAR_CAP)
-  );
-  const previewTruncated = $derived((request?.text.length ?? 0) > PREVIEW_CHAR_CAP);
+  const PREVIEW_CHAR_CAP = 600;
+  const previewText = $derived.by(() => {
+    const t = request?.text ?? '';
+    return t.length <= PREVIEW_CHAR_CAP ? t : t.slice(0, PREVIEW_CHAR_CAP) + '…';
+  });
   const fullCharCount = $derived(request?.text.length ?? 0);
+  const approxTokens = $derived(Math.round(fullCharCount / 4));
 
-  // ── Streaming ────────────────────────────────────────────────────
-  // Two hard constraints behind this implementation:
-  //   1. We do NOT render `response` while pending. Chunks accumulate
-  //      into the buffer; the response state only updates ONCE, on
-  //      onDone. The during-stream UI is a centered spinner + Stop.
-  //   2. The rafThrottle helper still wraps the per-chunk apply,
-  //      but apply is essentially a no-op (writes to a non-reactive
-  //      `pendingBuffer`). State writes only happen on onDone /
-  //      onError, so reactivity churn during streaming is zero.
   async function ask() {
     if (!request || dialogState === 'pending') return;
-    if (autoFireTimer !== null) {
-      clearTimeout(autoFireTimer);
-      autoFireTimer = null;
-    }
     dialogState = 'pending';
     response = '';
+    streamChars = 0;
     error = '';
     let buffer = '';
     abortCtl = new AbortController();
     const userMessage = instruction.trim()
       ? `${instruction.trim()}\n\n---\n\n${request.text}`
       : `Help me with this:\n\n${request.text}`;
-    // rAF coalescer kept for symmetry / future use, but the apply
-    // function deliberately doesn't write reactive state. Buffer
-    // accumulation happens in onChunk; state writes happen on
-    // onDone. Zero reactive work during streaming.
     const t = rafThrottle(() => {
-      // No-op: buffer-only write is done in onChunk below.
+      streamChars = buffer.length;
     });
     try {
       await api.chatStream(
@@ -168,9 +129,6 @@
         {
           onChunk: (chunk) => {
             buffer += chunk;
-            // Drain rAF queue so the throttle's internal frame
-            // counter resets cleanly; even though apply is a no-op,
-            // this keeps the cancel semantics correct.
             t.onChunk('');
           },
           onDone: () => {
@@ -182,7 +140,7 @@
           },
           onError: (err) => {
             t.flush();
-            response = buffer; // surface whatever arrived before the failure
+            response = buffer;
             dialogState = 'done';
             abortCtl = null;
             error = err.message;
@@ -214,7 +172,7 @@
     }
   }
 
-  async function saveAsNote() {
+  function openSave() {
     if (!response) return;
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     const clean = instruction
@@ -223,19 +181,22 @@
       .replace(/\s+/g, ' ')
       .slice(0, 40)
       .trim();
-    const guess = clean ? `AI/${clean} ${stamp}.md` : `AI/Response ${stamp}.md`;
-    const raw = prompt('Save AI response as a new note.\n\nVault-relative path (must end in .md):', guess);
-    if (!raw) return;
-    let path = raw.trim();
+    savePath = clean ? `AI/${clean} ${stamp}.md` : `AI/Response ${stamp}.md`;
+    saveOpen = true;
+    tick().then(() => saveInputEl?.select());
+  }
+  async function saveConfirm() {
+    let path = savePath.trim();
     if (!path) return;
     if (!path.toLowerCase().endsWith('.md')) path += '.md';
     if (path.startsWith('/') || path.split('/').some((seg) => seg === '..')) {
-      toast.error('Invalid path — must be vault-relative.');
+      toast.error('Path must be vault-relative (no leading slash or `..`).');
       return;
     }
     try {
       await api.createNote({ path, body: response });
       toast.success(`Saved to ${path}`);
+      saveOpen = false;
     } catch (err) {
       toast.error('Save failed: ' + (err instanceof Error ? err.message : String(err)));
     }
@@ -251,222 +212,322 @@
     request.insertAfter(response);
     close();
   }
+
   function close() {
-    if (autoFireTimer !== null) {
-      clearTimeout(autoFireTimer);
-      autoFireTimer = null;
-    }
     abortCtl?.abort();
     abortCtl = null;
-    // Reset to idle baseline so a reopen starts fresh.
     response = '';
     error = '';
     dialogState = 'idle';
-    onDismiss();
+    saveOpen = false;
+    // Defer parent state write so the click handler returns
+    // immediately — prevents the perceived freeze where the parent
+    // page's $effect cascade runs synchronously inside the click.
+    queueMicrotask(() => onDismiss());
   }
-  function dismiss() {
-    if (dialogState === 'pending') {
-      stop();
-      return;
-    }
+  function cancel() {
     request?.cancel();
     close();
   }
-  function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      dismiss();
-    } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      void ask();
-    }
-  }
 
-  // Belt-and-braces cleanup on unmount — kill any in-flight stream
-  // + clear the auto-fire timer so a quickly-closed dialog can't
-  // leak a setTimeout or a pending fetch.
-  onMount(() => {
-    return () => {
-      if (autoFireTimer !== null) clearTimeout(autoFireTimer);
-      abortCtl?.abort();
-    };
+  // Global keydown — Esc to dismiss, Cmd/Ctrl-Enter to send. Window-
+  // level so the shortcuts work regardless of which element inside
+  // the drawer has focus. Re-armed only while the drawer is open.
+  $effect(() => {
+    if (!request) return;
+    function onWindowKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (dialogState === 'pending') stop();
+        else cancel();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && dialogState !== 'pending') {
+        e.preventDefault();
+        void ask();
+      }
+    }
+    window.addEventListener('keydown', onWindowKey);
+    return () => window.removeEventListener('keydown', onWindowKey);
+  });
+
+  onMount(() => () => {
+    abortCtl?.abort();
   });
 </script>
 
 {#if request}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="fixed inset-0 z-50 flex items-end sm:items-start justify-center sm:pt-12 sm:px-4 bg-black/60"
-    onclick={dismiss}
-    onkeydown={onKey}
-    role="presentation"
+  <aside
+    class="ask-ai-drawer fixed top-0 right-0 z-50 h-dvh w-full sm:w-[28rem] bg-base border-l border-surface1 shadow-2xl flex flex-col"
+    role="dialog"
+    aria-label="Ask AI"
+    tabindex="-1"
   >
-    <section
-      class="w-full sm:max-w-2xl bg-base border border-surface1 shadow-xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col"
-      onclick={(e) => e.stopPropagation()}
-      role="dialog"
-      aria-label="Ask AI about selection"
-    >
-      <!-- Mobile drag handle hint (visual only — tap-outside / X to dismiss). -->
-      <div class="sm:hidden flex justify-center pt-2 pb-1">
-        <span class="block w-10 h-1 bg-surface2"></span>
-      </div>
-
-      <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
-        <h2 class="text-sm font-semibold text-text flex-1">Ask AI</h2>
-        <span class="text-[11px] text-dim font-mono tabular-nums">
-          {fullCharCount.toLocaleString()} chars
+    <!-- Header — single compact row. Title · counters · stop · close. -->
+    <header class="px-3 h-9 border-b border-surface1 flex items-center gap-2 flex-shrink-0 bg-mantle">
+      <span class="text-[11px] uppercase tracking-wider text-primary font-semibold">Ask AI</span>
+      {#if fullCharCount > 0}
+        <span class="text-[10px] text-dim font-mono tabular-nums">
+          {fullCharCount.toLocaleString()}c · ~{approxTokens.toLocaleString()}t
         </span>
+      {/if}
+      <span class="flex-1"></span>
+      {#if dialogState === 'pending'}
         <button
-          onclick={dismiss}
-          aria-label="close"
-          class="text-dim hover:text-text text-lg leading-none ml-2"
-        >×</button>
-      </header>
+          type="button"
+          onclick={stop}
+          class="text-[11px] text-error hover:underline px-1"
+        >Stop</button>
+      {/if}
+      <button
+        type="button"
+        onclick={cancel}
+        aria-label="Close"
+        class="text-dim hover:text-text leading-none px-1 text-lg"
+      >×</button>
+    </header>
 
-      <div class="flex-1 overflow-y-auto p-2 sm:p-3 space-y-2">
-        <!-- Selection preview. Render at most PREVIEW_CHAR_CAP chars
-             so a 100KB note body can't lock the browser's layout
-             engine. The AI receives the full text in ask(). -->
-        <div>
-          <span class="block text-[11px] uppercase tracking-wider text-dim mb-1 flex items-baseline gap-2">
-            <span>Your selection</span>
-            {#if previewTruncated}
-              <span
-                class="text-[10px] text-warning normal-case tracking-normal"
-                title="The full text is sent to the AI; only this preview is truncated for speed."
-              >preview truncated · {(fullCharCount - PREVIEW_CHAR_CAP).toLocaleString()} more chars sent</span>
-            {/if}
-          </span>
-          <pre
-            class="bg-surface0 border border-surface1 px-3 py-2 text-xs text-subtext whitespace-pre-wrap break-words max-h-32 overflow-y-auto font-mono"
-          >{previewText}{#if previewTruncated}…{/if}</pre>
-        </div>
+    <!-- Selection preview — collapsed by default. The editor itself
+         shows the selection so this is just for context confirmation. -->
+    {#if request.text}
+      <details class="border-b border-surface1 flex-shrink-0">
+        <summary class="px-3 py-1.5 text-[10px] uppercase tracking-wider text-dim cursor-pointer hover:text-text select-none">
+          Selection preview · click to expand
+        </summary>
+        <pre class="px-3 pb-2 text-[11px] text-subtext whitespace-pre-wrap break-words font-mono max-h-32 overflow-y-auto">{previewText}</pre>
+      </details>
+    {/if}
 
-        <!-- Instruction. Empty means "Help me with this:". -->
-        <div>
-          <label
-            for="ai-instruction"
-            class="block text-[11px] uppercase tracking-wider text-dim mb-1"
-          >Instruction (optional)</label>
-          <textarea
-            id="ai-instruction"
-            bind:this={inputEl}
-            bind:value={instruction}
-            rows="2"
-            placeholder="What should the AI do?"
-            class="w-full px-3 py-2 bg-surface0 border border-surface1 text-sm text-text focus:outline-none focus:border-primary"
-            disabled={dialogState === 'pending'}
-            enterkeyhint="send"
-            autocomplete="off"
-            autocapitalize="sentences"
-            spellcheck="true"
-          ></textarea>
-        </div>
-
-        <!-- Response panel. Three discrete states — no in-betweens.
-             - idle: nothing shown beyond the input.
-             - pending: spinner + "streaming..." text + Stop. No live
-                        text. The response buffer accumulates off-DOM.
-             - done: full response in a plain <pre>, no markdown
-                     parse. Error overlay on top when present. -->
+    <!-- Instruction row -->
+    <div class="px-3 py-2 border-b border-surface1 flex-shrink-0">
+      <label
+        for="ai-instruction"
+        class="block text-[10px] uppercase tracking-wider text-dim mb-1"
+      >Instruction</label>
+      <textarea
+        id="ai-instruction"
+        bind:this={inputEl}
+        bind:value={instruction}
+        rows="3"
+        placeholder="What should the AI do? (Cmd-Enter to send)"
+        class="w-full px-2 py-1.5 bg-surface0 border border-surface1 text-sm text-text focus:outline-none focus:border-primary resize-none font-sans"
+        disabled={dialogState === 'pending'}
+        autocomplete="off"
+        autocapitalize="sentences"
+        spellcheck="false"
+      ></textarea>
+      <div class="mt-1.5 flex items-center gap-1.5">
         {#if dialogState === 'pending'}
-          <div class="bg-surface0 border border-surface1 px-3 py-4 text-sm text-dim italic flex items-center gap-2">
+          <span class="text-[11px] text-dim italic flex items-center gap-1.5">
             <span class="ai-spinner" aria-hidden="true"></span>
-            Streaming — response will appear when the AI finishes. Press Stop to abort.
-          </div>
-        {:else if dialogState === 'done'}
-          {#if error}
-            <div class="bg-surface0 border border-error px-3 py-2 text-xs text-error">
-              {error}
-              {#if /provider|api key|not configured/i.test(error)}
-                <div class="text-dim mt-1">
-                  Open <a href="/settings" class="text-secondary hover:underline">Settings</a> to configure an AI provider.
-                </div>
-              {/if}
-            </div>
-          {/if}
-          {#if response}
-            <div>
-              <div class="flex items-baseline gap-2 mb-1">
-                <span class="text-[11px] uppercase tracking-wider text-dim">Response</span>
-                <span class="text-[10px] text-dim font-mono tabular-nums">
-                  {response.length.toLocaleString()} chars
-                </span>
-              </div>
-              <pre
-                class="bg-surface0 border border-surface1 px-3 py-2 text-sm text-text whitespace-pre-wrap break-words max-h-72 overflow-y-auto"
-              >{response}</pre>
-            </div>
-          {/if}
-        {/if}
-      </div>
-
-      <footer
-        class="px-4 py-3 border-t border-surface1 flex items-center gap-2 flex-wrap"
-        style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom));"
-      >
-        {#if dialogState === 'pending'}
-          <button
-            type="button"
-            onclick={stop}
-            class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-error border border-error hover:bg-surface1"
-          >Stop</button>
-          <span class="flex-1"></span>
-          <span class="text-[11px] text-dim italic">Streaming · cancel anytime</span>
+            <span class="tabular-nums">{streamChars.toLocaleString()} chars · streaming…</span>
+          </span>
         {:else}
           <button
             type="button"
-            onclick={dismiss}
-            class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm text-subtext hover:bg-surface0"
+            onclick={ask}
+            disabled={!request.text}
+            class="px-3 py-1 text-sm bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-50"
+          >Ask AI</button>
+          <span class="text-[10px] text-dim font-mono">⌘↵</span>
+          <span class="flex-1"></span>
+          <button
+            type="button"
+            onclick={cancel}
+            class="text-[11px] text-dim hover:text-text"
           >Cancel</button>
-          {#if response}
-            <button
-              type="button"
-              onclick={copyResponse}
-              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 hover:border-primary"
-            >Copy</button>
-            <button
-              type="button"
-              onclick={saveAsNote}
-              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 hover:border-primary"
-            >Save as note</button>
-            <button
-              type="button"
-              onclick={insertBelow}
-              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-surface0 text-text border border-surface1 hover:border-primary"
-            >Insert below</button>
-            <button
-              type="button"
-              onclick={replaceSelection}
-              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-primary text-on-primary font-medium hover:opacity-90"
-            >Replace</button>
-          {:else}
-            <span class="flex-1"></span>
-            <button
-              type="button"
-              onclick={ask}
-              class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-sm bg-primary text-on-primary font-medium hover:opacity-90"
-            >Ask AI (⌘↵)</button>
-          {/if}
         {/if}
+      </div>
+    </div>
+
+    <!-- Response area — fills the remaining height. Markdown render
+         runs ONCE after stream ends; raw toggle for plain text. -->
+    <div class="flex-1 overflow-y-auto">
+      {#if error}
+        <div class="m-3 px-3 py-2 border border-error bg-surface0 text-xs text-error">
+          <div>{error}</div>
+          {#if /provider|api key|not configured/i.test(error)}
+            <div class="text-dim mt-1">
+              Open <a href="/settings" class="text-secondary hover:underline">Settings</a> to configure an AI provider.
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      {#if dialogState === 'done' && response}
+        <div class="px-3 py-1.5 border-b border-surface1 flex items-center gap-2 sticky top-0 bg-base z-10">
+          <span class="text-[10px] uppercase tracking-wider text-dim">Response</span>
+          <span class="text-[10px] text-dim font-mono tabular-nums">{response.length.toLocaleString()}c</span>
+          <span class="flex-1"></span>
+          <button
+            type="button"
+            onclick={() => (viewMode = viewMode === 'rendered' ? 'raw' : 'rendered')}
+            class="text-[10px] text-dim hover:text-text font-mono"
+            title="Toggle rendered markdown vs raw text"
+          >{viewMode === 'rendered' ? 'rendered' : 'raw'} ↺</button>
+        </div>
+        <div class="px-3 py-2">
+          {#if viewMode === 'rendered'}
+            <div class="text-sm leading-relaxed ai-response-md">
+              <MarkdownRenderer body={response} />
+            </div>
+          {:else}
+            <pre class="text-xs text-text whitespace-pre-wrap break-words font-mono">{response}</pre>
+          {/if}
+        </div>
+      {:else if dialogState === 'pending'}
+        <div class="px-3 py-6 text-center text-[11px] text-dim italic">
+          Response will appear here when the AI finishes.<br />
+          Press <kbd class="font-mono text-text">Esc</kbd> or <span class="text-error">Stop</span> to abort.
+        </div>
+      {/if}
+    </div>
+
+    <!-- Save-as-note inline form (replaces window.prompt). Surfaces
+         only when the user hits Save in the footer. -->
+    {#if saveOpen && response}
+      <div class="px-3 py-2 border-t border-surface1 bg-surface0 flex-shrink-0">
+        <label for="ai-save-path" class="block text-[10px] uppercase tracking-wider text-dim mb-1">
+          Save to vault path
+        </label>
+        <div class="flex items-center gap-1.5">
+          <input
+            id="ai-save-path"
+            bind:this={saveInputEl}
+            bind:value={savePath}
+            type="text"
+            class="flex-1 min-w-0 px-2 py-1 bg-base border border-surface1 text-xs text-text focus:outline-none focus:border-primary font-mono"
+            autocomplete="off"
+            spellcheck="false"
+            onkeydown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); void saveConfirm(); }
+              if (e.key === 'Escape') { e.preventDefault(); saveOpen = false; }
+            }}
+          />
+          <button
+            type="button"
+            onclick={saveConfirm}
+            class="px-2 py-1 text-xs bg-primary text-on-primary font-medium hover:opacity-90"
+          >Save</button>
+          <button
+            type="button"
+            onclick={() => (saveOpen = false)}
+            class="px-2 py-1 text-xs text-dim hover:text-text"
+            aria-label="Cancel save"
+          >×</button>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Footer — action row visible only when there's a response. -->
+    {#if dialogState === 'done' && response && !error}
+      <footer
+        class="px-3 py-2 border-t border-surface1 bg-mantle flex items-center gap-1 flex-shrink-0 flex-wrap"
+        style="padding-bottom: max(0.5rem, env(safe-area-inset-bottom));"
+      >
+        <button
+          type="button"
+          onclick={copyResponse}
+          class="px-2 py-1 text-xs text-subtext hover:text-text hover:bg-surface0"
+        >Copy</button>
+        <button
+          type="button"
+          onclick={openSave}
+          class="px-2 py-1 text-xs text-subtext hover:text-text hover:bg-surface0"
+        >Save as note…</button>
+        <span class="flex-1"></span>
+        <button
+          type="button"
+          onclick={insertBelow}
+          class="px-2 py-1 text-xs bg-surface0 text-text border border-surface1 hover:border-primary"
+        >Insert below</button>
+        <button
+          type="button"
+          onclick={replaceSelection}
+          class="px-2.5 py-1 text-xs bg-primary text-on-primary font-medium hover:opacity-90"
+        >Replace</button>
       </footer>
-    </section>
-  </div>
+    {/if}
+  </aside>
 {/if}
 
 <style>
+  /* Spinner — small, in line with the streaming text. */
   .ai-spinner {
     display: inline-block;
-    width: 0.875rem;
-    height: 0.875rem;
+    width: 0.75rem;
+    height: 0.75rem;
     border: 2px solid var(--color-surface1);
     border-top-color: var(--color-primary);
     border-radius: 50%;
     animation: ai-spin 0.7s linear infinite;
+    vertical-align: middle;
+    flex-shrink: 0;
   }
   @keyframes ai-spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Slide-in animation on mount — keeps the open feeling tactile
+     without stealing focus or blocking interaction. Disabled when
+     the user prefers reduced motion. */
+  .ask-ai-drawer {
+    animation: ai-slide-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes ai-slide-in {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ask-ai-drawer {
+      animation: none;
+    }
+  }
+
+  /* MarkdownRenderer styles — the parent component renders its own
+     prose styling, but we tweak a couple of things to make headings
+     and lists feel tighter inside the narrow drawer column. */
+  .ai-response-md :global(h1) {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+  .ai-response-md :global(h2) {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-top: 0.625rem;
+    margin-bottom: 0.375rem;
+  }
+  .ai-response-md :global(h3) {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+  .ai-response-md :global(p) {
+    margin-bottom: 0.5rem;
+  }
+  .ai-response-md :global(ul),
+  .ai-response-md :global(ol) {
+    padding-left: 1.25rem;
+    margin-bottom: 0.5rem;
+  }
+  .ai-response-md :global(li) {
+    margin-bottom: 0.125rem;
+  }
+  .ai-response-md :global(pre) {
+    font-size: 0.75rem;
+    padding: 0.5rem;
+    background: var(--color-surface0);
+    border: 1px solid var(--color-surface1);
+    overflow-x: auto;
+  }
+  .ai-response-md :global(code) {
+    font-size: 0.8125rem;
   }
 </style>
