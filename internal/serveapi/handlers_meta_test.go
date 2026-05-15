@@ -107,7 +107,56 @@ func metaTestServer(t *testing.T) (*Server, http.Handler) {
 	r.Post("/api/v1/events/{id}/skip", s.handleSkipEventOccurrence)
 	r.Post("/api/v1/events/{id}/override", s.handleOverrideEventOccurrence)
 	r.Delete("/api/v1/events/{id}", s.handleDeleteEvent)
+	r.Get("/api/v1/projects/{name}", s.handleGetProject)
+	r.Post("/api/v1/projects", s.handleCreateProject)
+	r.Patch("/api/v1/projects/{name}", s.handlePatchProject)
+	r.Delete("/api/v1/projects/{name}", s.handleDeleteProject)
 	return s, r
+}
+
+// TestProjects_NameWithSlash pins the URL-decoding contract for project
+// path params. Project names are user content and may contain "/" — chi
+// extracts the raw "%2F"-encoded segment without decoding, so handlers
+// must call urlParam (which PathUnescapes) before lookup. Without that,
+// a project named "client/web" round-trips a 404 on GET/PATCH/DELETE
+// even though it sits on disk and the frontend correctly encoded the URL.
+func TestProjects_NameWithSlash(t *testing.T) {
+	_, h := metaTestServer(t)
+
+	created := httptest.NewRequest(http.MethodPost, "/api/v1/projects", bytes.NewBufferString(
+		`{"name":"client/web","description":"site rebuild"}`))
+	created.Header.Set("Content-Type", "application/json")
+	cw := httptest.NewRecorder()
+	h.ServeHTTP(cw, created)
+	if cw.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", cw.Code, cw.Body.String())
+	}
+
+	// GET — frontend encodes "client/web" → "client%2Fweb".
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/projects/client%2Fweb", nil)
+	gw := httptest.NewRecorder()
+	h.ServeHTTP(gw, getReq)
+	if gw.Code != http.StatusOK {
+		t.Fatalf("get with %%2F-encoded slash: %d %s", gw.Code, gw.Body.String())
+	}
+
+	// PATCH the same project — was 404 before the fix.
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/client%2Fweb",
+		bytes.NewBufferString(`{"description":"updated"}`))
+	patchReq.Header.Set("Content-Type", "application/json")
+	pw := httptest.NewRecorder()
+	h.ServeHTTP(pw, patchReq)
+	if pw.Code != http.StatusOK {
+		t.Fatalf("patch: %d %s", pw.Code, pw.Body.String())
+	}
+
+	// DELETE the same project — was 404 before the fix.
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/v1/projects/client%2Fweb", nil)
+	dw := httptest.NewRecorder()
+	h.ServeHTTP(dw, delReq)
+	if dw.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d %s", dw.Code, dw.Body.String())
+	}
 }
 
 // TestEvents_PerInstanceOverride pins the per-occurrence override

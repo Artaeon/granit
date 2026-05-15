@@ -127,7 +127,7 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	name := urlParam(r, "name")
 	projects, err := granitmeta.ReadProjects(s.cfg.Vault.Root)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -186,7 +186,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 // JSON body overwrites the stored value. Goals/Notes/Tags are replaced
 // wholesale (not merged) so the client always sends the canonical list.
 func (s *Server) handlePatchProject(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	name := urlParam(r, "name")
 	var patch map[string]json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -271,7 +271,7 @@ func (s *Server) handlePatchProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	name := urlParam(r, "name")
 	projects, err := granitmeta.ReadProjects(s.cfg.Vault.Root)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
