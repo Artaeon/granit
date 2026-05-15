@@ -85,15 +85,19 @@
   let archivedMode = $state<'hide' | 'show' | 'only'>('hide');
   // Source filter — separates "tasks the user actually wrote as tasks"
   // from "stray `- [ ]` bullets in reading notes / brainstorm pages".
-  // Default is 'task-notes' (only notes that look like task surfaces:
-  // daily notes, anything under Tasks/Projects/Daily, or notes with a
-  // type:task/project/daily frontmatter declared via path patterns we
-  // can detect without a frontmatter fetch). Flipping to 'all' shows
-  // every checkbox in the vault — same behaviour as before this filter
-  // shipped. Persisted in localStorage so the user's preference sticks.
-  const SOURCE_KEY = 'granit.tasks.source';
+  // Default is 'all' (every `- [ ]` in the vault shows up, matching the
+  // README's promise and Amplenote-style task capture from arbitrary
+  // notes). Flipping to 'task-notes' narrows to notes that look like
+  // dedicated task surfaces — daily notes, anything under Tasks/,
+  // Projects/, or Daily/.
+  //
+  // Storage key bumped from .source to .source.v2 so existing users
+  // who had been silently defaulted to the old 'task-notes' get the
+  // new behaviour once (and can re-pick strict mode from the sidebar
+  // if that's actually what they want).
+  const SOURCE_KEY = 'granit.tasks.source.v2';
   let sourceFilter = $state<'task-notes' | 'all'>(
-    loadStoredString(SOURCE_KEY, 'task-notes') === 'all' ? 'all' : 'task-notes'
+    loadStoredString(SOURCE_KEY, 'all') === 'task-notes' ? 'task-notes' : 'all'
   );
   $effect(() => saveStoredString(SOURCE_KEY, sourceFilter));
   let loading = $state(false);
@@ -1452,7 +1456,7 @@
       (deadlineFilter ? 1 : 0) +
       (q ? 1 : 0) +
       (status !== 'open' ? 1 : 0) +
-      (sourceFilter !== 'task-notes' ? 1 : 0)
+      (sourceFilter !== 'all' ? 1 : 0)
   );
 
   // Active-filter chip row. Each filter that's not at its default
@@ -1522,11 +1526,11 @@
         clear: () => (deadlineFilter = '')
       });
     }
-    if (sourceFilter !== 'task-notes') {
+    if (sourceFilter !== 'all') {
       out.push({
         key: 'source',
-        label: 'all notes',
-        clear: () => (sourceFilter = 'task-notes')
+        label: 'task notes only',
+        clear: () => (sourceFilter = 'all')
       });
     }
     return out;
@@ -1539,7 +1543,7 @@
     tagFilter = '';
     goalFilter = '';
     deadlineFilter = '';
-    sourceFilter = 'task-notes';
+    sourceFilter = 'all';
   }
 </script>
 
@@ -1587,28 +1591,28 @@
       </div>
     </div>
 
-    <!-- Source filter — hides `- [ ]` bullets that live in reading
-         notes / brainstorm pages so the global task view doesn't get
-         polluted by visual list bullets the user never meant as
-         tasks. Default 'task-notes' looks at notes that look like
-         task surfaces (daily notes, anything under Daily/, Tasks/,
-         Projects/). Flip to 'all' to see every checkbox in the vault. -->
+    <!-- Source filter — 'all' (default) surfaces every `- [ ]` line
+         in the vault, including checkboxes inline in arbitrary notes
+         (Amplenote-style capture). 'Task notes only' narrows to notes
+         that look like dedicated task surfaces: daily notes and
+         anything under Daily/, Tasks/, Projects/. Flip when reading
+         notes' visual bullets pollute the view. -->
     <div>
       <div class="text-xs uppercase tracking-wider text-dim mb-2">Source</div>
       <div class="flex flex-col gap-1 text-sm">
-        <button
-          class="text-left px-3 py-2 rounded {sourceFilter === 'task-notes' ? 'bg-surface1 text-text' : 'text-subtext hover:bg-surface0'}"
-          onclick={() => (sourceFilter = 'task-notes')}
-          title="Daily notes, Tasks/, Projects/, Daily/ — skip bullets in arbitrary notes"
-        >
-          Task notes only
-        </button>
         <button
           class="text-left px-3 py-2 rounded {sourceFilter === 'all' ? 'bg-surface1 text-text' : 'text-subtext hover:bg-surface0'}"
           onclick={() => (sourceFilter = 'all')}
           title="Show every - [ ] checkbox the parser found in the vault"
         >
           All notes
+        </button>
+        <button
+          class="text-left px-3 py-2 rounded {sourceFilter === 'task-notes' ? 'bg-surface1 text-text' : 'text-subtext hover:bg-surface0'}"
+          onclick={() => (sourceFilter = 'task-notes')}
+          title="Daily notes, Tasks/, Projects/, Daily/ — skip bullets in arbitrary notes"
+        >
+          Task notes only
         </button>
       </div>
     </div>
