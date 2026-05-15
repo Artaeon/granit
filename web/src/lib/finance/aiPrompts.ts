@@ -110,7 +110,7 @@ export function buildSnapshotPrompt(input: SnapshotInputs): string {
         ? ` (target ${fmtCents(g.target_cents, g.currency || ov.currency)}`
         : '';
       const cur = g.current_cents !== undefined ? `; at ${fmtCents(g.current_cents, g.currency || ov.currency)})` : ')';
-      lines.push(`- ${g.title}${tgt}${tgt ? cur : ''}`);
+      lines.push(`- ${g.name}${tgt}${tgt ? cur : ''}`);
     }
   }
 

@@ -99,8 +99,8 @@ describe('buildSnapshotPrompt', () => {
   it('includes active money goals with target + current', () => {
     const ov = emptyOverview();
     const goals: FinGoal[] = [
-      { id: 'g1', title: 'Emergency fund', target_cents: 1_000_000, current_cents: 250_000, currency: 'EUR', status: 'active' } as FinGoal,
-      { id: 'g2', title: 'Done already', target_cents: 100_000, current_cents: 100_000, currency: 'EUR', status: 'done' } as FinGoal
+      { id: 'g1', name: 'Emergency fund', target_cents: 1_000_000, current_cents: 250_000, currency: 'EUR', status: 'active' } as FinGoal,
+      { id: 'g2', name: 'Done already', target_cents: 100_000, current_cents: 100_000, currency: 'EUR', status: 'done' } as FinGoal
     ];
     const got = buildSnapshotPrompt({ overview: ov, subscriptions: [], streams: [], goals });
     expect(got).toContain('Emergency fund');
