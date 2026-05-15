@@ -21,7 +21,6 @@ import (
 	"github.com/artaeon/granit/internal/granitmeta"
 	"github.com/artaeon/granit/internal/ventures"
 	"github.com/artaeon/granit/internal/wshub"
-	"github.com/go-chi/chi/v5"
 )
 
 const venturesStatePath = ".granit/ventures.json"
@@ -95,7 +94,7 @@ func (s *Server) handleListVentures(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetVenture(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	name := urlParam(r, "name")
 	list := ventures.LoadAll(s.cfg.Vault.Root)
 	v := ventures.Find(list, name)
 	if v == nil {
@@ -148,7 +147,7 @@ func (s *Server) handleCreateVenture(w http.ResponseWriter, r *http.Request) {
 // the OLD name will silently stop matching, which is the same trade-off
 // the project rename path makes (no transitive repointing).
 func (s *Server) handlePatchVenture(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	name := urlParam(r, "name")
 	var patch map[string]json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
@@ -216,7 +215,7 @@ func (s *Server) handlePatchVenture(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteVenture(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	name := urlParam(r, "name")
 	list := ventures.LoadAll(s.cfg.Vault.Root)
 	out := make([]ventures.Venture, 0, len(list))
 	found := false
