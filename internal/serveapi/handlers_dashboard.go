@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/go-chi/chi/v5"
 )
 
 const dashboardFileRel = ".granit/everything-dashboard.json"
@@ -292,7 +290,7 @@ func (s *Server) handleSaveDashboardLayout(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleDeleteDashboardLayout(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	name := urlParam(r, "name")
 	cfg, err := s.readDashboard()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -321,7 +319,7 @@ func (s *Server) handleDeleteDashboardLayout(w http.ResponseWriter, r *http.Requ
 // the named preset's widgets into the top-level Widgets and updates
 // Active. Idempotent: activating the already-active preset is a no-op.
 func (s *Server) handleActivateDashboardLayout(w http.ResponseWriter, r *http.Request) {
-	name := chi.URLParam(r, "name")
+	name := urlParam(r, "name")
 	cfg, err := s.readDashboard()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
