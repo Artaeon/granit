@@ -390,93 +390,27 @@
     }
   }
 
+  // Delete prompt state. Recurring events open an inline "what
+  // scope?" picker instead of native confirm() dialogs. The previous
+  // flow stacked two confirm()s where the safe path was OK and the
+  // destructive series-wide delete sat behind Cancel — a user who
+  // second-guessed the operation and clicked Cancel to abort would
+  // instead trigger the catastrophic path. The inline picker makes
+  // the three outcomes (this one / entire series / abort) explicit
+  // buttons with no Cancel-bypass trapdoor.
+  let deletePrompt = $state<'none' | 'recurring-native' | 'recurring-ics'>('none');
+
   async function deleteEvent() {
     if (!event?.eventId) return;
-    // Recurring events: ask whether to nuke just this occurrence or
-    // the whole series. Pre-fix this jumped straight to a DELETE of
-    // the base VEVENT — for an ICS series that removed EVERY past
-    // and future occurrence at once, which the user reported as
-    // catastrophic data loss. Default to "just this one" so a
-    // mis-click can't blow up the whole series. confirm() returns
-    // true for OK so we mirror the move-flow ordering: OK = the
-    // safe default (instance), cancel-bypass = destructive (series).
     if (event.rrule && event.type === 'ics_event' && event.source) {
-      const justThisOne = confirm(
-        `"${event.title}" is a recurring event.\n\nOK: Delete just this occurrence (EXDATE the source series — every other instance stays)\nCancel: Delete the entire series (every past and future occurrence is removed)\n\nClose this dialog to abort.`
-      );
-      busy = true;
-      try {
-        if (justThisOne) {
-          // EXDATE the source series at this occurrence's anchor.
-          // For timed events that's event.start; for all-day events
-          // the feed emits `date` instead (no start/end). Backend
-          // skipICSOccurrence accepts either RFC3339 or YYYY-MM-DD.
-          const anchor = event.start ?? event.date;
-          if (!anchor) {
-            toast.error('Can\'t identify this occurrence — please use Skip or edit the series.');
-            return;
-          }
-          await api.skipICSOccurrence(event.source, event.eventId, anchor);
-          onChanged?.();
-          open = false;
-          toast.success('this occurrence skipped');
-        } else {
-          // Cancel-bypass — second confirm because deleting the whole
-          // series destroys past instances too. The user must explicitly
-          // accept that risk.
-          const confirmSeries = confirm(
-            `Delete ALL occurrences of "${event.title}"? This wipes every past + future instance from the .ics file and CANNOT be undone.`
-          );
-          if (!confirmSeries) return;
-          await api.deleteICSEvent(event.source, event.eventId);
-          onChanged?.();
-          open = false;
-          toast.success('entire series deleted');
-        }
-      } catch (err) {
-        toast.error('delete failed: ' + errorMessage(err));
-      } finally {
-        busy = false;
-      }
+      deletePrompt = 'recurring-ics';
       return;
     }
-    // Native recurring events: same shape, different endpoints.
-    // /events/{id}/skip writes an ExDate via granitmeta; the series
-    // base + RRULE stay untouched.
     if (event.rrule && event.type === 'event' && event.eventId && event.start) {
-      const justThisOne = confirm(
-        `"${event.title}" is a recurring event.\n\nOK: Delete just this occurrence (the series stays)\nCancel: Delete the entire series (every past and future occurrence is removed)\n\nClose this dialog to abort.`
-      );
-      busy = true;
-      try {
-        if (justThisOne) {
-          const key = exDateKey();
-          if (!key) {
-            toast.error('Can\'t identify this occurrence — please use Skip or edit the series.');
-            return;
-          }
-          await api.skipEventOccurrence(event.eventId, key);
-          onChanged?.();
-          open = false;
-          toast.success('this occurrence skipped');
-        } else {
-          const confirmSeries = confirm(
-            `Delete ALL occurrences of "${event.title}"? This wipes every past + future instance and CANNOT be undone.`
-          );
-          if (!confirmSeries) return;
-          await api.deleteEvent(event.eventId);
-          onChanged?.();
-          open = false;
-          toast.success('entire series deleted');
-        }
-      } catch (err) {
-        toast.error('delete failed: ' + errorMessage(err));
-      } finally {
-        busy = false;
-      }
+      deletePrompt = 'recurring-native';
       return;
     }
-    // Non-recurring path — single VEVENT, simple confirm + DELETE.
+    // Non-recurring path — single VEVENT, one confirm + DELETE.
     if (!confirm(`Delete event "${event.title}"?`)) return;
     busy = true;
     try {
@@ -493,6 +427,67 @@
     } finally {
       busy = false;
     }
+  }
+
+  async function confirmDeleteOccurrence() {
+    if (!event?.eventId) return;
+    busy = true;
+    try {
+      if (deletePrompt === 'recurring-ics' && event.source) {
+        // EXDATE the source series at this occurrence's anchor. For
+        // timed events that's event.start; for all-day events the
+        // feed emits `date` instead. Backend accepts either form.
+        const anchor = event.start ?? event.date;
+        if (!anchor) {
+          toast.error("Can't identify this occurrence — edit the series instead.");
+          return;
+        }
+        await api.skipICSOccurrence(event.source, event.eventId, anchor);
+      } else if (deletePrompt === 'recurring-native') {
+        const key = exDateKey();
+        if (!key) {
+          toast.error("Can't identify this occurrence — edit the series instead.");
+          return;
+        }
+        await api.skipEventOccurrence(event.eventId, key);
+      } else {
+        return;
+      }
+      deletePrompt = 'none';
+      onChanged?.();
+      open = false;
+      toast.success('this occurrence skipped · series unchanged');
+    } catch (err) {
+      toast.error('skip failed: ' + errorMessage(err));
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function confirmDeleteSeries() {
+    if (!event?.eventId) return;
+    busy = true;
+    try {
+      if (deletePrompt === 'recurring-ics' && event.source) {
+        await api.deleteICSEvent(event.source, event.eventId);
+      } else if (deletePrompt === 'recurring-native') {
+        await api.deleteEvent(event.eventId);
+      } else {
+        return;
+      }
+      deletePrompt = 'none';
+      onChanged?.();
+      open = false;
+      toast.success('entire series deleted');
+    } catch (err) {
+      toast.error('delete failed: ' + errorMessage(err));
+    } finally {
+      busy = false;
+    }
+  }
+
+  function cancelDeletePrompt() {
+    deletePrompt = 'none';
   }
 
   // Skip just THIS occurrence of a recurring event — the user's
@@ -1089,7 +1084,38 @@
           </div>
         </form>
       {:else}
-      <div class="flex flex-wrap gap-2 pt-2 border-t border-surface1">
+      <!-- Inline delete-scope picker. Replaces the previous two-confirm
+           pattern where the destructive 'delete entire series' branch
+           sat behind a Cancel keystroke — too easy to trigger by
+           reflexively pressing Esc/Cancel to abort. Three explicit
+           buttons; nothing happens until one is clicked. -->
+      {#if deletePrompt !== 'none'}
+        <div class="pt-2 border-t border-surface1 space-y-2">
+          <div class="text-xs text-text">
+            <span class="font-medium">"{event.title}"</span> is a recurring event. What do you want to delete?
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              onclick={confirmDeleteOccurrence}
+              disabled={busy}
+              class="px-3 py-1.5 text-sm bg-surface1 text-warning rounded hover:bg-surface2 disabled:opacity-50"
+              title="EXDATE just this date — every other instance stays"
+            >Just this occurrence</button>
+            <button
+              onclick={confirmDeleteSeries}
+              disabled={busy}
+              class="px-3 py-1.5 text-sm bg-surface1 text-error rounded hover:bg-surface2 disabled:opacity-50"
+              title="Delete every past + future instance — cannot be undone"
+            >Entire series</button>
+            <button
+              onclick={cancelDeletePrompt}
+              disabled={busy}
+              class="px-3 py-1.5 text-sm text-subtext hover:text-text"
+            >Cancel</button>
+          </div>
+        </div>
+      {/if}
+      <div class="flex flex-wrap gap-2 pt-2 border-t border-surface1" class:opacity-40={deletePrompt !== 'none'}>
         {#if event.taskId}
           <button onclick={toggleDone} disabled={busy} class="px-3 py-1.5 text-sm bg-surface0 text-success rounded hover:bg-surface1 disabled:opacity-50">
             {event.done ? 'mark not done' : 'mark done'}
@@ -1139,9 +1165,12 @@
               title="Drop the per-occurrence override and inherit the series defaults"
             >reset this</button>
           {/if}
-          <button onclick={deleteEvent} disabled={busy} class="px-3 py-1.5 text-sm text-error hover:bg-surface0 rounded">
-            {event.type === 'event' && event.rrule ? 'delete series' : 'delete'}
-          </button>
+          <button
+            onclick={deleteEvent}
+            disabled={busy || deletePrompt !== 'none'}
+            class="px-3 py-1.5 text-sm text-error hover:bg-surface0 rounded disabled:opacity-50"
+            title={event.rrule ? 'Pick scope: this occurrence or the entire series' : 'Delete this event'}
+          >{event.rrule ? 'delete…' : 'delete'}</button>
         {/if}
         {#if event.notePath}
           <button onclick={openNote} class="px-3 py-1.5 text-sm bg-surface0 text-subtext rounded hover:bg-surface1">
