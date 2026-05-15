@@ -339,6 +339,159 @@ func stringsIndex(s, sub string) int {
 	return -1
 }
 
+func TestCreate_ParentLineInsertsAsSubtask(t *testing.T) {
+	store, vault := freshStore(t, map[string]string{
+		"Tasks.md": "# Tasks\n\n- [ ] parent\n- [ ] sibling\n",
+	})
+	parent := store.All()[0]
+	if parent.Text != "parent" {
+		t.Fatalf("setup: expected first task 'parent', got %q", parent.Text)
+	}
+	got, err := store.Create("child A", CreateOpts{
+		File:       "Tasks.md",
+		ParentLine: parent.LineNum,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Indent != 1 {
+		t.Errorf("indent: got %d, want 1 (child of level-0 parent)", got.Indent)
+	}
+	if got.ParentLine != parent.LineNum {
+		t.Errorf("ParentLine: got %d, want %d", got.ParentLine, parent.LineNum)
+	}
+	disk, _ := os.ReadFile(filepath.Join(vault, "Tasks.md"))
+	want := "# Tasks\n\n- [ ] parent\n  - [ ] child A\n- [ ] sibling\n"
+	if string(disk) != want {
+		t.Errorf("disk content mismatch:\n got: %q\nwant: %q", disk, want)
+	}
+}
+
+func TestCreate_ParentLineAppendsAfterExistingChildren(t *testing.T) {
+	// Existing subtree: parent → existing child. New child should land
+	// AFTER existing child (last-child semantics), still under parent.
+	store, vault := freshStore(t, map[string]string{
+		"Tasks.md": "# Tasks\n\n- [ ] parent\n  - [ ] first child\n- [ ] sibling\n",
+	})
+	parent := store.All()[0]
+	if parent.Text != "parent" {
+		t.Fatalf("setup: %q != parent", parent.Text)
+	}
+	if _, err := store.Create("second child", CreateOpts{
+		File:       "Tasks.md",
+		ParentLine: parent.LineNum,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	disk, _ := os.ReadFile(filepath.Join(vault, "Tasks.md"))
+	want := "# Tasks\n\n- [ ] parent\n  - [ ] first child\n  - [ ] second child\n- [ ] sibling\n"
+	if string(disk) != want {
+		t.Errorf("disk:\n got: %q\nwant: %q", disk, want)
+	}
+}
+
+func TestCreate_ParentLineNestedIndent(t *testing.T) {
+	// Parent is itself a level-1 subtask. The new task should land at
+	// level 2 (4-space indent).
+	store, vault := freshStore(t, map[string]string{
+		"Tasks.md": "# Tasks\n\n- [ ] root\n  - [ ] child\n",
+	})
+	var child Task
+	for _, x := range store.All() {
+		if x.Text == "child" {
+			child = x
+			break
+		}
+	}
+	if child.LineNum == 0 {
+		t.Fatal("setup: didn't find child task")
+	}
+	if _, err := store.Create("grandchild", CreateOpts{
+		File:       "Tasks.md",
+		ParentLine: child.LineNum,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	disk, _ := os.ReadFile(filepath.Join(vault, "Tasks.md"))
+	want := "# Tasks\n\n- [ ] root\n  - [ ] child\n    - [ ] grandchild\n"
+	if string(disk) != want {
+		t.Errorf("disk:\n got: %q\nwant: %q", disk, want)
+	}
+}
+
+func TestCreate_ParentLineMissingFallsBackToAppend(t *testing.T) {
+	// ParentLine pointing at a line that isn't a task → fall through to
+	// the regular append-at-end path, no error.
+	store, vault := freshStore(t, map[string]string{
+		"Tasks.md": "# Tasks\n\nNot a task line.\n- [ ] real task\n",
+	})
+	if _, err := store.Create("orphan", CreateOpts{
+		File:       "Tasks.md",
+		ParentLine: 3, // "Not a task line."
+	}); err != nil {
+		t.Fatal(err)
+	}
+	disk, _ := os.ReadFile(filepath.Join(vault, "Tasks.md"))
+	if !contains(string(disk), "- [ ] orphan") {
+		t.Errorf("disk missing fallback-inserted task: %q", disk)
+	}
+	// Should have been appended, not indented.
+	if contains(string(disk), "  - [ ] orphan") {
+		t.Errorf("disk indented an orphan it shouldn't have: %q", disk)
+	}
+}
+
+func TestSetArchived_FlipsFlagAndPersistsAfterReload(t *testing.T) {
+	store, vault := freshStore(t, map[string]string{
+		"Tasks.md": "# Tasks\n\n- [ ] archive me\n",
+	})
+	id := store.All()[0].ID
+	if err := store.SetArchived(id, true); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := store.GetByID(id)
+	if !ok || !got.Archived || got.ArchivedAt == nil {
+		t.Errorf("after archive: archived=%v at=%v", got.Archived, got.ArchivedAt)
+	}
+	// Markdown line is INTACT — archive is sidecar-only.
+	disk, _ := os.ReadFile(filepath.Join(vault, "Tasks.md"))
+	if !contains(string(disk), "- [ ] archive me") {
+		t.Errorf("archive must not touch markdown: %q", disk)
+	}
+	// Reload to verify the flag round-trips through the sidecar.
+	scan := func() []NoteContent {
+		data, _ := os.ReadFile(filepath.Join(vault, "Tasks.md"))
+		return []NoteContent{{Path: "Tasks.md", Content: string(data)}}
+	}
+	store2, err := Load(vault, scan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got2, ok := store2.GetByID(id)
+	if !ok || !got2.Archived {
+		t.Errorf("after reload: archived=%v", got2.Archived)
+	}
+	// Unarchive — flag clears, ArchivedAt retained for audit.
+	if err := store.SetArchived(id, false); err != nil {
+		t.Fatal(err)
+	}
+	got3, _ := store.GetByID(id)
+	if got3.Archived {
+		t.Errorf("unarchive should clear flag, got archived=%v", got3.Archived)
+	}
+	if got3.ArchivedAt == nil {
+		t.Errorf("unarchive should keep ArchivedAt for audit, got nil")
+	}
+}
+
+func TestSetArchived_UnknownID(t *testing.T) {
+	store, _ := freshStore(t, map[string]string{"Tasks.md": ""})
+	err := store.SetArchived("does-not-exist", true)
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
 func TestCreate_RejectsNewlines(t *testing.T) {
 	store, _ := freshStore(t, map[string]string{"Tasks.md": ""})
 	cases := []string{

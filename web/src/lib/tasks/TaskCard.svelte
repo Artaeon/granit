@@ -455,7 +455,8 @@
     {isSelected ? 'ring-1 ring-primary' : 'hover:border-primary hover:bg-surface0'}
     {isOverdue ? 'task-card--overdue' : ''}
     {isDueToday ? 'task-card--today' : ''}
-    {task.done ? 'task-card--done' : ''}"
+    {task.done ? 'task-card--done' : ''}
+    {task.archived ? 'task-card--archived' : ''}"
   class:opacity-60={task.done}
   class:opacity-50={snoozed}
   class:task-card--swiping={swipeActive}
@@ -597,6 +598,12 @@
                 {task.recurrence}
               </span>
             {/if}
+            {#if task.archived}
+              <span
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] text-warning bg-surface0 border border-warning"
+                title={task.archivedAt ? `archived ${task.archivedAt}` : 'archived'}
+              >archived</span>
+            {/if}
             {#if task.notes}
               <span class="text-[10px] text-dim" title={task.notes}>📝</span>
             {/if}
@@ -716,6 +723,15 @@
      change so accessibility users still get the state cue. */
   @media (prefers-reduced-motion: reduce) {
     .task-card--done { animation: none; }
+  }
+  /* Archived: extra-faded so a power user with "Show archived"
+     enabled can tell at a glance which rows are soft-deleted vs.
+     active. The card stays interactive (toggle, open details,
+     unarchive) — visual only. */
+  .task-card--archived {
+    opacity: 0.55;
+    background: color-mix(in srgb, var(--color-warning) 4%, var(--color-surface0));
+    border-style: dashed;
   }
   /* Swipe transform — when actively swiping, no transition so the
      card tracks the finger 1:1; on release the .task-card--swiping

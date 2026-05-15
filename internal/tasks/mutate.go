@@ -254,13 +254,24 @@ func (s *TaskStore) Create(text string, opts CreateOpts) (Task, error) {
 		s.mu.Unlock()
 		return Task{}, fmt.Errorf("tasks: read %s: %w", dest, err)
 	}
-	// If a target Section heading is specified and present, insert the new
-	// task line directly after the heading (and any single blank line that
-	// follows). Otherwise fall back to the historical "append at end"
-	// behavior. Either path yields a single atomic file write.
+	// Insertion strategy. Precedence (first match wins):
+	//   1. ParentLine > 0 → insert as a subtask of the parent (after
+	//      the parent's existing subtree, indent + 2 columns).
+	//   2. Section non-empty → insert under the matching heading.
+	//   3. Append at end of file (historical fallback).
+	// Either path yields a single atomic file write.
 	var newContent string
 	insertedLine := 0
-	if opts.Section != "" {
+	if opts.ParentLine > 0 {
+		// Subtask insertion uses the bare body so we can apply the
+		// parent's indent. Strip the wrap prefix if Create added one.
+		bare := strings.TrimPrefix(taskLine, "- [ ] ")
+		if c, ln, ok := insertUnderParent(string(existing), opts.ParentLine, bare); ok {
+			newContent = c
+			insertedLine = ln
+		}
+	}
+	if newContent == "" && opts.Section != "" {
 		if c, ln, ok := insertUnderSection(string(existing), opts.Section, taskLine); ok {
 			newContent = c
 			insertedLine = ln
@@ -350,6 +361,43 @@ func (s *TaskStore) Create(text string, opts CreateOpts) (Task, error) {
 	s.mu.Unlock()
 	s.notify(Event{Kind: EventCreated, ID: t.ID, New: &t})
 	return t, nil
+}
+
+// SetArchived flips a task's archived flag. The markdown line stays
+// untouched — archiving is a SOFT delete, persisted only via the
+// sidecar so an external editor or git pull can resurrect the task
+// trivially. Pass archived=true to archive (sets ArchivedAt to now),
+// archived=false to unarchive (clears Archived but KEEPS the prior
+// ArchivedAt for audit). Returns ErrNotFound when the id is unknown.
+func (s *TaskStore) SetArchived(id string, archived bool) error {
+	s.mu.Lock()
+	t, ok := s.tasks[id]
+	if !ok {
+		s.mu.Unlock()
+		return ErrNotFound
+	}
+	old := *t
+	t.Archived = archived
+	if archived {
+		now := time.Now().UTC()
+		t.ArchivedAt = &now
+	}
+	// On unarchive, ArchivedAt is intentionally LEFT in place so we
+	// keep an audit trail of the last archive. The Archived bool is
+	// the gate for filtering; the timestamp is just metadata.
+	s.upsertSidecarTaskLocked(t)
+	if err := s.persistSidecarLocked(); err != nil {
+		// Roll back in-memory state to keep memory in sync with disk.
+		t.Archived = old.Archived
+		t.ArchivedAt = old.ArchivedAt
+		s.upsertSidecarTaskLocked(t)
+		s.mu.Unlock()
+		return err
+	}
+	newCopy := *t
+	s.mu.Unlock()
+	s.notify(Event{Kind: EventUpdated, ID: id, Old: &old, New: &newCopy})
+	return nil
 }
 
 // Delete removes a task line from its source file and tombstones
@@ -447,6 +495,8 @@ func (s *TaskStore) upsertSidecarTaskLocked(t *Task) {
 		LastTriagedAt:   t.LastTriagedAt,
 		CompletedAt:     t.CompletedAt,
 		Notes:           t.Notes,
+		Archived:        t.Archived,
+		ArchivedAt:      t.ArchivedAt,
 	}
 	for i := range s.sidecar.Tasks {
 		if s.sidecar.Tasks[i].ID == t.ID {
@@ -536,4 +586,97 @@ func insertUnderSection(content, section, taskLine string) (string, int, bool) {
 	out = append(out, taskLine)
 	out = append(out, lines[insertAt:]...)
 	return strings.Join(out, "\n"), insertAt + 1, true
+}
+
+// insertUnderParent inserts `bareTaskBody` (the text without the "- [ ]"
+// prefix) as a subtask of the task on the 1-indexed `parentLine`. The
+// new line is placed AFTER the parent's existing subtree (so it becomes
+// the last child), indented one level deeper than the parent.
+//
+// Indent convention follows the parser: 2 spaces per level. So a level-0
+// parent gets a level-1 child with "  - [ ] body", a level-1 parent
+// gets a level-2 child with "    - [ ] body", and so on.
+//
+// Returns ok=false (and the caller falls back to append-at-end) when:
+//   - parentLine is out of range
+//   - the line at parentLine isn't a GFM checkbox line
+//   - parentLine is 0 (no parent requested)
+func insertUnderParent(content string, parentLine int, bareTaskBody string) (string, int, bool) {
+	if parentLine <= 0 {
+		return "", 0, false
+	}
+	lines := strings.Split(content, "\n")
+	idx := parentLine - 1
+	if idx < 0 || idx >= len(lines) {
+		return "", 0, false
+	}
+	parentRaw := lines[idx]
+	parentIndent := countLeadingIndentColumns(parentRaw)
+	parentTrim := strings.TrimLeft(parentRaw, " \t")
+	if !strings.HasPrefix(parentTrim, "- [") {
+		return "", 0, false
+	}
+	// Walk forward past every line that's strictly more indented than
+	// the parent — that's the parent's existing subtree. Stop at the
+	// first sibling-or-shallower line. The new subtask is inserted at
+	// that boundary so it becomes the LAST child of the parent.
+	insertAt := idx + 1
+	for insertAt < len(lines) {
+		raw := lines[insertAt]
+		if strings.TrimSpace(raw) == "" {
+			// Blank line between siblings is OK if we're still inside
+			// the subtree (next non-blank is deeper); otherwise stop.
+			peek := insertAt + 1
+			for peek < len(lines) && strings.TrimSpace(lines[peek]) == "" {
+				peek++
+			}
+			if peek >= len(lines) {
+				break
+			}
+			if countLeadingIndentColumns(lines[peek]) <= parentIndent {
+				break
+			}
+			insertAt = peek
+			continue
+		}
+		if countLeadingIndentColumns(raw) <= parentIndent {
+			break
+		}
+		insertAt++
+	}
+	// Build the new line at parent_indent + 2 columns. Strip any
+	// leading whitespace the caller may have left so the indent is
+	// computed solely from the parent.
+	body := strings.TrimLeft(bareTaskBody, " \t")
+	// Caller may pass either a raw body ("buy milk") or a pre-wrapped
+	// task line ("- [ ] buy milk"). Normalise to wrapped form.
+	if !strings.HasPrefix(body, "- [") {
+		body = "- [ ] " + body
+	}
+	indent := strings.Repeat(" ", parentIndent+2)
+	newLine := indent + body
+	out := make([]string, 0, len(lines)+1)
+	out = append(out, lines[:insertAt]...)
+	out = append(out, newLine)
+	out = append(out, lines[insertAt:]...)
+	return strings.Join(out, "\n"), insertAt + 1, true
+}
+
+// countLeadingIndentColumns mirrors parser.leadingIndentColumns: a tab
+// counts as 2 columns to match the 2-spaces-per-level convention.
+// Kept package-local in mutate.go so Create doesn't reach into parser
+// internals; if we ever change the indent unit, both will move together.
+func countLeadingIndentColumns(s string) int {
+	cols := 0
+	for _, r := range s {
+		switch r {
+		case ' ':
+			cols++
+		case '\t':
+			cols += 2
+		default:
+			return cols
+		}
+	}
+	return cols
 }

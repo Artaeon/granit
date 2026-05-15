@@ -115,6 +115,10 @@ export interface Task {
   // markdown line via `goal:Gxxx` / `deadline:<ulid>` markers.
   goalId?: string;
   deadlineId?: string;
+  // Soft-delete flag. true = archived (hidden from default lists,
+  // markdown line intact). Set/cleared via PATCH /tasks/:id { archived: bool }.
+  archived?: boolean;
+  archivedAt?: string;
 }
 
 export interface TaskList {
@@ -1217,6 +1221,12 @@ export const api = {
       project?: string;
       goal?: string;
       deadline?: string;
+      // includeArchived=true returns archived tasks alongside active.
+      // archived=true returns ONLY archived (for the Archive drawer).
+      // Default omits both, so archived tasks are hidden from every
+      // existing list view automatically.
+      includeArchived?: boolean;
+      archived?: boolean;
     } = {}
   ) => {
     const qs = new URLSearchParams();
@@ -1228,6 +1238,7 @@ export const api = {
     patch: Partial<Pick<Task, 'done' | 'priority' | 'dueDate' | 'text' | 'scheduledStart' | 'durationMinutes' | 'projectId' | 'snoozedUntil' | 'recurrence' | 'notes' | 'goalId' | 'deadlineId'>> & {
       triage?: 'inbox' | 'triaged' | 'scheduled' | 'done' | 'dropped' | 'snoozed';
       clearSchedule?: boolean;
+      archived?: boolean;
     }
   ) => req<Task>(`/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   createTask: (body: {
@@ -1241,6 +1252,10 @@ export const api = {
     durationMinutes?: number;
     goalId?: string;
     deadlineId?: string;
+    /** When set, the new task is inserted as a subtask of the task on
+     *  this 1-indexed line in `notePath`. Resulting markdown is
+     *  indented one level deeper than the parent (2 spaces). */
+    parentLine?: number;
   }) => req<Task>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
   deleteTask: (id: string) => req<void>(`/tasks/${id}`, { method: 'DELETE' }),
 

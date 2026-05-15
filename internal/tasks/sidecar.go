@@ -46,6 +46,8 @@ type sidecarTask struct {
 	LastTriagedAt  *time.Time     `json:"last_triaged_at,omitempty"`
 	CompletedAt    *time.Time     `json:"completed_at,omitempty"`
 	Notes          string         `json:"notes,omitempty"`
+	Archived       bool           `json:"archived,omitempty"`
+	ArchivedAt     *time.Time     `json:"archived_at,omitempty"`
 }
 
 type sidecarAnchor struct {

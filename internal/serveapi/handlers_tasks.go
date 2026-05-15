@@ -45,6 +45,8 @@ type taskView struct {
 	GranitOrigin     string     `json:"granitOrigin,omitempty"`
 	GoalID           string     `json:"goalId,omitempty"`
 	DeadlineID       string     `json:"deadlineId,omitempty"`
+	Archived         bool       `json:"archived,omitempty"`
+	ArchivedAt       *time.Time `json:"archivedAt,omitempty"`
 }
 
 // priorityStoreToAPI maps the parser's internal Priority field (where
@@ -115,6 +117,8 @@ func taskToView(t tasks.Task) taskView {
 		Notes:            t.Notes,
 		GoalID:           t.GoalID,
 		DeadlineID:       t.DeadlineID,
+		Archived:         t.Archived,
+		ArchivedAt:       t.ArchivedAt,
 	}
 	if t.Origin != "" {
 		v.GranitOrigin = string(t.Origin)
@@ -143,6 +147,13 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	dueBefore := q.Get("due_before")
 	notePath := q.Get("note")
 	triage := q.Get("triage")
+	// includeArchived=true reveals soft-deleted tasks (Archive flag
+	// flipped via PATCH /tasks/:id { archived: true }). Default is to
+	// hide them — archive is a "make it go away" gesture, not a filter
+	// shortcut. archived-only=true returns the archived view (used by
+	// the archive drawer in the task page).
+	includeArchived := q.Get("includeArchived") == "true"
+	archivedOnly := q.Get("archived") == "true"
 	// New filters — priority / project / goal / deadline. The audit
 	// caught these as silent no-ops: the URL accepted the query
 	// parameter and returned the unfiltered set, which made every
@@ -201,6 +212,14 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	all := s.cfg.TaskStore.All()
 	out := make([]taskView, 0, len(all))
 	for _, t := range all {
+		// Archive gate first — cheapest check, hides the most.
+		if archivedOnly {
+			if !t.Archived {
+				continue
+			}
+		} else if !includeArchived && t.Archived {
+			continue
+		}
 		if status == "open" && t.Done {
 			continue
 		}
@@ -296,6 +315,11 @@ type patchTaskBody struct {
 	GoalID        *string `json:"goalId,omitempty"`
 	DeadlineID    *string `json:"deadlineId,omitempty"`
 	ClearSchedule bool    `json:"clearSchedule,omitempty"`
+	// Archived is the soft-delete flag. true archives the task (hides
+	// it from default list views, leaves the markdown line intact);
+	// false unarchives. Decoupled from Done so a task can be done AND
+	// archived independently. The store stamps ArchivedAt on archive.
+	Archived *bool `json:"archived,omitempty"`
 }
 
 func (s *Server) handlePatchTask(w http.ResponseWriter, r *http.Request) {
@@ -447,6 +471,16 @@ func (s *Server) handlePatchTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if b.Archived != nil {
+		if err := store.SetArchived(id, *b.Archived); err != nil {
+			if errors.Is(err, tasks.ErrNotFound) {
+				writeError(w, http.StatusNotFound, "task not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 
 	// Force a fresh scan + task-store reload BEFORE responding so the
 	// next GET (which the web fires immediately on success) is
@@ -481,6 +515,13 @@ type createTaskBody struct {
 	DurationMinutes int      `json:"durationMinutes,omitempty"`
 	GoalID          string   `json:"goalId,omitempty"`
 	DeadlineID      string   `json:"deadlineId,omitempty"`
+	// ParentLine, when > 0, asks the store to insert the new task as
+	// a subtask of the task on that 1-indexed line in `notePath`. The
+	// resulting markdown line is indented one level deeper than the
+	// parent and placed AFTER the parent's existing subtree (becomes
+	// the last child). Overrides `section` when set — a subtask sits
+	// next to its siblings regardless of headings.
+	ParentLine int `json:"parentLine,omitempty"`
 }
 
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
@@ -534,9 +575,10 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		textWithMarkers += " deadline:" + b.DeadlineID
 	}
 	opts := tasks.CreateOpts{
-		File:    notePath,
-		Origin:  tasks.Origin("manual"),
-		Section: section,
+		File:       notePath,
+		Origin:     tasks.Origin("manual"),
+		Section:    section,
+		ParentLine: b.ParentLine,
 	}
 	t, err := s.cfg.TaskStore.Create(textWithMarkers, opts)
 	if err != nil {

@@ -99,6 +99,15 @@ type Task struct {
 	// 30-second tick).
 	LastReminderFired string `json:"last_reminder_fired,omitempty"`
 
+	// Archived flags a soft-deleted task. The markdown line is NOT
+	// removed (so a `git pull` or external editor can restore it
+	// trivially), but the task is hidden from default list views.
+	// Pair with ArchivedAt for the audit trail; clearing Archived
+	// (unarchive) keeps the ArchivedAt value so we know when it was
+	// last archived. Lives in the sidecar — no markdown marker.
+	Archived   bool       `json:"archived,omitempty"`
+	ArchivedAt *time.Time `json:"archived_at,omitempty"`
+
 	// ── Computed, never persisted ─────────────────────────────
 	ActualMinutes int `json:"-"`
 }
@@ -119,6 +128,16 @@ type CreateOpts struct {
 	// appended at the end of the file as a fallback. Empty (the
 	// zero value) preserves the historical append-at-end behavior.
 	Section string
+
+	// ParentLine, when > 0, makes the new task a SUBTASK of the
+	// task on that 1-indexed line in the same file. The inserted
+	// line is placed immediately after the parent's existing
+	// subtree (so it becomes the last child), indented one level
+	// deeper than the parent. Overrides Section if both are set —
+	// a subtask sits next to its siblings regardless of headings.
+	// Two-space-per-level indent matches the parser convention
+	// (see parser.go: indentLevel = columns / 2).
+	ParentLine int
 }
 
 // EventKind tags Subscribe() callbacks.

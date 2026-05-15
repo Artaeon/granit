@@ -77,6 +77,12 @@
   let priorityFilter = $state<number | ''>('');
   let goalFilter = $state('');
   let deadlineFilter = $state('');
+  // Archived view modes:
+  //   'hide'  — default. archived tasks are hidden from every list (server-side filter).
+  //   'show'  — show archived tasks alongside active so the user can see the full picture.
+  //   'only'  — show ONLY archived (the "archive drawer" view).
+  // Persisted to localStorage like the other filters.
+  let archivedMode = $state<'hide' | 'show' | 'only'>('hide');
   // Source filter — separates "tasks the user actually wrote as tasks"
   // from "stray `- [ ]` bullets in reading notes / brainstorm pages".
   // Default is 'task-notes' (only notes that look like task surfaces:
@@ -696,6 +702,8 @@
       if (projectFilter) params.project = projectFilter;
       if (goalFilter) params.goal = goalFilter;
       if (deadlineFilter) params.deadline = deadlineFilter;
+      if (archivedMode === 'show') params.includeArchived = true;
+      if (archivedMode === 'only') params.archived = true;
       const [list, p, gg, dd] = await Promise.all([
         api.listTasks(params),
         projects.length === 0 ? api.listProjects().catch(() => ({ projects: [] as Project[] })) : Promise.resolve({ projects }),
@@ -744,6 +752,7 @@
     void projectFilter;
     void goalFilter;
     void deadlineFilter;
+    void archivedMode;
     untrack(() => load());
   });
 
@@ -1549,6 +1558,32 @@
             {#if v === 'done'}<span class="text-xs text-dim ml-1">{countDone}</span>{/if}
           </button>
         {/each}
+      </div>
+    </div>
+
+    <!-- Archived view toggle. Default hides archived tasks (soft-
+         deleted via the TaskDetail Archive button). 'Show' includes
+         them in the active list, dimmed + dashed-border so the user
+         can tell archived from live. 'Only' is the archive drawer
+         view — used to find what to restore. -->
+    <div>
+      <div class="text-xs uppercase tracking-wider text-dim mb-2">Archived</div>
+      <div class="flex flex-col gap-1 text-sm">
+        <button
+          class="text-left px-3 py-2 rounded {archivedMode === 'hide' ? 'bg-surface1 text-text' : 'text-subtext hover:bg-surface0'}"
+          onclick={() => (archivedMode = 'hide')}
+          title="Hide archived tasks (default)"
+        >Hide</button>
+        <button
+          class="text-left px-3 py-2 rounded {archivedMode === 'show' ? 'bg-surface1 text-text' : 'text-subtext hover:bg-surface0'}"
+          onclick={() => (archivedMode = 'show')}
+          title="Show active + archived together"
+        >Show all</button>
+        <button
+          class="text-left px-3 py-2 rounded {archivedMode === 'only' ? 'bg-surface1 text-warning' : 'text-warning hover:bg-surface0'}"
+          onclick={() => (archivedMode = 'only')}
+          title="Only archived — used for restore"
+        >Archived only</button>
       </div>
     </div>
 

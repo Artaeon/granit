@@ -272,6 +272,8 @@ func reconcile(in reconcileInput) reconcileOutput {
 			t.LastTriagedAt = st.LastTriagedAt
 			t.CompletedAt = st.CompletedAt
 			t.Notes = st.Notes
+			t.Archived = st.Archived
+			t.ArchivedAt = st.ArchivedAt
 			// Mark drift if the anchor moved.
 			if st.Anchor.File != t.NotePath || st.Anchor.Line != t.LineNum {
 				out.updated = append(out.updated, id)

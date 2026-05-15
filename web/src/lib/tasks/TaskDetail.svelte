@@ -188,30 +188,30 @@
   // Accept a subtask: create a task in the parent's notePath with the
   // proposed text. Estimate goes via the est:Nm marker the parser
   // already understands so the existing taskParse round-trips work.
+  //
+  // PARENTING: `parentLine: task.lineNum` makes the new task an actual
+  // INDENTED subtask of the parent. Before this was wired through the
+  // store's CreateOpts.ParentLine, subtasks landed flat at the bottom
+  // of the note and looked like sibling tasks — which is the bug the
+  // user kept calling out ("subtasks shown as habits"). Now they're
+  // indented two columns deeper than the parent, and the page's
+  // existing parentMap / collapse chevron pick them up automatically.
   async function acceptSubtask(idx: number) {
     if (!task) return;
     const s = aiDecompSubtasks[idx];
     if (!s) return;
     aiDecompAcceptingIdx = idx;
     try {
-      // Parser convention: `est:30m` in the task line gets stripped
-      // by cleanTaskText for display but persists as estimatedMinutes
-      // sidecar metadata. Embedding it directly in `text` keeps us
-      // independent of API field names that may not exist.
       let text = s.text.trim();
       if (s.estimateMinutes && s.estimateMinutes > 0) {
         text = `${text} est:${s.estimateMinutes}m`;
       }
-      // Inherit parent's goal + deadline directly. createTask's body
-      // doesn't accept projectId — server derives project membership
-      // from the parent's notePath / sidecar metadata, which the
-      // subtask inherits for free by living in the same note. If the
-      // parent has an explicit projectId override we patch after.
       const created = await api.createTask({
         notePath: task.notePath,
         text,
         goalId: task.goalId,
-        deadlineId: task.deadlineId
+        deadlineId: task.deadlineId,
+        parentLine: task.lineNum
       });
       if (task.projectId && created?.id) {
         try {
@@ -220,12 +220,114 @@
       }
       aiDecompSubtasks = aiDecompSubtasks.filter((_, i) => i !== idx);
       await onChanged?.();
+      await loadSubtasks();
       toast.success('Subtask added');
     } catch (e) {
       toast.error('Add failed: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
       aiDecompAcceptingIdx = -1;
     }
+  }
+
+  // ── Manual subtask add ────────────────────────────────────────────
+  // Companion to the AI Decompose flow — sometimes the user just
+  // wants to type one specific subtask. Enter commits, Esc clears.
+  // Mirrors acceptSubtask's parentLine wiring so the new task lands
+  // as an indented child, not a flat sibling.
+  let manualSubtaskBuf = $state('');
+  let manualSubtaskBusy = $state(false);
+  async function addManualSubtask() {
+    if (!task) return;
+    const text = manualSubtaskBuf.trim();
+    if (!text || manualSubtaskBusy) return;
+    manualSubtaskBusy = true;
+    try {
+      const created = await api.createTask({
+        notePath: task.notePath,
+        text,
+        goalId: task.goalId,
+        deadlineId: task.deadlineId,
+        parentLine: task.lineNum
+      });
+      if (task.projectId && created?.id) {
+        try {
+          await api.patchTask(created.id, { projectId: task.projectId });
+        } catch {}
+      }
+      manualSubtaskBuf = '';
+      await onChanged?.();
+      await loadSubtasks();
+      toast.success('Subtask added');
+    } catch (e) {
+      toast.error('Add failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      manualSubtaskBusy = false;
+    }
+  }
+
+  // ── Existing subtasks list ────────────────────────────────────────
+  // Fetched whenever the drawer opens for a task — pulls all tasks
+  // in the same notePath, filters to those whose parentLine matches
+  // OUR lineNum. The list is small (single note's worth) so we just
+  // do a fresh fetch on open rather than wiring an upstream prop.
+  // Refreshed after any add / toggle so the user sees the result.
+  let subtasks = $state<Task[]>([]);
+  let subtasksLoaded = $state(false);
+  async function loadSubtasks() {
+    if (!task) {
+      subtasks = [];
+      subtasksLoaded = true;
+      return;
+    }
+    try {
+      const r = await api.listTasks({ note: task.notePath });
+      // Match by parentLine — that's what the parser computes for
+      // every indented task it parses. Also exclude the parent itself.
+      subtasks = r.tasks
+        .filter((t) => t.id !== task.id && t.parentLine === task.lineNum)
+        .sort((a, b) => a.lineNum - b.lineNum);
+      subtasksLoaded = true;
+    } catch {
+      subtasks = [];
+      subtasksLoaded = true;
+    }
+  }
+  async function toggleSubtaskDone(s: Task) {
+    try {
+      await api.patchTask(s.id, { done: !s.done });
+      await onChanged?.();
+      await loadSubtasks();
+    } catch (e) {
+      toast.error('Save failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+  async function deleteSubtask(s: Task) {
+    if (!confirm(`Delete subtask "${cleanTaskText(s.text)}"?`)) return;
+    try {
+      await api.deleteTask(s.id);
+      await onChanged?.();
+      await loadSubtasks();
+    } catch (e) {
+      toast.error('Delete failed: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  // ── Archive (soft-delete) ─────────────────────────────────────────
+  // Markdown line stays intact; sidecar Archived flag flips. List
+  // views hide the task by default (?includeArchived=true reveals
+  // them). Reversible — Unarchive flips it back. The drawer stays
+  // open after archive so the user can confirm + unarchive if they
+  // mis-clicked, then they close it themselves.
+  async function archiveTask() {
+    if (!task || busy) return;
+    if (!confirm('Archive this task? It stays in the note file but is hidden from default lists.')) return;
+    await patch({ archived: true });
+    toast.success('Archived');
+  }
+  async function unarchiveTask() {
+    if (!task || busy) return;
+    await patch({ archived: false });
+    toast.success('Restored');
   }
   function skipSubtask(idx: number) {
     aiDecompSubtasks = aiDecompSubtasks.filter((_, i) => i !== idx);
@@ -256,22 +358,35 @@
   // Resync local buffers whenever the modal opens for a different task.
   // Also reset Decompose state — proposals from a previous task
   // shouldn't leak into the next one's drawer.
+  // Track which task we last initialised for. Without this, every
+  // state write inside the effect re-fires it (Svelte 5 re-runs the
+  // effect when `open` or `task` reactive reads change), and the
+  // resetters fight with the user's typing in notes / title / etc.
+  let lastInitialisedTaskId: string | null = null;
   $effect(() => {
-    if (open && task) {
-      notesBuf = task.notes ?? '';
-      recurrenceBuf = task.recurrence ?? '';
-      dueBuf = task.dueDate ?? '';
-      schedDateBuf = task.scheduledStart ? task.scheduledStart.slice(0, 10) : '';
-      schedTimeBuf = task.scheduledStart ? task.scheduledStart.slice(11, 16) : '';
-      titleEditing = false;
-      titleBuf = cleanTaskText(task.text);
-      aiDecompAbort?.abort();
-      aiDecompRaw = '';
-      aiDecompError = '';
-      aiDecompSubtasks = [];
-      aiDecompBusy = false;
-      void loadLinks();
+    if (!open || !task) {
+      lastInitialisedTaskId = null;
+      return;
     }
+    if (task.id === lastInitialisedTaskId) return;
+    lastInitialisedTaskId = task.id;
+    notesBuf = task.notes ?? '';
+    recurrenceBuf = task.recurrence ?? '';
+    dueBuf = task.dueDate ?? '';
+    schedDateBuf = task.scheduledStart ? task.scheduledStart.slice(0, 10) : '';
+    schedTimeBuf = task.scheduledStart ? task.scheduledStart.slice(11, 16) : '';
+    titleEditing = false;
+    titleBuf = cleanTaskText(task.text);
+    aiDecompAbort?.abort();
+    aiDecompRaw = '';
+    aiDecompError = '';
+    aiDecompSubtasks = [];
+    aiDecompBusy = false;
+    manualSubtaskBuf = '';
+    subtasks = [];
+    subtasksLoaded = false;
+    void loadLinks();
+    void loadSubtasks();
   });
 
   async function patch(patch: Parameters<typeof api.patchTask>[1]) {
@@ -474,6 +589,81 @@
                 class="flex-1 px-3 py-1.5 {task.priority === o.p ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
               >{o.label}</button>
             {/each}
+          </div>
+        </section>
+
+        <!-- Subtasks. Shows every direct child (task in the same
+             note whose parentLine matches THIS task's lineNum) plus
+             a one-line input to add a new subtask manually. The
+             input writes through createTask with parentLine set, so
+             the new line ends up INDENTED in the markdown — a real
+             subtask, not a flat sibling. -->
+        <section>
+          <div class="flex items-baseline gap-2 mb-1.5">
+            <h4 class="text-[11px] uppercase tracking-wider text-dim flex-1">
+              Subtasks
+              {#if subtasks.length > 0}
+                <span class="text-text font-mono tabular-nums ml-1">({subtasks.length})</span>
+              {/if}
+            </h4>
+            {#if subtasksLoaded && subtasks.length > 0}
+              <span class="text-[10px] text-dim">
+                {subtasks.filter((s) => s.done).length}/{subtasks.length} done
+              </span>
+            {/if}
+          </div>
+          {#if subtasks.length > 0}
+            <ul class="space-y-0.5 mb-2">
+              {#each subtasks as s (s.id)}
+                <li class="flex items-center gap-2 text-xs group hover:bg-surface0 rounded px-1 py-0.5 -mx-1">
+                  <button
+                    type="button"
+                    onclick={() => void toggleSubtaskDone(s)}
+                    class="w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0
+                      {s.done ? 'bg-success border-success' : 'border-surface2 hover:border-primary'}"
+                    aria-label={s.done ? 'mark not done' : 'mark done'}
+                  >
+                    {#if s.done}
+                      <svg viewBox="0 0 12 12" class="w-2.5 h-2.5 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
+                    {/if}
+                  </button>
+                  <span class="flex-1 min-w-0 break-words {s.done ? 'line-through text-dim' : 'text-text'}">
+                    {cleanTaskText(s.text)}
+                  </span>
+                  {#if s.priority}
+                    <span class="text-[10px] font-mono px-1 rounded bg-surface0 text-dim flex-shrink-0">P{s.priority}</span>
+                  {/if}
+                  <button
+                    type="button"
+                    onclick={() => void deleteSubtask(s)}
+                    class="text-dim hover:text-error text-base leading-none flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="delete subtask"
+                    title="delete subtask"
+                  >×</button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          <div class="flex items-center gap-1.5">
+            <input
+              type="text"
+              bind:value={manualSubtaskBuf}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); void addManualSubtask(); }
+                else if (e.key === 'Escape') { manualSubtaskBuf = ''; }
+              }}
+              disabled={manualSubtaskBusy}
+              placeholder="Add subtask (Enter)"
+              autocomplete="off"
+              class="flex-1 min-w-0 px-2 py-1 bg-surface0 border border-surface1 rounded text-xs text-text focus:outline-none focus:border-primary disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onclick={() => void addManualSubtask()}
+              disabled={!manualSubtaskBuf.trim() || manualSubtaskBusy}
+              class="px-2 py-1 text-xs bg-primary text-on-primary rounded font-medium hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+              title="Add subtask (Enter)"
+            >+</button>
           </div>
         </section>
 
@@ -738,6 +928,44 @@
             class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
           ></textarea>
           <p class="text-[10px] text-dim mt-1">Stored in the task sidecar — not in the markdown.</p>
+        </section>
+
+        <!-- Archive (soft-delete). The markdown line stays in the
+             note file untouched — only the sidecar Archived flag
+             flips. Default list views hide archived tasks; the page's
+             "Show archived" toggle reveals them. Reversible via the
+             Unarchive button that appears in place when archived. -->
+        <section class="pt-3 border-t border-surface1">
+          <h4 class="text-[11px] uppercase tracking-wider text-dim mb-1.5">Archive</h4>
+          {#if task.archived}
+            <div class="flex items-center gap-2">
+              <span class="flex-1 text-xs text-warning">
+                Archived
+                {#if task.archivedAt}
+                  <span class="text-dim font-mono">· {fmtDate(task.archivedAt)}</span>
+                {/if}
+              </span>
+              <button
+                type="button"
+                onclick={() => void unarchiveTask()}
+                disabled={busy}
+                class="px-2 py-1 text-xs bg-surface0 text-success border border-surface1 hover:border-success rounded"
+              >Restore</button>
+            </div>
+          {:else}
+            <div class="flex items-center gap-2">
+              <span class="flex-1 text-[11px] text-dim italic">
+                Hides from lists. Markdown line stays in <span class="font-mono">{task.notePath.split('/').pop()}</span>.
+              </span>
+              <button
+                type="button"
+                onclick={() => void archiveTask()}
+                disabled={busy}
+                class="px-2 py-1 text-xs bg-surface0 text-warning border border-surface1 hover:border-warning rounded"
+                title="Soft-delete — hide from lists, keep the markdown line"
+              >Archive</button>
+            </div>
+          {/if}
         </section>
 
         <!-- Read-only metadata -->
