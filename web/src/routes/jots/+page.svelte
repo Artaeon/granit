@@ -32,12 +32,37 @@
   let searchResults = $state<Note[]>([]);
   let searching = $state(false);
 
-  // Hashtag filter — when set, the feed shows only jots whose body
-  // contains that tag. Clicking a `#tag` chip in any jot toggles this.
-  // Stored in the URL hash so a tab refresh keeps the filter and a
-  // shared link lands the recipient on the same view.
-  let activeTag = $state<string>(
-    typeof window !== 'undefined' ? (window.location.hash.match(/^#tag=(.+)$/)?.[1] ?? '') : ''
+  // Hashtag filter — when non-empty, jots must mention EVERY active
+  // tag (AND filter). Clicking a `#tag` chip toggles membership.
+  // Persisted in the URL hash so a refresh or shared link lands the
+  // user on the same filtered view. Supports both the new form
+  // `#tags=a,b,c` and the legacy single-tag form `#tag=foo` from
+  // earlier versions of this page.
+  function readTagsFromHash(): string[] {
+    if (typeof window === 'undefined') return [];
+    const h = window.location.hash;
+    const multi = h.match(/^#tags=(.+)$/);
+    if (multi) {
+      return decodeURIComponent(multi[1])
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+    }
+    const single = h.match(/^#tag=(.+)$/);
+    if (single) return [decodeURIComponent(single[1]).toLowerCase()];
+    return [];
+  }
+  let activeTags = $state<string[]>(readTagsFromHash());
+
+  // Quick filters — orthogonal to the tag set. "open tasks" hides jots
+  // whose daily has zero unchecked checkboxes; "timeframe" caps the
+  // feed to dailies within the last N days from today.
+  type Timeframe = 'all' | '7d' | '30d';
+  let filterOpenTasks = $state(false);
+  let filterTimeframe = $state<Timeframe>('all');
+
+  let hasAnyFilter = $derived(
+    activeTags.length > 0 || filterOpenTasks || filterTimeframe !== 'all'
   );
 
   // All distinct hashtags found across the loaded jots, ordered by
@@ -60,25 +85,55 @@
       .map(([t]) => t);
   });
 
-  // Filtered feed = jots whose body mentions the active tag (case-
-  // insensitive). When no filter, returns the full list verbatim.
+  // Filtered feed = jots that satisfy every active filter dimension:
+  //   1. every active tag must appear in the body (AND)
+  //   2. if filterOpenTasks, jot.openTasks > 0
+  //   3. if filterTimeframe != 'all', jot.date is within the window
+  // When no filter is active, returns the full list verbatim.
   let visibleJots = $derived.by(() => {
-    if (!activeTag) return jots;
-    const re = new RegExp(`(?:^|\\s)#${activeTag.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`, 'i');
-    return jots.filter((j) => re.test(j.body ?? ''));
+    let out = jots;
+    if (filterOpenTasks) out = out.filter((j) => j.openTasks > 0);
+    if (filterTimeframe !== 'all') {
+      const days = filterTimeframe === '7d' ? 7 : 30;
+      const cutoff = new Date(today);
+      cutoff.setDate(cutoff.getDate() - (days - 1));
+      const cutoffISO = fmtDateISO(cutoff);
+      out = out.filter((j) => j.date >= cutoffISO);
+    }
+    if (activeTags.length === 0) return out;
+    // Build one regex per tag; jot must match all of them.
+    const escaped = activeTags.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const regexes = escaped.map((e) => new RegExp(`(?:^|\\s)#${e}\\b`, 'i'));
+    return out.filter((j) => {
+      const body = j.body ?? '';
+      return regexes.every((re) => re.test(body));
+    });
   });
 
-  function setActiveTag(t: string) {
-    activeTag = activeTag === t ? '' : t;
-    if (typeof window !== 'undefined') {
-      const next = activeTag ? `#tag=${encodeURIComponent(activeTag)}` : '';
-      // Replace, not push — tag filtering shouldn't pollute browser
-      // history with one entry per chip click.
-      history.replaceState(null, '', window.location.pathname + window.location.search + next);
-    }
+  function writeTagsHash() {
+    if (typeof window === 'undefined') return;
+    const next = activeTags.length > 0
+      ? `#tags=${activeTags.map(encodeURIComponent).join(',')}`
+      : '';
+    // Replace, not push — tag filtering shouldn't pollute browser
+    // history with one entry per chip click.
+    history.replaceState(null, '', window.location.pathname + window.location.search + next);
   }
-  function clearTag() {
-    setActiveTag(activeTag);
+
+  function toggleTag(t: string) {
+    const lower = t.toLowerCase();
+    if (activeTags.includes(lower)) {
+      activeTags = activeTags.filter((x) => x !== lower);
+    } else {
+      activeTags = [...activeTags, lower];
+    }
+    writeTagsHash();
+  }
+  function clearAllFilters() {
+    activeTags = [];
+    filterOpenTasks = false;
+    filterTimeframe = 'all';
+    writeTagsHash();
   }
 
   // Sentinel + observer for infinite scroll.
@@ -756,23 +811,49 @@
         </div>
       {/if}
 
-      <!-- Hashtag chip strip — click to filter the feed. The first
-           click sets activeTag; clicking the same chip again clears.
-           Hidden when nothing's been loaded yet to avoid layout shift. -->
-      {#if allTags.length > 0}
+      <!-- Filter strip: quick filters + hashtag chips. Tags are AND-
+           combined — clicking adds a tag to the filter set, clicking
+           again removes it. Quick filters (open tasks, last 7d/30d)
+           are orthogonal and stack on top of the tag filter. -->
+      {#if allTags.length > 0 || jots.length > 0}
         <div class="flex flex-wrap items-center gap-1 mt-1.5 text-[11px]">
-          {#if activeTag}
+          {#if hasAnyFilter}
             <button
               type="button"
-              onclick={clearTag}
-              class="px-1.5 py-0.5 rounded bg-surface1 text-dim hover:text-text"
-            >clear</button>
+              onclick={clearAllFilters}
+              class="px-1.5 py-0.5 rounded bg-surface1 text-text hover:bg-surface2"
+              title="clear every active filter"
+            >clear ({visibleJots.length}/{jots.length})</button>
+          {/if}
+          <!-- Quick filters: orthogonal toggles, distinguished from
+               tag chips by a leading dot so the user can tell them
+               apart at a glance. -->
+          <button
+            type="button"
+            onclick={() => (filterOpenTasks = !filterOpenTasks)}
+            class="px-1.5 py-0.5 rounded {filterOpenTasks ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+            title="only jots whose daily has open tasks"
+          >· open tasks</button>
+          <button
+            type="button"
+            onclick={() => (filterTimeframe = filterTimeframe === '7d' ? 'all' : '7d')}
+            class="px-1.5 py-0.5 rounded {filterTimeframe === '7d' ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+            title="last 7 days only"
+          >· 7d</button>
+          <button
+            type="button"
+            onclick={() => (filterTimeframe = filterTimeframe === '30d' ? 'all' : '30d')}
+            class="px-1.5 py-0.5 rounded {filterTimeframe === '30d' ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+            title="last 30 days only"
+          >· 30d</button>
+          {#if allTags.length > 0}
+            <span class="text-dim opacity-50 mx-0.5">|</span>
           {/if}
           {#each allTags.slice(0, 24) as t}
             <button
               type="button"
-              onclick={() => setActiveTag(t)}
-              class="px-1.5 py-0.5 rounded {activeTag === t ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+              onclick={() => toggleTag(t)}
+              class="px-1.5 py-0.5 rounded {activeTags.includes(t) ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
             >#{t}</button>
           {/each}
           {#if allTags.length > 24}
@@ -871,9 +952,14 @@
         {/snippet}
       </EmptyState>
     {:else}
-      {#if activeTag && visibleJots.length === 0}
-        <p class="text-sm text-dim italic mb-4">
-          No jots tagged <span class="text-primary">#{activeTag}</span> yet — keep scrolling to load older dailies.
+      {#if hasAnyFilter && visibleJots.length === 0}
+        <p class="text-xs text-dim italic mb-3">
+          No jots match the active filter{activeTags.length + (filterOpenTasks ? 1 : 0) + (filterTimeframe !== 'all' ? 1 : 0) === 1 ? '' : 's'}.
+          {#if activeTags.length > 0}
+            Tags: {#each activeTags as t, i}<span class="text-text">#{t}</span>{i < activeTags.length - 1 ? ', ' : ''}{/each}.
+          {/if}
+          Keep scrolling to load older dailies, or
+          <button type="button" onclick={clearAllFilters} class="underline hover:text-text">clear filters</button>.
         </p>
       {/if}
       <ul class="space-y-3">
