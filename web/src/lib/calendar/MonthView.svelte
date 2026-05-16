@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { CalendarEvent } from '$lib/api';
-  import { addDays, eventDayKey, eventTypeColor, fmtDateISO, fmtTime, isSameDay, startOfMonth } from './utils';
+  import { addDays, eventDayKey, eventTypeColor, fmtDateISO, fmtTime, isAllDay, isSameDay, startOfMonth } from './utils';
 
   let {
     cursor,
@@ -23,6 +23,10 @@
     });
   });
 
+  // Per-day sort: all-day rows first (so they read like a banner at
+  // the top of the cell), then timed events by start. Stable on equal
+  // start times — preserves the feed's emit order so two 09:00 events
+  // don't jitter between renders.
   let eventsByDay = $derived.by(() => {
     const m = new Map<string, CalendarEvent[]>();
     for (const ev of events) {
@@ -33,6 +37,9 @@
     }
     for (const [, evs] of m) {
       evs.sort((a, b) => {
+        const aAll = isAllDay(a) ? 1 : 0;
+        const bAll = isAllDay(b) ? 1 : 0;
+        if (aAll !== bAll) return bAll - aAll; // all-day first
         const sa = a.start ? new Date(a.start).getTime() : 0;
         const sb = b.start ? new Date(b.start).getTime() : 0;
         return sa - sb;
@@ -40,6 +47,20 @@
     }
     return m;
   });
+
+  // Build a tooltip string with the full title and times — the chip
+  // body is intentionally narrow (just a colored bar + clipped title)
+  // so the hover-title gives the user the full information without
+  // forcing the cell to grow.
+  function chipTooltip(ev: CalendarEvent): string {
+    const t = ev.title;
+    const r = ev.rrule ? ' (recurring)' : '';
+    if (isAllDay(ev)) return `${t}${r} · all-day`;
+    if (!ev.start) return `${t}${r}`;
+    const s = new Date(ev.start);
+    const e = ev.end ? new Date(ev.end) : (ev.durationMinutes ? new Date(s.getTime() + ev.durationMinutes * 60_000) : null);
+    return e ? `${t}${r} · ${fmtTime(s)}–${fmtTime(e)}` : `${t}${r} · ${fmtTime(s)}`;
+  }
 
   const today = new Date();
 </script>
@@ -76,22 +97,40 @@
             <span class="text-xs text-subtext px-1">{c.date.getDate()}</span>
           {/if}
         </button>
-        <div class="flex-1 space-y-0.5 overflow-hidden">
+        <div class="flex-1 space-y-px overflow-hidden">
           {#each events.slice(0, 3) as ev}
             {@const col = eventTypeColor(ev)}
+            {@const allDay = isAllDay(ev)}
             <button
               onclick={() => onClickEvent(ev)}
-              class="block w-full text-left text-[11px] px-1.5 py-0.5 rounded truncate"
-              style="background: {col.bg}; color: {col.fg}; border-left: 2px solid {col.border}; {ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}"
-              title={ev.rrule ? `${ev.title} · recurring (${ev.rrule})` : ev.title}
+              class="group/chip flex items-center gap-1 w-full text-left text-[11px] leading-tight px-1 py-px rounded-sm truncate hover:opacity-90"
+              style={allDay
+                ? `background: ${col.bg}; color: ${col.fg}; ${ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}`
+                : `color: var(--color-text); ${ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}`}
+              title={chipTooltip(ev)}
             >
-              {#if ev.rrule}<span class="opacity-70 mr-0.5" aria-hidden="true">↻</span>{/if}{ev.start ? fmtTime(new Date(ev.start)) + ' ' : ''}{ev.title}
+              {#if allDay}
+                {#if ev.rrule}<span class="opacity-70 text-[9px]" aria-hidden="true">↻</span>{/if}
+                <span class="truncate flex-1">{ev.title}</span>
+              {:else}
+                <!-- Timed event: a tiny colored dot stands in for the
+                     bar/start-time. Reads like Google Calendar's month
+                     grid — visual weight goes to the title, not the
+                     time, since the time is one hover away. -->
+                <span
+                  class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                  style="background: {col.border}"
+                  aria-hidden="true"
+                ></span>
+                {#if ev.rrule}<span class="opacity-50 text-[9px] flex-shrink-0" aria-hidden="true">↻</span>{/if}
+                <span class="truncate flex-1 text-subtext group-hover/chip:text-text">{ev.title}</span>
+              {/if}
             </button>
           {/each}
           {#if events.length > 3}
             <button
               onclick={() => onClickDay(c.date)}
-              class="text-[10px] text-dim px-1.5 text-left hover:text-text"
+              class="text-[10px] text-dim px-1 text-left hover:text-text"
             >+{events.length - 3} more</button>
           {/if}
         </div>
