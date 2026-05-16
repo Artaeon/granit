@@ -139,6 +139,65 @@
     'hub_item'
   ];
 
+  // Inline-header counts: a compact summary of the day-activity items
+  // bucketed by Kind, used to render a chip strip in each jot's header
+  // without expanding the <details> block. Picked the four buckets that
+  // matter at-a-glance: events, tasks created, tasks completed, notes
+  // created. Habits/prayer/hub are surfaced inside the expanded panel.
+  type ActivitySummary = {
+    events: number;
+    tasksCreated: number;
+    tasksDone: number;
+    notes: number;
+    total: number;
+  };
+  function summarize(items: DayActivityItem[] | undefined): ActivitySummary {
+    const s: ActivitySummary = { events: 0, tasksCreated: 0, tasksDone: 0, notes: 0, total: 0 };
+    if (!items) return s;
+    for (const it of items) {
+      s.total += 1;
+      switch (it.kind) {
+        case 'event': s.events += 1; break;
+        case 'task_created': s.tasksCreated += 1; break;
+        case 'task_completed': s.tasksDone += 1; break;
+        case 'note_created': s.notes += 1; break;
+      }
+    }
+    return s;
+  }
+
+  // Eager-but-bounded prefetch of dayActivity for newly-loaded jots so
+  // the inline header counts populate without each card needing to be
+  // scrolled into view. Caps concurrency at 4 to avoid hammering the
+  // server when a fresh-load brings in 20 dates at once; pages 2+ only
+  // add another 20 each, so total in-flight stays small.
+  let prefetchQueue: string[] = [];
+  let prefetchActive = 0;
+  const PREFETCH_CONCURRENCY = 4;
+  function enqueuePrefetch(dates: string[]) {
+    for (const d of dates) {
+      if (dayActivityCache[d] !== undefined) continue;
+      if (dayActivityLoading[d]) continue;
+      if (prefetchQueue.includes(d)) continue;
+      prefetchQueue.push(d);
+    }
+    drainPrefetch();
+  }
+  function drainPrefetch() {
+    while (prefetchActive < PREFETCH_CONCURRENCY && prefetchQueue.length > 0) {
+      const next = prefetchQueue.shift();
+      if (!next) break;
+      prefetchActive += 1;
+      // loadDayActivity is idempotent — it short-circuits on a cache
+      // hit and writes to the same maps the expand-for-details path
+      // reads from.
+      loadDayActivity(next).finally(() => {
+        prefetchActive -= 1;
+        drainPrefetch();
+      });
+    }
+  }
+
   function bucketize(items: DayActivityItem[]): Bucket[] {
     const groups = new Map<string, DayActivityItem[]>();
     for (const it of items) {
@@ -286,6 +345,9 @@
       jots = [...jots, ...r.jots];
       cursor = r.nextBefore;
       if (!r.hasMore) done = true;
+      // Queue inline-count prefetch for the new dates so headers
+      // populate before the user scrolls each into view.
+      enqueuePrefetch(r.jots.map((j) => j.date));
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
@@ -830,6 +892,27 @@
                     class="text-[10px] px-1 py-0.5 rounded bg-surface1 text-text font-mono"
                     title="{jot.openTasks} open task{jot.openTasks === 1 ? '' : 's'} in this daily"
                   >{jot.openTasks}☐</span>
+                {/if}
+                <!-- Inline activity counts. Reads from the prefetched
+                     dayActivityCache populated as soon as the page
+                     loads; shows nothing while the request is in
+                     flight so the header doesn't shift. -->
+                {@const sum = summarize(dayActivityCache[jot.date])}
+                {#if sum.total > 0}
+                  <span class="flex items-baseline gap-1 text-[10px] font-mono text-dim">
+                    {#if sum.events > 0}
+                      <span class="text-text" title="{sum.events} calendar event{sum.events === 1 ? '' : 's'}">{sum.events}cal</span>
+                    {/if}
+                    {#if sum.tasksDone > 0}
+                      <span class="text-text" title="{sum.tasksDone} task{sum.tasksDone === 1 ? '' : 's'} completed">{sum.tasksDone}✓</span>
+                    {/if}
+                    {#if sum.tasksCreated > 0}
+                      <span title="{sum.tasksCreated} task{sum.tasksCreated === 1 ? '' : 's'} created">+{sum.tasksCreated}</span>
+                    {/if}
+                    {#if sum.notes > 0}
+                      <span title="{sum.notes} note{sum.notes === 1 ? '' : 's'} created">{sum.notes}n</span>
+                    {/if}
+                  </span>
                 {/if}
                 <a
                   href="/notes/{encodeURIComponent(jot.path)}"
