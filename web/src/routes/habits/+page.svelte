@@ -310,6 +310,69 @@
     editingTarget = null;
   }
 
+  // ----- Rename / delete -----
+  // Habits have no record file — these handlers rewrite the underlying
+  // `## Habits` checkbox lines across every daily note. The backend
+  // handles the cross-file scan; the UI just collects the new name (or
+  // a destructive-action confirmation) and triggers it.
+  let editingName = $state<string | null>(null);
+  let renameDraft = $state('');
+  function startRename(h: HabitInfo) {
+    editingName = h.name;
+    renameDraft = h.name;
+  }
+  function cancelRename() {
+    editingName = null;
+    renameDraft = '';
+  }
+  async function submitRename(oldName: string) {
+    const next = renameDraft.trim();
+    if (!next || next === oldName) {
+      cancelRename();
+      return;
+    }
+    busy = oldName;
+    try {
+      const res = await api.renameHabit(oldName, next);
+      cancelRename();
+      // Migrate any persisted weekly target so the new name keeps its goal.
+      const tgt = $habitTargets[oldName];
+      if (tgt != null) {
+        setHabitTarget(next, tgt);
+        setHabitTarget(oldName, null);
+      }
+      await load();
+      (await import('$lib/components/toast')).toast.success(
+        `renamed · ${res.filesTouched} ${res.filesTouched === 1 ? 'daily' : 'dailies'} updated`
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      (await import('$lib/components/toast')).toast.error(`rename failed: ${msg}`);
+    } finally {
+      busy = null;
+    }
+  }
+  async function deleteHabit(name: string) {
+    if (!confirm(
+      `Delete habit "${name}"?\n\nThis strips every checkbox line under ## Habits across every daily note in your vault — past streak data for this habit is gone. The daily notes themselves stay; only the matching lines are removed.`
+    )) return;
+    busy = name;
+    try {
+      const res = await api.deleteHabit(name);
+      // Drop any persisted target — it's now orphaned.
+      setHabitTarget(name, null);
+      await load();
+      (await import('$lib/components/toast')).toast.success(
+        `deleted · ${res.filesTouched} ${res.filesTouched === 1 ? 'daily' : 'dailies'} cleaned`
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      (await import('$lib/components/toast')).toast.error(`delete failed: ${msg}`);
+    } finally {
+      busy = null;
+    }
+  }
+
   // ----- Week view helpers -----
   // The server returns 90 days oldest→newest. We want the last 7 in
   // chronological order so columns read left=oldest right=today.
@@ -521,7 +584,42 @@
               {/if}
             </button>
             <div class="flex-1 min-w-0">
-              <h2 class="text-base font-medium text-text break-words">{h.name}</h2>
+              {#if editingName === h.name}
+                <form
+                  onsubmit={(e) => { e.preventDefault(); submitRename(h.name); }}
+                  class="flex items-center gap-1.5"
+                >
+                  <input
+                    bind:value={renameDraft}
+                    autofocus
+                    class="flex-1 px-2 py-1 bg-base border border-surface2 rounded text-text text-sm"
+                    placeholder="new name"
+                  />
+                  <button type="submit" disabled={busy === h.name} class="px-2 py-1 bg-primary text-on-primary rounded text-xs disabled:opacity-50">save</button>
+                  <button type="button" onclick={cancelRename} class="px-2 py-1 text-dim hover:text-text text-xs">cancel</button>
+                </form>
+              {:else}
+                <div class="flex items-start justify-between gap-2">
+                  <h2 class="text-base font-medium text-text break-words flex-1 min-w-0">{h.name}</h2>
+                  <div class="flex items-center gap-0.5 flex-shrink-0">
+                    <button
+                      type="button"
+                      onclick={() => startRename(h)}
+                      class="px-1.5 py-0.5 text-dim hover:text-text rounded text-[11px]"
+                      title="rename habit"
+                      aria-label="rename habit"
+                    >✎</button>
+                    <button
+                      type="button"
+                      onclick={() => deleteHabit(h.name)}
+                      disabled={busy === h.name}
+                      class="px-1.5 py-0.5 text-dim hover:text-error rounded text-[11px] disabled:opacity-50"
+                      title="delete habit — strips matching lines from every daily note"
+                      aria-label="delete habit"
+                    >×</button>
+                  </div>
+                </div>
+              {/if}
               <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-dim mt-1">
                 <span title="current streak">🔥 {h.currentStreak}d</span>
                 <span title="last 7 days">7d: {h.last7Pct}%</span>
@@ -643,7 +741,42 @@
                 {/if}
               </button>
               <div class="flex-1 min-w-0">
-                <h2 class="text-base font-medium text-text break-words">{h.name}</h2>
+                {#if editingName === h.name}
+                  <form
+                    onsubmit={(e) => { e.preventDefault(); submitRename(h.name); }}
+                    class="flex items-center gap-1.5"
+                  >
+                    <input
+                      bind:value={renameDraft}
+                      autofocus
+                      class="flex-1 px-2 py-1 bg-base border border-surface2 rounded text-text text-sm"
+                      placeholder="new name"
+                    />
+                    <button type="submit" disabled={busy === h.name} class="px-2 py-1 bg-primary text-on-primary rounded text-xs disabled:opacity-50">save</button>
+                    <button type="button" onclick={cancelRename} class="px-2 py-1 text-dim hover:text-text text-xs">cancel</button>
+                  </form>
+                {:else}
+                  <div class="flex items-start justify-between gap-2">
+                    <h2 class="text-base font-medium text-text break-words flex-1 min-w-0">{h.name}</h2>
+                    <div class="flex items-center gap-0.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onclick={() => startRename(h)}
+                        class="px-1.5 py-0.5 text-dim hover:text-text rounded text-[11px]"
+                        title="rename habit"
+                        aria-label="rename habit"
+                      >✎</button>
+                      <button
+                        type="button"
+                        onclick={() => deleteHabit(h.name)}
+                        disabled={busy === h.name}
+                        class="px-1.5 py-0.5 text-dim hover:text-error rounded text-[11px] disabled:opacity-50"
+                        title="delete habit — strips matching lines from every daily note"
+                        aria-label="delete habit"
+                      >×</button>
+                    </div>
+                  </div>
+                {/if}
                 <div class="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 text-xs text-dim mt-0.5">
                   <span>🔥 {h.currentStreak}-day streak</span>
                   <span>longest: {h.longestStreak}</span>

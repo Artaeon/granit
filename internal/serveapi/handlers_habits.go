@@ -447,3 +447,186 @@ func stripHabitMarkers(text string) string {
 	t = regexp.MustCompile(`#[A-Za-z0-9_/-]+`).ReplaceAllString(t, "")
 	return strings.TrimSpace(t)
 }
+
+// ---- delete + rename ----
+//
+// Habits have no separate record — the canonical state is the
+// checkbox lines under `## Habits` in daily notes. "Deleting" a habit
+// means removing those lines across every daily where they appear;
+// "renaming" means rewriting the visible text of those lines (keep
+// the checkbox state + any markers intact). Both walk every daily
+// note in the vault (not the 90-day list window — the user wants the
+// habit gone or renamed everywhere, including past dailies).
+//
+// Matching: case-insensitive exact match on stripHabitMarkers(line)
+// vs the supplied name. Not the Contains() fallback the toggle path
+// uses — destructive ops must be precise so "run" doesn't also nuke
+// "running club".
+
+// rewriteHabitInDailies walks every daily note (basename YYYY-MM-DD.md)
+// and applies fn(stripped, line, checkbox) to each ## Habits checkbox
+// line whose stripped text matches `name`. fn returns ("", true) to
+// drop the line; (newLine, true) to replace it; ("", false) to leave
+// it alone. Returns the number of files modified.
+func (s *Server) rewriteHabitInDailies(name string, fn func(stripped, line, checkbox string) (replacement string, modify bool)) (int, error) {
+	if strings.TrimSpace(name) == "" {
+		return 0, fmt.Errorf("name required")
+	}
+	target := strings.TrimSpace(name)
+	touched := 0
+	var touchedRels []string
+	for _, n := range s.cfg.Vault.SnapshotNotes() {
+		if _, ok := dailyDate(n.RelPath); !ok {
+			continue
+		}
+		if !s.cfg.Vault.EnsureLoaded(n.RelPath) {
+			continue
+		}
+		lines := strings.Split(n.Content, "\n")
+		inHabits := false
+		fileChanged := false
+		out := lines[:0:0]
+		for _, ln := range lines {
+			trim := strings.TrimSpace(ln)
+			if strings.HasPrefix(trim, "#") {
+				text := strings.TrimSpace(strings.TrimLeft(trim, "#"))
+				inHabits = strings.EqualFold(text, "Habits")
+				out = append(out, ln)
+				continue
+			}
+			if !inHabits {
+				out = append(out, ln)
+				continue
+			}
+			m := habitCheckboxRe.FindStringSubmatch(ln)
+			if m == nil {
+				out = append(out, ln)
+				continue
+			}
+			stripped := stripHabitMarkers(m[2])
+			if !strings.EqualFold(strings.TrimSpace(stripped), target) {
+				out = append(out, ln)
+				continue
+			}
+			replacement, modify := fn(stripped, ln, m[1])
+			if !modify {
+				out = append(out, ln)
+				continue
+			}
+			fileChanged = true
+			if replacement == "" {
+				// Drop the line entirely (delete habit).
+				continue
+			}
+			out = append(out, replacement)
+		}
+		if !fileChanged {
+			continue
+		}
+		abs := filepath.Join(s.cfg.Vault.Root, n.RelPath)
+		if err := atomicio.WriteNote(abs, strings.Join(out, "\n")); err != nil {
+			return touched, fmt.Errorf("write %s: %w", n.RelPath, err)
+		}
+		touched++
+		touchedRels = append(touchedRels, n.RelPath)
+	}
+	if touched > 0 {
+		// Force a content reload on every rewritten file before
+		// TaskStore.Reload — ScanFast won't reload body bytes by
+		// modtime alone (same pitfall handled in handleToggleHabit).
+		s.rescanMu.Lock()
+		_ = s.cfg.Vault.ScanFast()
+		for _, rel := range touchedRels {
+			_ = s.cfg.Vault.EnsureLoaded(rel)
+		}
+		_ = s.cfg.TaskStore.Reload()
+		s.rescanMu.Unlock()
+	}
+	return touched, nil
+}
+
+func (s *Server) handleDeleteHabit(w http.ResponseWriter, r *http.Request) {
+	name := urlParam(r, "name")
+	touched, err := s.rewriteHabitInDailies(name, func(_, _, _ string) (string, bool) {
+		return "", true
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":         name,
+		"filesTouched": touched,
+	})
+}
+
+type habitRenameBody struct {
+	NewName string `json:"new_name"`
+}
+
+func (s *Server) handleRenameHabit(w http.ResponseWriter, r *http.Request) {
+	name := urlParam(r, "name")
+	var body habitRenameBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	newName := strings.TrimSpace(body.NewName)
+	if newName == "" {
+		writeError(w, http.StatusBadRequest, "new_name required")
+		return
+	}
+	if strings.EqualFold(newName, strings.TrimSpace(name)) {
+		// No-op rename — same name (modulo case). Return 200 with 0
+		// touched so the client can render a benign "no change" toast
+		// instead of looking like a server error.
+		writeJSON(w, http.StatusOK, map[string]any{
+			"name":         name,
+			"newName":      newName,
+			"filesTouched": 0,
+		})
+		return
+	}
+	touched, err := s.rewriteHabitInDailies(name, func(_, line, _ string) (string, bool) {
+		// Preserve the leading indent + bullet + checkbox; only swap
+		// the visible text. habitCheckboxRe captures: m[0] = full match,
+		// m[1] = checkbox char, m[2] = trailing text. Re-derive from
+		// the full line so we keep any indent the user typed.
+		m := habitCheckboxRe.FindStringSubmatch(line)
+		if m == nil {
+			return "", false
+		}
+		// Find where the captured text starts in the original line so
+		// we can replace just that span without touching the markers
+		// (priority, due:, #tags etc.) the user added — rewriting only
+		// the FIRST occurrence of m[2] in the line works because the
+		// regex is anchored at the start with leading whitespace and
+		// the checkbox prefix.
+		idx := strings.Index(line, m[2])
+		if idx < 0 {
+			return "", false
+		}
+		// Strip only the bare-name portion of the existing text — the
+		// matched stripHabitMarkers result. The tail (markers) stays.
+		oldText := m[2]
+		stripped := stripHabitMarkers(oldText)
+		// Replace the stripped span inside oldText with the new name,
+		// preserving surrounding markers.
+		tail := oldText
+		if pos := strings.Index(strings.ToLower(oldText), strings.ToLower(stripped)); pos >= 0 && stripped != "" {
+			tail = oldText[:pos] + newName + oldText[pos+len(stripped):]
+		} else {
+			tail = newName
+		}
+		return line[:idx] + tail + line[idx+len(m[2]):], true
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name":         name,
+		"newName":      newName,
+		"filesTouched": touched,
+	})
+}

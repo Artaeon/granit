@@ -410,6 +410,12 @@ func (s *Server) Handler() http.Handler {
 		// (not just today) — drives the click-on-past-day-dot
 		// interaction on the habits heatmap.
 		r.Post("/api/v1/habits/toggle", s.handleToggleHabit)
+		// Habits have no record file — these handlers rewrite the
+		// underlying `## Habits` checkbox lines across every daily
+		// note in the vault. DELETE removes the lines; PATCH rewrites
+		// the visible text (keeps checkbox state + per-line markers).
+		r.Delete("/api/v1/habits/{name}", s.handleDeleteHabit)
+		r.Patch("/api/v1/habits/{name}", s.handleRenameHabit)
 
 		r.Get("/api/v1/search", s.handleSearch)
 

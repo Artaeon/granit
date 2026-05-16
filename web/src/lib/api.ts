@@ -1902,6 +1902,22 @@ export const api = {
       '/habits/toggle',
       { method: 'POST', body: JSON.stringify({ name, date, done }) }
     ),
+  // Delete a habit everywhere — strips matching checkbox lines from
+  // every daily note's `## Habits` section. Destructive: streak data
+  // for this habit is gone too. Returns the number of files touched.
+  deleteHabit: (name: string) =>
+    req<{ name: string; filesTouched: number }>(
+      `/habits/${encodeURIComponent(name)}`,
+      { method: 'DELETE' }
+    ),
+  // Rename a habit everywhere — rewrites the visible text on matching
+  // checkbox lines, preserves checkbox state + per-line markers
+  // (priority, due:, #tags). Streak history follows the new name.
+  renameHabit: (name: string, newName: string) =>
+    req<{ name: string; newName: string; filesTouched: number }>(
+      `/habits/${encodeURIComponent(name)}`,
+      { method: 'PATCH', body: JSON.stringify({ new_name: newName }) }
+    ),
 
   // Morning routine — saves a `## Daily Plan` block into today's daily note
   saveMorning: (body: {
