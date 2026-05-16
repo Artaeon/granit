@@ -27,6 +27,20 @@
 
   type StreamLine = { step: number; kind: string; text: string };
 
+  // WebCitation is one extracted hit from a web_search tool_result.
+  // We parse the plain-text observation the agent renders (`1. Title
+  // \n URL: …\n snippet`) into a small struct so a chip strip can
+  // surface the cited sources below the final answer. Mirrors the
+  // Result shape on the server side, minus the snippet (we keep that
+  // off the chip to stay compact — full snippet is still in the
+  // transcript above for users who want to read it).
+  type WebCitation = {
+    step: number;
+    title: string;
+    url: string;
+    provider?: string;
+  };
+
   let goal = $state('');
   let runId = $state<string | null>(null);
   let lines = $state<StreamLine[]>([]);
@@ -230,6 +244,111 @@
   function kindLabel(kind: string): string {
     return kind.replace(/_/g, ' ');
   }
+
+  // parseWebSearchResult turns the agent's plain-text observation
+  // (emitted by tools_web.go's renderWebHits) into a list of
+  // citations. We pair tool_call events naming "web_search" with the
+  // tool_result that follows in the same step, so an unrelated
+  // tool_result in the same step (which shouldn't normally happen,
+  // but the parser stays robust) doesn't get misclassified.
+  //
+  // Format we parse:
+  //
+  //   1. Title text
+  //      URL: https://example.com
+  //      snippet line
+  //
+  //   2. Other title
+  //      URL: https://other.example.com
+  //      another snippet
+  //
+  //   (source: duckduckgo · 2 results)
+  function parseWebSearchResult(text: string, step: number): WebCitation[] {
+    const out: WebCitation[] = [];
+    if (!text) return out;
+    // Capture an optional trailing provider line.
+    let provider: string | undefined;
+    const sourceMatch = text.match(/\(source:\s*([^·)]+)/);
+    if (sourceMatch) provider = sourceMatch[1].trim();
+    // Hits are blocks separated by a blank line. Walk line-by-line so
+    // the same regex handles 1 result or 10 without backtracking
+    // through the whole string.
+    let current: { title?: string; url?: string } | null = null;
+    for (const raw of text.split('\n')) {
+      const line = raw.trim();
+      const heading = line.match(/^\d+\.\s+(.+)$/);
+      if (heading) {
+        if (current?.url) out.push({ step, title: current.title ?? current.url, url: current.url, provider });
+        current = { title: heading[1].trim() };
+        continue;
+      }
+      const urlMatch = line.match(/^URL:\s*(https?:\/\/\S+)/i);
+      if (urlMatch && current) {
+        current.url = urlMatch[1];
+        continue;
+      }
+      // Title line where the heading itself is a URL (renderer
+      // falls back to URL when title is empty).
+      if (current && !current.url) {
+        const bareURL = (current.title ?? '').match(/^(https?:\/\/\S+)/i);
+        if (bareURL) current.url = bareURL[1];
+      }
+    }
+    if (current?.url) out.push({ step, title: current.title ?? current.url, url: current.url, provider });
+    return out;
+  }
+
+  // Walk the live event stream and pair `web_search` tool_call events
+  // with the tool_result that follows them in the same step. The
+  // resulting flat list backs the citations chip strip below the
+  // final answer. Re-derives on every new line so an in-progress run
+  // shows chips the instant the result lands.
+  let webCitations = $derived.by(() => {
+    const out: WebCitation[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const ln = lines[i];
+      // A web_search call is rendered like:
+      //   web_search(query="foo", limit="5")
+      // Match the prefix instead of the full string so future args
+      // (region, safesearch) don't break the detector.
+      if (ln.kind !== 'tool_call') continue;
+      if (!ln.text.trimStart().startsWith('web_search(')) continue;
+      // Look forward for the result in the same step.
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].step !== ln.step) break;
+        if (lines[j].kind !== 'tool_result') continue;
+        out.push(...parseWebSearchResult(lines[j].text, ln.step));
+        break;
+      }
+    }
+    return out;
+  });
+
+  // Derive a stable favicon URL for a citation chip. Google's
+  // public favicon endpoint is the lowest-effort path that works
+  // for ~every public site without us shipping a favicon scraper.
+  // Falls back to a transparent SVG dot inside the chip when the
+  // request fails (browser surfaces a broken-image icon otherwise).
+  function faviconURL(u: string): string {
+    try {
+      const host = new URL(u).host;
+      return `https://www.google.com/s2/favicons?sz=32&domain=${encodeURIComponent(host)}`;
+    } catch {
+      return '';
+    }
+  }
+
+  // Truncate the hostname for chip rendering so a long subdomain
+  // doesn't push the chip wider than the drawer.
+  function chipHost(u: string): string {
+    try {
+      const h = new URL(u).host.replace(/^www\./, '');
+      if (h.length > 28) return h.slice(0, 28) + '…';
+      return h;
+    } catch {
+      return u;
+    }
+  }
 </script>
 
 <Drawer bind:open side="right" responsive width="w-full sm:w-96 md:w-[32rem] lg:w-[36rem]">
@@ -333,6 +452,51 @@
             <div class="rounded p-3 bg-surface0 border-l-3 border-success mt-2">
               <div class="text-[10px] uppercase tracking-wider text-success mb-1">Answer</div>
               <p class="text-sm text-text whitespace-pre-wrap">{finalAnswer}</p>
+            </div>
+          {/if}
+
+          {#if webCitations.length > 0}
+            <!-- Web citations chip strip. Surfaces every URL the agent
+                 pulled in via web_search so the user can spot-check
+                 sources before trusting the answer. One chip per hit;
+                 favicons load from Google's S2 endpoint (free, public,
+                 no key needed). The strip is dedup'd on URL so two
+                 web_search calls returning the same hit don't show
+                 twice. -->
+            {@const seen = new Set<string>()}
+            {@const unique = webCitations.filter((c) => {
+              if (seen.has(c.url)) return false;
+              seen.add(c.url);
+              return true;
+            })}
+            <div class="mt-2 pt-2 border-t border-surface1">
+              <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5">
+                Sources <span class="normal-case lowercase">— from: {unique.length} {unique.length === 1 ? 'source' : 'sources'}</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                {#each unique as c (c.url)}
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={c.title || c.url}
+                    class="inline-flex items-center gap-1.5 px-2 py-1 bg-surface0 border border-surface1 hover:border-primary rounded text-[11px] text-subtext hover:text-primary transition-colors"
+                  >
+                    {#if faviconURL(c.url)}
+                      <img
+                        src={faviconURL(c.url)}
+                        alt=""
+                        width="14"
+                        height="14"
+                        loading="lazy"
+                        class="w-3.5 h-3.5 rounded-sm flex-shrink-0"
+                        onerror={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
+                      />
+                    {/if}
+                    <span class="truncate max-w-[180px]">{chipHost(c.url)}</span>
+                  </a>
+                {/each}
+              </div>
             </div>
           {/if}
 

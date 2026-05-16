@@ -563,6 +563,12 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/ai/audit", s.handleGetAIAudit)
 		r.Delete("/api/v1/ai/audit", s.handleClearAIAudit)
 		r.Get("/api/v1/ai/status", s.handleGetAIStatus)
+		// Web research settings (provider choice + Brave key).
+		// Per-vault; lives at .granit/web-search.json. The route is
+		// behind the same auth as the rest of /ai/* so a multi-user
+		// deploy can't have one user toggle the feature for another.
+		r.Get("/api/v1/ai/web-search", s.handleGetWebSearchConfig)
+		r.Patch("/api/v1/ai/web-search", s.handlePatchWebSearchConfig)
 		// Long-term AI memory — facts about the user the chat
 		// overlay injects into every thread's system prelude.
 		r.Get("/api/v1/ai/memory", s.handleListAIMemory)

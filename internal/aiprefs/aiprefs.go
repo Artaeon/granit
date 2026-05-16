@@ -51,6 +51,14 @@ const (
 	// [[Chapter Title]] inside an outline, granit fires this with
 	// the outline body as context and creates the new note.
 	FeatureGenerateChapter Feature = "generate_chapter"
+	// FeatureWebSearch gates the agent's web_search + fetch_url
+	// tools. Off by default — Granit's "no outbound calls unless the
+	// user opts in" stance means this is the only place where the
+	// agent reaches non-user-controlled hosts. Toggling it on
+	// registers the tools in the agent catalog; provider + API key
+	// live in <vault>/.granit/web-search.json so the prefs file
+	// doesn't carry secrets.
+	FeatureWebSearch Feature = "web_search"
 )
 
 // FeatureConfig is the per-feature setting record.
@@ -96,6 +104,11 @@ func Defaults() Preferences {
 			// explicitly clicks "generate with AI" on an unresolved
 			// wikilink, and writes ONE note per click.
 			FeatureGenerateChapter: {Enabled: true, Provider: ""},
+			// Off by default — the only feature that opens an outbound
+			// network connection to a third-party search backend.
+			// Provider is empty because the provider choice lives in
+			// .granit/web-search.json (DuckDuckGo by default).
+			FeatureWebSearch: {Enabled: false, Provider: ""},
 		},
 		RedactionEnabled: true,
 		DefaultProvider:  "ollama",

@@ -13,11 +13,33 @@ import (
 
 	"github.com/artaeon/granit/internal/agentruntime"
 	"github.com/artaeon/granit/internal/agents"
+	"github.com/artaeon/granit/internal/aiprefs"
 	"github.com/artaeon/granit/internal/atomicio"
 	"github.com/artaeon/granit/internal/config"
+	"github.com/artaeon/granit/internal/websearch"
 	"github.com/artaeon/granit/internal/wshub"
 	"github.com/oklog/ulid/v2"
 )
+
+// resolveWebTools constructs the agent-side adapters for the web_search
+// + fetch_url tools. Returns (nil, nil) when the user hasn't opted in —
+// the runner leaves the tools in the catalog but they return the
+// disabled-feature hint on call.
+//
+// Centralised here so every entry point into the runner (handleRunAgent,
+// plan-my-day, future scheduled jobs) wires the feature identically and
+// the "is it enabled?" check lives in exactly one place.
+func resolveWebTools(vaultRoot string) (agents.WebSearchProvider, agents.PageFetcher) {
+	if !aiprefs.IsEnabled(vaultRoot, aiprefs.FeatureWebSearch) {
+		return nil, nil
+	}
+	cfg, _ := websearch.Load(vaultRoot)
+	prov, err := websearch.Resolve(cfg, nil)
+	if err != nil || prov == nil {
+		return nil, nil
+	}
+	return agentruntime.NewWebSearchAdapter(prov), agentruntime.NewPageFetcher()
+}
 
 // runAgentBody is the POST /agents/run request shape. Goal can be empty
 // for presets that get all their context from the system prompt (e.g.
@@ -95,6 +117,11 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 
 	bridge := agentruntime.NewBridge(s.cfg.Vault, s.cfg.TaskStore, nil, nil)
 	runner := agentruntime.New(llm, bridge)
+	// Wire the opt-in web research tools. When FeatureWebSearch is off
+	// these stay nil and the tools fall through to a friendly "feature
+	// disabled" observation — nothing surprises the user with an
+	// outbound HTTP call they didn't enable.
+	runner.WebSearch, runner.PageFetcher = resolveWebTools(s.cfg.Vault.Root)
 	// Apply optional caller-provided caps. Sane defaults: 8 steps when
 	// the caller doesn't ask for more (matches the TUI's preset
 	// expectations), no budget unless explicitly requested.

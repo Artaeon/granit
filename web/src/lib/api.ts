@@ -2170,6 +2170,16 @@ export const api = {
   clearAIAudit: () => req<void>('/ai/audit', { method: 'DELETE' }),
   getAIStatus: () => req<AIStatus>('/ai/status'),
   getAISnapshot: () => req<{ snapshot: unknown }>('/ai/snapshot'),
+  // Web research settings — per-vault provider choice + Brave key.
+  // The Brave key is write-only on the wire; reads only carry a
+  // `brave_key_set` flag so a settings refresh doesn't leak the
+  // secret into the network tab.
+  getWebSearchConfig: () => req<WebSearchConfig>('/ai/web-search'),
+  patchWebSearchConfig: (p: WebSearchConfigPatch) =>
+    req<WebSearchConfig>('/ai/web-search', {
+      method: 'PATCH',
+      body: JSON.stringify(p)
+    }),
   // Long-term AI memory — facts about the user the chat overlay
   // injects into every thread's system prelude. User-controlled:
   // add via slash command or proposed-action chip, edit/delete via
@@ -2440,6 +2450,23 @@ export interface AIStatus {
   redaction: boolean;
   default_provider?: string;
   features: Record<string, AIFeatureStatus>;
+}
+
+/** Per-vault web-research config, mirroring internal/websearch.Config
+ *  with one safety swap: the server never echoes the Brave key back
+ *  to the client, so we receive a `brave_key_set` boolean instead. To
+ *  paste a new key the user PATCHes { brave_key: 'sk-…' }; to clear,
+ *  PATCH { brave_key: '' }. */
+export interface WebSearchConfig {
+  provider: string;
+  brave_key_set: boolean;
+  max_results: number;
+}
+export interface WebSearchConfigPatch {
+  provider?: string;
+  /** Empty string clears the stored key; non-empty replaces it. */
+  brave_key?: string;
+  max_results?: number;
 }
 
 /** Long-term AI memory fact. The chat overlay folds the list into

@@ -39,6 +39,22 @@ type Runner struct {
 	// Ollama doesn't, since it's free). Without metering this field
 	// is silently ignored.
 	BudgetMicroCents int64
+
+	// WebSearch is the opt-in live-search provider that backs the
+	// web_search tool. nil means the feature is disabled — the tool
+	// stays in the catalog but returns ErrWebSearchUnavailable when
+	// invoked, so a preset that lists it still loads cleanly. Set
+	// from the server's agent-handler when aiprefs.FeatureWebSearch
+	// is enabled.
+	WebSearch agents.WebSearchProvider
+
+	// PageFetcher backs the fetch_url tool. Same gating story as
+	// WebSearch — nil leaves the tool in the catalog but the call
+	// surfaces the disabled-feature hint instead of doing network
+	// I/O. Reusing one fetcher across the runner so the underlying
+	// http.Client benefits from connection reuse on multi-fetch
+	// research runs.
+	PageFetcher agents.PageFetcher
 }
 
 // CostTracker accumulates usage across an agent run. Returned from
@@ -217,6 +233,13 @@ func (r *Runner) Run(ctx context.Context, preset agents.Preset, goal string, onE
 // allReadTools returns the full read-tool catalog wired to our bridge.
 // BuildRegistryForPreset filters this down to only the tools the preset
 // listed (or every read tool if Tools is empty).
+//
+// web_search + fetch_url are always added to the catalog so a preset
+// can opt into them by name regardless of whether the user has enabled
+// the feature today. When the feature is off the tools' providers are
+// nil and Run returns ErrWebSearchUnavailable, which the runner
+// surfaces as an observation — letting the LLM gracefully fall back to
+// vault-only sources instead of crashing the run.
 func (r *Runner) allReadTools() []agents.Tool {
 	return []agents.Tool{
 		agents.ReadNote(r.bridge),
@@ -225,6 +248,8 @@ func (r *Runner) allReadTools() []agents.Tool {
 		agents.QueryObjects(r.bridge),
 		agents.QueryTasks(r.bridge),
 		agents.GetToday(),
+		agents.WebSearch(r.WebSearch),
+		agents.FetchURL(r.PageFetcher),
 	}
 }
 

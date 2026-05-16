@@ -16,6 +16,7 @@ their output, and iterates until it produces a final answer.
 - [Quick start](#quick-start)
 - [Built-in agent presets](#built-in-agent-presets)
 - [Tool catalog](#tool-catalog)
+- [Web research](#web-research)
 - [Safety](#safety)
 - [Architecture](#architecture)
 - [Writing custom agents](#writing-custom-agents)
@@ -160,6 +161,8 @@ it picks correctly without us hardcoding tool names in templates.
 | `query_objects` | Filter typed objects by type + exact-match `key=value` | `type`, `where`, `limit` |
 | `query_tasks` | Filter tasks by status, due window, priority | `status`, `due`, `min_priority`, `limit` |
 | `get_today` | Return today's date in ISO form | — |
+| `web_search` | Live web search (opt-in, see [Web research](#web-research)) | `query` (req), `limit` |
+| `fetch_url` | Fetch a single web URL and strip to readable text | `url` (req), `max_chars` |
 
 > **`where` clause syntax:** comma-separated `key=value` pairs only.
 > No comparison operators (`<`, `>`, `!=`) — the agent should fetch
@@ -182,6 +185,123 @@ default presets. Phase 3 adds presets that opt in.
 Every Write tool runs through the runtime's `Approve` callback
 before executing. The TUI surfaces a confirmation prompt in
 interactive mode; CLI/CI use can pass an auto-approver.
+
+---
+
+## Web research
+
+The `web_search` and `fetch_url` tools let an agent reach beyond the
+vault for current information. They are **off by default** — Granit's
+"no outbound traffic unless you opt in" stance means these tools sit
+in the catalog but return a disabled-feature observation until you
+flip the switch.
+
+### Enabling
+
+1. Open **Settings → AI** and toggle **Web research** on.
+2. A provider panel appears below the toggle. Pick:
+   - **DuckDuckGo** *(default; no key)* — uses the public Instant
+     Answer JSON endpoint with an HTML-lite fallback. No account, no
+     rate-limit headaches for personal-scale use.
+   - **Brave Search** *(API key required)* — cleaner JSON, snappier.
+     Grab a free key at <https://api.search.brave.com/>; the free
+     tier is generous enough for hobby research.
+3. Set the default result count (1–10). Lower keeps the agent's
+   context budget tight; 5 is a good baseline.
+
+Provider config lives at `<vault>/.granit/web-search.json`. The
+Brave key is stored there and never echoed back over the wire — a
+settings refresh only sees a `brave_key_set` boolean.
+
+### What's sent outbound
+
+- The **query string** the agent constructed for its current ReAct
+  step. PII redaction (the `redact_pii` toggle in Settings) does
+  NOT run on web-search queries — they're already user-issued
+  search terms, and a redacted "[EMAIL] OR [PHONE]" query would
+  return garbage.
+- The **URL** for any `fetch_url` call. The fetcher caps the
+  response at 512 KB and refuses non-HTML content-types (PDF,
+  video) before doing any work.
+- A canonical user-agent header (`granit-web-search/1.0`).
+
+Granit makes **no other outbound calls** for web research. No
+analytics ping, no warm-up request, nothing on startup — the tools
+only fire when an agent invokes them mid-run.
+
+### Tool semantics
+
+`web_search` returns up to 10 hits as a plain-text observation the
+LLM consumes as its next iteration's context:
+
+```
+1. Example title
+   URL: https://example.com/a
+   one-line snippet
+
+2. Another result
+   URL: https://example.com/b
+   ...
+
+(source: duckduckgo · 5 results)
+```
+
+`fetch_url` returns the page's readable text (stripped of `<script>`,
+`<style>`, navigation chrome) truncated to ~8000 chars. Pass
+`max_chars` to widen the cap for a long article, or narrow it for a
+landing page you only need the headline of.
+
+Both tools classify as `KindRead`. They cannot land in the
+write-tool registry no matter how a preset is configured — the
+read/write split is enforced at the type level, not via convention.
+
+### Audit trail
+
+Every agent run already persists a full transcript as an
+`agent_run` typed-object note (browse them at `/agents`). Web tool
+calls land in the transcript like any other action:
+
+```
+[3] → web_search(query="rust async runtime 2026", limit="5")
+[3] ← 1. Comparing async runtimes in Rust …
+       URL: https://example.com/rust-async
+       (source: duckduckgo · 5 results)
+[4] → fetch_url(url="https://example.com/rust-async")
+[4] ← (readable text)
+```
+
+So you can always trace what the agent searched, what it read, and
+what it concluded. The `/chat` and `/agents` UIs surface the cited
+URLs as a clickable chip strip below the agent's final answer; the
+transcript above the chips has every snippet for spot-checking.
+
+The general AI audit log at `.granit/ai-audit.jsonl` records the
+LLM-side request (which provider, how many tokens) — web search
+traffic isn't billable so it doesn't have a separate cost entry,
+but the LLM observations that contain the search results count
+toward the agent's token usage like any other tool output.
+
+### Building presets that use web
+
+Add `web_search` (and optionally `fetch_url`) to your preset's
+`tools` allow-list:
+
+```json
+{
+  "id": "news-brief",
+  "name": "News Brief",
+  "description": "Researches a current-events topic across the web and the vault.",
+  "systemPrompt": "You produce a 5-bullet news brief grounded in cited web sources …",
+  "tools": ["web_search", "fetch_url", "search_vault", "read_note", "get_today"],
+  "maxSteps": 12
+}
+```
+
+When `web_search` is disabled in Settings, the preset still loads
+cleanly — the tool returns a single observation telling the LLM the
+feature is off, and the agent gracefully falls back to the
+vault-only tools. So shipping a preset that *might* want web
+research doesn't break for users who keep the feature off.
 
 ---
 

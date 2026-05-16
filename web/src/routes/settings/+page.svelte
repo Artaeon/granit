@@ -243,6 +243,7 @@
     void loadPrefs();
     void loadAIPrefs();
     void loadAIStatus();
+    void loadWebSearchCfg();
     return onWsEvent((ev) => {
       // Watch for ICS file mutations so the calendars list refreshes
       // when an event is created from another tab.
@@ -296,6 +297,44 @@
   } | null>(null);
   async function loadAIStatus() {
     try { aiStatus = await api.getAIStatus(); } catch {}
+  }
+
+  // Web research config — provider + Brave key + result cap. Lives
+  // alongside aiPrefs because it's only meaningful when the
+  // `web_search` feature toggle is on; the panel below the toggle
+  // hides until enabled. The key itself is never read back from the
+  // server (only a `brave_key_set` flag), matching how the OpenAI
+  // key field works in this same page.
+  let webSearchCfg = $state<{
+    provider: string;
+    brave_key_set: boolean;
+    max_results: number;
+  }>({ provider: 'duckduckgo', brave_key_set: false, max_results: 5 });
+  let webSearchBraveKeyBuf = $state('');
+  let webSearchBusy = $state(false);
+  async function loadWebSearchCfg() {
+    try { webSearchCfg = await api.getWebSearchConfig(); } catch {}
+  }
+  async function patchWebSearch(p: Partial<{ provider: string; brave_key: string; max_results: number }>) {
+    webSearchBusy = true;
+    try {
+      webSearchCfg = await api.patchWebSearchConfig(p);
+    } catch (err) {
+      const t = await import('$lib/components/toast');
+      t.toast.error('Save failed: ' + errorMessage(err));
+    } finally {
+      webSearchBusy = false;
+    }
+  }
+  async function commitBraveKey() {
+    if (!webSearchBraveKeyBuf.trim()) return;
+    await patchWebSearch({ brave_key: webSearchBraveKeyBuf.trim() });
+    webSearchBraveKeyBuf = '';
+  }
+  async function clearBraveKey() {
+    if (!confirm('Clear the Brave Search API key?')) return;
+    await patchWebSearch({ brave_key: '' });
+    webSearchBraveKeyBuf = '';
   }
 
   // Usage rollup over the audit list. Pure derivation — no extra
@@ -1050,6 +1089,7 @@
           { id: 'inbox_triage',    label: 'Inbox triage',    desc: 'Suggests priority + schedule for untriaged tasks.' },
           { id: 'deadline_detect', label: 'Deadline detect', desc: 'Reads open tasks without due dates and proposes one when the title carries a clear deadline signal.' },
           { id: 'annotate_note',   label: 'Annotate note',   desc: 'Reads a note and proposes 3-5 margin notes — questions, counter-arguments, "this matters" markers — anchored to specific lines. Review and accept each from the editor right rail.' },
+          { id: 'web_search',      label: 'Web research',    desc: 'Lets agents run live web searches and read pages from the open internet. Off by default — this is the only feature that opens an outbound connection to a third-party service.' },
           { id: 'summarise',       label: 'Summarise (existing)',  desc: 'In-editor "summarise selection / whole note" — already shipping.' },
           { id: 'extract_tasks',   label: 'Extract tasks (existing)', desc: 'In-editor "extract tasks from this note" — already shipping.' },
           { id: 'suggest_tags',    label: 'Suggest tags (existing)', desc: 'In-editor "suggest tags for this note" — already shipping.' },
@@ -1108,6 +1148,97 @@
           </label>
         {/each}
       </div>
+
+      <!-- Web research provider panel. Only meaningful when the
+           `web_search` feature is enabled above; we collapse it
+           when off so the AI section doesn't feel busier than it
+           needs to. Mirrors the OpenAI key field's "type → commit"
+           pattern — the secret is never echoed back, so the input
+           starts empty and saving requires the user to retype. -->
+      {#if aiPrefs.features['web_search']?.enabled}
+        <div class="mt-4 pt-3 border-t border-surface1 space-y-2">
+          <div class="flex items-baseline gap-2">
+            <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Web research</h3>
+            <span class="text-[10px] text-dim italic">opt-in · outbound</span>
+          </div>
+          <p class="text-[11px] text-dim leading-relaxed">
+            Agents that list <code class="text-subtext">web_search</code> or <code class="text-subtext">fetch_url</code> in their tool catalog can run live queries through your chosen provider and read the matched pages. Granit makes no outbound network calls for web research until this is enabled.
+          </p>
+
+          <div class="grid gap-2 sm:grid-cols-2">
+            <div>
+              <label for="ws-provider" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Provider</label>
+              <select
+                id="ws-provider"
+                value={webSearchCfg.provider}
+                onchange={(e) => { void patchWebSearch({ provider: (e.target as HTMLSelectElement).value }); }}
+                disabled={webSearchBusy}
+                class="w-full px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+              >
+                <option value="duckduckgo">DuckDuckGo (no key)</option>
+                <option value="brave">Brave Search (API key)</option>
+              </select>
+              <p class="text-[10px] text-dim mt-1">
+                {#if webSearchCfg.provider === 'duckduckgo'}
+                  Uses DuckDuckGo's public Instant Answer + lite HTML endpoints. No account needed.
+                {:else}
+                  Uses the Brave Search API. Falls back to DuckDuckGo when no key is set.
+                {/if}
+              </p>
+            </div>
+            <div>
+              <label for="ws-limit" class="block text-[11px] uppercase tracking-wider text-dim mb-1">Default result count</label>
+              <input
+                id="ws-limit"
+                type="number"
+                min="1"
+                max="10"
+                value={webSearchCfg.max_results || 5}
+                onchange={(e) => {
+                  const n = parseInt((e.target as HTMLInputElement).value, 10) || 5;
+                  void patchWebSearch({ max_results: n });
+                }}
+                disabled={webSearchBusy}
+                class="w-full px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+              />
+              <p class="text-[10px] text-dim mt-1">Capped at 10. Lower keeps the agent's context budget tight.</p>
+            </div>
+          </div>
+
+          {#if webSearchCfg.provider === 'brave'}
+            <div class="mt-2">
+              <label for="ws-brave-key" class="block text-[11px] uppercase tracking-wider text-dim mb-1">
+                Brave API key {#if webSearchCfg.brave_key_set}<span class="text-success normal-case">· set</span>{/if}
+              </label>
+              <div class="flex gap-2">
+                <input
+                  id="ws-brave-key"
+                  type="password"
+                  bind:value={webSearchBraveKeyBuf}
+                  placeholder={webSearchCfg.brave_key_set ? '••••••••  (key set — paste to replace)' : 'paste your Brave Search API key'}
+                  autocomplete="off"
+                  class="flex-1 min-w-0 px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm font-mono text-text placeholder-dim focus:outline-none focus:border-primary"
+                />
+                <button
+                  onclick={() => void commitBraveKey()}
+                  disabled={!webSearchBraveKeyBuf.trim() || webSearchBusy}
+                  class="px-3 py-1.5 text-xs bg-primary text-on-primary rounded font-medium disabled:opacity-50"
+                >Save</button>
+                {#if webSearchCfg.brave_key_set}
+                  <button
+                    onclick={() => void clearBraveKey()}
+                    disabled={webSearchBusy}
+                    class="px-3 py-1.5 text-xs text-dim hover:text-error"
+                  >Clear</button>
+                {/if}
+              </div>
+              <p class="text-[10px] text-dim mt-1">
+                Get a free key at <a href="https://api.search.brave.com/" target="_blank" rel="noopener" class="text-secondary underline">api.search.brave.com</a>. The key stays on disk under <code class="text-subtext">.granit/web-search.json</code> and is never echoed back to the browser.
+              </p>
+            </div>
+          {/if}
+        </div>
+      {/if}
 
       <div class="mt-4 pt-3 border-t border-surface1 flex items-center gap-3">
         <label class="flex items-center gap-2 text-xs text-subtext flex-1">
