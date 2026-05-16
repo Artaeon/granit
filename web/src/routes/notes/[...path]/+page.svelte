@@ -11,6 +11,7 @@
   import AnnotationsPanel from '$lib/notes/AnnotationsPanel.svelte';
   import FrontmatterEditor from '$lib/notes/FrontmatterEditor.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
+  import DayActivityInline from '$lib/notes/DayActivityInline.svelte';
   import DailyQuickAdd from '$lib/notes/DailyQuickAdd.svelte';
   import DailyContext from '$lib/notes/DailyContext.svelte';
   import NoteDeadlinesStrip from '$lib/deadlines/NoteDeadlinesStrip.svelte';
@@ -1508,6 +1509,23 @@
   });
   let isDaily = $derived(dailyDate !== null);
 
+  // Day-activity marker — the daily-note template seeds the line
+  // `<!-- granit:day-activity -->` under the `## Day overview`
+  // section so the renderer can substitute a live aggregated feed
+  // in place at preview time. The marker stays in the underlying
+  // markdown (so external editors round-trip it unchanged); the
+  // content is recomputed every render.
+  const DAY_ACTIVITY_MARKER = '<!-- granit:day-activity -->';
+  let dayActivitySegments = $derived.by(() => {
+    if (!isDaily || !dailyDate) return null;
+    const idx = body.indexOf(DAY_ACTIVITY_MARKER);
+    if (idx < 0) return null;
+    return {
+      before: body.slice(0, idx),
+      after: body.slice(idx + DAY_ACTIVITY_MARKER.length)
+    };
+  });
+
   function shiftDate(iso: string, days: number): string {
     const [y, m, d] = iso.split('-').map(Number);
     const dt = new Date(y, m - 1, d);
@@ -2204,7 +2222,13 @@
                   onPrepend={(text) => { body = text + body; dirty = true; }}
                 />
               {/if}
-              <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
+              {#if dayActivitySegments && dailyDate}
+                <MarkdownRenderer body={dayActivitySegments.before} onWikilink={navigateWikilink} />
+                <DayActivityInline date={dailyDate} />
+                <MarkdownRenderer body={dayActivitySegments.after} onWikilink={navigateWikilink} />
+              {:else}
+                <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
+              {/if}
             </div>
           </div>
         {:else}
@@ -2212,7 +2236,13 @@
           <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
             <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={aiBarSelectionExtensions} />
             <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block" bind:this={previewContainer}>
-              <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
+              {#if dayActivitySegments && dailyDate}
+                <MarkdownRenderer body={dayActivitySegments.before} onWikilink={navigateWikilink} />
+                <DayActivityInline date={dailyDate} />
+                <MarkdownRenderer body={dayActivitySegments.after} onWikilink={navigateWikilink} />
+              {:else}
+                <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
+              {/if}
             </div>
           </div>
         {/if}
