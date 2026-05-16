@@ -126,6 +126,126 @@
     loadStoredString(SOURCE_KEY, 'all') === 'task-notes' ? 'task-notes' : 'all'
   );
   $effect(() => saveStoredString(SOURCE_KEY, sourceFilter));
+
+  // Compact density — flips every TaskCard into its `compact` mode so
+  // more rows fit above the fold. Power users with hundreds of open
+  // tasks lean on this; casual users keep the comfortable default.
+  // Persisted to localStorage like every other view preference.
+  const DENSITY_KEY = 'granit.tasks.density';
+  let density = $state<'normal' | 'compact'>(
+    loadStoredString(DENSITY_KEY, 'normal') === 'compact' ? 'compact' : 'normal'
+  );
+  $effect(() => saveStoredString(DENSITY_KEY, density));
+  let compactCards = $derived(density === 'compact');
+
+  // Inline per-group quick-add. Only one group's input is open at a
+  // time. Submitting creates a task with the group's defaults applied
+  // (due date, priority, project, etc.) so the new row lands in the
+  // SAME bucket the user added it from — no scattering across groups.
+  // Distinct from the existing toolbar-level quickAdd: that one parses
+  // natural language and dumps everything into today's daily; this one
+  // is group-scoped and infers defaults from the bucket.
+  let groupAddKey = $state<string | null>(null);
+  let groupAddText = $state('');
+  let groupAddBusy = $state(false);
+
+  // Translate a (groupBy, group-key) pair into the createTask defaults
+  // for that bucket. Keeps every group-add landing in the SAME bucket
+  // the user added it from — no scattering across groups.
+  function groupAddDefaults(group: string): {
+    dueDate?: string;
+    priority?: number;
+    projectId?: string;
+    tags?: string[];
+    goalId?: string;
+    deadlineId?: string;
+    notePathHint?: string;
+  } {
+    const today = todayISO();
+    if (groupBy === 'due') {
+      switch (group) {
+        case 'overdue':
+        case 'today':
+          return { dueDate: today };
+        case 'tomorrow': {
+          const d = new Date(today + 'T00:00:00');
+          d.setDate(d.getDate() + 1);
+          return { dueDate: fmtDateISO(d) };
+        }
+        case 'this_week': {
+          const d = new Date(today + 'T00:00:00');
+          d.setDate(d.getDate() + 3);
+          return { dueDate: fmtDateISO(d) };
+        }
+        case 'later': {
+          const d = new Date(today + 'T00:00:00');
+          d.setDate(d.getDate() + 14);
+          return { dueDate: fmtDateISO(d) };
+        }
+        case 'no_date':
+        default:
+          return {};
+      }
+    }
+    if (groupBy === 'priority') {
+      const p = Number(group);
+      return p >= 1 && p <= 3 ? { priority: p } : {};
+    }
+    if (groupBy === 'tag') {
+      return group === '(untagged)' ? {} : { tags: [group] };
+    }
+    if (groupBy === 'project') {
+      const proj = projects.find((p) => p.name === group);
+      if (!proj) return {};
+      return { projectId: proj.name };
+    }
+    if (groupBy === 'goal') return group === '(no goal)' ? {} : { goalId: group };
+    if (groupBy === 'deadline') return group === '(no deadline)' ? {} : { deadlineId: group };
+    if (groupBy === 'note') return { notePathHint: group };
+    return {};
+  }
+
+  async function submitGroupAdd(group: string) {
+    const text = groupAddText.trim();
+    if (!text || groupAddBusy) return;
+    groupAddBusy = true;
+    try {
+      const defaults = groupAddDefaults(group);
+      // notePath fallback chain:
+      //   1. note-grouped key IS the notePath
+      //   2. otherwise today's daily — the safe capture target
+      let notePath = defaults.notePathHint ?? '';
+      if (!notePath) {
+        try {
+          const daily = await api.daily('today');
+          notePath = daily.path;
+        } catch {
+          notePath = `${todayISO()}.md`;
+        }
+      }
+      const body: Parameters<typeof api.createTask>[0] = { notePath, text };
+      if (defaults.dueDate) body.dueDate = defaults.dueDate;
+      if (defaults.priority !== undefined) body.priority = defaults.priority;
+      if (defaults.tags && defaults.tags.length > 0) body.tags = defaults.tags;
+      if (defaults.projectId) body.projectId = defaults.projectId;
+      if (defaults.goalId) body.goalId = defaults.goalId;
+      if (defaults.deadlineId) body.deadlineId = defaults.deadlineId;
+      await api.createTask(body);
+      groupAddText = '';
+      await load();
+      toast.success('task added');
+      // Leave the input open so the user can keep capturing without
+      // re-opening the row. Esc / blur dismisses it.
+    } catch (e) {
+      toast.error('add failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      groupAddBusy = false;
+    }
+  }
+  function cancelGroupAdd() {
+    groupAddKey = null;
+    groupAddText = '';
+  }
   let loading = $state(false);
   // URL sync: hydrate filter state from ?status=…&priority=…&… on
   // first load so refresh / shared links keep filters intact, and
@@ -2445,6 +2565,16 @@
             <option value="alpha">A → Z</option>
             <option value="estimate">estimate (smallest)</option>
           </select>
+          <!-- Density toggle — compact mode strips visual breathing
+               room from every TaskCard so power users see ~40% more
+               rows above the fold. Persisted to localStorage. -->
+          <button
+            type="button"
+            onclick={() => (density = density === 'compact' ? 'normal' : 'compact')}
+            aria-pressed={density === 'compact'}
+            title={density === 'compact' ? 'Compact density — click for comfortable spacing' : 'Comfortable density — click for compact rows'}
+            class="px-1.5 py-1 text-[10px] uppercase tracking-wider font-mono {density === 'compact' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'} border border-surface1 rounded"
+          >{density === 'compact' ? '≡' : '≣'}</button>
         {:else}
           <span class="text-dim">columns</span>
           <select bind:value={kanbanMode} class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text">
@@ -2543,7 +2673,7 @@
               </div>
               <div class="space-y-1">
                 {#each weekColumns.overdue.slice(0, 5) as t (t.id)}
-                  <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                  <TaskCard task={t} compact={compactCards} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
                 {/each}
                 {#if weekColumns.overdue.length > 5}
                   <p class="text-[11px] text-dim italic px-1">…{weekColumns.overdue.length - 5} more</p>
@@ -2739,7 +2869,7 @@
           <div class="space-y-2">
             {#each filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                <TaskCard task={t} compact={compactCards} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -2854,7 +2984,7 @@
           <div class="space-y-2">
             {#each filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                <TaskCard task={t} compact={compactCards} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -2865,7 +2995,7 @@
           <div class="space-y-2">
             {#each filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                <TaskCard task={t} compact={compactCards} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -2876,7 +3006,7 @@
           <div class="space-y-2 opacity-80">
             {#each filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                <TaskCard task={t} compact={compactCards} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -2912,15 +3042,52 @@
                 {#if g.deepLink}
                   <a
                     href={g.deepLink}
-                    class="ml-auto text-[10px] text-secondary hover:underline normal-case tracking-normal"
+                    class="text-[10px] text-secondary hover:underline normal-case tracking-normal"
                     title="open {g.label}"
                   >open ↗</a>
                 {/if}
+                <!-- Per-group quick-add. Opens an inline input that
+                     applies the group's defaults (due/priority/tag/
+                     project/goal/deadline) to the new task. -->
+                <button
+                  type="button"
+                  onclick={() => { groupAddKey = groupAddKey === g.key ? null : g.key; groupAddText = ''; }}
+                  class="ml-auto text-[10px] text-dim hover:text-text normal-case tracking-normal font-mono"
+                  title="add a task to this group ({g.label})"
+                >+ add</button>
               </h2>
+              {#if groupAddKey === g.key}
+                <!-- Pre-render the inline input above the group's
+                     task list so the new row appears right where the
+                     user expects it. Input auto-focuses; Enter saves,
+                     Esc dismisses. The input stays open after save so
+                     the user can keep capturing without re-opening. -->
+                <div class="mb-1.5 flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    bind:value={groupAddText}
+                    onkeydown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); submitGroupAdd(g.key); }
+                      else if (e.key === 'Escape') { e.preventDefault(); cancelGroupAdd(); }
+                    }}
+                    onblur={() => { if (!groupAddText.trim() && !groupAddBusy) cancelGroupAdd(); }}
+                    placeholder="new task in {g.label}…"
+                    autofocus
+                    disabled={groupAddBusy}
+                    class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1 text-sm text-text placeholder-dim focus:outline-none focus:border-primary disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onclick={() => submitGroupAdd(g.key)}
+                    disabled={groupAddBusy || !groupAddText.trim()}
+                    class="text-[11px] px-2 py-1 rounded bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-40"
+                  >{groupAddBusy ? '…' : 'add'}</button>
+                </div>
+              {/if}
               <div class="space-y-1.5">
                 {#each g.tasks.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
                   <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                    <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                    <TaskCard task={t} compact={compactCards} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
                   </div>
                 {/each}
               </div>
