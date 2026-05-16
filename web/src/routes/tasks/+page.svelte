@@ -33,7 +33,7 @@
     type StaleVerdict
   } from '$lib/tasks/aiPrompts';
 
-  type View = 'list' | 'kanban' | 'today' | 'triage' | 'inbox' | 'stale' | 'quickwins' | 'review' | 'eisenhower';
+  type View = 'list' | 'kanban' | 'today' | 'week' | 'triage' | 'inbox' | 'stale' | 'quickwins' | 'review' | 'eisenhower';
   type Group = 'due' | 'priority' | 'note' | 'project' | 'tag' | 'goal' | 'deadline';
   // Explicit sort overrides the per-group "auto" sort (which sorts
   // every bucket by due-then-priority). Set to anything other than
@@ -158,7 +158,7 @@
     if (sp.has('deadline')) deadlineFilter = get('deadline');
     if (sp.has('view')) {
       const v = get('view') as View;
-      if (['list', 'kanban', 'today', 'triage', 'inbox', 'stale', 'quickwins', 'review', 'eisenhower'].includes(v)) view = v;
+      if (['list', 'kanban', 'today', 'week', 'triage', 'inbox', 'stale', 'quickwins', 'review', 'eisenhower'].includes(v)) view = v;
     }
     if (sp.has('group')) {
       const g = get('group') as Group;
@@ -1071,6 +1071,63 @@
     return out;
   });
 
+  // Week-view columns. 7 day columns rolling from today + an
+  // "unscheduled" column on the left for open tasks with no date
+  // signal, and an "overdue" callout pinned to today's column. The
+  // user scans the week, sees their commitments at a glance, and
+  // can click any column header to set the smart filter to that day.
+  type DayColumn = { date: string; label: string; sublabel: string; isToday: boolean; tasks: Task[] };
+  let weekColumns = $derived.by((): { unscheduled: Task[]; overdue: Task[]; days: DayColumn[] } => {
+    const today = todayISO();
+    const todayD = new Date(today + 'T00:00:00');
+    const days: DayColumn[] = [];
+    const byDate = new Map<string, Task[]>();
+    const unscheduled: Task[] = [];
+    const overdue: Task[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(todayD);
+      d.setDate(d.getDate() + i);
+      const iso = fmtDateISO(d);
+      days.push({
+        date: iso,
+        label: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString(undefined, { weekday: 'short' }),
+        sublabel: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        isToday: i === 0,
+        tasks: []
+      });
+      byDate.set(iso, days[i].tasks);
+    }
+    for (const t of filtered) {
+      if (t.done) continue;
+      const due = t.dueDate ?? '';
+      const sched = t.scheduledStart ? t.scheduledStart.slice(0, 10) : '';
+      const anchor = due || sched;
+      if (!anchor) {
+        unscheduled.push(t);
+        continue;
+      }
+      if (anchor < today) {
+        overdue.push(t);
+        continue;
+      }
+      const bucket = byDate.get(anchor);
+      if (bucket) bucket.push(t);
+      // Tasks beyond +6 days fall off the grid; the user can switch
+      // to list view with a future-week filter for those.
+    }
+    // Sort each column by scheduled time (if any), then priority.
+    const cmp = (a: Task, b: Task) => {
+      const at = a.scheduledStart ? a.scheduledStart.slice(11) : '99:99';
+      const bt = b.scheduledStart ? b.scheduledStart.slice(11) : '99:99';
+      if (at !== bt) return at.localeCompare(bt);
+      return (a.priority || 9) - (b.priority || 9);
+    };
+    for (const col of days) col.tasks.sort(cmp);
+    unscheduled.sort((a, b) => (a.priority || 9) - (b.priority || 9));
+    overdue.sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''));
+    return { unscheduled, overdue, days };
+  });
+
   // Smart-filter live counts — how many tasks would each chip show
   // given the OTHER active filters. We don't recompute the full filter
   // chain; we just take the pre-smart `filtered` array (which is the
@@ -1969,6 +2026,11 @@
             onclick={() => (view = 'list')}
           >List</button>
           <button
+            class="px-2 sm:px-3 py-1.5 {view === 'week' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (view = 'week')}
+            title="7-day grid — see what's scheduled or due each day this week"
+          >Week</button>
+          <button
             class="px-2 sm:px-3 py-1.5 {view === 'kanban' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
             onclick={() => (view = 'kanban')}
           >Kanban</button>
@@ -2459,6 +2521,83 @@
             }}
             class="px-3 py-1.5 bg-surface0 border border-surface1 hover:border-primary rounded text-sm text-subtext"
           >Clear filters</button>
+        </div>
+      {:else if view === 'week'}
+        <!-- Week view — 8 columns: Unscheduled + 7 rolling days from
+             today. Overdue tasks bubble up as a striped strip pinned
+             above today's column so the user doesn't have to hunt
+             them across past dates. Each column header is clickable:
+             pressing one drops the user into List view filtered to
+             that day so they can drill in. -->
+        <div class="flex flex-col gap-2">
+          {#if weekColumns.overdue.length > 0}
+            <div class="bg-surface0 border border-error rounded p-2">
+              <div class="flex items-baseline gap-2 mb-1.5">
+                <h3 class="text-xs uppercase tracking-wider text-error font-medium">overdue</h3>
+                <span class="text-[10px] font-mono text-dim">{weekColumns.overdue.length}</span>
+                <button
+                  type="button"
+                  onclick={() => { smartFilter = 'overdue'; view = 'list'; }}
+                  class="ml-auto text-[10px] text-error hover:underline font-mono"
+                >open in list →</button>
+              </div>
+              <div class="space-y-1">
+                {#each weekColumns.overdue.slice(0, 5) as t (t.id)}
+                  <TaskCard task={t} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                {/each}
+                {#if weekColumns.overdue.length > 5}
+                  <p class="text-[11px] text-dim italic px-1">…{weekColumns.overdue.length - 5} more</p>
+                {/if}
+              </div>
+            </div>
+          {/if}
+          <div class="grid grid-cols-[minmax(10rem,1fr)_repeat(7,minmax(0,1fr))] gap-2 min-h-[20rem]">
+            <!-- Unscheduled column — capture surface for tasks with
+                 no date. The "+ add" button at the bottom kicks off a
+                 quick-add that lands without a date so the user can
+                 then drag (or click) it into a day column. -->
+            <div class="bg-surface0 border border-surface1 rounded p-2 flex flex-col min-h-0">
+              <div class="flex items-baseline gap-2 mb-1.5 sticky top-0 bg-surface0 pb-1 border-b border-surface1">
+                <h3 class="text-xs uppercase tracking-wider text-dim font-medium">unscheduled</h3>
+                <span class="text-[10px] font-mono text-dim">{weekColumns.unscheduled.length}</span>
+              </div>
+              <div class="flex-1 overflow-y-auto space-y-1">
+                {#each weekColumns.unscheduled.slice(0, 50) as t (t.id)}
+                  <TaskCard task={t} compact hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                {/each}
+                {#if weekColumns.unscheduled.length > 50}
+                  <p class="text-[11px] text-dim italic px-1">…{weekColumns.unscheduled.length - 50} more</p>
+                {/if}
+                {#if weekColumns.unscheduled.length === 0}
+                  <p class="text-[11px] text-dim italic px-1">nothing untaken — good shape.</p>
+                {/if}
+              </div>
+            </div>
+            <!-- Seven day columns. The today column gets a primary
+                 border so the user's eye lands on it first. -->
+            {#each weekColumns.days as col (col.date)}
+              <div class="bg-surface0 border {col.isToday ? 'border-primary' : 'border-surface1'} rounded p-2 flex flex-col min-h-0">
+                <div class="flex items-baseline gap-1.5 mb-1.5 sticky top-0 bg-surface0 pb-1 border-b border-surface1">
+                  <button
+                    type="button"
+                    onclick={() => { view = 'list'; q = ''; smartFilter = col.isToday ? 'today' : (col.date === weekColumns.days[1]?.date ? 'tomorrow' : ''); }}
+                    class="text-xs uppercase tracking-wider {col.isToday ? 'text-primary' : 'text-text'} font-medium hover:underline"
+                    title="open this day in the list view"
+                  >{col.label}</button>
+                  <span class="text-[10px] text-dim font-mono">{col.sublabel}</span>
+                  <span class="ml-auto text-[10px] font-mono text-dim">{col.tasks.length}</span>
+                </div>
+                <div class="flex-1 overflow-y-auto space-y-1">
+                  {#each col.tasks as t (t.id)}
+                    <TaskCard task={t} compact hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                  {/each}
+                  {#if col.tasks.length === 0}
+                    <p class="text-[11px] text-dim italic px-1">—</p>
+                  {/if}
+                </div>
+              </div>
+            {/each}
+          </div>
         </div>
       {:else if view === 'kanban'}
         <Kanban
