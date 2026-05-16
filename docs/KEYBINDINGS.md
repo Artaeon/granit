@@ -40,11 +40,18 @@ expands `Mod-X` into both, so `Mod-S` saves on every platform.
 | `Mod-K` | Open the command palette (search across notes, tasks, settings) |
 | `Mod-P` | Quick switcher (notes-only fast file open) |
 | `Mod-Shift-P` | Browser print dialog (when a print preview is open it captures `Mod-P` for itself) |
+| `Mod-Shift-O` | Jump back to the last opened note (note tray) |
 | `Esc` | Close the current overlay / drawer |
 
 The command palette and quick switcher live in
 `web/src/lib/components/CommandPalette.svelte`. The palette has two
 modes — full search (Mod-K) and notes-only (Mod-P).
+
+The note tray (slim "last opened note" bar at the bottom of every
+page, and the matching `Mod-Shift-O` shortcut) lives in
+`web/src/lib/components/NoteTray.svelte` with state in
+`web/src/lib/stores/open-note.ts`. Toggle the tray on / off in
+**Settings → General → Note tray**.
 
 ### Web — Notes editor
 

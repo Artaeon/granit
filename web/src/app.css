@@ -164,6 +164,19 @@ input[type='datetime-local'] {
 
 @media (max-width: 767px) {
   .pb-bottomnav { padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px)); }
+  /* Mobile main: stacks tray height on top of bottom-nav reserve so
+     the slim NoteTray (which renders above BottomNav) doesn't clip
+     the bottom row of editable content. --note-tray-h is set on the
+     root element by NoteTray when visible; defaults to 0px. */
+  .main-with-tray {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px) + var(--note-tray-h, 0px));
+  }
+}
+@media (min-width: 768px) {
+  /* Desktop main: only the tray reserve, no bottom-nav. The 28px
+     tray pushes content up just enough that the editor's last line
+     stays readable. */
+  .main-with-tray { padding-bottom: var(--note-tray-h, 0px); }
 }
 
 /* Scrollbars: thin and quiet. */
