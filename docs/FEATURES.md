@@ -227,7 +227,54 @@ tools you use every day. Backed by `.granit/hub.json`.
 | Recently-visited tracking + last-visited tinting | `internal/hub/`, `internal/serveapi/handlers_hub.go` |
 | Browser-bookmark import | `web/src/routes/hub/+page.svelte` |
 | Quick-links dashboard widget (top 5 favorites) | `web/src/lib/dashboard/` |
-| Hub storage | `internal/hub/` |
+| Hub link storage | `internal/hub/hub.go` |
+
+### Hub tools
+
+Second half of the hub — a curated catalogue of setup commands for
+the programs the user runs. Each tool card carries a name, optional
+description, icon, colour, tags, and an ordered list of commands.
+A one-click copy button per command row lands the line in the
+clipboard ready to paste into a terminal.
+
+Storage at `.granit/hub-tools.json`, separate from `hub.json` so a
+corrupted command list can't take down the link launcher and the
+two shapes evolve independently. Atomic writes via `internal/atomicio`.
+
+The shape (Tool / Command) is defined in `internal/hub/tools.go`:
+
+```
+type Tool struct {
+    ID          string
+    Name        string
+    Description string
+    Icon        string
+    Color       string    // tailwind colour name (blue / green / …)
+    Tags        []string
+    Commands    []Command // ordered
+    SortOrder   int       // 1-based; unset (0) sorts last
+    CreatedAt, UpdatedAt string
+}
+type Command struct {
+    Label   string // "install via brew"
+    Command string // "brew install neovim"
+    Notes   string
+}
+```
+
+| Capability | Where |
+| --- | --- |
+| Tools tab on /hub with search + drag-reorder | `web/src/routes/hub/+page.svelte`, `web/src/routes/hub/HubToolsSection.svelte` |
+| Per-command copy-to-clipboard button | `web/src/routes/hub/HubToolsSection.svelte` |
+| Add / edit dialog with inline command rows | `web/src/routes/hub/HubToolsSection.svelte` |
+| CRUD + reorder API | `internal/serveapi/handlers_hub_tools.go` |
+| One-click starter set (git, Node+pnpm, Docker, shell snippets) | `POST /api/v1/hub/tools/seed`, `internal/serveapi/handlers_hub_tools.go` |
+| Tools storage | `internal/hub/tools.go` |
+
+The starter set is opt-in — the user clicks "✨ Starter set" or
+"✨ Load starter set" (empty-state hero) to seed it. Seeding is
+additive + idempotent against duplicates by name, so the button
+is safe to click twice and never overwrites a hand-edited card.
 
 ---
 
