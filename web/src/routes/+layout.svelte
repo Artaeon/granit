@@ -16,9 +16,11 @@
   import QuickCaptureFab from '$lib/components/QuickCaptureFab.svelte';
   import PomodoroPill from '$lib/components/PomodoroPill.svelte';
   import AIOverlay from '$lib/components/AIOverlay.svelte';
+  import NoteTray from '$lib/components/NoteTray.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { findMode, currentModeId } from '$lib/ai/agents';
   import { sidebarPins, togglePin } from '$lib/stores/sidebar-pins';
+  import { lastOpenNote, trayEnabled } from '$lib/stores/open-note';
 
   // Sidebar quick-action chips. Each one opens the AI overlay
   // pre-filled with a prompt and (when send=true) fires it
@@ -382,6 +384,33 @@
   $effect(() => {
     void $page.url.pathname;
     drawerOpen = false;
+  });
+
+  // Mod-Shift-O — jump to whatever the open-note tray remembers.
+  // Mirrors the user's "ein system tray" framing: one keystroke
+  // returns you to the last note from anywhere in the app. The
+  // shortcut intentionally fires even when the user is typing into
+  // an input/textarea, mirroring Mod+J (Ask AI) and Mod+K (palette):
+  // these are global app-shell shortcuts, not text editing ones.
+  // Skips when the tray is disabled (settings opt-out), when there's
+  // nothing remembered, or when the user is already on that note.
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return;
+      if (e.key.toLowerCase() !== 'o') return;
+      if (!$trayEnabled) return;
+      const entry = $lastOpenNote;
+      if (!entry) return;
+      const targetPath = '/notes/' + encodeURIComponent(entry.path);
+      // Already there → suppress (the chip would be hidden anyway).
+      const here = $page.url.pathname;
+      if (here === targetPath) return;
+      e.preventDefault();
+      goto(targetPath);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   });
 
   let activeNav = $derived.by(() => {
@@ -860,8 +889,12 @@
     </Drawer>
   {/if}
 
+  <!-- NoteTray sets --note-tray-h on <html> when visible. The
+       tray-reserve class stacks that var on top of the existing
+       pb-bottomnav (mobile) / pb-0 (desktop) base so the bottom
+       28px of editable content isn't clipped behind the tray. -->
   <main
-    class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col pb-bottomnav md:pb-0"
+    class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col pb-bottomnav md:pb-0 main-with-tray"
     style="padding-right: var(--ai-pinned-w, 0px);"
   >
     <!-- Sabbath ribbon. Visible from every authed page so the state
@@ -941,6 +974,15 @@
        external trigger needed. Auth-gated since pre-login the
        configured-LLM lookup would 401. -->
   <AIOverlay />
+
+  <!-- Persistent "open note" tray. Slim bottom bar (desktop) /
+       chip above the bottom nav (mobile) that surfaces the last
+       opened note + any tray-pinned notes so the user can jump
+       back from anywhere. The component self-gates on its own
+       settings toggle + visibility rules (hidden when on the
+       active note, hidden when nothing stored). Auth-gated since
+       a pre-login user has no vault to remember from. -->
+  <NoteTray />
 {/if}
 <Toaster />
 

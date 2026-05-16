@@ -125,6 +125,25 @@
     window.open(hrefFor(entry), '_blank', 'noopener');
     closeMenu();
   }
+
+  // Expose the tray's reserved height as a CSS custom property on
+  // <html> so the main content's bottom padding can stack it on top
+  // of any other reserves (mobile bottom-nav, iOS safe area). The
+  // `.main-with-tray` rule in app.css consumes this var. Cleared
+  // when the tray hides so the editor reclaims those pixels.
+  // h-7 = 1.75rem (28px) — kept in sync with the class on the tray
+  // root element below.
+  const TRAY_HEIGHT = '1.75rem';
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+    if (visible) {
+      document.documentElement.style.setProperty('--note-tray-h', TRAY_HEIGHT);
+      return () => {
+        document.documentElement.style.removeProperty('--note-tray-h');
+      };
+    }
+    document.documentElement.style.removeProperty('--note-tray-h');
+  });
 </script>
 
 {#snippet chip(entry: OpenNoteEntry, opts: { kind: 'last' | 'pin' })}
