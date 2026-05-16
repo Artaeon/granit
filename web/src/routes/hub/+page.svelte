@@ -625,15 +625,18 @@
 {#if modalOpen}
   <div
     class="fixed inset-0 z-50 flex items-start justify-center pt-12 px-4 bg-black/60"
-    onclick={() => (modalOpen = false)}
+    onclick={(e) => { if (e.target === e.currentTarget) modalOpen = false; }}
     role="presentation"
   >
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={editing ? 'Edit hub item' : 'Add to hub'}
+      class="w-full max-w-md bg-base border border-surface1 rounded-lg shadow-xl max-h-[90dvh] flex flex-col"
+    >
     <form
       onsubmit={(e) => { e.preventDefault(); save(); }}
-      class="w-full max-w-md bg-base border border-surface1 rounded-lg shadow-xl max-h-[90dvh] flex flex-col"
-      onclick={(e) => e.stopPropagation()}
-      role="dialog"
-      aria-label={editing ? 'Edit hub item' : 'Add to hub'}
+      class="flex flex-col min-h-0 flex-1"
     >
       <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">{editing ? 'Edit hub item' : 'Add to hub'}</h2>
@@ -760,6 +763,7 @@
         >{saving ? 'saving…' : editing ? 'Save' : 'Add'}</button>
       </footer>
     </form>
+    </div>
   </div>
 {/if}
 
