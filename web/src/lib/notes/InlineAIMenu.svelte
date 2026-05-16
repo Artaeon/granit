@@ -103,7 +103,11 @@
   // The +backlinks / +7d-jots toggles are additive on top of either.
   type Scope = 'note' | 'section';
   let scope = $state<Scope>('note');
-  let useBacklinks = $state(false);
+  // "Linked notes" toggle includes both backlinks (notes pointing
+  // here) AND outgoing wikilinks (notes this note points to). Each
+  // contributes a ~400-char body snippet so the AI can reason over
+  // actual content, not just titles.
+  let useLinkedNotes = $state(false);
   let useRecentJots = $state(false);
 
   // Detect the current section at the trigger cursor — a contiguous
@@ -150,17 +154,45 @@
   // change while the menu is open.
   const detectedSection = detectSection();
 
+  // Selection-surround — pulls ~600 chars before and ~300 chars after
+  // a selection so the model can rewrite consistently with what's
+  // adjacent. Without this, AI rewrites of a single sentence routinely
+  // drift in tone, terminology, or claim direction from the
+  // surrounding paragraphs. We don't pad symmetrically because
+  // "before" is what the reader has already absorbed by the time they
+  // hit the selection — usually the more relevant direction.
+  const SELECTION_SURROUND_BEFORE = 600;
+  const SELECTION_SURROUND_AFTER = 300;
+  function readSelectionSurround(
+    view: import('@codemirror/view').EditorView,
+    from: number,
+    to: number
+  ): { before: string; after: string } {
+    const doc = view.state.doc;
+    const beforeStart = Math.max(0, from - SELECTION_SURROUND_BEFORE);
+    const afterEnd = Math.min(doc.length, to + SELECTION_SURROUND_AFTER);
+    return {
+      before: doc.sliceString(beforeStart, from).trimStart(),
+      after: doc.sliceString(to, afterEnd).trimEnd()
+    };
+  }
+
   // ── presets ──────────────────────────────────────────────────────
   // The same chip carries its cursor-mode and selection-mode prompts.
   // The list adapts at render time based on hasSelection. Ordered by
   // expected use frequency; the top item is what hitting Enter at an
   // empty prompt does.
+  type PresetCategory = 'writing' | 'research' | 'planning' | 'learning';
   type Preset = {
     id: string;
     label: string;
     /** Hint shown faded next to the label — what kind of action this
      *  is at a glance ("rewrite", "generate", etc.). */
     hint: string;
+    /** Category groups the list by intent — writing, research,
+     *  planning, learning. Headers render between groups so the menu
+     *  reads like a tools palette, not a flat dump. */
+    category: PresetCategory;
     /** Available in cursor mode (no selection)? */
     cursor: boolean;
     /** Available in selection mode? */
@@ -175,11 +207,23 @@
     wholeNote?: boolean;
   };
 
+  const CATEGORY_LABELS: Record<PresetCategory, string> = {
+    writing: 'Writing',
+    research: 'Research',
+    planning: 'Planning',
+    learning: 'Learning'
+  };
+  // Render order for category groups — most-used first so the menu's
+  // top-of-list under the prompt input is always the most common pick.
+  const CATEGORY_ORDER: PresetCategory[] = ['writing', 'planning', 'research', 'learning'];
+
   const PRESETS: Preset[] = [
+    // ── Writing ─────────────────────────────────────────────────
     {
       id: 'continue',
       label: 'Continue writing',
       hint: 'extend at cursor',
+      category: 'writing',
       cursor: true,
       selection: false,
       systemForCursor:
@@ -193,6 +237,7 @@
       id: 'improve',
       label: 'Improve writing',
       hint: 'rewrite clearer + tighter',
+      category: 'writing',
       cursor: true,
       selection: true,
       wholeNote: true,
@@ -208,6 +253,7 @@
       id: 'fix-grammar',
       label: 'Fix grammar & spelling',
       hint: 'proofread only',
+      category: 'writing',
       cursor: true,
       selection: true,
       wholeNote: true,
@@ -223,6 +269,7 @@
       id: 'shorter',
       label: 'Make shorter',
       hint: 'tighten without losing meaning',
+      category: 'writing',
       cursor: true,
       selection: true,
       wholeNote: true,
@@ -237,6 +284,7 @@
       id: 'longer',
       label: 'Make longer',
       hint: 'expand with detail',
+      category: 'writing',
       cursor: true,
       selection: true,
       wholeNote: true,
@@ -249,33 +297,22 @@
         'repetition. Stay in the same voice. Return only the expanded text, no preamble.'
     },
     {
-      id: 'summarize',
-      label: 'Summarize',
-      hint: 'bullet TL;DR',
-      cursor: true,
-      selection: true,
-      wholeNote: true,
-      systemForCursor:
-        'Summarize the following note in 3-5 concise bullet points. Lead each bullet with ' +
-        'the concrete claim. Return ONLY the bullet list, no preamble.',
-      systemForSelection:
-        'Summarize the following in 3 concise bullet points. Return ONLY the bullets, no preamble.'
-    },
-    {
-      id: 'explain',
-      label: 'Explain this',
-      hint: 'unpack for a smart non-expert',
+      id: 'match-tone',
+      label: 'Match the tone of this note',
+      hint: 'rewrite selection in same voice',
+      category: 'writing',
       cursor: false,
       selection: true,
       systemForSelection:
-        'Explain the following clearly. Assume the reader knows the broad surrounding ' +
-        'context but not this specific topic. Return a short markdown explanation: ' +
-        'definition, intuition, one concrete example. No preamble.'
+        'Rewrite the following passage so its voice, register, and rhythm match the ' +
+        'surrounding note (provided to you as system context). Preserve meaning. Return only ' +
+        'the rewritten text, no preamble.'
     },
     {
       id: 'translate-en',
       label: 'Translate → English',
       hint: 'natural English',
+      category: 'writing',
       cursor: false,
       selection: true,
       systemForSelection:
@@ -286,27 +323,50 @@
       id: 'translate-de',
       label: 'Translate → German',
       hint: 'natürliches Deutsch',
+      category: 'writing',
       cursor: false,
       selection: true,
       systemForSelection:
         'Translate the following into clear, natural German. Preserve markdown formatting. ' +
         'Return only the translation, no preamble.'
     },
+
+    // ── Planning ────────────────────────────────────────────────
     {
-      id: 'brainstorm',
-      label: 'Brainstorm ideas',
-      hint: 'generate options at cursor',
+      id: 'extract-tasks',
+      label: 'Extract tasks',
+      hint: 'pull action items out',
+      category: 'planning',
+      cursor: true,
+      selection: true,
+      wholeNote: true,
+      systemForCursor:
+        'Read the note and surface every actionable thing in it — implicit or explicit. ' +
+        'Return ONLY a markdown task list using `- [ ]` checkboxes. One task per line, ' +
+        'each starting with a verb. Skip vague intentions; only items the reader could pick ' +
+        'up and start. No preamble.',
+      systemForSelection:
+        'List every actionable thing in this passage as a markdown `- [ ]` task list. ' +
+        'One task per line, each starting with a verb. No preamble.'
+    },
+    {
+      id: 'next-steps',
+      label: 'Suggest next steps',
+      hint: 'what to do after this note',
+      category: 'planning',
       cursor: true,
       selection: false,
+      wholeNote: true,
       systemForCursor:
-        'Brainstorm 5-7 concrete ideas, angles, or directions relevant to what comes before ' +
-        'the cursor in this note. Format as a markdown bullet list. Be specific, not generic. ' +
-        'Return only the bullets, no preamble.'
+        'Read the note and propose 3-5 concrete next steps for the reader — what to write ' +
+        'next, who to talk to, what to read, what to decide. Be specific to the content. ' +
+        'Return a markdown bullet list, no preamble.'
     },
     {
       id: 'outline',
       label: 'Outline this note',
       hint: 'H2/H3 structure',
+      category: 'planning',
       cursor: true,
       selection: false,
       wholeNote: true,
@@ -316,9 +376,64 @@
         'new ones when there are none. Return only the outline.'
     },
     {
+      id: 'summarize',
+      label: 'Summarize',
+      hint: 'bullet TL;DR',
+      category: 'planning',
+      cursor: true,
+      selection: true,
+      wholeNote: true,
+      systemForCursor:
+        'Summarize the following note in 3-5 concise bullet points. Lead each bullet with ' +
+        'the concrete claim. Return ONLY the bullet list, no preamble.',
+      systemForSelection:
+        'Summarize the following in 3 concise bullet points. Return ONLY the bullets, no preamble.'
+    },
+
+    // ── Research ────────────────────────────────────────────────
+    {
+      id: 'define',
+      label: 'Define',
+      hint: 'short definition + example',
+      category: 'research',
+      cursor: false,
+      selection: true,
+      systemForSelection:
+        'Treat the selection as a term or concept the reader wants defined. Return: ' +
+        '(1) a one-sentence definition in plain language, (2) the etymology or origin if ' +
+        'illuminating, (3) one concrete example. Markdown, no preamble.'
+    },
+    {
+      id: 'steel-man',
+      label: 'Steel-man this',
+      hint: 'strongest version of the argument',
+      category: 'research',
+      cursor: false,
+      selection: true,
+      systemForSelection:
+        'Present the strongest version of the argument in this passage — the form a careful ' +
+        'opponent would have to actually engage with. Preserve the original claim; tighten the ' +
+        'reasoning; supply the best evidence or principle that supports it. Return a short ' +
+        'markdown paragraph, no preamble.'
+    },
+    {
+      id: 'counter-argue',
+      label: 'Counter-argue',
+      hint: 'best objection to this claim',
+      category: 'research',
+      cursor: false,
+      selection: true,
+      systemForSelection:
+        'Treat the selection as a claim. Give the single strongest objection a thoughtful, ' +
+        'charitable critic would raise. Be specific — name the assumption it depends on, the ' +
+        'evidence it ignores, or the alternative explanation it doesn\'t address. Return a ' +
+        'short markdown paragraph, no preamble.'
+    },
+    {
       id: 'questions',
       label: 'Open questions',
       hint: 'what this note doesn\'t answer',
+      category: 'research',
       cursor: true,
       selection: false,
       wholeNote: true,
@@ -331,6 +446,7 @@
       id: 'gaps',
       label: 'Find gaps',
       hint: 'what\'s missing or assumed',
+      category: 'research',
       cursor: true,
       selection: false,
       wholeNote: true,
@@ -338,17 +454,89 @@
         'Read the following note as a critical editor. What is missing, unclear, or assumed ' +
         'without evidence? Return 3-6 specific gaps as a markdown bullet list — each gap ' +
         'names what\'s missing and what would close it. No preamble.'
+    },
+    {
+      id: 'brainstorm',
+      label: 'Brainstorm ideas',
+      hint: 'generate options at cursor',
+      category: 'research',
+      cursor: true,
+      selection: false,
+      systemForCursor:
+        'Brainstorm 5-7 concrete ideas, angles, or directions relevant to what comes before ' +
+        'the cursor in this note. Format as a markdown bullet list. Be specific, not generic. ' +
+        'Return only the bullets, no preamble.'
+    },
+
+    // ── Learning ────────────────────────────────────────────────
+    {
+      id: 'explain',
+      label: 'Explain this',
+      hint: 'unpack for a smart non-expert',
+      category: 'learning',
+      cursor: false,
+      selection: true,
+      systemForSelection:
+        'Explain the following clearly. Assume the reader knows the broad surrounding ' +
+        'context but not this specific topic. Return a short markdown explanation: ' +
+        'definition, intuition, one concrete example. No preamble.'
+    },
+    {
+      id: 'eli5',
+      label: 'Explain like I\'m 5',
+      hint: 'simplest possible analogy',
+      category: 'learning',
+      cursor: false,
+      selection: true,
+      systemForSelection:
+        'Explain the following using language a curious child would follow. Use one concrete ' +
+        'analogy from everyday life — not a list, not a definition dump. Be accurate; ' +
+        'simplify but don\'t lie. Return a single short paragraph, no preamble.'
+    },
+    {
+      id: 'quiz-me',
+      label: 'Quiz me on this note',
+      hint: '5 retrieval-practice questions',
+      category: 'learning',
+      cursor: true,
+      selection: false,
+      wholeNote: true,
+      systemForCursor:
+        'Read the note and write 5 retrieval-practice questions that test understanding of ' +
+        'the core ideas — not trivia. After each question, give the answer on the next line ' +
+        'prefixed with `> `. Markdown, no preamble.'
+    },
+    {
+      id: 'connect',
+      label: 'Connect to my other notes',
+      hint: 'which linked notes relate, how',
+      category: 'learning',
+      cursor: true,
+      selection: false,
+      wholeNote: true,
+      systemForCursor:
+        'Looking at this note AND the linked notes provided as context (if any), name the ' +
+        'specific concepts, claims, or examples that connect them. For each connection: name ' +
+        'the linked note in [[wikilink]] form, then one sentence on what connects. If no ' +
+        'linked notes were provided, say so plainly. Markdown bullet list, no preamble.'
     }
   ];
 
-  // Filter presets by current mode. Selection mode hides cursor-only
-  // chips and vice versa.
+  // Filter presets by current mode + text query. Selection mode
+  // hides cursor-only chips and vice versa. Sort so categories cluster
+  // in CATEGORY_ORDER and the flat list lines up with the grouped
+  // render below.
   let visiblePresets = $derived.by(() => {
     const filtered = PRESETS.filter((p) => (hasSelection ? p.selection : p.cursor));
-    // Apply prompt text as fuzzy filter when the user starts typing.
     const q = promptInput.trim().toLowerCase();
-    if (!q) return filtered;
-    return filtered.filter((p) => p.label.toLowerCase().includes(q) || p.hint.toLowerCase().includes(q));
+    const matched = q
+      ? filtered.filter((p) => p.label.toLowerCase().includes(q) || p.hint.toLowerCase().includes(q))
+      : filtered;
+    // Stable sort by category order; preserve insertion order within
+    // each category.
+    return matched.slice().sort((a, b) =>
+      CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
+    );
   });
 
   // Whenever the visible list changes (mode flip, filter), reset
@@ -359,28 +547,58 @@
   });
 
   // ── context fetch ───────────────────────────────────────────────
-  // Backlinks and recent jots are fetched lazily on submit. Cached
-  // for the menu's lifetime so the user toggling on/off doesn't
-  // re-hit the server.
-  let backlinksCache: string | null = null;
+  // Linked notes (backlinks + outgoing wikilinks) and recent jots are
+  // fetched lazily on submit. Cached for the menu's lifetime so the
+  // user toggling on/off doesn't re-hit the server.
+  let linkedNotesCache: string | null = null;
   let jotsCache: string | null = null;
 
-  async function fetchBacklinks(): Promise<string> {
-    if (backlinksCache !== null) return backlinksCache;
+  // Per-link snippet budget. The handler caps at 400 chars; we re-
+  // truncate here to a tighter ceiling so the total context doesn't
+  // explode on densely-linked notes. The cap is on UTF-16 length, not
+  // tokens — close enough for our scale.
+  const LINKED_NOTE_SNIPPET_MAX = 320;
+  const LINKED_NOTES_CAP = 6; // backlinks + outgoing combined
+
+  async function fetchLinkedNotes(): Promise<string> {
+    if (linkedNotesCache !== null) return linkedNotesCache;
     try {
-      // /links/{path} returns { outgoing: string[], backlinks: {path,title}[] }
-      // — same endpoint BacklinksPanel uses, so we share the cache the
-      // server already produces for that surface.
-      const r = await api.req<{ backlinks: { path: string; title: string }[] }>(
-        `/links/${encodeURI(notePath)}`
-      );
-      const lines = (r.backlinks ?? [])
-        .slice(0, 10)
-        .map((b) => `- [[${b.title}]] (${b.path})`);
-      backlinksCache = lines.length === 0 ? '' : 'Notes that link to this one:\n' + lines.join('\n');
-      return backlinksCache;
+      // bodies=1 gets us snippet fields per link entry so the AI sees
+      // actual content from connected notes, not just titles. Without
+      // bodies the prompt is no better than telling the model "these
+      // titles exist" — useless for cross-note reasoning.
+      const r = await api.req<{
+        outgoing: ({ title: string; path?: string; snippet?: string })[];
+        backlinks: ({ title: string; path?: string; snippet?: string })[];
+      }>(`/links/${encodeURI(notePath)}?bodies=1`);
+
+      // Interleave backlinks first then outgoing — backlinks tend to
+      // carry deliberate connections (the other author chose to link
+      // here), outgoing are this note's own references. Both useful
+      // but backlinks are usually richer signal.
+      const all = [
+        ...(r.backlinks ?? []).map((b) => ({ ...b, direction: '←' as const })),
+        ...(r.outgoing ?? []).map((o) => ({ ...o, direction: '→' as const }))
+      ].slice(0, LINKED_NOTES_CAP);
+
+      if (all.length === 0) {
+        linkedNotesCache = '';
+        return linkedNotesCache;
+      }
+
+      const blocks = all.map((entry) => {
+        const snippet = (entry.snippet ?? '').slice(0, LINKED_NOTE_SNIPPET_MAX).trim();
+        const head = `${entry.direction} [[${entry.title}]]${entry.path ? ' (' + entry.path + ')' : ''}`;
+        return snippet ? `${head}\n${snippet}` : head;
+      });
+
+      linkedNotesCache =
+        'Linked notes in the user\'s vault (← link IN to this note, → linked OUT from this note). ' +
+        'Use these as background only — do not edit them, do not quote them verbatim unless asked.\n\n' +
+        blocks.join('\n\n---\n\n');
+      return linkedNotesCache;
     } catch {
-      backlinksCache = '';
+      linkedNotesCache = '';
       return '';
     }
   }
@@ -416,8 +634,8 @@
           detectedSection.body + '\n```'
       });
     }
-    if (useBacklinks) {
-      const b = await fetchBacklinks();
+    if (useLinkedNotes) {
+      const b = await fetchLinkedNotes();
       if (b) messages.push({ role: 'system', content: b });
     }
     if (useRecentJots) {
@@ -446,9 +664,18 @@
       if (hasSelection && p.systemForSelection) {
         const system = extra ? p.systemForSelection + '\n\nAdditional instruction: ' + extra : p.systemForSelection;
         const messages = await buildContextMessages(system);
+        // Selection-surround: include ~600 chars before and ~300 chars
+        // after the selection as read-only context so the rewrite
+        // stays coherent with what's around it. Without this the AI
+        // routinely produces edits that disagree in tone or terminology
+        // with the surrounding paragraphs.
+        const surround = readSelectionSurround(view, event.selection.from, event.selection.to);
         messages.push({
           role: 'user',
-          content: 'Apply the instruction to this text:\n```\n' + selectionText + '\n```'
+          content:
+            (surround.before ? 'Text BEFORE the selection (do not modify, just be aware):\n```\n' + surround.before + '\n```\n\n' : '') +
+            'Apply the instruction to THIS text:\n```\n' + selectionText + '\n```' +
+            (surround.after ? '\n\nText AFTER the selection (do not modify, just be aware):\n```\n' + surround.after + '\n```' : '')
         });
         consumeTriggerRange(view);
         streamInlineAI(view, {
@@ -512,10 +739,14 @@
           'no preamble, no commentary, no quoted block. Preserve markdown structure unless the ' +
           'instruction explicitly says otherwise.';
         const messages = await buildContextMessages(system);
+        const surround = readSelectionSurround(view, event.selection.from, event.selection.to);
         messages.push({
           role: 'user',
           content:
-            'Instruction: ' + p + '\n\nText:\n```\n' + selectionText + '\n```'
+            'Instruction: ' + p + '\n\n' +
+            (surround.before ? 'Text BEFORE the selection (context only):\n```\n' + surround.before + '\n```\n\n' : '') +
+            'Text to act on:\n```\n' + selectionText + '\n```' +
+            (surround.after ? '\n\nText AFTER the selection (context only):\n```\n' + surround.after + '\n```' : '')
         });
         consumeTriggerRange(view);
         streamInlineAI(view, {
@@ -719,9 +950,17 @@
     </div>
   {/if}
 
-  <!-- Action list -->
-  <ul class="max-h-[18rem] overflow-y-auto py-1" role="listbox">
+  <!-- Action list — grouped by category. The flat index (i) still
+       drives keyboard nav; headers between groups are zero-cost
+       visuals that don't affect highlightedIdx. -->
+  <ul class="max-h-[20rem] overflow-y-auto py-1" role="listbox">
     {#each visiblePresets as p, i (p.id)}
+      {@const showHeader = i === 0 || visiblePresets[i - 1].category !== p.category}
+      {#if showHeader}
+        <li role="presentation" class="px-2 pt-2 pb-0.5 text-[9px] uppercase tracking-[0.18em] text-dim/70 font-mono select-none">
+          {CATEGORY_LABELS[p.category]}
+        </li>
+      {/if}
       <li role="option" aria-selected={i === highlightedIdx}>
         <button
           type="button"
@@ -765,10 +1004,10 @@
     <span class="text-dim opacity-40 mx-0.5">|</span>
     <button
       type="button"
-      onclick={() => (useBacklinks = !useBacklinks)}
-      class="px-1 py-0.5 rounded {useBacklinks ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
-      title="include up to 10 notes that link to this one"
-    >+ backlinks</button>
+      onclick={() => (useLinkedNotes = !useLinkedNotes)}
+      class="px-1 py-0.5 rounded {useLinkedNotes ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
+      title="include short body snippets from up to 6 linked notes (both backlinks and outgoing wikilinks) — the AI then reasons over actual content, not just titles"
+    >+ linked notes</button>
     <button
       type="button"
       onclick={() => (useRecentJots = !useRecentJots)}
