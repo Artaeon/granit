@@ -637,6 +637,25 @@
     {#if busy}<span class="text-[10px] text-dim font-mono">…</span>{/if}
   </div>
 
+  <!-- Recents — top 3 history items as one-click pills so users don't
+       have to hit Up repeatedly to fish out a recent prompt. Hidden
+       once the user starts typing a fresh prompt (the list would
+       drift out from under their fingers and pop in/out as they
+       filter). Click runs the prompt immediately as a custom Ask. -->
+  {#if history.length > 0 && promptInput.length === 0 && !busy}
+    <div class="flex flex-wrap items-center gap-1 px-2 py-1 border-b border-surface1">
+      <span class="text-[10px] text-dim font-mono uppercase tracking-wider">recent:</span>
+      {#each history.slice(0, 3) as h, i (h + ':' + i)}
+        <button
+          type="button"
+          onclick={() => { promptInput = h; runCustomPrompt(); }}
+          class="text-[11px] px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-text max-w-[12rem] truncate"
+          title={h}
+        >{h}</button>
+      {/each}
+    </div>
+  {/if}
+
   <!-- Action list -->
   <ul class="max-h-[18rem] overflow-y-auto py-1" role="listbox">
     {#each visiblePresets as p, i (p.id)}
