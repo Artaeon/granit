@@ -300,56 +300,83 @@
     return `${hh}:${mm}`;
   }
 
-  // ─── AI: theme detection across loaded jots ──────────────────────
-  // Reads the last 20-30 loaded jot bodies and surfaces 3-5 recurring
-  // themes (topics, people, projects, struggles, joys). Each theme
-  // becomes a clickable chip that runs the existing search flow,
-  // turning vague pattern recognition into navigable surfaces.
+  // ─── AI: multi-mode panel ────────────────────────────────────────
+  // One AI panel below the toolbar that switches between three modes
+  // depending on which toolbar button the user clicked. Only one mode
+  // can run at a time — switching dismisses the previous result and
+  // aborts any in-flight stream so we never end up with two writers
+  // racing into the same panel.
+  //
+  //   themes  — surface 3-5 recurring topics/people/projects across
+  //             the loaded jots. Each becomes a clickable search chip.
+  //   ask     — free-form question answered using the loaded jots as
+  //             context. Renders streaming markdown.
+  //   digest  — synthesis of the last 7 days of dailies into a
+  //             structured weekly summary card.
+  type AIMode = 'none' | 'themes' | 'ask' | 'digest';
   type Theme = { label: string; query: string };
+  let aiMode = $state<AIMode>('none');
   let aiBusy = $state(false);
   let aiAbort: AbortController | null = null;
-  let aiThemes = $state<Theme[]>([]);
-  let aiError = $state('');
   let aiRaw = $state('');
+  let aiError = $state('');
 
-  function buildJotsSeed(): string {
-    // Cap at 30 jots × ~1200 chars each. The model needs enough
-    // signal to spot recurrence without blowing the prompt out.
-    const slice = jots.slice(0, 30).map((j) => ({
+  // Themes mode
+  let aiThemes = $state<Theme[]>([]);
+
+  // Ask mode
+  let askQuestion = $state('');
+  let askAnswer = $state('');
+  let askInputEl = $state<HTMLInputElement | undefined>();
+
+  // Digest mode
+  let digestAnswer = $state('');
+
+  function buildJotsSeed(limit = 30): string {
+    // Cap at N jots × ~1200 chars each. The model needs enough signal
+    // to spot recurrence without blowing the prompt out.
+    const slice = jots.slice(0, limit).map((j) => ({
       date: j.date,
       body: (j.body ?? '').slice(0, 1200)
     }));
     return JSON.stringify(slice, null, 2);
   }
 
-  async function detectThemes() {
-    if (aiBusy || jots.length < 5) {
-      if (jots.length < 5) toast.info('Load a few more jots first.');
-      return;
-    }
+  function dismissAI() {
     aiAbort?.abort();
-    aiAbort = new AbortController();
-    aiBusy = true;
+    aiAbort = null;
+    aiBusy = false;
+    aiMode = 'none';
+    aiRaw = '';
     aiError = '';
     aiThemes = [];
-    aiRaw = '';
-    let buf = '';
+    askAnswer = '';
+    askQuestion = '';
+    digestAnswer = '';
+  }
+
+  // ── themes ──────────────────────────────────────────────────────
+  async function detectThemes() {
+    if (jots.length < 5) {
+      toast.info('Load a few more jots first.');
+      return;
+    }
+    dismissAI();
+    aiMode = 'themes';
+    aiAbort = new AbortController();
+    aiBusy = true;
     const seed = buildJotsSeed();
     const system = 'You analyse recent daily-note entries and surface 3-5 recurring themes. A theme is a topic, person, project, struggle, or joy that shows up across multiple entries. Return STRICTLY a JSON array, no fences, no prose: [{"label": "<short title, 1-3 words, lowercase>", "query": "<single-word search term that finds the theme>"}]. Pick search terms that actually appear in the entries (a hashtag, a name, a recurring word) — not synonyms.';
     const user = `Recent jots:\n\`\`\`json\n${seed}\n\`\`\`\n\nGive me 3-5 themes.`;
     try {
-      // rAF throttle — aiRaw is rendered live as a preview.
-      const jotsT = rafThrottle((full) => { aiRaw = full; });
+      const t = rafThrottle((full) => { aiRaw = full; });
       await api.chatStream(
-        [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ],
+        [{ role: 'system', content: system }, { role: 'user', content: user }],
         undefined,
         {
-          onChunk: jotsT.onChunk,
+          onChunk: t.onChunk,
           onDone: () => {
-            jotsT.flush();
+            t.flush();
             let cleaned = aiRaw.trim();
             if (cleaned.startsWith('```')) {
               cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
@@ -358,10 +385,10 @@
               const arr = JSON.parse(cleaned) as Theme[];
               if (Array.isArray(arr)) aiThemes = arr.filter((x) => x.label && x.query);
             } catch {
-              aiError = 'Model didn\'t return parseable JSON.';
+              aiError = "Model didn't return parseable JSON.";
             }
           },
-          onError: (err) => { jotsT.flush(); aiError = err.message; }
+          onError: (err) => { t.flush(); aiError = err.message; }
         },
         aiAbort.signal
       );
@@ -370,16 +397,132 @@
       aiAbort = null;
     }
   }
-  function dismissThemes() {
-    aiAbort?.abort();
-    aiBusy = false;
-    aiThemes = [];
-    aiError = '';
-    aiRaw = '';
-  }
   function applyTheme(t: Theme) {
     searchText = t.query;
     runSearch();
+  }
+
+  // ── ask jots ────────────────────────────────────────────────────
+  function startAsk() {
+    if (jots.length === 0) {
+      toast.info('No jots loaded yet.');
+      return;
+    }
+    dismissAI();
+    aiMode = 'ask';
+    // Focus the input on next tick so the user can type immediately.
+    queueMicrotask(() => askInputEl?.focus());
+  }
+  async function submitAsk() {
+    const q = askQuestion.trim();
+    if (!q || aiBusy) return;
+    aiAbort = new AbortController();
+    aiBusy = true;
+    aiError = '';
+    askAnswer = '';
+    const seed = buildJotsSeed(40);
+    const system =
+      'You answer the user\'s questions about their own journal entries (daily notes). ' +
+      'Be specific — cite dates and quote phrases the user actually wrote when relevant. ' +
+      'If the answer isn\'t supported by the entries, say so honestly. Return markdown ' +
+      'with concise paragraphs and bullet lists where helpful. No preamble.';
+    const user =
+      'Recent journal entries (JSON, newest first):\n```json\n' + seed + '\n```\n\n' +
+      'Question: ' + q;
+    try {
+      const t = rafThrottle((full) => { askAnswer = full; });
+      await api.chatStream(
+        [{ role: 'system', content: system }, { role: 'user', content: user }],
+        undefined,
+        {
+          onChunk: t.onChunk,
+          onDone: () => { t.flush(); },
+          onError: (err) => { t.flush(); aiError = err.message; }
+        },
+        aiAbort.signal
+      );
+    } finally {
+      aiBusy = false;
+      aiAbort = null;
+    }
+  }
+
+  // ── weekly digest ───────────────────────────────────────────────
+  async function buildDigest() {
+    if (jots.length === 0) {
+      toast.info('No jots loaded yet.');
+      return;
+    }
+    dismissAI();
+    aiMode = 'digest';
+    aiAbort = new AbortController();
+    aiBusy = true;
+    // Build a 7-day window from the most recent jot backwards.
+    const cutoff = new Date(today);
+    cutoff.setDate(cutoff.getDate() - 6);
+    const cutoffISO = fmtDateISO(cutoff);
+    const slice = jots
+      .filter((j) => j.date >= cutoffISO)
+      .map((j) => ({ date: j.date, body: (j.body ?? '').slice(0, 2000) }));
+    if (slice.length === 0) {
+      aiError = 'No jots in the last 7 days.';
+      aiBusy = false;
+      return;
+    }
+    const seed = JSON.stringify(slice, null, 2);
+    const system =
+      'You write a weekly digest of the user\'s journal entries. Structure the output as ' +
+      'markdown with these sections:\n\n' +
+      '## Themes\n  3-5 bullets — the topics that recurred across the week.\n' +
+      '## Wins\n  Concrete accomplishments or moments worth keeping. Quote when useful.\n' +
+      '## Struggles\n  Friction, blockers, or unresolved tensions the user wrote about.\n' +
+      '## Open threads\n  Things that started but didn\'t finish — questions, plans, follow-ups.\n' +
+      '## Suggested focus\n  One sentence: what would be most valuable to focus on next week, ' +
+      'based on what the user wrote.\n\n' +
+      'Be specific. Cite dates inline (e.g., "on 2026-05-12") when grounding a claim. ' +
+      'Skip sections that don\'t apply rather than padding them with generic prose.';
+    const user = 'Past 7 days of dailies:\n```json\n' + seed + '\n```';
+    try {
+      const t = rafThrottle((full) => { digestAnswer = full; });
+      await api.chatStream(
+        [{ role: 'system', content: system }, { role: 'user', content: user }],
+        undefined,
+        {
+          onChunk: t.onChunk,
+          onDone: () => { t.flush(); },
+          onError: (err) => { t.flush(); aiError = err.message; }
+        },
+        aiAbort.signal
+      );
+    } finally {
+      aiBusy = false;
+      aiAbort = null;
+    }
+  }
+
+  async function saveDigestAsNote() {
+    if (!digestAnswer.trim()) return;
+    const ds = fmtDateISO(new Date(today));
+    const path = (dailyFolder ? `${dailyFolder}/` : '') + `digest-${ds}.md`;
+    try {
+      await api.putNote(path, {
+        frontmatter: { title: `Weekly digest — ${ds}`, type: 'digest', generatedBy: 'ai' },
+        body: digestAnswer
+      });
+      toast.success('digest saved as note');
+      goto(`/notes/${encodeURIComponent(path)}`);
+    } catch (e) {
+      toast.error('failed to save: ' + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('copied');
+    } catch {
+      toast.error('clipboard blocked');
+    }
   }
 
   // ── jot path / regex ──────────────────────────────────────────────
@@ -865,14 +1008,33 @@
             >×</button>
           {/if}
         </div>
-        {#if jots.length >= 5}
+        <!-- AI button cluster — three buttons in front of "today" so
+             they're at thumb-reach on mobile. Each opens a distinct
+             AI surface that streams into the panel below the toolbar.
+             aiBusy disables all three so the user can't start a
+             second stream while one is in-flight. -->
+        {#if jots.length >= 1}
           <button
             type="button"
             onclick={detectThemes}
             disabled={aiBusy}
-            class="text-[11px] px-1.5 py-0.5 rounded bg-surface1 text-text border border-surface2 hover:bg-surface2 disabled:opacity-50"
-            title="ask AI to find recurring themes in your jots"
-          >{aiBusy ? 'reading…' : 'themes'}</button>
+            class="text-[11px] px-1.5 py-0.5 rounded {aiMode === 'themes' ? 'bg-primary text-on-primary' : 'bg-surface1 text-text hover:bg-surface2'} border border-surface2 disabled:opacity-50"
+            title="surface recurring themes across the loaded jots"
+          >themes</button>
+          <button
+            type="button"
+            onclick={startAsk}
+            disabled={aiBusy}
+            class="text-[11px] px-1.5 py-0.5 rounded {aiMode === 'ask' ? 'bg-primary text-on-primary' : 'bg-surface1 text-text hover:bg-surface2'} border border-surface2 disabled:opacity-50"
+            title="ask a question about your jots"
+          >ask</button>
+          <button
+            type="button"
+            onclick={buildDigest}
+            disabled={aiBusy}
+            class="text-[11px] px-1.5 py-0.5 rounded {aiMode === 'digest' ? 'bg-primary text-on-primary' : 'bg-surface1 text-text hover:bg-surface2'} border border-surface2 disabled:opacity-50"
+            title="weekly digest of the last 7 days"
+          >digest</button>
         {/if}
         <button
           type="button"
@@ -882,31 +1044,81 @@
         >today</button>
       </div>
 
-      {#if aiBusy || aiThemes.length > 0 || aiError}
-        <div class="mt-1.5 p-1.5 bg-surface1 border border-surface2 rounded">
+      <!-- AI panel — adapts to the active aiMode. One source of truth
+           for streamed AI output across the jots page; each mode
+           renders its own body inside the same chrome. -->
+      {#if aiMode !== 'none'}
+        <div class="mt-1.5 p-2 bg-surface1 border border-surface2 rounded">
           <div class="flex items-baseline gap-2 mb-1">
-            <h3 class="text-[10px] uppercase tracking-wider text-text font-medium">recurring themes</h3>
+            <h3 class="text-[10px] uppercase tracking-wider text-text font-medium">
+              {#if aiMode === 'themes'}recurring themes
+              {:else if aiMode === 'ask'}ask jots
+              {:else if aiMode === 'digest'}weekly digest
+              {/if}
+            </h3>
             <span class="flex-1"></span>
             {#if aiBusy}
-              <span class="text-[10px] text-dim italic">analysing…</span>
-            {:else if aiThemes.length > 0}
-              <button onclick={detectThemes} class="text-[10px] text-secondary hover:underline">regenerate</button>
+              <span class="text-[10px] text-dim italic font-mono">streaming…</span>
+              <button
+                type="button"
+                onclick={() => aiAbort?.abort()}
+                class="text-[10px] text-dim hover:text-text font-mono"
+                title="stop the current stream"
+              >stop</button>
+            {:else}
+              {#if aiMode === 'themes' && aiThemes.length > 0}
+                <button onclick={detectThemes} class="text-[10px] text-text hover:underline font-mono">regenerate</button>
+              {:else if aiMode === 'ask' && askAnswer.length > 0}
+                <button onclick={submitAsk} class="text-[10px] text-text hover:underline font-mono">re-ask</button>
+                <button onclick={() => copyToClipboard(askAnswer)} class="text-[10px] text-dim hover:text-text font-mono">copy</button>
+              {:else if aiMode === 'digest' && digestAnswer.length > 0}
+                <button onclick={buildDigest} class="text-[10px] text-text hover:underline font-mono">regenerate</button>
+                <button onclick={() => copyToClipboard(digestAnswer)} class="text-[10px] text-dim hover:text-text font-mono">copy</button>
+                <button onclick={saveDigestAsNote} class="text-[10px] text-text hover:underline font-mono">save as note</button>
+              {/if}
             {/if}
-            <button onclick={dismissThemes} class="text-[10px] text-dim hover:text-text">dismiss</button>
+            <button onclick={dismissAI} class="text-[10px] text-dim hover:text-text font-mono">dismiss</button>
           </div>
+
           {#if aiError}
             <p class="text-[11px] text-error">{aiError}</p>
-          {:else if aiThemes.length > 0}
-            <div class="flex flex-wrap gap-1.5">
-              {#each aiThemes as t (t.label)}
-                <button
-                  type="button"
-                  onclick={() => applyTheme(t)}
-                  class="text-[11px] px-2 py-0.5 rounded-full bg-mantle border border-surface1 hover:border-primary text-text"
-                  title={`search: ${t.query}`}
-                >{t.label}</button>
-              {/each}
-            </div>
+          {/if}
+
+          {#if aiMode === 'themes'}
+            {#if aiThemes.length > 0}
+              <div class="flex flex-wrap gap-1.5">
+                {#each aiThemes as t (t.label)}
+                  <button
+                    type="button"
+                    onclick={() => applyTheme(t)}
+                    class="text-[11px] px-2 py-0.5 rounded-full bg-mantle border border-surface1 hover:border-primary text-text"
+                    title={`search: ${t.query}`}
+                  >{t.label}</button>
+                {/each}
+              </div>
+            {/if}
+          {:else if aiMode === 'ask'}
+            <input
+              bind:this={askInputEl}
+              bind:value={askQuestion}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); submitAsk(); }
+              }}
+              placeholder="e.g. what was I worried about last month?"
+              disabled={aiBusy}
+              class="w-full bg-mantle border border-surface1 rounded px-2 py-1 text-[12px] text-text placeholder-dim focus:outline-none focus:border-primary mb-1.5 disabled:opacity-50"
+            />
+            {#if askAnswer.trim()}
+              <div class="bg-mantle border border-surface1 rounded p-2 max-h-[24rem] overflow-y-auto">
+                <MarkdownRenderer body={askAnswer} onWikilink={handleWikilink} />
+              </div>
+            {/if}
+          {:else if aiMode === 'digest'}
+            {#if digestAnswer.trim()}
+              <div class="bg-mantle border border-surface1 rounded p-2 max-h-[28rem] overflow-y-auto">
+                <MarkdownRenderer body={digestAnswer} onWikilink={handleWikilink} />
+              </div>
+            {/if}
           {/if}
         </div>
       {/if}
