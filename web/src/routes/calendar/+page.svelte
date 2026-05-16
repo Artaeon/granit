@@ -35,7 +35,7 @@
   import { dragStore } from '$lib/calendar/dragStore';
   import { onDestroy } from 'svelte';
 
-  type View = 'day' | 'week' | 'month' | 'year';
+  type View = 'day' | 'week' | 'month' | 'year' | 'agenda';
 
   // Persisted last-used view (per device). On a fresh visit (no
   // saved preference) we default to 'day' on small screens because
@@ -487,17 +487,33 @@
     });
   });
 
+  // Agenda view shows a rolling 30-day flat list anchored at cursor.
+  // Past-dated events stay invisible — the agenda is a "what's next"
+  // surface, not a historical log (the day/week views and tasks
+  // dashboard cover the look-back use case).
+  let agendaEvents = $derived.by(() => {
+    const from = fmtDateISO(cursor);
+    const to = fmtDateISO(addDays(cursor, 30));
+    return events.filter((ev) => {
+      const key = ev.date ?? (ev.start ? ev.start.slice(0, 10) : '');
+      if (!key) return false;
+      return key >= from && key <= to;
+    });
+  });
+
   function prev() {
     if (view === 'day') cursor = addDays(cursor, -1);
     else if (view === 'week') cursor = addDays(cursor, -7);
     else if (view === 'month') cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
     else if (view === 'year') cursor = new Date(cursor.getFullYear() - 1, cursor.getMonth(), 1);
+    else if (view === 'agenda') cursor = addDays(cursor, -7);
   }
   function next() {
     if (view === 'day') cursor = addDays(cursor, 1);
     else if (view === 'week') cursor = addDays(cursor, 7);
     else if (view === 'month') cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
     else if (view === 'year') cursor = new Date(cursor.getFullYear() + 1, cursor.getMonth(), 1);
+    else if (view === 'agenda') cursor = addDays(cursor, 7);
   }
   function gotoToday() { cursor = new Date(); }
 
@@ -527,10 +543,10 @@
       case 'w': view = 'week'; break;
       case 'm': view = 'month'; break;
       case 'y': view = 'year'; break;
-      case 'a': case 'A': agentOpen = true; break; // 'a' opens the agent
-                                                   // (matches other pages
-                                                   // now that the agenda
-                                                   // view is gone).
+      case 'a': view = 'agenda'; break; // 'a' = agenda view (matches
+                                        // Google Calendar). Shift+A
+                                        // opens the calendar agent.
+      case 'A': agentOpen = true; break;
       case '?': showShortcutHelp = !showShortcutHelp; break;
       default: return;
     }
@@ -982,6 +998,7 @@
     }
     if (view === 'month') return cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     if (view === 'year') return String(cursor.getFullYear());
+    if (view === 'agenda') return 'Agenda · next 30 days';
     return '';
   });
 </script>
@@ -1273,6 +1290,11 @@
           class="px-2 sm:px-3 py-1.5 {view === 'year' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'} hidden sm:inline-block"
           onclick={() => (view = 'year')}
         >Year</button>
+        <button
+          class="px-2 sm:px-3 py-1.5 {view === 'agenda' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+          onclick={() => (view = 'agenda')}
+          title="Flat 30-day list (great on mobile)"
+        >Agenda</button>
       </div>
       <button
         onclick={() => (showShortcutHelp = true)}
@@ -1364,9 +1386,13 @@
         <div class="h-full overflow-auto">
           <YearView cursor={cursor} events={events} onClickDay={(d) => { cursor = d; view = 'day'; }} />
         </div>
-      {:else}
+      {:else if view === 'agenda'}
+        <!-- Agenda is the flat 30-day next-up list. Scoped to
+             `agendaEvents` (rolling cursor → +30d) so prev/next
+             walks weeks of agenda content without re-fetching the
+             whole feed. -->
         <div class="overflow-y-auto h-full">
-          <AgendaView events={events} onClickEvent={clickEvent} />
+          <AgendaView events={agendaEvents} onClickEvent={clickEvent} />
         </div>
       {/if}
     </div>
@@ -1396,11 +1422,11 @@
         <dt class="font-mono text-primary">j / n</dt><dd class="text-subtext">next period</dd>
         <dt class="font-mono text-primary">k / p</dt><dd class="text-subtext">previous period</dd>
         <dt class="font-mono text-primary">d</dt><dd class="text-subtext">day view</dd>
-        <dt class="font-mono text-primary">x</dt><dd class="text-subtext">3-day view</dd>
         <dt class="font-mono text-primary">w</dt><dd class="text-subtext">week view</dd>
         <dt class="font-mono text-primary">m</dt><dd class="text-subtext">month view</dd>
         <dt class="font-mono text-primary">y</dt><dd class="text-subtext">year view</dd>
-        <dt class="font-mono text-primary">a</dt><dd class="text-subtext">agenda view</dd>
+        <dt class="font-mono text-primary">a</dt><dd class="text-subtext">agenda view (next 30 days)</dd>
+        <dt class="font-mono text-primary">f</dt><dd class="text-subtext">find time (open free-slot finder)</dd>
         <dt class="font-mono text-primary">Shift+A</dt><dd class="text-subtext">open AI agent (scoped to visible window + project filter)</dd>
         <dt class="font-mono text-primary">?</dt><dd class="text-subtext">toggle this help</dd>
       </dl>
