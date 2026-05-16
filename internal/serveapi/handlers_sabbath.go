@@ -105,6 +105,12 @@ func (s *Server) handleGetSabbathLog(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Normalise to an empty slice so JSON serialises as [] not null —
+	// matches every other list endpoint and lets the client do
+	// entries.filter(...) without a null-guard.
+	if entries == nil {
+		entries = []sabbath.LogEntry{}
+	}
 	// Reverse for most-recent-first.
 	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
 		entries[i], entries[j] = entries[j], entries[i]
