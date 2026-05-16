@@ -1,12 +1,12 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 // Module-under-test imports are deferred to inside each `it` block —
 // the store reads localStorage at module-evaluation time, so a top-
 // level import would memoise the empty initial state and we'd never
 // see the per-test reset reflected in the store's initial value.
-// Re-importing via vi.resetModules() between tests would also work
-// but is heavier; the dynamic-import shape keeps tests fast.
+// vi.resetModules() between tests forces a fresh module evaluation
+// so the persistedWritable initializer re-reads the cleared store.
 
 function clearStorage() {
   const keys: string[] = [];
@@ -17,11 +17,8 @@ function clearStorage() {
   for (const k of keys) localStorage.removeItem(k);
 }
 
-beforeEach(async () => {
+beforeEach(() => {
   clearStorage();
-  // Reset module registry so the persistedWritable initializer
-  // re-reads localStorage on each test.
-  const vi = (await import('vitest')).vi;
   vi.resetModules();
 });
 
@@ -39,7 +36,6 @@ describe('open-note store — lastOpenNote', () => {
     expect(v?.title).toBe('Granit notes');
     expect(typeof v?.openedAt).toBe('string');
     // Reloading the module re-reads localStorage; the entry should survive.
-    const vi = (await import('vitest')).vi;
     vi.resetModules();
     const fresh = await import('./open-note');
     expect(get(fresh.lastOpenNote)?.path).toBe('work/projects/granit.md');
@@ -119,7 +115,6 @@ describe('open-note store — trayEnabled', () => {
     const mod = await import('./open-note');
     mod.trayEnabled.set(false);
     expect(get(mod.trayEnabled)).toBe(false);
-    const vi = (await import('vitest')).vi;
     vi.resetModules();
     const fresh = await import('./open-note');
     expect(get(fresh.trayEnabled)).toBe(false);
