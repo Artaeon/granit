@@ -2269,7 +2269,7 @@
      Keep / Try again / Discard. Keyboard chords (Tab / ⌘R / Esc)
      still work — the bar is the click-discoverable surface for the
      same actions. -->
-<AIActionBar view={editor?.getView?.()} state={aiGhostState} />
+<AIActionBar view={editor?.getView?.()} aiState={aiGhostState} />
 
 <!-- Inline AI menu — Notion-style command palette anchored at the
      cursor. Opens on Cmd-K or when the user types "/ai" at the start

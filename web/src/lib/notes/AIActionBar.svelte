@@ -39,9 +39,9 @@
 
   interface Props {
     view: EditorView | undefined;
-    state: InlineAIState | null;
+    aiState: InlineAIState | null;
   }
-  let { view, state }: Props = $props();
+  let { view, aiState }: Props = $props();
 
   // Position is a $state object that we mutate from an effect. We
   // intentionally don't derive it because the inputs (view + state)
@@ -56,12 +56,12 @@
   // anyway, so we accept the small re-flow cost over the complexity
   // of memoizing.
   $effect(() => {
-    if (!view || !state || !state.active) {
+    if (!view || !aiState || !aiState.active) {
       pos = { left: 0, top: 0, visible: false };
       return;
     }
     const v = view;
-    const s = state;
+    const s = aiState;
     function reposition() {
       // For insert/append: anchor sits at the ghost's start.
       // For replace: replaceTo is the end of the range being replaced.
@@ -127,9 +127,9 @@
 
   function submitFollowUp() {
     const instruction = followUp.trim();
-    if (!instruction || !view || !state || state.streaming) return;
-    const previousOutput = state.text;
-    const baseRequest = state.request;
+    if (!instruction || !view || !aiState || aiState.streaming) return;
+    const previousOutput = aiState.text;
+    const baseRequest = aiState.request;
     if (!baseRequest) return;
     // Reuse the request shape — anchor, kind, [from, to], notePath all
     // stay the same. Only the messages change: we replay the previous
@@ -153,14 +153,14 @@
   }
 </script>
 
-{#if state && state.active && pos.visible}
+{#if aiState && aiState.active && pos.visible}
   <div
     class="fixed z-40 flex items-center gap-1 bg-base border border-surface2 rounded shadow-lg p-1 text-[11px] font-mono"
     style="left: {pos.left}px; top: {pos.top}px;"
     role="toolbar"
     aria-label="AI result actions"
   >
-    {#if state.streaming}
+    {#if aiState.streaming}
       <span class="px-1.5 py-0.5 text-dim">AI writing…</span>
       <button
         type="button"
@@ -168,21 +168,21 @@
         class="px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-text"
         title="abort streaming"
       >Stop</button>
-    {:else if state.error}
+    {:else if aiState.error}
       <!-- Stream failed. We kept the ghost active so the user can
            Retry or Discard without losing the original request. Any
            partial text the model emitted before the error is still
            there (rendered as ghost above), so a Keep would commit
            the partial — useful when long generations rate-limit
            mid-stream. -->
-      <span class="px-1.5 py-0.5 text-error" title={state.error}>error: {state.error.slice(0, 60)}{state.error.length > 60 ? '…' : ''}</span>
+      <span class="px-1.5 py-0.5 text-error" title={aiState.error}>error: {aiState.error.slice(0, 60)}{aiState.error.length > 60 ? '…' : ''}</span>
       <button
         type="button"
         onclick={retry}
         class="px-1.5 py-0.5 rounded bg-primary text-on-primary font-medium hover:opacity-90"
         title="re-run the same request"
       >Retry</button>
-      {#if state.text.length > 0}
+      {#if aiState.text.length > 0}
         <button
           type="button"
           onclick={keep}
