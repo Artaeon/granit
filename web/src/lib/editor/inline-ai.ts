@@ -85,6 +85,11 @@ export interface InlineAIState {
   /** The originating request — preserved so regenerate can re-run the
    *  exact same messages without the host having to remember them. */
   request: InlineAIRequest | null;
+  /** Error message from the last attempt, if any. Set when chatStream
+   *  fires onError; cleared on the next stream start. Hosts surface
+   *  this in the action bar instead of a toast so the user stays in
+   *  the same flow (Try again right there, no context switch). */
+  error: string | null;
 }
 
 const EMPTY: InlineAIState = {
@@ -94,7 +99,8 @@ const EMPTY: InlineAIState = {
   anchor: 0,
   replaceTo: 0,
   text: '',
-  request: null
+  request: null,
+  error: null
 };
 
 const setInlineAI = StateEffect.define<Partial<InlineAIState> & { active?: boolean }>();
@@ -212,7 +218,11 @@ export function streamInlineAI(view: EditorView, req: InlineAIRequest): boolean 
       anchor,
       replaceTo,
       text: '',
-      request: req
+      request: req,
+      // Clear any previous-attempt error — starting a fresh stream is
+      // the user's "okay, let's go" signal that the old failure is
+      // forgiven.
+      error: null
     })
   });
 
@@ -244,7 +254,13 @@ export function streamInlineAI(view: EditorView, req: InlineAIRequest): boolean 
       onError: (err) => {
         t.flush();
         activeAbort = null;
-        view.dispatch({ effects: clearInlineAI.of(null) });
+        // Keep the ghost active so the action bar stays visible with
+        // an inline error and a Try again button. Any partial text
+        // that streamed before the failure is preserved — the user
+        // can Keep the partial, retry, or Discard.
+        view.dispatch({
+          effects: setInlineAI.of({ streaming: false, error: err.message })
+        });
         req.onSettled?.({ ok: false, text: '', error: err.message });
         // eslint-disable-next-line no-console
         console.warn('inline-ai:', err.message);
@@ -334,7 +350,8 @@ export function inlineAIObserver(onChange: (state: InlineAIState | null) => void
           (cur?.streaming ?? false) === (this.last?.streaming ?? false) &&
           (cur?.anchor ?? -1) === (this.last?.anchor ?? -1) &&
           (cur?.replaceTo ?? -1) === (this.last?.replaceTo ?? -1) &&
-          (cur?.text ?? '') === (this.last?.text ?? '')
+          (cur?.text ?? '') === (this.last?.text ?? '') &&
+          (cur?.error ?? null) === (this.last?.error ?? null)
         ) {
           return;
         }

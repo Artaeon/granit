@@ -28,7 +28,6 @@
   import { api, type ChatMessage } from '$lib/api';
   import { streamInlineAI } from '$lib/editor/inline-ai';
   import type { InlineAITriggerEvent } from '$lib/editor/inline-ai-trigger';
-  import { toast } from '$lib/components/toast';
 
   interface Props {
     event: InlineAITriggerEvent;
@@ -381,10 +380,7 @@
           from: event.selection.from,
           to: event.selection.to,
           messages,
-          notePath,
-          onSettled: ({ ok, error }) => {
-            if (!ok && error) toast.error('AI: ' + error);
-          }
+          notePath
         });
       } else if (p.systemForCursor) {
         const system = extra ? p.systemForCursor + '\n\nAdditional instruction: ' + extra : p.systemForCursor;
@@ -416,10 +412,7 @@
           kind: 'insert',
           anchor,
           messages,
-          notePath,
-          onSettled: ({ ok, error }) => {
-            if (!ok && error) toast.error('AI: ' + error);
-          }
+          notePath
         });
       }
     } finally {
@@ -454,10 +447,7 @@
           from: event.selection.from,
           to: event.selection.to,
           messages,
-          notePath,
-          onSettled: ({ ok, error }) => {
-            if (!ok && error) toast.error('AI: ' + error);
-          }
+          notePath
         });
       } else {
         const system =
@@ -480,10 +470,7 @@
           kind: 'insert',
           anchor,
           messages,
-          notePath,
-          onSettled: ({ ok, error }) => {
-            if (!ok && error) toast.error('AI: ' + error);
-          }
+          notePath
         });
       }
     } finally {
