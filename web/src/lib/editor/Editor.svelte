@@ -17,7 +17,6 @@
   import { imagePasteAndDrop } from './image-upload';
   import { autolinkComplete } from './autolink';
   import { extractToNoteKeymap, type ExtractRequest } from './extract-note';
-  import { askAIKeymap, type AskAIRequest } from './ask-ai';
   import { checkboxShortcuts } from './checkbox-shortcuts';
   import { headingShortcuts } from './heading-shortcuts';
   import { inlineAIExtension } from './inline-ai';
@@ -27,7 +26,6 @@
     onSave,
     onNavigate,
     onExtract,
-    onAskAI,
     onCursor,
     onScroll,
     extraExtensions,
@@ -43,14 +41,6 @@
      * req.cancel() on dismiss. Implementation in $lib/editor/extract-note.
      */
     onExtract?: (req: ExtractRequest) => void;
-    /**
-     * Mod-Shift-A handler. Fires only when the editor has a non-empty
-     * selection. The host page shows the Ask-AI dialog, calls
-     * /api/v1/chat with the selection, and on accept invokes one of
-     * req.replace / req.insertAfter to splice the AI response into
-     * the document. Implementation in $lib/editor/ask-ai.
-     */
-    onAskAI?: (req: AskAIRequest) => void;
     /**
      * Cursor position callback — fires on every selection change with
      * the 1-indexed line number, 1-indexed column, and the selected
@@ -137,11 +127,6 @@
         // selections fall through so the user can re-bind the chord
         // for something else later if needed.
         extractToNoteKeymap((req) => onExtract?.(req)),
-        // Ask-AI (Mod-Shift-A). Same shape as extract: selection
-        // required, hands the request up to the host so the modal
-        // UX + /chat call live in the page (where the toast +
-        // settings nav live too).
-        askAIKeymap((req) => onAskAI?.(req)),
         // Inline AI — single extension that backs every AI action
         // (Continue, Improve, Fix grammar, Summarize, Translate, etc.).
         // Streams ghost text at the cursor or alongside a selection

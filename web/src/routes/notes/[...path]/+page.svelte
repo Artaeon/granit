@@ -29,25 +29,16 @@
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import type { ExtractRequest } from '$lib/editor/extract-note';
-  import AskAIDialog from '$lib/notes/AskAIDialog.svelte';
-  import type { AskAIRequest } from '$lib/editor/ask-ai';
   import PrintPreview from '$lib/notes/PrintPreview.svelte';
   import HistoryPanel from '$lib/notes/HistoryPanel.svelte';
   import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
   import SelectionToolbar from '$lib/editor/SelectionToolbar.svelte';
   import LinkSuggestPanel from '$lib/notes/LinkSuggestPanel.svelte';
-  import EditorAIMenu from '$lib/notes/EditorAIMenu.svelte';
-  import EditorAIBar from '$lib/notes/EditorAIBar.svelte';
-  import {
-    selectionStateExtension,
-    type SelectionState
-  } from '$lib/notes/selectionState';
   import InlineAIMenu from '$lib/notes/InlineAIMenu.svelte';
   import {
     inlineAITriggerExtension,
     type InlineAITriggerEvent
   } from '$lib/editor/inline-ai-trigger';
-  import { EditorSelection } from '@codemirror/state';
   import type { EditorView } from '@codemirror/view';
   import ResearchPanel from '$lib/notes/ResearchPanel.svelte';
   import ReferenceNotePanel from '$lib/notes/ReferenceNotePanel.svelte';
@@ -56,7 +47,6 @@
   import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
   import NotePresentation from '$lib/notes/NotePresentation.svelte';
-  import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
   import { recordOpenNote, updateOpenNoteScroll } from '$lib/stores/open-note';
 
@@ -791,7 +781,6 @@
   // gated on the API call SUCCEEDING — if create fails, the source
   // note isn't mutated and the user can retry without dead links.
   let extractRequest = $state<ExtractRequest | null>(null);
-  let askAIRequest = $state<AskAIRequest | null>(null);
   // True while api.generateChapter is in flight. Used by the wikilink
   // → AI-chapter flow to gate against re-entry (double-clicks /
   // different wikilink clicks during the 30+ second LLM round-trip).
@@ -904,131 +893,17 @@
     };
   });
 
-  function handleAskAI(req: AskAIRequest) {
-    askAIRequest = req;
-  }
-  function dismissAskAI() {
-    askAIRequest?.cancel();
-    askAIRequest = null;
-  }
-
-  // Whole-note AI action: opens the AskAIDialog with the entire body
-  // pre-filled as the selection, so the user gets summary / extract-
-  // tasks / suggest-tags / outline / etc. against the whole note
-  // without having to select-all first. The replace/insertAfter
-  // callbacks splice into the document at the start (replace = whole
-  // body) or after the end (insertAfter = append). The user picks
-  // the apply mode in the dialog — unless the bar passed a preset,
-  // in which case the dialog auto-fires that instruction.
-  function askAIWholeNote(preset?: string) {
-    askAIRequest = {
-      text: body,
-      replace: (replacement: string) => { body = replacement; dirty = true; },
-      insertAfter: (addition: string) => {
-        body = body.replace(/\n*$/, '') + '\n\n' + addition + '\n';
-        dirty = true;
-      },
-      cancel: () => {},
-      presetInstruction: preset
-    };
-  }
-
-  // ── Selection-aware AI bar ──────────────────────────────────────
-  // Bar sits between the header and the editor body. It mirrors the
-  // CodeMirror selection via the selectionStateExtension ViewPlugin
-  // — every selection / doc change fires the callback below with the
-  // updated from/to/text snapshot. The bar then re-renders to switch
-  // between "no selection" verbs (whole-note) and "has selection"
-  // verbs (range-scoped).
-  let aiBarSelection = $state<SelectionState>({ from: 0, to: 0, text: '' });
-
-  // ── Editor header height tracking ──────────────────────────────
-  // The note header is `position: sticky; top: 0`. The EditorAIBar
-  // is `position: sticky; top: var(--editor-header-height)`. Without
-  // the variable they'd anchor at the same top and stack on top of
-  // each other when the pane scrolls. The header height differs by
-  // breakpoint (desktop ~40px, mobile bumps tap targets to 40px+
-  // per WCAG, narrow viewports may wrap chips). A ResizeObserver on
-  // the actual element handles every case without hardcoding — it
-  // fires whenever the header's rendered box changes (orientation
-  // flip, font scale, breakpoint cross, daily-label toggle, etc.).
-  let editorPaneEl = $state<HTMLDivElement | null>(null);
-  let editorHeaderEl = $state<HTMLElement | null>(null);
-  $effect(() => {
-    const pane = editorPaneEl;
-    const header = editorHeaderEl;
-    if (!pane || !header || typeof ResizeObserver === 'undefined') return;
-    const apply = () => {
-      // offsetHeight rather than getBoundingClientRect so we get an
-      // integer pixel count that lines up with the header's painted
-      // bottom edge; sub-pixel fractions would leave a 0.5px gap or
-      // overlap depending on browser rounding.
-      const h = header.offsetHeight;
-      pane.style.setProperty('--editor-header-height', `${h}px`);
-    };
-    apply();
-    const ro = new ResizeObserver(apply);
-    ro.observe(header);
-    return () => ro.disconnect();
-  });
-  // Stable reference — Editor.svelte reads extraExtensions ONCE at
-  // setupView time, so the array must not be re-created on every
-  // render or the change would be ignored anyway. The callback
-  // closes over the `aiBarSelection` setter via Svelte's reactive
-  // box, so even though the closure is created once, every selection
-  // change reaches the rune.
-  //
-  // The inline-AI trigger extension is included alongside the
-  // selection-state plugin so Cmd-K and "/ai" route into the new
-  // InlineAIMenu rendered at the page level. The trigger callback
-  // writes to aiTriggerEvent, which Svelte reactively renders into
-  // the floating menu component near the bottom of the template.
-  const aiBarSelectionExtensions = [
-    selectionStateExtension((s) => {
-      aiBarSelection = s;
-    }),
+  // ── Editor extra extensions ─────────────────────────────────────
+  // Editor.svelte reads extraExtensions ONCE at setupView time, so
+  // this array must not be re-created on every render. The trigger
+  // callback writes to aiTriggerEvent (declared above), which Svelte
+  // renders into the floating <InlineAIMenu> near the bottom of the
+  // template.
+  const editorAIExtensions = [
     inlineAITriggerExtension((e) => {
       aiTriggerEvent = e;
     })
   ];
-
-  // Bar's "Ask AI about a range" entry point. Mirrors the apply
-  // shape of ask-ai's fireForRange so the dialog's Replace / Insert
-  // below buttons splice into the original range (not wherever the
-  // cursor wandered while the user read the response). When a
-  // presetInstruction is supplied, the dialog opens already running
-  // that prompt — the bar is "one-click action", the dialog is
-  // "see what came back + decide what to do".
-  function askAIRange(from: number, to: number, preset?: string) {
-    const view = editor?.getView?.();
-    if (!view) return;
-    const text = view.state.sliceDoc(from, to);
-    if (!text) return;
-    askAIRequest = {
-      text,
-      replace: (replacement: string) => {
-        view.dispatch({
-          changes: { from, to, insert: replacement },
-          selection: EditorSelection.cursor(from + replacement.length)
-        });
-        view.focus();
-      },
-      insertAfter: (addition: string) => {
-        const line = view.state.doc.lineAt(to);
-        const atLineEnd = to === line.to;
-        const insert = '\n\n' + addition + (atLineEnd ? '' : '\n');
-        view.dispatch({
-          changes: { from: to, to: to, insert },
-          selection: EditorSelection.cursor(to + insert.length)
-        });
-        view.focus();
-      },
-      cancel: () => {
-        view.focus();
-      },
-      presetInstruction: preset
-    };
-  }
 
   // Global "?" handler — opens the shortcuts cheat sheet from
   // anywhere on the note view, but ONLY when the user isn't typing
@@ -1505,31 +1380,6 @@
     toast.success('link inserted');
   }
 
-  // ── AI menu hooks ──────────────────────────────────────────────
-  // The menu surfaces all AI actions under one ✨ button. Wholesale
-  // body / title / cursor mutations route through these so the
-  // editor's normal dirty-tracking + draft-write flow picks them up.
-  async function aiMenuSetTitle(title: string) {
-    if (!note) return;
-    const fm = { ...(note.frontmatter ?? {}) } as Record<string, unknown>;
-    fm.title = title;
-    await saveFrontmatter(fm);
-  }
-  function aiMenuInsertAtTop(text: string) {
-    if (editor?.insertAtCursor) {
-      // We want the text at the start of the body, NOT at cursor —
-      // simplest path is to splice into `body` directly. The editor's
-      // bind:value picks it up + the doc-replace path in Editor.svelte
-      // preserves selection / scroll near the cursor.
-    }
-    body = text + body;
-    dirty = true;
-  }
-  function aiMenuReplaceBody(next: string) {
-    body = next;
-    dirty = true;
-  }
-
   // ----- Daily-note navigation -----
   // A note is "daily" when its basename is YYYY-MM-DD.md OR its frontmatter
   // has type=daily. When daily, expose prev/next-day jumps in the header.
@@ -1764,7 +1614,7 @@
   {/if}
 
   <!-- Center: editor -->
-  <div class="flex-1 flex flex-col min-w-0" bind:this={editorPaneEl}>
+  <div class="flex-1 flex flex-col min-w-0">
     {#if error && !note}
       <!-- Stuck-on-error escape header. When the load failed and we
            have no note to render, the normal header below is hidden
@@ -1801,7 +1651,7 @@
       <div class="px-4 py-2 text-sm text-error border-b border-error bg-surface0 flex-shrink-0">{error}</div>
     {/if}
     {#if note}
-      <header bind:this={editorHeaderEl} class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle sticky top-0 z-20">
+      <header class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle sticky top-0 z-20">
         <!-- Hidden on mobile: the layout's top-bar already shows a back
              arrow to /notes for any subpath, so a second one here pushes
              the view-mode toggle (and save button) off the right edge on
@@ -1999,23 +1849,17 @@
             <path d="M21 21l-4.5-4.5" stroke-linecap="round"/>
           </svg>
         </button>
-        <!-- AI menu. Replaces the single ✨ whole-note button with a
-             discoverable dropdown of every AI action: chord-driven
-             ones (continue, section, selection) plus three new
-             whole-note actions (suggest title, pin TL;DR, tighten).
-             Single source of truth for AI affordance discovery in
-             the editor. -->
+        <!-- AI affordance: open the new InlineAIMenu at the editor's
+             cursor. Cmd-K from inside the editor does the same thing
+             with a keystroke; this button is for click-first users
+             and as a discoverable entry point in the toolbar. -->
         {#if note}
-          <EditorAIMenu
-            notePath={note.path}
-            body={body}
-            onAskWholeNote={askAIWholeNote}
-            onChord={(chord) => editor?.dispatchChord(chord)}
-            onOpenOverlay={openAIOverlay}
-            onSetTitle={aiMenuSetTitle}
-            onInsertAtTop={aiMenuInsertAtTop}
-            onReplaceBody={aiMenuReplaceBody}
-          />
+          <button
+            type="button"
+            onclick={() => editor?.dispatchChord('Mod-k')}
+            title="AI — Cmd-K or type /ai in the editor"
+            class="w-9 h-9 flex items-center justify-center text-subtext hover:text-text hover:bg-surface0 rounded flex-shrink-0 text-[10px] font-mono uppercase tracking-wider"
+          >AI</button>
         {/if}
         <!-- Mobile overflow trigger — collapses the secondary buttons
              (find, print, slideshow, audio, reading, focus, help)
@@ -2213,39 +2057,12 @@
           aria-hidden="true"
         ></div>
       {/if}
-      <!-- Selection-aware AI bar. Sits BELOW the polished header (we
-           don't touch that markup) and ABOVE the editor body. Reads
-           selection state through the selectionStateExtension wired
-           into the Editor's extraExtensions, and re-renders whenever
-           the user expands or shrinks the selection. Also visible
-           in preview mode — selection-aware verbs degrade to the
-           whole-note set (Extract tasks, Summarise, Suggest tags,
-           etc.) so a read-only reader still has the AI menu. Reuses
-           the host's askAIWholeNote / askAIRange / chord dispatchers,
-           so every action stays on the audit-gated chatStream path. -->
-      {#if note}
-        {@const previewMode = viewMode === 'preview'}
-        <EditorAIBar
-          selection={previewMode ? { from: 0, to: 0, text: '' } : aiBarSelection}
-          onAskWholeNote={askAIWholeNote}
-          onAskRange={askAIRange}
-          onChord={(chord) => {
-            if (previewMode) {
-              // No live editor in preview — flip to edit mode first
-              // so the chord (e.g. continue-writing) has a cursor to
-              // anchor against. The chord dispatch is deferred to
-              // next tick so the editor has mounted by then.
-              viewMode = 'edit';
-              queueMicrotask(() => editor?.dispatchChord(chord));
-              return;
-            }
-            editor?.dispatchChord(chord);
-          }}
-        />
-      {/if}
+      <!-- EditorAIBar removed — the inline AI menu (Cmd-K / "/ai") is
+           the only AI entry point now. See $lib/notes/InlineAIMenu.svelte
+           and its trigger registration in editorAIExtensions above. -->
       <div class="flex-1 min-h-0 p-2 sm:p-3">
         {#if viewMode === 'edit'}
-          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={aiBarSelectionExtensions} />
+          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
         {:else if viewMode === 'preview'}
           <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4" bind:this={previewContainer}>
             <div class="max-w-3xl mx-auto">
@@ -2271,7 +2088,7 @@
         {:else}
           <!-- split (desktop only) -->
           <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onAskAI={handleAskAI} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={aiBarSelectionExtensions} />
+            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
             <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block" bind:this={previewContainer}>
               {#if dayActivitySegments && dailyDate}
                 <MarkdownRenderer body={dayActivitySegments.before} onWikilink={navigateWikilink} />
@@ -2432,16 +2249,6 @@
 <SelectionToolbar
   container={editorDOM}
   onCommand={(chord) => editor?.dispatchChord(chord)}
-/>
-
-<!-- Ask-AI dialog — fired by Mod-Shift-A or the toolbar's ✨ button.
-     The selection is sent to /api/v1/chat with optional preset or
-     custom instruction; the response opens with Copy / Replace /
-     Insert below action buttons. -->
-<AskAIDialog
-  request={askAIRequest}
-  sourcePath={note?.path ?? ''}
-  onDismiss={dismissAskAI}
 />
 
 <!-- Inline AI menu — Notion-style command palette anchored at the
