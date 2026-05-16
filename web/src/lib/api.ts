@@ -2696,7 +2696,9 @@ export type DashboardWidgetType =
   | 'weekly-review-nudge'
   | 'ai-usage'
   | 'today-stream'
-  | 'recent-annotations';
+  | 'recent-annotations'
+  | 'sabbath'
+  | 'roots';
 
 export interface DashboardWidget {
   id: string;

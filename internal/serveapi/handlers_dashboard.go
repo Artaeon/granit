@@ -94,6 +94,13 @@ var widgetTypeToModuleID = map[string]string{
 	"today-focus":     "morning",
 	"ventures":        "ventures",
 	"prayer":          "prayer",
+	// Roots is a registered module (Spiritual category); gate the
+	// widget so it hides when the user disables roots in settings.
+	// Sabbath is intentionally NOT in this map — it's not a
+	// toggleable module, just an always-available feature like
+	// greeting/now/quick-capture, so the widget should stay visible
+	// regardless of any registry state.
+	"roots":           "roots",
 }
 
 func (s *Server) handleGetDashboard(w http.ResponseWriter, r *http.Request) {

@@ -122,7 +122,16 @@ export const widgetRegistry: WidgetMeta[] = [
   // home page so re-reads don't have to start by opening the
   // source note. Sister to recent-notes ("what did I edit") with
   // a different question ("what did I think about").
-  { type: 'recent-annotations', label: 'Recent margin notes', description: 'Latest annotations across your vault — the marginalia layer at a glance', span: 1, load: lazy(() => import('./widgets/RecentAnnotationsWidget.svelte')) }
+  { type: 'recent-annotations', label: 'Recent margin notes', description: 'Latest annotations across your vault — the marginalia layer at a glance', span: 1, load: lazy(() => import('./widgets/RecentAnnotationsWidget.svelte')) },
+  // Sabbath — three-state tile from the synced sabbath schedule.
+  // Active: remaining time. Scheduled: countdown to the next start.
+  // Off: quiet "set up" link. Reads from the sabbath store; no
+  // additional endpoint fetch on dashboard load.
+  { type: 'sabbath', label: 'Sabbath', description: 'Countdown to the next sabbath, or remaining time when active', span: 1, load: lazy(() => import('./widgets/SabbathWidget.svelte')) },
+  // Roots — four-domain snapshot mirroring the /roots dashboard
+  // at glanceable density. Spirit (Bible streak), Mind (books
+  // reading), Body (top habit streak), Vocation (top open goal).
+  { type: 'roots', label: 'Roots snapshot', description: 'One line per life domain — Spirit, Mind, Body, Vocation', span: 1, load: lazy(() => import('./widgets/RootsWidget.svelte')) }
 ];
 
 export function widgetMeta(type: string): WidgetMeta | undefined {
