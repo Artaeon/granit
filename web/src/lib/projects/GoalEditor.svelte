@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { ProjectGoal, ProjectMilestone } from '$lib/api';
 
+  import { focusOnMount } from '$lib/util/focusOnMount';
+
   let {
     goals,
     onChange
@@ -167,7 +169,7 @@
                 bind:value={newMilestoneText}
                 onkeydown={(e) => { if (e.key === 'Enter') addMilestone(gi); else if (e.key === 'Escape') { newMilestoneFor = null; newMilestoneText = ''; } }}
                 onblur={() => { if (!newMilestoneText.trim()) { newMilestoneFor = null; } else addMilestone(gi); }}
-                autofocus
+                use:focusOnMount
                 placeholder="new milestone…"
                 class="flex-1 bg-mantle border border-primary rounded text-xs text-text px-1.5 py-0.5 outline-none"
               />

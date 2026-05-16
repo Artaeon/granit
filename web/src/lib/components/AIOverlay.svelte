@@ -66,6 +66,7 @@
   import SlashCommandPicker from '$lib/components/SlashCommandPicker.svelte';
   import MentionPicker, { type MentionRef } from '$lib/components/MentionPicker.svelte';
   import ChatHistoryRail from '$lib/components/ChatHistoryRail.svelte';
+  import { focusOnMount } from '$lib/util/focusOnMount';
 
   // AIOverlay — global AI panel. Slides in from the right on
   // desktop, becomes a bottom sheet on mobile. Triggered with
@@ -2656,7 +2657,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                           submitEditUser();
                         }
                       }}
-                      autofocus
+                      use:focusOnMount
                     ></textarea>
                     <div class="mt-1.5 flex items-center gap-2 text-[11px]">
                       <button

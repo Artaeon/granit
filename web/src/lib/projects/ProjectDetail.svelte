@@ -9,6 +9,7 @@
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { rafThrottle } from '$lib/util/streamThrottle';
+  import { focusOnMount } from '$lib/util/focusOnMount';
 
   let { project, onClose, onUpdated, onDeleted, onOpenDashboard }: {
     project: Project;
@@ -615,7 +616,7 @@
         bind:value={nameBuf}
         onblur={commitName}
         onkeydown={(e) => { if (e.key === 'Enter') commitName(); else if (e.key === 'Escape') editingName = false; }}
-        autofocus
+        use:focusOnMount
         class="text-base sm:text-lg font-semibold flex-1 px-1 -mx-1 bg-surface0 border border-primary rounded text-text outline-none"
       />
     {:else}
@@ -962,7 +963,7 @@
             bind:value={descBuf}
             onblur={commitDescription}
             onkeydown={(e) => { if (e.key === 'Escape') editingDescription = false; }}
-            autofocus
+            use:focusOnMount
             rows="3"
             class="w-full px-3 py-2 bg-surface0 border border-primary rounded text-sm text-text outline-none"
           ></textarea>
@@ -989,7 +990,7 @@
             bind:value={nextActionBuf}
             onblur={commitNextAction}
             onkeydown={(e) => { if (e.key === 'Enter') commitNextAction(); else if (e.key === 'Escape') editingNextAction = false; }}
-            autofocus
+            use:focusOnMount
             class="w-full px-3 py-2 bg-surface0 border border-primary rounded text-sm text-text outline-none"
           />
         {:else}

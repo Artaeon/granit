@@ -3,6 +3,7 @@
   import { api, type HubTool, type HubCommand } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
+  import { focusOnMount } from '$lib/util/focusOnMount';
 
   // HubToolsSection renders the second half of the Hub: a curated
   // setup-command catalogue. Each tool card carries an ordered list
@@ -433,7 +434,7 @@
               id="tool-name"
               bind:value={fName}
               required
-              autofocus
+              use:focusOnMount
               placeholder="e.g. neovim"
               class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
             />

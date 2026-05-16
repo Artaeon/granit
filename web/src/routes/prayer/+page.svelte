@@ -8,6 +8,7 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import { page } from '$app/stores';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import { focusOnMount } from '$lib/util/focusOnMount';
 
   // /prayer is the dedicated prayer surface, separate from the
   // /scripture#intentions tab. The product story: scripture-driven
@@ -385,7 +386,7 @@
         <textarea
           bind:value={nText}
           required
-          autofocus
+          use:focusOnMount
           rows="2"
           placeholder="What are you bringing before God?"
           class="w-full px-3 py-2 bg-mantle border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"

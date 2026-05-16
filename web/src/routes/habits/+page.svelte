@@ -8,6 +8,7 @@
   import Heatmap from '$lib/components/Heatmap.svelte';
   import { habitTargets, setHabitTarget } from '$lib/habits/targets';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
+  import { focusOnMount } from '$lib/util/focusOnMount';
 
   // /habits — three view modes for the same data:
   //   • Today: large quick-tick cards, the morning/evening rhythm view
@@ -432,7 +433,7 @@
         <input
           bind:value={addName}
           required
-          autofocus
+          use:focusOnMount
           placeholder="habit name (e.g. morning movement, no doomscrolling)…"
           class="flex-1 min-w-[12rem] px-3 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
         />
@@ -591,7 +592,7 @@
                 >
                   <input
                     bind:value={renameDraft}
-                    autofocus
+                    use:focusOnMount
                     class="flex-1 px-2 py-1 bg-base border border-surface2 rounded text-text text-sm"
                     placeholder="new name"
                   />
@@ -748,7 +749,7 @@
                   >
                     <input
                       bind:value={renameDraft}
-                      autofocus
+                      use:focusOnMount
                       class="flex-1 px-2 py-1 bg-base border border-surface2 rounded text-text text-sm"
                       placeholder="new name"
                     />

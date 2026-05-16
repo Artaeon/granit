@@ -75,7 +75,7 @@
   // income. Rendered on the subscriptions tab.
   let auditText = $state('');
   let auditBusy = $state(false);
-  let auditError = '';
+  let auditError = $state('');
   let auditAbort: AbortController | null = null;
 
   async function runSnapshot() {

@@ -6,6 +6,7 @@
   import Drawer from '$lib/components/Drawer.svelte';
   import { inlineMd } from '$lib/util/inlineMd';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
+  import { focusOnMount } from '$lib/util/focusOnMount';
 
   // Detail-and-edit drawer for a single goal. Mirrors ProjectDetail's
   // approach: every field commits via PATCH on blur / explicit toggle so
@@ -546,7 +547,7 @@
             bind:value={titleBuf}
             onblur={commitTitle}
             onkeydown={(e) => { if (e.key === 'Enter') commitTitle(); else if (e.key === 'Escape') editingTitle = false; }}
-            autofocus
+            use:focusOnMount
             class="text-base font-semibold flex-1 px-1 -mx-1 bg-surface0 border border-primary rounded text-text outline-none"
           />
         {:else}
@@ -698,7 +699,7 @@
               bind:value={descBuf}
               onblur={commitDesc}
               onkeydown={(e) => { if (e.key === 'Escape') editingDesc = false; }}
-              autofocus
+              use:focusOnMount
               rows="3"
               class="w-full px-3 py-2 bg-surface0 border border-primary rounded text-sm text-text outline-none"
             ></textarea>
@@ -993,7 +994,7 @@
               bind:value={notesBuf}
               onblur={commitNotes}
               onkeydown={(e) => { if (e.key === 'Escape') editingNotes = false; }}
-              autofocus
+              use:focusOnMount
               rows="4"
               class="w-full px-3 py-2 bg-surface0 border border-primary rounded text-sm text-text outline-none"
             ></textarea>

@@ -24,6 +24,7 @@
   import { saveProposals, loadProposals } from '$lib/util/proposalCache';
   import { extractJsonBlock } from '$lib/util/jsonExtract';
   import {
+  import { focusOnMount } from '$lib/util/focusOnMount';
     buildPlanDayPrompt,
     buildStaleVerdictPrompt,
     roundUpTo15Min,
@@ -3213,7 +3214,7 @@
                     }}
                     onblur={() => { if (!groupAddText.trim() && !groupAddBusy) cancelGroupAdd(); }}
                     placeholder="new task in {g.label}…"
-                    autofocus
+                    use:focusOnMount
                     disabled={groupAddBusy}
                     class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1 text-sm text-text placeholder-dim focus:outline-none focus:border-primary disabled:opacity-50"
                   />

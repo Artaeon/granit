@@ -7,6 +7,7 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import HubImportDialog from '$lib/notes/HubImportDialog.svelte';
   import HubToolsSection from './HubToolsSection.svelte';
+  import { focusOnMount } from '$lib/util/focusOnMount';
 
   // Two tabs: 'links' (the existing launcher) and 'tools' (the new
   // setup-command catalogue). Default to links because the existing
@@ -651,7 +652,7 @@
             id="hub-title"
             bind:value={fTitle}
             required
-            autofocus
+            use:focusOnMount
             placeholder="e.g. Staging dashboard"
             class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
           />

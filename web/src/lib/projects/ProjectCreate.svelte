@@ -2,6 +2,7 @@
   import { api, type Project, type ProjectKind } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import Drawer from '$lib/components/Drawer.svelte';
+  import { focusOnMount } from '$lib/util/focusOnMount';
 
   let {
     open = $bindable(false),
@@ -101,7 +102,7 @@
       <input
         id="np-name"
         bind:value={name}
-        autofocus
+        use:focusOnMount
         required
         class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
       />

@@ -8,6 +8,7 @@
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
+  import { focusOnMount } from '$lib/util/focusOnMount';
 
   // /ventures is the umbrella view above projects + goals. Project.venture
   // and Goal.venture stay free-text strings — a venture record adds
@@ -598,7 +599,7 @@
             id="nv-name"
             bind:value={nName}
             required
-            autofocus
+            use:focusOnMount
             placeholder="e.g. Stoicera"
             class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
           />

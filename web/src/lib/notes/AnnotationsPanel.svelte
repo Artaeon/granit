@@ -6,6 +6,7 @@
   import { onWsEvent } from '$lib/ws';
   import { onMount } from 'svelte';
   import {
+  import { focusOnMount } from '$lib/util/focusOnMount';
     ANNOTATION_COLORS,
     DEFAULT_ANNOTATION_COLOR,
     annotationBorderClass,
@@ -373,7 +374,7 @@
           placeholder="Your note about this line…"
           rows="3"
           class="w-full px-2 py-1 bg-mantle border border-surface1 rounded text-text text-sm focus:outline-none focus:border-primary resize-none"
-          autofocus
+          use:focusOnMount
         ></textarea>
         <div class="flex items-center gap-2 mt-2">
           <div class="flex gap-1">

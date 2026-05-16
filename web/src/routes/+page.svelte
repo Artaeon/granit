@@ -4,6 +4,7 @@
   import { api, ApiError, type DashboardConfig, type DashboardWidget, type VaultInfo } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { widgetRegistry, widgetMeta } from '$lib/dashboard/registry';
+  import { focusOnMount } from '$lib/util/focusOnMount';
 
   // New widget types we ship in this build that the server's defaults
   // (internal/serveapi/handlers_dashboard.go) doesn't know about yet. We
@@ -455,7 +456,7 @@
             bind:value={password}
             placeholder="password"
             required
-            autofocus
+            use:focusOnMount
             class="w-full px-3 py-3 bg-surface0 border border-surface1 rounded text-base text-text placeholder-dim focus:outline-none focus:border-primary"
           />
           {#if signInError}<div class="text-sm text-error">{signInError}</div>{/if}
