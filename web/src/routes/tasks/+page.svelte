@@ -1200,6 +1200,12 @@
     deadline: string;
     view: View;
     groupBy: Group;
+    // Newer fields — old presets without them load with falsy
+    // defaults via the `?? ''` reads in applyPreset.
+    sortBy?: SortBy;
+    sourceFilter?: 'all' | 'task-notes';
+    smartFilter?: SmartFilter;
+    archivedMode?: 'hide' | 'show' | 'only';
   };
   const PRESETS_KEY = 'granit.tasks.presets';
   let presets = $state<FilterPreset[]>(loadStored<FilterPreset[]>(PRESETS_KEY, []));
@@ -1215,7 +1221,8 @@
       name: trimmed,
       status, q, tag: tagFilter, project: projectFilter,
       priority: priorityFilter, goal: goalFilter, deadline: deadlineFilter,
-      view, groupBy
+      view, groupBy,
+      sortBy, sourceFilter, smartFilter, archivedMode
     });
     presets = next;
     persistPresets();
@@ -1225,6 +1232,10 @@
     status = p.status; q = p.q; tagFilter = p.tag; projectFilter = p.project;
     priorityFilter = p.priority; goalFilter = p.goal; deadlineFilter = p.deadline;
     view = p.view; groupBy = p.groupBy;
+    sortBy = p.sortBy ?? 'auto';
+    sourceFilter = p.sourceFilter ?? 'all';
+    smartFilter = p.smartFilter ?? '';
+    archivedMode = p.archivedMode ?? 'hide';
   }
   function deletePreset(name: string) {
     presets = presets.filter((p) => p.name !== name);
@@ -1234,8 +1245,26 @@
     return p.status === status && p.q === q && p.tag === tagFilter
       && p.project === projectFilter && p.priority === priorityFilter
       && p.goal === goalFilter && p.deadline === deadlineFilter
-      && p.view === view && p.groupBy === groupBy;
+      && p.view === view && p.groupBy === groupBy
+      && (p.sortBy ?? 'auto') === sortBy
+      && (p.sourceFilter ?? 'all') === sourceFilter
+      && (p.smartFilter ?? '') === smartFilter
+      && (p.archivedMode ?? 'hide') === archivedMode;
   }
+
+  // Built-in starter presets. Surface a few well-named common filter
+  // combos so the presets row isn't empty for first-time users. Only
+  // shown when the user has zero saved presets; once they save their
+  // own, the starter set hides. Clicking applies the combo; from
+  // there the user can tweak and "save current" to make it their own.
+  const STARTER_PRESETS: FilterPreset[] = [
+    { name: 'P1 this week', status: 'open', q: '', tag: '', project: '', priority: 1, goal: '', deadline: '', view: 'list', groupBy: 'due', smartFilter: 'thisWeek' },
+    { name: 'Inbox', status: 'open', q: '', tag: '', project: '', priority: '', goal: '', deadline: '', view: 'inbox', groupBy: 'priority' },
+    { name: 'Overdue', status: 'open', q: '', tag: '', project: '', priority: '', goal: '', deadline: '', view: 'list', groupBy: 'priority', smartFilter: 'overdue' },
+    { name: 'Quick wins', status: 'open', q: '', tag: '', project: '', priority: '', goal: '', deadline: '', view: 'quickwins', groupBy: 'priority' },
+    { name: 'Recently done', status: 'done', q: '', tag: '', project: '', priority: '', goal: '', deadline: '', view: 'review', groupBy: 'due' }
+  ];
+  let visiblePresets = $derived(presets.length > 0 ? presets : STARTER_PRESETS);
 
   let stats = $derived.by(() => {
     const today = todayISO();
@@ -2101,11 +2130,15 @@
            filter state under a name; clicking a preset chip
            re-applies all stored fields. Long-press / right-click to
            delete via the small × on the active chip. -->
-      {#if presets.length > 0 || true}
+      {#if visiblePresets.length > 0 || true}
         <div class="px-3 py-1.5 border-b border-surface1 flex items-center gap-1.5 text-xs flex-shrink-0 flex-wrap">
           <span class="text-dim font-mono uppercase tracking-wider">presets</span>
-          {#each presets as p (p.name)}
+          {#if presets.length === 0}
+            <span class="text-[10px] text-dim italic font-mono" title="Built-in starter presets — save your own and these go away">starter</span>
+          {/if}
+          {#each visiblePresets as p (p.name)}
             {@const active = presetMatches(p)}
+            {@const isStarter = presets.length === 0}
             <span
               class="inline-flex items-center rounded overflow-hidden border
                 {active ? 'border-primary bg-surface1 text-primary' : 'border-surface1 bg-surface0 text-subtext hover:border-primary'}"
@@ -2114,7 +2147,7 @@
                 onclick={() => applyPreset(p)}
                 class="px-2 py-0.5"
               >{p.name}</button>
-              {#if active}
+              {#if active && !isStarter}
                 <button
                   onclick={() => deletePreset(p.name)}
                   title="Remove preset"
