@@ -23,8 +23,8 @@
   import { rafThrottle } from '$lib/util/streamThrottle';
   import { saveProposals, loadProposals } from '$lib/util/proposalCache';
   import { extractJsonBlock } from '$lib/util/jsonExtract';
-  import {
   import { focusOnMount } from '$lib/util/focusOnMount';
+  import {
     buildPlanDayPrompt,
     buildStaleVerdictPrompt,
     roundUpTo15Min,

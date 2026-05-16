@@ -5,8 +5,8 @@
   import { toast } from '$lib/components/toast';
   import { onWsEvent } from '$lib/ws';
   import { onMount } from 'svelte';
-  import {
   import { focusOnMount } from '$lib/util/focusOnMount';
+  import {
     ANNOTATION_COLORS,
     DEFAULT_ANNOTATION_COLOR,
     annotationBorderClass,
