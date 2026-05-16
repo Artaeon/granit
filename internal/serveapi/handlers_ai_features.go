@@ -32,7 +32,7 @@ func (s *Server) runAIFeature(ctx context.Context, feature aiprefs.Feature, syst
 	// silence outbound AI calls too. Cheaper than the consent check
 	// because it's just a date-string compare on a small JSON file,
 	// so do it before anything else.
-	if sabbath.IsActiveToday(s.cfg.Vault.Root) {
+	if sabbath.IsActiveNow(s.cfg.Vault.Root) {
 		return "", fmt.Errorf("AI features are paused during Sabbath — exit Sabbath mode to use them")
 	}
 	prefs, _ := aiprefs.Load(s.cfg.Vault.Root)

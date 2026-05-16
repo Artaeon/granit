@@ -16,6 +16,7 @@ import (
 	"github.com/artaeon/granit/internal/aiprefs"
 	"github.com/artaeon/granit/internal/atomicio"
 	"github.com/artaeon/granit/internal/config"
+	"github.com/artaeon/granit/internal/sabbath"
 	"github.com/artaeon/granit/internal/websearch"
 	"github.com/artaeon/granit/internal/wshub"
 	"github.com/oklog/ulid/v2"
@@ -78,6 +79,15 @@ func (s *Server) handleRunAgent(w http.ResponseWriter, r *http.Request) {
 	body.Goal = strings.TrimSpace(body.Goal)
 	if body.Preset == "" {
 		writeError(w, http.StatusBadRequest, "preset required")
+		return
+	}
+
+	// Sabbath gate — same reasoning as the AI feature handlers: the
+	// day of rest should silence autonomous work. Returns 423 (Locked)
+	// rather than 503 so the client can distinguish "you've chosen to
+	// pause this" from "the server is broken".
+	if sabbath.IsActiveNow(s.cfg.Vault.Root) {
+		writeError(w, http.StatusLocked, "agent runs are paused during Sabbath — exit Sabbath mode to run agents")
 		return
 	}
 

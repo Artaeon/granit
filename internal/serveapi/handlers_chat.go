@@ -28,7 +28,7 @@ import (
 // "from: <user@host>" patterns inside example text, which would be
 // a hostile UX bug.
 func (s *Server) gateChat(messages []agentruntime.ChatMessage) ([]agentruntime.ChatMessage, []airedact.Stat, error) {
-	if sabbath.IsActiveToday(s.cfg.Vault.Root) {
+	if sabbath.IsActiveNow(s.cfg.Vault.Root) {
 		return nil, nil, fmt.Errorf("chat is paused during Sabbath — exit Sabbath mode to use it")
 	}
 	prefs, _ := aiprefs.Load(s.cfg.Vault.Root)

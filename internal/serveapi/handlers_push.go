@@ -224,7 +224,7 @@ func (s *Server) runReminderTick() {
 	// Sabbath silences ALL pushes for the user's day of rest. This
 	// is checked BEFORE prefs.IsQuiet so even a user who hasn't
 	// configured quiet hours gets the protection.
-	if sabbath.IsActiveToday(s.cfg.Vault.Root) {
+	if sabbath.IsActiveNow(s.cfg.Vault.Root) {
 		return
 	}
 	prefs, _ := push.LoadPrefs(s.cfg.Vault.Root)

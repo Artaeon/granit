@@ -108,7 +108,7 @@ func (s *Server) handleGetAIStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"sabbath_active":   sabbath.IsActiveToday(s.cfg.Vault.Root),
+		"sabbath_active":   sabbath.IsActiveNow(s.cfg.Vault.Root),
 		"global_provider":  cfgFile.AIProvider,
 		"global_model":     effectiveModel(cfgFile),
 		"redaction":        prefs.RedactionEnabled,
