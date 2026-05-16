@@ -4,8 +4,8 @@
      is proportionally thicker so the silhouette stays confident at
      browser-tab scale. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="6" fill="#1a1b26"/>
-  <g fill="none" stroke="#bb9af7" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
+  <rect width="32" height="32" rx="6" fill="#000000"/>
+  <g fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
     <path d="M 16 5 L 27 11.5 L 27 22.5 L 16 27 L 5 22.5 L 5 11.5 Z"/>
     <path d="M 5 11.5 L 27 11.5"/>
   </g>

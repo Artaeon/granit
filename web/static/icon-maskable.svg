@@ -10,8 +10,8 @@
      box on the 512px canvas, leaving 51px of breathing room on each
      side — comfortable margin for any reasonable mask shape. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#1a1b26"/>
-  <g fill="none" stroke="#bb9af7" stroke-width="28" stroke-linejoin="round" stroke-linecap="round">
+  <rect width="512" height="512" fill="#000000"/>
+  <g fill="none" stroke="#ffffff" stroke-width="28" stroke-linejoin="round" stroke-linecap="round">
     <path d="M 256 128 L 396 214 L 396 354 L 256 414 L 116 354 L 116 214 Z"/>
     <path d="M 116 214 L 396 214"/>
     <path d="M 256 128 L 256 214"/>
