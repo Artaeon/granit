@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/artaeon/granit/internal/objects"
 	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/vault"
+	"github.com/artaeon/granit/internal/websearch"
 )
 
 // Bridge is what the agents package's read+write tools see. It wraps
@@ -186,3 +188,65 @@ const (
 	errNoTaskStore   bridgeErr = "agent bridge: no task store wired"
 	errEmptyTaskText bridgeErr = "agent bridge: empty task text"
 )
+
+// ----- Web research adapters -----
+//
+// The agents package keeps a net-free import graph by depending on
+// the small WebSearchProvider / PageFetcher interfaces in tools_web.go
+// rather than on internal/websearch directly. These adapters convert
+// the concrete websearch types to those agent-package interfaces so
+// the runner can register web tools without leaking the implementation
+// into every consumer of `agents`.
+
+// webSearchAdapter wraps a websearch.SearchProvider into the
+// agents.WebSearchProvider interface, translating the Result types
+// field-for-field. Cheap — one slice copy per call.
+type webSearchAdapter struct {
+	prov websearch.SearchProvider
+}
+
+// NewWebSearchAdapter returns an agents.WebSearchProvider backed by
+// the given websearch.SearchProvider. Returns nil when prov is nil
+// so the caller can pass `WebSearch(nil)` to register a stub tool
+// that emits the "feature disabled" hint.
+func NewWebSearchAdapter(prov websearch.SearchProvider) agents.WebSearchProvider {
+	if prov == nil {
+		return nil
+	}
+	return &webSearchAdapter{prov: prov}
+}
+
+func (a *webSearchAdapter) Name() string { return a.prov.Name() }
+
+func (a *webSearchAdapter) Search(ctx context.Context, query string, max int) ([]agents.WebSearchResult, error) {
+	hits, err := a.prov.Search(ctx, query, max)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]agents.WebSearchResult, len(hits))
+	for i, h := range hits {
+		out[i] = agents.WebSearchResult{
+			Title:    h.Title,
+			URL:      h.URL,
+			Snippet:  h.Snippet,
+			Rank:     h.Rank,
+			Provider: h.Provider,
+		}
+	}
+	return out, nil
+}
+
+// pageFetcherAdapter wraps the package-level websearch.FetchReadable
+// function into the agents.PageFetcher interface so the fetch_url
+// tool can call it without importing the websearch package.
+type pageFetcherAdapter struct{}
+
+// NewPageFetcher returns an agents.PageFetcher that pulls and
+// strips pages through websearch.FetchReadable. Always returns a
+// non-nil value — fetch_url has no provider-specific config, so
+// there's nothing to gate on beyond the feature toggle.
+func NewPageFetcher() agents.PageFetcher { return &pageFetcherAdapter{} }
+
+func (pageFetcherAdapter) Fetch(ctx context.Context, url string, maxChars int) (string, error) {
+	return websearch.FetchReadable(ctx, url, websearch.FetchOptions{MaxChars: maxChars})
+}
