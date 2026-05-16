@@ -231,7 +231,18 @@
       <p class="text-sm text-dim italic">loading life data…</p>
     {:else if loadError}
       <p class="text-sm text-error">{loadError}</p>
-    {:else}
+    {:else if partialFailures.length >= 8}
+      <!-- All-or-most-sources-down case. The "N unavailable" pill in
+           the header signals counts but doesn't explain the cause.
+           When the failure ratio is this high the user probably has
+           an auth or connectivity problem rather than 8 independent
+           module bugs, so call that out plainly. -->
+      <div class="bg-base border border-surface1 rounded-lg p-4 mb-6">
+        <p class="text-sm text-warning">Most life-data sources couldn't be reached ({partialFailures.length}/12).</p>
+        <p class="text-xs text-dim mt-1">Usually this means the granit server is unreachable or your session expired. Check the server log, or sign out and back in.</p>
+      </div>
+    {/if}
+    {#if !loading && !loadError}
       <!-- KPI row — one headline metric per ring. Big numbers,
            click-through to the source module. -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">

@@ -304,8 +304,10 @@
       cursor: false,
       selection: true,
       systemForSelection:
-        'Rewrite the following passage so its voice, register, and rhythm match the text ' +
-        'immediately around it (provided as BEFORE / AFTER context blocks in the user message). ' +
+        'Rewrite the following passage so its voice, register, and rhythm match the surrounding ' +
+        'text. If the user message includes BEFORE / AFTER context blocks, treat those as the ' +
+        'reference voice. If no surrounding text was provided (the selection IS the whole note), ' +
+        'preserve the passage\'s own existing voice and just smooth out any inconsistencies. ' +
         'Preserve meaning. Return only the rewritten text, no preamble.'
     },
     {
