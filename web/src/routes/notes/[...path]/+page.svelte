@@ -52,6 +52,7 @@
   import NotePresentation from '$lib/notes/NotePresentation.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
+  import { recordOpenNote, updateOpenNoteScroll } from '$lib/stores/open-note';
 
   type ViewMode = 'edit' | 'preview' | 'split';
   const VIEW_KEY = 'granit.note.viewMode';
@@ -267,6 +268,20 @@
   $effect(() => {
     const path = $page.params.path;
     if (path) load(decodeURIComponent(path));
+  });
+
+  // Feed the global open-note tray. Whenever the loaded note swaps to
+  // a new path, record it so the tray (mounted in the root layout)
+  // can surface a "jump back" chip from anywhere in the app. Triggers
+  // on note.path so a same-note refresh (WS reload) doesn't re-write
+  // the entry on every server bounce — only navigation does.
+  $effect(() => {
+    if (!note) return;
+    recordOpenNote({
+      path: note.path,
+      title: note.title || note.path,
+      scrollPos: editor?.getScrollTop?.() ?? 0
+    });
   });
 
   let draftRestored = $state(false);
@@ -709,9 +724,13 @@
     }
     // Remember the scroll position so navigating back to this note
     // returns to where the user was reading. Saved synchronously so
-    // even a forced reload (close tab) catches it.
+    // even a forced reload (close tab) catches it. We mirror the
+    // value onto the open-note tray entry so the (optional) "resume
+    // at line N" hint can render without consulting noteHistory.
     if (note && editor?.getScrollTop) {
-      rememberScroll(note.path, editor.getScrollTop());
+      const top = editor.getScrollTop();
+      rememberScroll(note.path, top);
+      updateOpenNoteScroll(note.path, top);
     }
   });
 
