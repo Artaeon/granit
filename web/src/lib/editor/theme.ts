@@ -49,12 +49,25 @@ export const theme = EditorView.theme(
       pointerEvents: 'none',
       userSelect: 'none'
     },
-    // Replace-mode target — subtle background mark over the range
-    // the ghost will overwrite on accept, so the user sees what's
-    // about to change. Strikethrough hints at the impending delete.
+    // Replace-mode NEW text — distinct from continuation-mode ghost
+    // so the user reads "[struck old] [new]" as a real diff. Tint
+    // borrows the green token (matches the success/add semantics in
+    // the rest of the UI). Not italic — it's the about-to-be-canon
+    // text, not a speculative continuation.
+    '.cm-ghost-text-new': {
+      color: 'var(--color-green, var(--color-text))',
+      opacity: '1',
+      fontStyle: 'normal',
+      backgroundColor: 'color-mix(in srgb, var(--color-green, #a6e3a1) 14%, transparent)',
+      borderRadius: '2px',
+      padding: '0 2px'
+    },
+    // Replace-mode target — strikethrough mark over the range the
+    // ghost will overwrite on accept. Combined with cm-ghost-text-new
+    // sitting AFTER this range, the result reads as an inline diff.
     '.cm-inline-ai-target': {
-      backgroundColor: 'var(--color-surface1)',
-      opacity: '0.6',
+      backgroundColor: 'color-mix(in srgb, var(--color-red, #f38ba8) 12%, transparent)',
+      opacity: '0.7',
       textDecoration: 'line-through',
       textDecorationColor: 'var(--color-dim)'
     },

@@ -145,34 +145,44 @@ const inlineAIField = StateField.define<InlineAIState>({
   provide: (f) =>
     EditorView.decorations.from(f, (state): DecorationSet => {
       if (!state.active) return Decoration.none;
+      // Replace mode renders as a diff: the old range gets a strike-
+      // through mark, and the ghost widget for the new text sits
+      // AFTER the old range so the user reads "[struck old] [new]".
+      // Insert/append render the ghost at the anchor as before.
+      const isReplace = state.kind === 'replace' && state.replaceTo > state.anchor;
+      const ghostPos = isReplace ? state.replaceTo : state.anchor;
       const widgets = [
         Decoration.widget({
-          widget: new GhostWidget(state.text || '…'),
+          widget: new GhostWidget(state.text || '…', isReplace),
           side: 1
-        }).range(state.anchor)
+        }).range(ghostPos)
       ];
-      // In replace mode, also paint a subtle background mark over the
-      // range that will be overwritten so the user can see what's
-      // about to change.
-      if (state.kind === 'replace' && state.replaceTo > state.anchor) {
+      if (isReplace) {
         widgets.push(
           Decoration.mark({ class: 'cm-inline-ai-target' }).range(state.anchor, state.replaceTo)
         );
       }
+      // Decorations must be sorted by `from`. Replace mode puts the
+      // mark (anchor..replaceTo) before the widget (at replaceTo).
+      // Insert mode has a single widget.
+      widgets.sort((a, b) => a.from - b.from);
       return Decoration.set(widgets, true);
     })
 });
 
 class GhostWidget extends WidgetType {
-  constructor(readonly text: string) {
+  constructor(readonly text: string, readonly isReplacement: boolean = false) {
     super();
   }
   eq(other: GhostWidget) {
-    return other.text === this.text;
+    return other.text === this.text && other.isReplacement === this.isReplacement;
   }
   toDOM() {
     const span = document.createElement('span');
-    span.className = 'cm-ghost-text';
+    // Replace-mode ghost is styled as "the new version" (green tint)
+    // so the eye reads the diff as [struck-old] [new]. Insert/append
+    // mode keeps the dim-italic continuation style.
+    span.className = this.isReplacement ? 'cm-ghost-text cm-ghost-text-new' : 'cm-ghost-text';
     const parts = this.text.split('\n');
     parts.forEach((part, i) => {
       if (i > 0) span.appendChild(document.createElement('br'));
