@@ -51,6 +51,42 @@
   let highlightedIdx = $state(0);
   let busy = $state(false);
 
+  // Prompt history — last 20 free-form prompts the user has sent for
+  // THIS note, scoped by note path. Up/Down arrows in the input cycle
+  // through history (most-recent first). Persisted to localStorage so
+  // a tab reload doesn't lose history; localStorage scope is the right
+  // grain here (per-device, not per-vault) because what the user asks
+  // about a note is intimately tied to their current train of thought.
+  const HISTORY_LIMIT = 20;
+  const historyKey = `granit.ai.history.${notePath}`;
+  let history = $state<string[]>(loadHistory());
+  let historyIdx = $state(-1); // -1 = live input; 0 = most recent
+
+  function loadHistory(): string[] {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem(historyKey);
+      if (!raw) return [];
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string').slice(0, HISTORY_LIMIT) : [];
+    } catch {
+      return [];
+    }
+  }
+  function pushHistory(prompt: string) {
+    const p = prompt.trim();
+    if (!p) return;
+    // De-dupe — push to front, drop existing copies elsewhere in
+    // the list. Keeps the most-recent-first ordering monotonic.
+    history = [p, ...history.filter((x) => x !== p)].slice(0, HISTORY_LIMIT);
+    try {
+      window.localStorage.setItem(historyKey, JSON.stringify(history));
+    } catch {
+      // localStorage can throw in private mode or when full; we drop
+      // the persistence and keep the in-memory list usable.
+    }
+  }
+
   // Context toggles. The note body itself is always sent (backend
   // attaches it as system context when notePath is non-empty); these
   // toggles add OPTIONAL extra scopes the user can flip on for cross-
@@ -397,6 +433,7 @@
   async function runCustomPrompt() {
     const p = promptInput.trim();
     if (!p || busy) return;
+    pushHistory(p);
     busy = true;
     try {
       const view = event.view;
@@ -476,6 +513,27 @@
       e.preventDefault();
       onClose();
       return;
+    }
+    // History recall — Up/Down with the cursor in the input cycles
+    // through previous prompts before falling through to action-list
+    // navigation. We only treat the input as a "history field" when
+    // the cursor is at the start AND the input is either empty or
+    // already showing a history entry; otherwise Up still navigates
+    // the list (so power users who don't care about history get the
+    // expected behaviour). Mod-modified arrows always go to the list.
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && history.length > 0 && !e.metaKey && !e.ctrlKey) {
+      const inHistoryMode = historyIdx >= 0 || promptInput.length === 0;
+      if (inHistoryMode) {
+        e.preventDefault();
+        if (e.key === 'ArrowUp') {
+          historyIdx = Math.min(history.length - 1, historyIdx + 1);
+          promptInput = history[historyIdx] ?? '';
+        } else {
+          historyIdx = Math.max(-1, historyIdx - 1);
+          promptInput = historyIdx === -1 ? '' : (history[historyIdx] ?? '');
+        }
+        return;
+      }
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -571,6 +629,7 @@
       bind:this={promptEl}
       bind:value={promptInput}
       onkeydown={onKey}
+      oninput={() => { historyIdx = -1; }}
       placeholder={hasSelection ? 'tell AI what to do with the selection…' : 'ask AI anything, or pick below…'}
       class="flex-1 bg-transparent text-[13px] placeholder-dim focus:outline-none"
       disabled={busy}
@@ -617,6 +676,8 @@
       class="px-1 py-0.5 rounded {useRecentJots ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
       title="include the last 7 days of daily notes"
     >+ 7d jots</button>
-    <span class="ml-auto text-dim opacity-60">↑↓ pick · ⏎ run · Esc</span>
+    <span class="ml-auto text-dim opacity-60">
+      ↑↓ {history.length > 0 ? 'history/pick' : 'pick'} · ⏎ run · Esc
+    </span>
   </div>
 </div>
