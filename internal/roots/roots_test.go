@@ -19,7 +19,7 @@ func TestSave_Validation(t *testing.T) {
 		{
 			name: "missing label rejected",
 			r: Roots{Nodes: []Node{
-				{ID: "a", Ring: RingIdentity, Label: "  "},
+				{ID: "a", Ring: RingSpirit, Label: "  "},
 			}},
 			wantErr: true,
 		},
@@ -33,8 +33,8 @@ func TestSave_Validation(t *testing.T) {
 		{
 			name: "duplicate id rejected",
 			r: Roots{Nodes: []Node{
-				{ID: "a", Ring: RingIdentity, Label: "beloved"},
-				{ID: "a", Ring: RingCallings, Label: "husband"},
+				{ID: "a", Ring: RingSpirit, Label: "beloved"},
+				{ID: "a", Ring: RingMind, Label: "husband"},
 			}},
 			wantErr: true,
 		},
@@ -44,8 +44,8 @@ func TestSave_Validation(t *testing.T) {
 				Center: "Christ",
 				Anchor: "Colossians 1:17",
 				Nodes: []Node{
-					{ID: "a", Ring: RingIdentity, Label: "beloved son"},
-					{ID: "b", Ring: RingCallings, Label: "husband"},
+					{ID: "a", Ring: RingSpirit, Label: "beloved son"},
+					{ID: "b", Ring: RingMind, Label: "husband"},
 				},
 			},
 			wantErr: false,
@@ -65,8 +65,8 @@ func TestRoundTrip(t *testing.T) {
 		Center: "Christ",
 		Anchor: "John 15:5",
 		Nodes: []Node{
-			{ID: "n1", Ring: RingIdentity, Label: "beloved", Scripture: "Eph 1:4"},
-			{ID: "n2", Ring: RingGifts, Label: "patience", Description: "given, not earned"},
+			{ID: "n1", Ring: RingSpirit, Label: "beloved", Scripture: "Eph 1:4"},
+			{ID: "n2", Ring: RingBody, Label: "patience", Description: "given, not earned"},
 		},
 	}
 	if err := Save(dir, in); err != nil {
@@ -86,11 +86,11 @@ func TestRoundTrip(t *testing.T) {
 
 func TestNodesByRing(t *testing.T) {
 	r := Roots{Nodes: []Node{
-		{ID: "1", Ring: RingIdentity, Label: "a"},
-		{ID: "2", Ring: RingCallings, Label: "b"},
-		{ID: "3", Ring: RingIdentity, Label: "c"},
+		{ID: "1", Ring: RingSpirit, Label: "a"},
+		{ID: "2", Ring: RingMind, Label: "b"},
+		{ID: "3", Ring: RingSpirit, Label: "c"},
 	}}
-	got := r.NodesByRing(RingIdentity)
+	got := r.NodesByRing(RingSpirit)
 	if len(got) != 2 {
 		t.Fatalf("got %d, want 2", len(got))
 	}

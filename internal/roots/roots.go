@@ -1,28 +1,21 @@
-// Package roots is the canonical schema + IO for granit's "rooted"
-// surface — a contemplative diagram of who the user IS in Christ.
-// Distinct from vision (mission + values + season focus): vision
-// answers "what am I doing"; roots answers "where am I rooted."
+// Package roots is the canonical schema + IO for granit's life-tree
+// surface — a stats dashboard of the four domains of a life under
+// God: spirit, mind, body, vocation. The web /roots page renders
+// auto-pulled metrics from existing modules (bible, virtues, habits,
+// measurements, books, goals, finance) alongside hand-tended items
+// the user adds for things that don't have their own module yet
+// (languages spoken, current interests, etc).
 //
-// Single record per vault. Center holds the user's centering phrase
-// (default "Christ") with an optional scripture anchor (e.g. Col 1:17,
-// "and he is before all things, and by him all things consist").
-// Around the center sit 4 concentric rings, each holding any number
-// of named nodes:
+// This file holds the storage for the hand-tended items: any number
+// of named nodes, grouped by ring (Spirit, Mind, Body, Vocation),
+// with optional scripture references and related-note links. Center
+// holds a centering phrase (default "Christ") with an optional
+// scripture anchor (e.g. Col 1:17).
 //
-//   Ring 1 — Identity: who am I in Christ? (son, beloved, baptized…)
-//   Ring 2 — Callings: what am I FOR? (husband, friend, craftsman…)
-//   Ring 3 — Gifts:    what has been given? (talents, charisms…)
-//   Ring 4 — Longings: what do I yearn toward? (the not-yet…)
-//
-// What roots is NOT:
-//   - A skill tree. Nodes carry no level, no XP, no completion %.
-//   - A goal list. Goals are striving forward; roots is standing still.
-//   - Auto-populated from tasks/notes. Hand-tended only. The discipline
-//     of naming what's true is the point.
-//
-// See feedback-life-tree-not-gamified.md in user memory — if a future
-// change adds a number-that-goes-up to this surface, the change is
-// wrong on purpose.
+// History — earlier framing was "contemplative not gamified". The
+// user explicitly overrode that on 2026-05-16, asking for the stats
+// dashboard shape. This package's storage continues to support
+// hand-tended additions; the metrics live in their own modules.
 //
 // Pure data + IO only. Stored at <vault>/.granit/roots.json.
 package roots
@@ -39,24 +32,27 @@ import (
 	"github.com/artaeon/granit/internal/atomicio"
 )
 
-// Ring labels live in code, not in user data, so the contemplative
-// shape stays stable across vaults. The user can't rename them — the
-// ring meaning is part of the discipline, not a setting.
+// Ring labels live in code, not in user data, so the layout stays
+// stable across vaults. Rings group the four domains of a life under
+// God: spirit (faith, virtues, prayer), mind (knowledge, language,
+// learning), body (health, habits, measurements), vocation (work,
+// goals, finance). The user can't rename them — the categorisation
+// is part of the product.
 const (
-	RingIdentity = 1
-	RingCallings = 2
-	RingGifts    = 3
-	RingLongings = 4
+	RingSpirit   = 1
+	RingMind     = 2
+	RingBody     = 3
+	RingVocation = 4
 )
 
 // RingLabels maps ring numbers to their human-readable name. Mirrored
 // on the frontend; kept here so handlers can stamp labels into the
 // response without the client having to know magic numbers.
 var RingLabels = map[int]string{
-	RingIdentity: "Identity",
-	RingCallings: "Callings",
-	RingGifts:    "Gifts",
-	RingLongings: "Longings",
+	RingSpirit:   "Spirit",
+	RingMind:     "Mind",
+	RingBody:     "Body",
+	RingVocation: "Vocation",
 }
 
 // Node is one item rooted in a ring. Label is the only required
