@@ -91,20 +91,25 @@
   // that same day (notes, tasks created/completed, events, habits,
   // prayer, hub items). Each block fetches lazily on first open so
   // a long scroll doesn't N+1 the API.
-  const dayActivityCache = $state(new Map<string, DayActivityItem[]>());
-  const dayActivityLoading = $state(new Set<string>());
+  // Per-date cache + loading flags as plain records — Svelte 5
+  // tracks property additions and re-renders on reassignment, so
+  // this is the simplest reactive pattern for "memo by string key".
+  let dayActivityCache = $state<Record<string, DayActivityItem[]>>({});
+  let dayActivityLoading = $state<Record<string, boolean>>({});
 
   async function loadDayActivity(date: string) {
-    if (dayActivityCache.has(date) || dayActivityLoading.has(date)) return;
-    dayActivityLoading.add(date);
+    if (dayActivityCache[date] !== undefined || dayActivityLoading[date]) return;
+    dayActivityLoading = { ...dayActivityLoading, [date]: true };
     try {
       const r = await api.dayActivity(date);
-      dayActivityCache.set(date, r.items);
+      dayActivityCache = { ...dayActivityCache, [date]: r.items };
     } catch {
       // Soft-fail — empty list keeps the UI honest; user can refresh.
-      dayActivityCache.set(date, []);
+      dayActivityCache = { ...dayActivityCache, [date]: [] };
     } finally {
-      dayActivityLoading.delete(date);
+      const next = { ...dayActivityLoading };
+      delete next[date];
+      dayActivityLoading = next;
     }
   }
 
@@ -791,14 +796,14 @@
                   What happened that day
                 </summary>
                 <div class="px-3 pb-3 pt-1">
-                  {#if dayActivityLoading.has(jot.date) && !dayActivityCache.has(jot.date)}
+                  {#if dayActivityLoading[jot.date] && dayActivityCache[jot.date] === undefined}
                     <p class="text-xs text-dim italic">loading…</p>
-                  {:else if (dayActivityCache.get(jot.date)?.length ?? 0) === 0}
-                    {#if dayActivityCache.has(jot.date)}
+                  {:else if (dayActivityCache[jot.date]?.length ?? 0) === 0}
+                    {#if dayActivityCache[jot.date] !== undefined}
                       <p class="text-xs text-dim italic">No tracked activity on this day.</p>
                     {/if}
                   {:else}
-                    {#each bucketize(dayActivityCache.get(jot.date) ?? []) as bucket (bucket.kind)}
+                    {#each bucketize(dayActivityCache[jot.date] ?? []) as bucket (bucket.kind)}
                       <div class="mb-3 last:mb-0">
                         <h4 class="text-[10px] uppercase tracking-wider text-primary font-medium mb-1">
                           {bucket.label} <span class="text-dim font-normal">({bucket.items.length})</span>
