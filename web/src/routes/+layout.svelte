@@ -21,6 +21,7 @@
   import { findMode, currentModeId } from '$lib/ai/agents';
   import { sidebarPins, togglePin } from '$lib/stores/sidebar-pins';
   import { lastOpenNote, trayEnabled } from '$lib/stores/open-note';
+  import { get } from 'svelte/store';
 
   // Sidebar quick-action chips. Each one opens the AI overlay
   // pre-filled with a prompt and (when send=true) fires it
@@ -394,17 +395,21 @@
   // these are global app-shell shortcuts, not text editing ones.
   // Skips when the tray is disabled (settings opt-out), when there's
   // nothing remembered, or when the user is already on that note.
-  $effect(() => {
-    if (typeof window === 'undefined') return;
+  //
+  // get() is intentional: we don't want this $effect to re-subscribe
+  // (and re-register the listener) every time the tray store ticks.
+  // The listener is registered once and reads fresh values at
+  // keypress time.
+  onMount(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return;
       if (e.key.toLowerCase() !== 'o') return;
-      if (!$trayEnabled) return;
-      const entry = $lastOpenNote;
+      if (!get(trayEnabled)) return;
+      const entry = get(lastOpenNote);
       if (!entry) return;
       const targetPath = '/notes/' + encodeURIComponent(entry.path);
       // Already there → suppress (the chip would be hidden anyway).
-      const here = $page.url.pathname;
+      const here = get(page).url.pathname;
       if (here === targetPath) return;
       e.preventDefault();
       goto(targetPath);
