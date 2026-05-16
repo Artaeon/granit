@@ -86,13 +86,69 @@
     }
   }
 
-  // Context toggles. The note body itself is always sent (backend
-  // attaches it as system context when notePath is non-empty); these
-  // toggles add OPTIONAL extra scopes the user can flip on for cross-
-  // note tasks like "what's missing from this note based on my
-  // backlinks?".
+  // Context toggles.
+  //
+  //   scope = 'note'    → backend injects full note body (notePath passed
+  //                       to chatStream). Default — best for whole-note
+  //                       transforms like Improve / Summarize / Outline.
+  //
+  //   scope = 'section' → only the current ## / ### section the cursor
+  //                       is in is sent. Cheaper, tighter, and the
+  //                       result reads as "the AI answered just about
+  //                       this part" rather than dragging in unrelated
+  //                       sections. We omit notePath in this mode and
+  //                       prepend the section text ourselves so the
+  //                       backend's auto-inject doesn't double-up.
+  //
+  // The +backlinks / +7d-jots toggles are additive on top of either.
+  type Scope = 'note' | 'section';
+  let scope = $state<Scope>('note');
   let useBacklinks = $state(false);
   let useRecentJots = $state(false);
+
+  // Detect the current section at the trigger cursor — a contiguous
+  // block of lines from the nearest heading down to the next heading
+  // at the same or higher level (or EOF). Returns null when the
+  // cursor is in pre-heading text (top of doc / no headings).
+  function detectSection(): { heading: string; body: string } | null {
+    const view = event.view;
+    const doc = view.state.doc;
+    const pos = event.pos;
+    const startLine = doc.lineAt(pos).number;
+    let headingLineNum = -1;
+    let headingLevel = 0;
+    for (let n = startLine; n >= 1; n--) {
+      const line = doc.line(n);
+      const m = line.text.match(/^(#{1,6})\s+(.+)$/);
+      if (m) {
+        headingLineNum = n;
+        headingLevel = m[1].length;
+        break;
+      }
+    }
+    if (headingLineNum === -1) return null;
+    const headingLine = doc.line(headingLineNum);
+    const headingMatch = headingLine.text.match(/^(#{1,6})\s+(.+)$/);
+    if (!headingMatch) return null;
+    let endLineNum = doc.lines;
+    for (let n = headingLineNum + 1; n <= doc.lines; n++) {
+      const line = doc.line(n);
+      const m = line.text.match(/^(#{1,6})\s+/);
+      if (m && m[1].length <= headingLevel) {
+        endLineNum = n - 1;
+        break;
+      }
+    }
+    const endLine = doc.line(endLineNum);
+    return {
+      heading: headingMatch[2].trim(),
+      body: doc.sliceString(headingLine.from, endLine.to)
+    };
+  }
+  // Memoize once — the cursor position is fixed for the menu's
+  // lifetime (closed + reopened = fresh event), so the section can't
+  // change while the menu is open.
+  const detectedSection = detectSection();
 
   // ── presets ──────────────────────────────────────────────────────
   // The same chip carries its cursor-mode and selection-mode prompts.
@@ -346,6 +402,20 @@
 
   async function buildContextMessages(systemHead: string): Promise<ChatMessage[]> {
     const messages: ChatMessage[] = [{ role: 'system', content: systemHead }];
+    // Section scope: include the section text as a focused system
+    // prefix so the model anchors on it. The chatStream call site
+    // omits notePath when scope === 'section' (see effectiveNotePath
+    // below), preventing the backend from double-injecting the full
+    // body on top of our targeted section.
+    if (scope === 'section' && detectedSection) {
+      messages.push({
+        role: 'system',
+        content:
+          'Focus on the section "## ' + detectedSection.heading +
+          '" of the user\'s note. Section content:\n\n```\n' +
+          detectedSection.body + '\n```'
+      });
+    }
     if (useBacklinks) {
       const b = await fetchBacklinks();
       if (b) messages.push({ role: 'system', content: b });
@@ -356,6 +426,12 @@
     }
     return messages;
   }
+
+  // Whether to pass notePath to chatStream — only for note scope.
+  // In section scope we already prepended the section as a focused
+  // system message; the backend's full-body auto-inject would dilute
+  // that focus.
+  let effectiveNotePath = $derived(scope === 'note' ? notePath : '');
 
   // ── submit ──────────────────────────────────────────────────────
 
@@ -380,7 +456,7 @@
           from: event.selection.from,
           to: event.selection.to,
           messages,
-          notePath
+          notePath: effectiveNotePath
         });
       } else if (p.systemForCursor) {
         const system = extra ? p.systemForCursor + '\n\nAdditional instruction: ' + extra : p.systemForCursor;
@@ -412,7 +488,7 @@
           kind: 'insert',
           anchor,
           messages,
-          notePath
+          notePath: effectiveNotePath
         });
       }
     } finally {
@@ -447,7 +523,7 @@
           from: event.selection.from,
           to: event.selection.to,
           messages,
-          notePath
+          notePath: effectiveNotePath
         });
       } else {
         const system =
@@ -470,7 +546,7 @@
           kind: 'insert',
           anchor,
           messages,
-          notePath
+          notePath: effectiveNotePath
         });
       }
     } finally {
@@ -668,8 +744,25 @@
 
   <!-- Context bar -->
   <div class="flex items-center gap-1.5 px-2 py-1.5 border-t border-surface1 text-[10px] font-mono">
-    <span class="text-dim">context:</span>
-    <span class="px-1 py-0.5 rounded bg-surface1 text-text" title="the current note body is always included">this note</span>
+    <span class="text-dim">scope:</span>
+    <!-- Note vs. section — exclusive toggle. The note button is
+         always available; the section button only when the cursor
+         actually lives inside a heading section. -->
+    <button
+      type="button"
+      onclick={() => (scope = 'note')}
+      class="px-1 py-0.5 rounded {scope === 'note' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
+      title="send the entire note body to AI"
+    >note</button>
+    {#if detectedSection}
+      <button
+        type="button"
+        onclick={() => (scope = 'section')}
+        class="px-1 py-0.5 rounded {scope === 'section' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
+        title="send only the current section: {detectedSection.heading}"
+      >§ {detectedSection.heading.length > 14 ? detectedSection.heading.slice(0, 14) + '…' : detectedSection.heading}</button>
+    {/if}
+    <span class="text-dim opacity-40 mx-0.5">|</span>
     <button
       type="button"
       onclick={() => (useBacklinks = !useBacklinks)}
