@@ -1,32 +1,32 @@
-// Sabbath mode — a per-day client-side overlay on the nav + dashboard
-// that hides work-oriented modules (finance, tasks, projects, agents,
-// deadlines) and surfaces rest-oriented ones (scripture, prayer,
-// people, vision, jots). Mark 2:27: "the sabbath was made for man."
+// Sabbath mode — a per-device client-side overlay on the nav + dashboard
+// that hides work-oriented modules and surfaces rest-oriented ones.
+// Mark 2:27: "the sabbath was made for man."
 //
-// Stored in localStorage under granit.sabbath.activeOn = "YYYY-MM-DD".
-// Auto-clears the next calendar day — the toggle expires on its own
-// so a user who forgets to flip it off in the evening doesn't wake
-// up with their work modules still hidden. No server round-trip;
-// this is purely a UI affordance, not a profile or a module config
-// change.
+// State splits cleanly in two:
 //
-// Why client-only:
-//   - Every device has its own pace; one device's sabbath isn't
-//     necessarily another's
-//   - The modules.json file is the persistent module config — using
-//     it for a temporal toggle would muddle "this is what I want
-//     hidden" with "this is what I want hidden today"
-//   - Cheap, undoable, doesn't survive the device
+//   • Schedule (recurring rule) — synced server-side via /api/v1/sabbath.
+//     Changes on one device show up on every other device. This is what
+//     "every Saturday from midnight" means; also where sundown-to-sundown
+//     windows live.
 //
-// Schedule (added later): an optional day-of-week rule that
-// auto-enables sabbath on the chosen day. Christian tradition is
-// Sunday (0); Jewish observance is Saturday (6). User picks which.
-// Schedule is opt-in — if disabled the manual toggle is the only
-// way in. Either way the auto-expiry at the next calendar day
-// applies; a Sunday sabbath ends Monday at midnight.
+//   • Daily on/off (manual "begin now") — per-device, localStorage only.
+//     A user toggling sabbath on their laptop doesn't force it on their
+//     phone. The server gates work-modules (push, AI, agents) based on
+//     the SCHEDULE alone — if you want gating during a manual sabbath,
+//     configure the schedule.
+//
+// The schedule window can span midnight (Friday 18:00 + 24h goes through
+// Saturday 18:00), so traditional sundown-to-sundown observance is a
+// first-class shape, not a special case.
+//
+// Auto-expiry: the read-time `isActiveNow()` check uses (a) ActiveOn ==
+// today for the manual flag, and (b) `now ∈ [windowStart, windowEnd)`
+// for the schedule. Both fall off naturally when their condition stops
+// holding — no background timer required, no leak risk.
 
 import { writable, get, type Readable } from 'svelte/store';
-import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
+import { loadStoredString, saveStoredString } from '$lib/util/storage';
+import { api, type SabbathSchedulePayload } from '$lib/api';
 
 const KEY = 'granit.sabbath.activeOn';
 const SCHEDULE_KEY = 'granit.sabbath.schedule';
@@ -34,7 +34,6 @@ const SCHEDULE_KEY = 'granit.sabbath.schedule';
 // Modules considered "work" — hidden when sabbath is active. The
 // list is intentional, not user-configurable: the point of sabbath
 // is *the discipline of letting go*, not picking and choosing.
-// Keeping this constant means the toggle does what it says.
 export const SABBATH_HIDE_MODULES = [
   'finance',
   'tasks',
@@ -43,23 +42,19 @@ export const SABBATH_HIDE_MODULES = [
   'deadlines',
   'chat',
   'weekly_review',
-  // Round 2: more work-coded surfaces. The principle: anything
-  // about transacting, measuring, optimising, or planning hides;
-  // anything about presence, reflection, and people stays.
-  'emails',       // CRM-style tracking is inherently transactional
-  'shopping',     // errands belong to a workday
-  'ventures',     // companies / side hustles
-  'goals',        // long-term striving conflicts with rest
-  'habits',       // measurement of self; the discipline of not measuring is the point
-  'measurements', // numeric tracking of any kind
-  'objects',      // typed-objects browser feeds the systematising impulse
-  'hub'           // launcher pad for tools → tools = work
+  'emails',
+  'shopping',
+  'ventures',
+  'goals',
+  'habits',
+  'measurements',
+  'objects',
+  'hub'
 ];
 
 // Rest modules surfaced as a hint when sabbath starts — nav doesn't
 // hide anything from this list even if the user has them disabled
-// in normal config. (Toggling sabbath shouldn't override their
-// long-term preferences; just nudge.)
+// in normal config.
 export const SABBATH_SURFACE_MODULES = [
   'scripture',
   'prayer',
@@ -68,107 +63,150 @@ export const SABBATH_SURFACE_MODULES = [
   'jots'
 ];
 
+export const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // ── Schedule ────────────────────────────────────────────────────
-// Day-of-week auto-enable. The user picks the day; we re-check on
-// each load + each visibility change. dayOfWeek matches JS Date
-// getDay(): 0=Sun, 1=Mon, ..., 6=Sat. dayOfWeek=-1 means "no
-// schedule" (manual toggle only).
+// Camel-cased TS-side shape. Wire shape (snake_case) lives in
+// api.ts as SabbathSchedulePayload; the two converters below adapt
+// at the network boundary.
 export interface SabbathSchedule {
   enabled: boolean;
-  dayOfWeek: number; // -1 = off
+  dayOfWeek: number;       // 0=Sun … 6=Sat
+  startHour: number;       // 0-23
+  startMinute: number;     // 0-59
+  durationMinutes: number; // 1440 = 24h (midnight-to-midnight)
 }
 
-const DEFAULT_SCHEDULE: SabbathSchedule = { enabled: false, dayOfWeek: 0 };
+export const DEFAULT_SCHEDULE: SabbathSchedule = {
+  enabled: false,
+  dayOfWeek: 0,
+  startHour: 0,
+  startMinute: 0,
+  durationMinutes: 1440
+};
 
-function loadSchedule(): SabbathSchedule {
-  const parsed = loadStored<unknown>(SCHEDULE_KEY, null);
-  if (parsed && typeof parsed === 'object') {
-    const p = parsed as Partial<SabbathSchedule>;
-    const dow = Number(p.dayOfWeek);
-    if (Number.isInteger(dow) && dow >= -1 && dow <= 6) {
-      return { enabled: Boolean(p.enabled), dayOfWeek: dow };
-    }
+function toWire(s: SabbathSchedule): SabbathSchedulePayload {
+  return {
+    enabled: s.enabled,
+    day_of_week: s.dayOfWeek,
+    start_hour: s.startHour,
+    start_minute: s.startMinute,
+    duration_minutes: s.durationMinutes
+  };
+}
+
+function fromWire(p: SabbathSchedulePayload): SabbathSchedule {
+  return {
+    enabled: Boolean(p.enabled),
+    dayOfWeek: clampInt(p.day_of_week, 0, 6, 0),
+    startHour: clampInt(p.start_hour, 0, 23, 0),
+    startMinute: clampInt(p.start_minute, 0, 59, 0),
+    durationMinutes: clampInt(p.duration_minutes, 1, 7 * 1440, 1440)
+  };
+}
+
+function clampInt(v: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  const i = Math.round(n);
+  if (i < min) return min;
+  if (i > max) return max;
+  return i;
+}
+
+function loadScheduleLocal(): SabbathSchedule {
+  const raw = loadStoredString(SCHEDULE_KEY, '');
+  if (!raw) return { ...DEFAULT_SCHEDULE };
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      enabled: Boolean(parsed.enabled),
+      dayOfWeek: clampInt(parsed.dayOfWeek, 0, 6, 0),
+      startHour: clampInt(parsed.startHour, 0, 23, 0),
+      startMinute: clampInt(parsed.startMinute, 0, 59, 0),
+      durationMinutes: clampInt(parsed.durationMinutes, 1, 7 * 1440, 1440)
+    };
+  } catch {
+    return { ...DEFAULT_SCHEDULE };
   }
-  return DEFAULT_SCHEDULE;
 }
 
-function persistSchedule(sched: SabbathSchedule) {
-  saveStored(SCHEDULE_KEY, sched);
+function persistScheduleLocal(sched: SabbathSchedule) {
+  try {
+    saveStoredString(SCHEDULE_KEY, JSON.stringify(sched));
+  } catch {
+    // localStorage full / private mode — non-fatal; the server is the
+    // source of truth and will be re-fetched on next load anyway.
+  }
 }
 
-export const sabbathSchedule = writable<SabbathSchedule>(loadSchedule());
-sabbathSchedule.subscribe((s) => persistSchedule(s));
-
-export const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-// Returns true when the schedule says "today is the sabbath" — the
-// store init + visibilitychange handler use this to flip activeOn
-// automatically. Idempotent: if already active for today, no-op.
-function scheduleSaysToday(): boolean {
-  const sched = loadSchedule();
-  if (!sched.enabled || sched.dayOfWeek < 0) return false;
-  const dow = new Date().getDay();
-  return dow === sched.dayOfWeek;
+// ── Schedule window math ────────────────────────────────────────
+// Mirror of the Go-side scheduleWindow in internal/sabbath. Finds
+// the most-recently-started occurrence of (DayOfWeek, StartHour,
+// StartMinute) at or before `at`, returns its [start, end) window.
+// Returns null when schedule is disabled or no occurrence fits.
+function scheduleWindow(s: SabbathSchedule, at: Date): { start: Date; end: Date } | null {
+  if (!s.enabled || s.durationMinutes <= 0) return null;
+  // Walk back up to 8 days so today + every preceding day are covered.
+  for (let daysBack = 0; daysBack < 8; daysBack++) {
+    const cand = new Date(at.getFullYear(), at.getMonth(), at.getDate() - daysBack,
+      s.startHour, s.startMinute, 0, 0);
+    if (cand.getDay() !== s.dayOfWeek) continue;
+    if (cand.getTime() > at.getTime()) continue;
+    const end = new Date(cand.getTime() + s.durationMinutes * 60_000);
+    return { start: cand, end };
+  }
+  return null;
 }
 
-// Time-remaining to next midnight (when sabbath auto-clears) — used
-// by the sabbath landing screen + ribbon to show "rest until …".
-// Returned in minutes; consumer formats. Returns 0 when sabbath
-// isn't currently active.
-export function sabbathMinutesRemaining(): number {
-  if (!loadActive()) return 0;
-  const now = new Date();
-  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
-  return Math.max(0, Math.round((tomorrow.getTime() - now.getTime()) / 60000));
+function scheduleSaysNow(s: SabbathSchedule, at: Date): boolean {
+  const w = scheduleWindow(s, at);
+  if (!w) return false;
+  return at.getTime() >= w.start.getTime() && at.getTime() < w.end.getTime();
 }
 
-// Read the persisted value, treating any value other than today as
-// "not active". The auto-expiry is a read-time check, not a
-// background timer — simpler, no leak risk.
-function loadActive(): boolean {
+// ── Stores ──────────────────────────────────────────────────────
+export const sabbathSchedule = writable<SabbathSchedule>(loadScheduleLocal());
+
+// Persist locally on every change; sync to server when the change
+// originates from user action (set via updateSchedule()). The store
+// subscribe runs for both kinds of update, so we use a sync-suppression
+// flag to avoid PUT-loop on server-driven updates.
+let suppressServerSync = false;
+sabbathSchedule.subscribe((s) => {
+  persistScheduleLocal(s);
+  if (suppressServerSync) return;
+  // Best-effort PUT. Failure is non-fatal — the local copy is now
+  // ahead of the server; next successful PUT (or page load if we
+  // adopt last-write-wins later) reconciles.
+  api.putSabbath({ schedule: toWire(s) }).catch(() => undefined);
+});
+
+// updateSchedule is the user-facing setter. Identical to .set() at
+// this layer but reads as intent in call sites.
+export function updateSchedule(next: SabbathSchedule) {
+  sabbathSchedule.set(next);
+}
+
+// ── Daily on/off (per-device manual flag) ───────────────────────
+// Local-only. The server gates work-modules based on the synced
+// schedule, so a manual toggle here doesn't propagate. If you want
+// server gating during a manual sabbath, configure the schedule.
+function loadManualActive(): boolean {
   return loadStoredString(KEY, '') === todayISO();
 }
 
-// Initial value: persisted activeOn OR schedule says today is the
-// sabbath. The schedule path also writes activeOn so subsequent
-// reads (and the server sync) see the same source-of-truth.
 function computeInitial(): boolean {
-  if (loadActive()) return true;
-  if (scheduleSaysToday()) {
-    saveStoredString(KEY, todayISO());
-    // Server sync runs lazily — first fetch'll be after the auth
-    // store hydrates. For initial computation we just persist
-    // locally; the manual enable() path handles its own sync.
-    return true;
-  }
-  return false;
+  if (loadManualActive()) return true;
+  return scheduleSaysNow(loadScheduleLocal(), new Date());
 }
 
 const { subscribe, set } = writable<boolean>(computeInitial());
-
-// Mirror local toggle to the server so server-side surfaces (push
-// scheduler, future agents) can silently skip work during the
-// day of rest. The server sidecar is .granit/sabbath.json. Best-
-// effort: server unreachable → UI overlay still works (the local
-// flag is the source of truth for navigation), only the push
-// silencing degrades. We don't await — the toggle should feel
-// instant.
-function syncToServer(activeOn: string) {
-  if (typeof fetch === 'undefined') return;
-  const token = loadStoredString('everything.token', '');
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  fetch('/api/v1/sabbath', {
-    method: 'PUT',
-    headers,
-    body: JSON.stringify({ active_on: activeOn })
-  }).catch(() => undefined);
-}
 
 export const sabbath: Readable<boolean> & {
   enable(): void;
@@ -178,15 +216,17 @@ export const sabbath: Readable<boolean> & {
 } = {
   subscribe,
   enable() {
-    const today = todayISO();
-    saveStoredString(KEY, today);
+    saveStoredString(KEY, todayISO());
     set(true);
-    syncToServer(today);
   },
   disable() {
     saveStoredString(KEY, undefined);
-    set(false);
-    syncToServer('');
+    // Recompute — if the SCHEDULE still says we're in sabbath, we
+    // stay in sabbath even after a manual disable. The user can't
+    // override the schedule by toggling off; they have to disable
+    // the schedule itself. This is intentional: schedule is the
+    // discipline, manual toggle is the convenience.
+    set(scheduleSaysNow(get(sabbathSchedule), new Date()));
   },
   toggle() {
     if (get({ subscribe })) this.disable();
@@ -197,23 +237,75 @@ export const sabbath: Readable<boolean> & {
   }
 };
 
-// Re-evaluate on focus — if a user toggles sabbath on at 11pm and
-// returns at 1am the next day, the store should reflect "no longer
-// active" without a page reload. visibilitychange is the cheap event
-// that triggers when the tab regains focus. Same path also picks
-// up the schedule auto-enable for users who left the tab open
-// across midnight on a Saturday→Sunday boundary.
-if (typeof window !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      let fresh = loadActive();
-      if (!fresh && scheduleSaysToday()) {
-        const today = todayISO();
-        saveStoredString(KEY, today);
-        syncToServer(today);
-        fresh = true;
+// ── Time-remaining ──────────────────────────────────────────────
+// Returns minutes until the current sabbath window ends. For
+// manual-only activations falls back to midnight tomorrow (the
+// original behavior). Returns 0 when not active.
+export function sabbathMinutesRemaining(): number {
+  if (!get({ subscribe })) return 0;
+  const now = new Date();
+  const w = scheduleWindow(get(sabbathSchedule), now);
+  if (w && now.getTime() >= w.start.getTime() && now.getTime() < w.end.getTime()) {
+    return Math.max(0, Math.round((w.end.getTime() - now.getTime()) / 60_000));
+  }
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  return Math.max(0, Math.round((tomorrow.getTime() - now.getTime()) / 60_000));
+}
+
+// ── Server sync ─────────────────────────────────────────────────
+// Fetch the canonical schedule from the server on first load + on
+// every tab-focus. The server is the source of truth for the
+// schedule; the local copy is a cache that only matters until the
+// fetch resolves.
+//
+// Conflict resolution: server wins on read. If the user just edited
+// the schedule locally and the PUT raced with the next focus-driven
+// GET, the local edit might briefly flicker back to the server's
+// previous value before the PUT-response reconciles. Acceptable
+// tradeoff — the alternative (timestamps + last-write-wins) is more
+// machinery than this surface needs.
+async function refetchSchedule() {
+  try {
+    const res = await api.getSabbath();
+    const remote = fromWire(res.schedule);
+    const current = get(sabbathSchedule);
+    if (!schedulesEqual(remote, current)) {
+      suppressServerSync = true;
+      try {
+        sabbathSchedule.set(remote);
+      } finally {
+        suppressServerSync = false;
       }
-      if (fresh !== get({ subscribe })) set(fresh);
+      // Recompute the active flag now that the schedule may have changed.
+      set(loadManualActive() || scheduleSaysNow(remote, new Date()));
     }
+  } catch {
+    // Server unreachable / auth not yet hydrated — try again on next
+    // visibilitychange. The local copy is fine until then.
+  }
+}
+
+function schedulesEqual(a: SabbathSchedule, b: SabbathSchedule): boolean {
+  return a.enabled === b.enabled
+    && a.dayOfWeek === b.dayOfWeek
+    && a.startHour === b.startHour
+    && a.startMinute === b.startMinute
+    && a.durationMinutes === b.durationMinutes;
+}
+
+if (typeof window !== 'undefined') {
+  // Initial fetch — fire-and-forget, runs as soon as the module loads.
+  // The auth token may not be hydrated yet on cold-start; the
+  // visibilitychange handler will retry shortly.
+  refetchSchedule();
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    // Re-fetch the schedule (server may have changed) and re-evaluate
+    // local active state (date may have rolled over, or window may
+    // have just opened/closed).
+    refetchSchedule();
+    const fresh = loadManualActive() || scheduleSaysNow(get(sabbathSchedule), new Date());
+    if (fresh !== get({ subscribe })) set(fresh);
   });
 }

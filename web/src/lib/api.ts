@@ -2277,6 +2277,32 @@ export const api = {
       body: JSON.stringify(prefs)
     }),
 
+  // Sabbath — schedule synced server-side so the rule set on one
+  // device shows up on all devices. Daily on/off (active_on) is
+  // mirrored too for server-side gating, but the UI activation
+  // decision stays per-device in localStorage.
+  getSabbath: () =>
+    req<{
+      active_on: string;
+      active_now: boolean;
+      active_today: boolean;
+      remaining_minutes: number;
+      schedule: SabbathSchedulePayload;
+    }>('/sabbath'),
+  putSabbath: (body: { active_on?: string; schedule?: SabbathSchedulePayload }) =>
+    req<{
+      active_on: string;
+      active_now: boolean;
+      active_today: boolean;
+      remaining_minutes: number;
+      schedule: SabbathSchedulePayload;
+    }>('/sabbath', {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    }),
+  getSabbathLog: () =>
+    req<{ entries: { at: string; event: 'begin' | 'end' }[] }>('/sabbath/log'),
+
   // Email tracker — CRM-grade record of correspondence. Storage:
   // <vault>/.granit/emails.json. Fields mirror internal/email.Email.
   listEmails: () => req<{ emails: Email[]; total: number }>('/emails'),
@@ -2538,6 +2564,17 @@ export interface NotificationPrefs {
   deadlines: { enabled: boolean; days_before: number[]; at_time: string };
   quiet_hours: { enabled: boolean; start: string; end: string };
   default_event_reminder: number;
+}
+
+// Wire-format schedule shape — matches internal/sabbath.Schedule
+// JSON tags exactly. The local SabbathSchedule alias in the store
+// uses camelCase for ergonomic TS; this is the over-the-wire shape.
+export interface SabbathSchedulePayload {
+  enabled: boolean;
+  day_of_week: number;     // 0=Sunday … 6=Saturday
+  start_hour: number;      // 0-23
+  start_minute: number;    // 0-59
+  duration_minutes: number; // 1440 = 24h
 }
 
 export interface Email {
