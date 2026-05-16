@@ -72,11 +72,43 @@
     return e ? `${t}${r} · ${fmtTime(s)}–${fmtTime(e)}` : `${t}${r} · ${fmtTime(s)}`;
   }
 
+  // "+N more" popover state. We render at most one popover at a time
+  // — anchored to the clicked cell by an absolute-positioned bubble
+  // inside the cell, so it tracks viewport scroll without floating-ui.
+  // Clicking outside / pressing Escape closes it. Clicking an event
+  // inside the popover fires onClickEvent (same as a chip) so the
+  // detail-panel UX stays consistent with the rest of the grid.
+  let popoverIso = $state<string | null>(null);
+  function openPopover(iso: string, e: Event) {
+    e.stopPropagation();
+    popoverIso = popoverIso === iso ? null : iso;
+  }
+  function closePopover() { popoverIso = null; }
+  function onPopoverKey(e: KeyboardEvent) {
+    if (e.key === 'Escape') closePopover();
+  }
+
   const today = new Date();
 </script>
 
-<div class="border border-surface1 rounded overflow-hidden">
-  <div class="grid grid-cols-7 bg-mantle text-xs text-dim">
+<!-- Outer wrapper keeps a rounded border around the entire grid.
+     We use `overflow-visible` on this container (and on the cells)
+     so the per-cell "+N more" popovers can spill above the grid
+     without being clipped — the cells render the popover absolute-
+     positioned inside themselves so it stays anchored on scroll. -->
+{#if popoverIso}
+  <!-- Transparent backdrop catches outside clicks. Sits below the
+       popover (z-20 vs z-30) but above the grid so a click on any
+       OTHER cell closes the current popover instead of jumping to
+       that cell. -->
+  <button
+    class="fixed inset-0 z-20 cursor-default"
+    aria-label="close popover"
+    onclick={closePopover}
+  ></button>
+{/if}
+<div class="border border-surface1 rounded overflow-visible relative" onkeydown={onPopoverKey} role="presentation">
+  <div class="grid grid-cols-7 bg-mantle text-xs text-dim rounded-t">
     {#each ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as wd}
       <div class="px-2 py-1.5 border-b border-surface1">{wd}</div>
     {/each}
@@ -87,7 +119,7 @@
       {@const events = eventsByDay.get(c.iso) ?? []}
       <div
         role="gridcell"
-        class="p-1.5 overflow-hidden flex flex-col gap-0.5 hover:bg-surface0 transition-colors
+        class="relative p-1.5 overflow-visible flex flex-col gap-0.5 hover:bg-surface0 transition-colors
           {c.inMonth ? 'bg-base' : 'bg-base opacity-50'}
           {isToday ? 'ring-1 ring-inset ring-primary/40' : ''}"
       >
@@ -139,11 +171,64 @@
           {/each}
           {#if events.length > maxChips}
             <button
-              onclick={() => onClickDay(c.date)}
+              onclick={(e) => openPopover(c.iso, e)}
               class="text-[10px] text-dim px-1 text-left hover:text-text"
+              aria-expanded={popoverIso === c.iso}
+              aria-label="show all {events.length} events on {c.iso}"
             >+{events.length - maxChips} more</button>
           {/if}
         </div>
+        {#if popoverIso === c.iso}
+          <!-- Anchored popover — sits inside the cell so it tracks
+               the grid as it scrolls. Width is fixed; horizontal
+               offset is auto so the browser keeps it in viewport on
+               right-edge cells. Click backdrop / Escape close it. -->
+          <div
+            class="absolute z-30 top-7 left-1 w-56 max-h-72 overflow-y-auto bg-mantle border border-surface1 rounded shadow-lg p-2 space-y-0.5"
+            role="dialog"
+            aria-label="events on {c.iso}"
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={onPopoverKey}
+            tabindex="-1"
+          >
+            <div class="flex items-center justify-between mb-1 px-0.5">
+              <span class="text-[11px] text-subtext font-medium">
+                {c.date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+              </span>
+              <button
+                onclick={closePopover}
+                aria-label="close"
+                class="text-dim hover:text-text leading-none w-4 h-4 flex items-center justify-center text-xs"
+              >×</button>
+            </div>
+            {#each events as ev}
+              {@const col = eventTypeColor(ev)}
+              {@const allDay = isAllDay(ev)}
+              <button
+                onclick={() => { closePopover(); onClickEvent(ev); }}
+                class="flex items-center gap-1.5 w-full text-left px-1.5 py-1 rounded hover:bg-surface0 text-[11px] leading-tight"
+                title={chipTooltip(ev)}
+              >
+                <span
+                  class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                  style="background: {col.border}"
+                  aria-hidden="true"
+                ></span>
+                {#if !allDay && ev.start}
+                  <span class="font-mono text-[10px] text-dim w-9 flex-shrink-0">{fmtTime(new Date(ev.start))}</span>
+                {:else}
+                  <span class="font-mono text-[10px] text-dim w-9 flex-shrink-0">all-day</span>
+                {/if}
+                <span class="truncate flex-1 text-text {ev.done ? 'line-through opacity-60' : ''}">{ev.title}</span>
+                {#if ev.rrule}<span class="text-dim text-[9px] flex-shrink-0" aria-hidden="true">↻</span>{/if}
+              </button>
+            {/each}
+            <button
+              onclick={() => { closePopover(); onClickDay(c.date); }}
+              class="block w-full text-left text-[10px] text-dim px-1.5 py-1 hover:text-text border-t border-surface1 mt-1 pt-1.5"
+            >Open {c.date.toLocaleDateString(undefined, { weekday: 'short' })} in day view →</button>
+          </div>
+        {/if}
       </div>
     {/each}
   </div>
