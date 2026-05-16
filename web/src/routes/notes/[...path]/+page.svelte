@@ -42,6 +42,11 @@
     selectionStateExtension,
     type SelectionState
   } from '$lib/notes/selectionState';
+  import InlineAIMenu from '$lib/notes/InlineAIMenu.svelte';
+  import {
+    inlineAITriggerExtension,
+    type InlineAITriggerEvent
+  } from '$lib/editor/inline-ai-trigger';
   import { EditorSelection } from '@codemirror/state';
   import type { EditorView } from '@codemirror/view';
   import ResearchPanel from '$lib/notes/ResearchPanel.svelte';
@@ -128,6 +133,10 @@
   let dirty = $state(false);
   let error = $state('');
   let lastLoadedPath = $state('');
+
+  // Inline AI menu — populated by the inline-ai-trigger extension when
+  // the user hits Cmd-K or types "/ai". Cleared when the menu closes.
+  let aiTriggerEvent = $state<InlineAITriggerEvent | null>(null);
 
   // Reading progress 0..1 — driven by the editor's onScroll callback
   // (rAF-throttled there). When the doc fits in viewport the
@@ -968,9 +977,18 @@
   // closes over the `aiBarSelection` setter via Svelte's reactive
   // box, so even though the closure is created once, every selection
   // change reaches the rune.
+  //
+  // The inline-AI trigger extension is included alongside the
+  // selection-state plugin so Cmd-K and "/ai" route into the new
+  // InlineAIMenu rendered at the page level. The trigger callback
+  // writes to aiTriggerEvent, which Svelte reactively renders into
+  // the floating menu component near the bottom of the template.
   const aiBarSelectionExtensions = [
     selectionStateExtension((s) => {
       aiBarSelection = s;
+    }),
+    inlineAITriggerExtension((e) => {
+      aiTriggerEvent = e;
     })
   ];
 
@@ -2425,6 +2443,19 @@
   sourcePath={note?.path ?? ''}
   onDismiss={dismissAskAI}
 />
+
+<!-- Inline AI menu — Notion-style command palette anchored at the
+     cursor. Opens on Cmd-K or when the user types "/ai" at the start
+     of a line. Streams output as ghost text in the editor; the user
+     accepts/rejects/regenerates without ever leaving the document. -->
+{#if aiTriggerEvent && note}
+  <InlineAIMenu
+    event={aiTriggerEvent}
+    notePath={note.path}
+    {body}
+    onClose={() => (aiTriggerEvent = null)}
+  />
+{/if}
 
 <!-- Mobile overflow popover — surfaces the secondary header
      actions on phones. Rendered with `position: fixed` and
