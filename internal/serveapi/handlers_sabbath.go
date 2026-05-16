@@ -26,6 +26,7 @@ func (s *Server) handleGetSabbath(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"active_on":         state.ActiveOn,
+		"skip_on":           state.SkipOn,
 		"active_now":        activeNow,
 		"active_today":      activeNow, // alias for older clients
 		"remaining_minutes": remaining,
@@ -34,13 +35,18 @@ func (s *Server) handleGetSabbath(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePutSabbath replaces the persisted Sabbath state. Body shape:
-// {active_on?: "YYYY-MM-DD", schedule?: {...}}. Either field is
-// optional — clients can update one without re-sending the other.
-// Empty active_on disables the manual flag; schedule with Enabled
-// false disables auto-activation.
+// {active_on?, skip_on?, schedule?}. Every field is optional — clients
+// can update one without re-sending the others. Empty string clears
+// the corresponding date; omitting the field leaves the on-disk value
+// untouched.
+//
+// skip_on is the escape hatch the "exit sabbath" button writes when
+// the user opts out of a scheduled day. Per-date override; expires
+// naturally when the calendar rolls over.
 func (s *Server) handlePutSabbath(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ActiveOn *string            `json:"active_on,omitempty"`
+		SkipOn   *string            `json:"skip_on,omitempty"`
 		Schedule *sabbath.Schedule  `json:"schedule,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -56,6 +62,9 @@ func (s *Server) handlePutSabbath(w http.ResponseWriter, r *http.Request) {
 	prevActive := state.IsActiveAt(now)
 	if body.ActiveOn != nil {
 		state.ActiveOn = *body.ActiveOn
+	}
+	if body.SkipOn != nil {
+		state.SkipOn = *body.SkipOn
 	}
 	if body.Schedule != nil {
 		state.Schedule = sabbath.NormalizeSchedule(*body.Schedule)
@@ -79,6 +88,7 @@ func (s *Server) handlePutSabbath(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"active_on":         state.ActiveOn,
+		"skip_on":           state.SkipOn,
 		"active_now":        nowActive,
 		"active_today":      nowActive,
 		"remaining_minutes": remaining,

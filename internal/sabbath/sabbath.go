@@ -62,11 +62,24 @@ func DefaultSchedule() Schedule {
 	return Schedule{Enabled: false, DayOfWeek: 0, StartHour: 0, StartMinute: 0, DurationMinutes: 1440}
 }
 
-// State is the persisted Sabbath flag. ActiveOn is the YYYY-MM-DD
-// date the user manually enabled the mode (empty → manual flag off).
-// Schedule is the recurring auto-enable rule.
+// State is the persisted Sabbath flag.
+//
+//   ActiveOn — YYYY-MM-DD the user manually enabled the mode (empty
+//     → manual flag off). Auto-expires when the date no longer matches
+//     today.
+//
+//   SkipOn — YYYY-MM-DD the user explicitly opted OUT of an otherwise
+//     scheduled sabbath. When set and matching today, IsActiveAt
+//     suppresses the schedule for the current day only. This is the
+//     escape hatch the "exit sabbath" button uses: pressing it
+//     mid-schedule shouldn't be a no-op (the schedule would keep
+//     re-asserting) and shouldn't disable the schedule entirely
+//     (next week's sabbath should still fire). One-day override.
+//
+//   Schedule — recurring auto-enable rule.
 type State struct {
 	ActiveOn string   `json:"active_on,omitempty"`
+	SkipOn   string   `json:"skip_on,omitempty"`
 	Schedule Schedule `json:"schedule"`
 }
 
@@ -169,8 +182,17 @@ func IsActiveNow(vaultRoot string) bool {
 // IsActiveAt is the pure function behind IsActiveNow — useful for
 // tests and for callers that already have a State and a specific
 // instant in mind.
+//
+// Skip wins over both manual and schedule. The "exit sabbath" button
+// sets SkipOn=today; that must override even an active schedule
+// window, otherwise the schedule re-asserts and the button looks
+// broken.
 func (s State) IsActiveAt(at time.Time) bool {
-	if s.ActiveOn != "" && s.ActiveOn == at.Format("2006-01-02") {
+	today := at.Format("2006-01-02")
+	if s.SkipOn != "" && s.SkipOn == today {
+		return false
+	}
+	if s.ActiveOn != "" && s.ActiveOn == today {
 		return true
 	}
 	start, end, ok := scheduleWindow(s.Schedule, at)

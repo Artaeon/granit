@@ -65,6 +65,30 @@ func TestActiveAt_ScheduleSundownToSundown(t *testing.T) {
 	}
 }
 
+func TestActiveAt_SkipOverridesSchedule(t *testing.T) {
+	loc := time.UTC
+	at := time.Date(2026, 5, 16, 12, 0, 0, 0, loc) // Sat noon
+	sched := Schedule{Enabled: true, DayOfWeek: int(time.Saturday), StartHour: 0, StartMinute: 0, DurationMinutes: 1440}
+	s := State{Schedule: sched, SkipOn: "2026-05-16"}
+	if s.IsActiveAt(at) {
+		t.Fatal("skip for today should suppress an otherwise-active schedule")
+	}
+	// Tomorrow's window (different Saturday) should still fire — skip
+	// is one-day only.
+	nextSat := time.Date(2026, 5, 23, 12, 0, 0, 0, loc)
+	if !s.IsActiveAt(nextSat) {
+		t.Fatal("skip should not persist past its date")
+	}
+}
+
+func TestActiveAt_SkipOverridesManual(t *testing.T) {
+	at := time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC)
+	s := State{ActiveOn: "2026-05-16", SkipOn: "2026-05-16", Schedule: DefaultSchedule()}
+	if s.IsActiveAt(at) {
+		t.Fatal("skip should win over a stale manual flag too")
+	}
+}
+
 func TestActiveAt_ScheduleDisabled(t *testing.T) {
 	s := State{Schedule: Schedule{Enabled: false, DayOfWeek: int(time.Saturday), StartHour: 0, DurationMinutes: 1440}}
 	at := time.Date(2026, 5, 16, 12, 0, 0, 0, time.UTC)
