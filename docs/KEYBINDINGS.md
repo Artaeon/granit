@@ -145,18 +145,31 @@ Mirrors Google Calendar bindings so muscle memory carries over.
 | `k` or `p` | Previous period |
 | `d` | Day view |
 | `w` | Week view |
-| `x` | 3-day view |
+| `Shift+W` | Workweek view (Mon–Fri only) |
 | `m` | Month view |
 | `y` | Year view |
-| `a` | Agenda view |
+| `a` | Agenda view (flat 30-day list) |
+| `Shift+A` | Open the calendar agent (scoped to visible window + project filter) |
+| `f` | Find time — open the free-slot finder |
 | `?` | Toggle the calendar shortcuts help overlay |
-| `Esc` | Close create / edit drawer |
+| `Esc` | Close create / edit drawer / popovers / find-time modal |
 
 Bindings disable when an input has focus or when a creation / detail
-drawer is open. The drawers own their own keyboard surface (Enter to
-submit, Esc to close).
+drawer / find-time modal is open. The drawers own their own keyboard
+surface (Enter to submit, Esc to close).
 
 On touch devices, swipe left / right on the grid to advance / go back.
+
+#### Month view
+
+The month grid has a per-device density toggle in the toolbar:
+
+- **Comfy**: 3 chips per cell with bigger text.
+- **Compact**: up to 6 chips per cell with tighter text.
+
+A `+N more` link in any cell with overflowing events opens a small
+popover listing every event on that day. Click an event to open the
+detail panel; click the footer link to drop into the day view.
 
 ### Web — History panel
 

@@ -28,6 +28,7 @@
   import QuickCreateScheduled from '$lib/calendar/QuickCreateScheduled.svelte';
   import CreateEvent from '$lib/calendar/CreateEvent.svelte';
   import UnifiedCreate from '$lib/calendar/UnifiedCreate.svelte';
+  import FindTime from '$lib/calendar/FindTime.svelte';
   import { parseEventInput, type ParseResult } from '$lib/calendar/quickCreate';
   import TaskBacklog from '$lib/calendar/TaskBacklog.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
@@ -35,7 +36,7 @@
   import { dragStore } from '$lib/calendar/dragStore';
   import { onDestroy } from 'svelte';
 
-  type View = 'day' | 'week' | 'month' | 'year';
+  type View = 'day' | 'workweek' | 'week' | 'month' | 'year' | 'agenda';
 
   // Persisted last-used view (per device). On a fresh visit (no
   // saved preference) we default to 'day' on small screens because
@@ -62,8 +63,18 @@
   const PLAN_KEY = 'granit.calendar.planmode';
   let planMode = $state<boolean>(loadStoredString(PLAN_KEY, '0') === '1');
 
+  // Month grid density. Comfy = 3 chips/cell with bigger text;
+  // compact = 6 chips/cell, tighter. Persisted per-device because
+  // the user's preferred density tracks their screen size + how busy
+  // their calendar typically is, not their account.
+  const MONTH_DENSITY_KEY = 'granit.calendar.monthDensity';
+  let monthDensity = $state<'comfy' | 'compact'>(
+    (loadStoredString(MONTH_DENSITY_KEY, 'comfy') === 'compact' ? 'compact' : 'comfy')
+  );
+
   $effect(() => saveStoredString(VIEW_KEY, view));
   $effect(() => saveStoredString(PLAN_KEY, planMode ? '1' : '0'));
+  $effect(() => saveStoredString(MONTH_DENSITY_KEY, monthDensity));
 
   function togglePlanMode() {
     planMode = !planMode;
@@ -112,6 +123,17 @@
   let unifiedStart = $state(new Date());
   let unifiedEnd = $state(new Date());
   let unifiedKind = $state<'task' | 'event'>('task');
+
+  // Find-time modal — surfaces free gaps in the active calendar feed
+  // for a chosen duration. Picking a gap seeds UnifiedCreate so the
+  // user can lock in a title without re-typing the time.
+  let findTimeOpen = $state(false);
+  function onFindTimePick(start: Date, durationMinutes: number) {
+    unifiedStart = start;
+    unifiedEnd = new Date(start.getTime() + durationMinutes * 60_000);
+    unifiedKind = 'event';
+    unifiedOpen = true;
+  }
 
   let filterDrawerOpen = $state(false);
   // Reactive mobile flag via the shared mediaQuery store. Auto-cleans
@@ -464,6 +486,15 @@
       const s = startOfWeek(cursor);
       return Array.from({ length: 7 }, (_, i) => addDays(s, i));
     }
+    if (view === 'workweek') {
+      // Mon–Fri anchored on the week containing cursor. startOfWeek
+      // resolves to Sunday (locale-agnostic in this codebase), so we
+      // step one day forward and emit five days. Saturday/Sunday are
+      // dropped — the time-grid columns scale to fill width.
+      const s = startOfWeek(cursor);
+      const mon = addDays(s, 1);
+      return Array.from({ length: 5 }, (_, i) => addDays(mon, i));
+    }
     return [];
   });
 
@@ -477,17 +508,33 @@
     });
   });
 
+  // Agenda view shows a rolling 30-day flat list anchored at cursor.
+  // Past-dated events stay invisible — the agenda is a "what's next"
+  // surface, not a historical log (the day/week views and tasks
+  // dashboard cover the look-back use case).
+  let agendaEvents = $derived.by(() => {
+    const from = fmtDateISO(cursor);
+    const to = fmtDateISO(addDays(cursor, 30));
+    return events.filter((ev) => {
+      const key = ev.date ?? (ev.start ? ev.start.slice(0, 10) : '');
+      if (!key) return false;
+      return key >= from && key <= to;
+    });
+  });
+
   function prev() {
     if (view === 'day') cursor = addDays(cursor, -1);
-    else if (view === 'week') cursor = addDays(cursor, -7);
+    else if (view === 'week' || view === 'workweek') cursor = addDays(cursor, -7);
     else if (view === 'month') cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
     else if (view === 'year') cursor = new Date(cursor.getFullYear() - 1, cursor.getMonth(), 1);
+    else if (view === 'agenda') cursor = addDays(cursor, -7);
   }
   function next() {
     if (view === 'day') cursor = addDays(cursor, 1);
-    else if (view === 'week') cursor = addDays(cursor, 7);
+    else if (view === 'week' || view === 'workweek') cursor = addDays(cursor, 7);
     else if (view === 'month') cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
     else if (view === 'year') cursor = new Date(cursor.getFullYear() + 1, cursor.getMonth(), 1);
+    else if (view === 'agenda') cursor = addDays(cursor, 7);
   }
   function gotoToday() { cursor = new Date(); }
 
@@ -508,19 +555,21 @@
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     // Don't fight the create / detail drawers — they own their own
     // keyboard surface (Escape to close, Enter to submit).
-    if (createOpen || createEventOpen || unifiedOpen || detailOpen) return;
+    if (createOpen || createEventOpen || unifiedOpen || detailOpen || findTimeOpen) return;
     switch (e.key) {
       case 't': gotoToday(); break;
       case 'j': case 'n': next(); break;
       case 'k': case 'p': prev(); break;
       case 'd': view = 'day'; break;
       case 'w': view = 'week'; break;
+      case 'W': view = 'workweek'; break; // Shift+W = workweek (Mon–Fri)
       case 'm': view = 'month'; break;
       case 'y': view = 'year'; break;
-      case 'a': case 'A': agentOpen = true; break; // 'a' opens the agent
-                                                   // (matches other pages
-                                                   // now that the agenda
-                                                   // view is gone).
+      case 'a': view = 'agenda'; break; // 'a' = agenda view (matches
+                                        // Google Calendar). Shift+A
+                                        // opens the calendar agent.
+      case 'A': agentOpen = true; break;
+      case 'f': findTimeOpen = true; break; // 'f' = find a free slot
       case '?': showShortcutHelp = !showShortcutHelp; break;
       default: return;
     }
@@ -970,8 +1019,17 @@
       }
       return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
     }
+    if (view === 'workweek') {
+      const s = addDays(startOfWeek(cursor), 1); // Mon
+      const e = addDays(s, 4); // Fri
+      if (s.getMonth() === e.getMonth()) {
+        return `${s.toLocaleDateString(undefined, { month: 'short' })} ${s.getDate()}–${e.getDate()} (Mon–Fri)`;
+      }
+      return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} (Mon–Fri)`;
+    }
     if (view === 'month') return cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     if (view === 'year') return String(cursor.getFullYear());
+    if (view === 'agenda') return 'Agenda · next 30 days';
     return '';
   });
 </script>
@@ -1208,6 +1266,21 @@
            so the user can see at a glance that scheduling-by-drag is
            live. Forces day view when toggled on (the side-rail layout
            collapses week-views below useful width). -->
+      <!-- Find time — surfaces the first N free slots that fit a
+           chosen duration. Composes with the active filters since it
+           consumes the same filtered events list. 'f' shortcut. -->
+      <button
+        onclick={() => (findTimeOpen = true)}
+        class="px-2.5 py-1.5 text-xs sm:text-sm rounded border bg-surface0 border-surface1 text-subtext hover:border-primary flex items-center gap-1"
+        title="Find a free slot (f)"
+        aria-label="find free time"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M12 7v5l3 2"/>
+        </svg>
+        <span class="hidden sm:inline">Find</span>
+      </button>
       <button
         onclick={togglePlanMode}
         class="px-2.5 py-1.5 text-xs sm:text-sm rounded border flex items-center gap-1 transition-colors
@@ -1224,6 +1297,24 @@
       <!-- Calendar Agent (Plan my week, Find free time, Day insight,
            Dashboard) lives in the chat sidebar — Run agent on
            /calendar. Header stays minimal: nav + view switcher. -->
+      <!-- Month-only density toggle. Compact = 6 chips/cell with tiny
+           text — useful on busy months / smaller screens; Comfy = 3
+           chips/cell with bigger text — better at-a-glance reading on
+           lighter months. Persisted per-device. -->
+      {#if view === 'month'}
+        <div class="hidden md:flex bg-surface0 border border-surface1 rounded overflow-hidden text-[11px]" title="Month grid density">
+          <button
+            class="px-2 py-1.5 {monthDensity === 'comfy' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (monthDensity = 'comfy')}
+            aria-pressed={monthDensity === 'comfy'}
+          >Comfy</button>
+          <button
+            class="px-2 py-1.5 {monthDensity === 'compact' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (monthDensity = 'compact')}
+            aria-pressed={monthDensity === 'compact'}
+          >Compact</button>
+        </div>
+      {/if}
       <!-- View switcher — Apple Calendar set: Day / Week / Month / Year.
            3-day and Agenda were retired alongside the AI toolbar
            cleanup; Agenda's content lives in /tasks + the chat
@@ -1233,6 +1324,11 @@
           class="px-2 sm:px-3 py-1.5 {view === 'day' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (view = 'day')}
         >Day</button>
+        <button
+          class="px-2 sm:px-3 py-1.5 {view === 'workweek' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'} hidden lg:inline-block"
+          onclick={() => (view = 'workweek')}
+          title="Mon–Fri only (Shift+W)"
+        >5d</button>
         <button
           class="px-2 sm:px-3 py-1.5 {view === 'week' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (view = 'week')}
@@ -1245,6 +1341,11 @@
           class="px-2 sm:px-3 py-1.5 {view === 'year' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'} hidden sm:inline-block"
           onclick={() => (view = 'year')}
         >Year</button>
+        <button
+          class="px-2 sm:px-3 py-1.5 {view === 'agenda' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+          onclick={() => (view = 'agenda')}
+          title="Flat 30-day list (great on mobile)"
+        >Agenda</button>
       </div>
       <button
         onclick={() => (showShortcutHelp = true)}
@@ -1301,7 +1402,7 @@
       ontouchstart={onTouchStart}
       ontouchend={onTouchEnd}
     >
-      {#if planMode && (view === 'day' || view === 'week')}
+      {#if planMode && (view === 'day' || view === 'week' || view === 'workweek')}
         <!-- Plan layout: backlog on the left (desktop) / top
              (mobile horizontal scroller). The grid takes the rest.
              onTaskDrop is what wires backlog → grid drop semantics;
@@ -1326,19 +1427,23 @@
             />
           </div>
         </div>
-      {:else if view === 'day' || view === 'week'}
+      {:else if view === 'day' || view === 'week' || view === 'workweek'}
         <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} />
       {:else if view === 'month'}
         <div class="h-full overflow-auto">
-          <MonthView cursor={cursor} events={events} onClickEvent={clickEvent} onClickDay={clickDay} />
+          <MonthView cursor={cursor} events={events} density={monthDensity} onClickEvent={clickEvent} onClickDay={clickDay} />
         </div>
       {:else if view === 'year'}
         <div class="h-full overflow-auto">
           <YearView cursor={cursor} events={events} onClickDay={(d) => { cursor = d; view = 'day'; }} />
         </div>
-      {:else}
+      {:else if view === 'agenda'}
+        <!-- Agenda is the flat 30-day next-up list. Scoped to
+             `agendaEvents` (rolling cursor → +30d) so prev/next
+             walks weeks of agenda content without re-fetching the
+             whole feed. -->
         <div class="overflow-y-auto h-full">
-          <AgendaView events={events} onClickEvent={clickEvent} />
+          <AgendaView events={agendaEvents} onClickEvent={clickEvent} />
         </div>
       {/if}
     </div>
@@ -1368,11 +1473,12 @@
         <dt class="font-mono text-primary">j / n</dt><dd class="text-subtext">next period</dd>
         <dt class="font-mono text-primary">k / p</dt><dd class="text-subtext">previous period</dd>
         <dt class="font-mono text-primary">d</dt><dd class="text-subtext">day view</dd>
-        <dt class="font-mono text-primary">x</dt><dd class="text-subtext">3-day view</dd>
         <dt class="font-mono text-primary">w</dt><dd class="text-subtext">week view</dd>
+        <dt class="font-mono text-primary">Shift+W</dt><dd class="text-subtext">workweek (Mon–Fri only)</dd>
         <dt class="font-mono text-primary">m</dt><dd class="text-subtext">month view</dd>
         <dt class="font-mono text-primary">y</dt><dd class="text-subtext">year view</dd>
-        <dt class="font-mono text-primary">a</dt><dd class="text-subtext">agenda view</dd>
+        <dt class="font-mono text-primary">a</dt><dd class="text-subtext">agenda view (next 30 days)</dd>
+        <dt class="font-mono text-primary">f</dt><dd class="text-subtext">find time (open free-slot finder)</dd>
         <dt class="font-mono text-primary">Shift+A</dt><dd class="text-subtext">open AI agent (scoped to visible window + project filter)</dd>
         <dt class="font-mono text-primary">?</dt><dd class="text-subtext">toggle this help</dd>
       </dl>
@@ -1409,6 +1515,7 @@
   defaultNotePath={`Jots/${fmtDateISO(unifiedStart)}.md`}
   onCreated={load}
 />
+<FindTime bind:open={findTimeOpen} events={events} onPick={onFindTimePick} />
 
 <!-- Calendar Agent — scoped to the currently-visible fetch
      window AND the active project filter so the agent sees
