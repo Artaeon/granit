@@ -386,6 +386,13 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/vision", s.handleGetVision)
 		r.Put("/api/v1/vision", s.handlePutVision)
 
+		// Roots — contemplative diagram of who the user is in Christ.
+		// Single record per vault under .granit/roots.json. Distinct
+		// from vision: vision is "what am I doing", roots is "where am
+		// I rooted". Hand-tended, never auto-populated.
+		r.Get("/api/v1/roots", s.handleGetRoots)
+		r.Put("/api/v1/roots", s.handlePutRoots)
+
 		// Prayer intentions — active prayer list with status lifecycle
 		// (praying → answered → archived). State at .granit/prayer/.
 		r.Get("/api/v1/prayer/intentions", s.handleListPrayer)
