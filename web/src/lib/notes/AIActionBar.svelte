@@ -33,7 +33,8 @@
     type InlineAIState,
     acceptInlineAI,
     rejectInlineAI,
-    regenerateInlineAI
+    regenerateInlineAI,
+    streamInlineAI
   } from '$lib/editor/inline-ai';
 
   interface Props {
@@ -73,7 +74,11 @@
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const margin = 8;
-      const barWidth = 280; // approximate; clamps below for narrow phones
+      // Approximate width — settled mode renders three buttons + a
+      // follow-up input, streaming mode renders the writing label +
+      // Stop. We clamp against the wider of the two so neither mode
+      // ever overflows the viewport on narrow phones.
+      const barWidth = s.streaming ? 200 : 420;
       let left = coords.left;
       let top = coords.bottom + 4;
       if (left + barWidth > vw - margin) left = vw - margin - barWidth;
@@ -112,6 +117,40 @@
     regenerateInlineAI(view);
     view.focus();
   }
+
+  // Follow-up — Notion-style "refine the result without re-opening
+  // the menu". After the stream settles the user can type "make it
+  // shorter" / "add an example" / "translate to German" and re-fire
+  // the inline-AI request with the previous output as assistant
+  // context. The new stream replaces the previous ghost in place.
+  let followUp = $state('');
+
+  function submitFollowUp() {
+    const instruction = followUp.trim();
+    if (!instruction || !view || !state || state.streaming) return;
+    const previousOutput = state.text;
+    const baseRequest = state.request;
+    if (!baseRequest) return;
+    // Reuse the request shape — anchor, kind, [from, to], notePath all
+    // stay the same. Only the messages change: we replay the previous
+    // exchange as assistant context so the model knows what it
+    // produced, then layer the user's follow-up on top.
+    streamInlineAI(view, {
+      ...baseRequest,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You previously produced text inside the user\'s note. The user now wants ' +
+            'to refine that text. Apply the follow-up instruction and return the UPDATED ' +
+            'text only — no preamble, no commentary, no surrounding quotes.'
+        },
+        { role: 'assistant', content: previousOutput },
+        { role: 'user', content: 'Follow-up instruction: ' + instruction }
+      ]
+    });
+    followUp = '';
+  }
 </script>
 
 {#if state && state.active && pos.visible}
@@ -148,6 +187,31 @@
         class="px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-dim hover:text-text"
         title="throw away the result (Esc)"
       >Discard</button>
+      <!-- Follow-up — type a refinement instruction and Enter re-fires
+           the same inline-AI request with the previous output as
+           assistant context. Notion-style "tell AI what to change". -->
+      <input
+        type="text"
+        bind:value={followUp}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submitFollowUp();
+          } else if (e.key === 'Escape') {
+            // Esc inside the follow-up input clears it without
+            // discarding the ghost — the user can keep iterating.
+            // A second Esc with empty input falls through to the
+            // editor's Escape handler which calls rejectInlineAI.
+            if (followUp.length > 0) {
+              e.preventDefault();
+              e.stopPropagation();
+              followUp = '';
+            }
+          }
+        }}
+        placeholder="refine: shorter, add example, translate…"
+        class="flex-1 min-w-[8rem] bg-surface0 border border-surface1 rounded px-1.5 py-0.5 text-text placeholder-dim focus:outline-none focus:border-primary"
+      />
     {/if}
   </div>
 {/if}
