@@ -360,6 +360,54 @@
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   });
 
+  // ── header stats: streak + loaded counters ────────────────────────
+  // All derived from the loaded `jots` array — no extra round-trips.
+  // The streak window is bounded by what's currently loaded; if the
+  // user scrolls past the streak edge it extends naturally as more
+  // pages arrive.
+
+  // Current daily-note streak: consecutive calendar days ending today
+  // (or yesterday — Amplenote-style grace so you don't lose a streak
+  // before today's daily is written) that have a loaded jot.
+  let streakDays = $derived.by(() => {
+    if (jots.length === 0) return 0;
+    const have = new Set(jots.map((j) => j.date));
+    // Walk back from today. Allow today to be missing as long as
+    // yesterday is present, so the badge keeps the previous count
+    // through the morning before today's note exists.
+    const anchor = new Date(today);
+    const todayISO = fmtDateISO(anchor);
+    let cur = new Date(anchor);
+    if (!have.has(todayISO)) {
+      cur.setDate(cur.getDate() - 1);
+      if (!have.has(fmtDateISO(cur))) return 0;
+    }
+    let count = 0;
+    while (have.has(fmtDateISO(cur))) {
+      count += 1;
+      cur.setDate(cur.getDate() - 1);
+    }
+    return count;
+  });
+
+  // Total word count across all loaded jot bodies. Whitespace split is
+  // good enough — this is a glanceable metric, not an editor stat.
+  let loadedWords = $derived.by(() => {
+    let n = 0;
+    for (const j of jots) {
+      const body = j.body ?? '';
+      if (!body) continue;
+      const matches = body.match(/\S+/g);
+      if (matches) n += matches.length;
+    }
+    return n;
+  });
+
+  function formatCount(n: number): string {
+    if (n >= 1000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+    return String(n);
+  }
+
   // ── handlers ──────────────────────────────────────────────────────
   function handleWikilink(target: string) {
     // Naive: same logic as note-detail page — try as-is, else treat as
@@ -543,8 +591,24 @@
       class="flex items-baseline gap-2 mb-1.5 text-[11px] text-dim border-b border-surface1 pb-1.5"
     >
       <span class="text-[13px] font-semibold uppercase tracking-[0.18em] text-text">Jots</span>
-      <span class="opacity-50">·</span>
-      <span class="font-mono">infinite scroll, newest first</span>
+      {#if streakDays > 0}
+        <span
+          class="font-mono text-text"
+          title="consecutive days ending today with a daily note loaded"
+        >{streakDays}d streak</span>
+      {/if}
+      {#if jots.length > 0}
+        <span class="opacity-50">·</span>
+        <span class="font-mono" title="loaded across all pages">
+          {formatCount(jots.length)} jots
+          {#if allTags.length > 0}
+            · {formatCount(allTags.length)} tags
+          {/if}
+          {#if loadedWords > 0}
+            · {formatCount(loadedWords)} words
+          {/if}
+        </span>
+      {/if}
       <span class="ml-auto opacity-60 hidden sm:inline font-mono">? for shortcuts</span>
     </header>
 
