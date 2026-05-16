@@ -753,9 +753,84 @@
     return lines.join('\n');
   }
 
-  async function submitJot() {
+  // ── composer AI-expand ──────────────────────────────────────────
+  // Toggle next to the Add button. When ON, hitting Enter doesn't
+  // save directly — it routes through the AI to expand a terse note
+  // into a fuller entry, with a streaming preview + Keep/Discard
+  // before commitment. Persisted to localStorage so the user's
+  // preference survives reloads.
+  const EXPAND_KEY = 'granit.jots.composerExpand';
+  let composerExpand = $state<boolean>(
+    typeof window !== 'undefined' && window.localStorage.getItem(EXPAND_KEY) === '1'
+  );
+  let expanding = $state(false);
+  let expandedText = $state('');
+  let expandAbort: AbortController | null = null;
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    try { window.localStorage.setItem(EXPAND_KEY, composerExpand ? '1' : '0'); } catch {}
+  });
+
+  async function runExpand() {
+    const raw = composerText.trim();
+    if (!raw || expanding) return;
+    expandAbort?.abort();
+    expandAbort = new AbortController();
+    expanding = true;
+    expandedText = '';
+    const system =
+      'You expand a user\'s terse journal note into a richer entry suitable for a daily ' +
+      'log. Preserve every fact and feeling the user wrote — don\'t invent details or ' +
+      'embellish. Add gentle scaffolding: link related ideas the user mentioned, expand ' +
+      'shorthand, write in the user\'s voice. Return the expanded entry as markdown. ' +
+      'Aim for 2-4 short paragraphs or a bullet list, depending on what fits. No preamble.';
+    const user = 'Terse note:\n```\n' + raw + '\n```';
+    try {
+      const t = rafThrottle((full) => { expandedText = full; });
+      await api.chatStream(
+        [{ role: 'system', content: system }, { role: 'user', content: user }],
+        undefined,
+        {
+          onChunk: t.onChunk,
+          onDone: () => { t.flush(); },
+          onError: (err) => { t.flush(); toast.error('expand failed: ' + err.message); expandedText = ''; }
+        },
+        expandAbort.signal
+      );
+    } finally {
+      expanding = false;
+      expandAbort = null;
+    }
+  }
+
+  function discardExpand() {
+    expandAbort?.abort();
+    expandAbort = null;
+    expanding = false;
+    expandedText = '';
+    composerEl?.focus();
+  }
+
+  async function keepExpand() {
+    if (!expandedText.trim()) return;
+    // Replace the raw composer text with the expanded version and
+    // commit through the normal submit path. Saves us from duplicating
+    // the appendUnderJotsSection / putNote / WS-refetch logic.
+    composerText = expandedText.trim();
+    expandedText = '';
+    await submitJot({ skipExpand: true });
+  }
+
+  async function submitJot(opts: { skipExpand?: boolean } = {}) {
     const text = composerText.trim();
     if (!text || composerBusy) return;
+    // If expand is on and we haven't yet expanded this draft, kick off
+    // the AI and STOP — the user gets a preview to review before any
+    // save hits the daily note.
+    if (composerExpand && !opts.skipExpand) {
+      runExpand();
+      return;
+    }
     composerBusy = true;
     try {
       const note = await api.daily('today');
@@ -1202,7 +1277,13 @@
          that appends a timestamped line to today's daily. The user
          doesn't navigate; the new content lands in the feed below.
          Single-row by default; expands as the user types thanks to
-         the bottom-resize textarea and rows=1. -->
+         the bottom-resize textarea and rows=1.
+
+         AI-expand toggle (✦) routes Enter through the AI to expand
+         a terse note into a fuller entry before saving. The toggle
+         is persisted to localStorage so a daily-journal user who
+         lives in this mode doesn't have to re-enable it every
+         session. -->
     <div class="mb-3 bg-surface0 border border-surface1 rounded focus-within:border-primary transition-colors">
       <div class="flex items-start gap-1.5 px-2 py-1.5">
         <textarea
@@ -1216,18 +1297,72 @@
               submitJot();
             }
           }}
-          placeholder="jot a thought — Enter saves, Shift+Enter newline"
+          placeholder={composerExpand ? 'jot a seed thought — AI will expand on Enter' : 'jot a thought — Enter saves, Shift+Enter newline'}
           rows="1"
-          disabled={composerBusy}
+          disabled={composerBusy || expanding || expandedText.length > 0}
           class="flex-1 bg-transparent text-sm text-text placeholder-dim focus:outline-none resize-y disabled:opacity-50 leading-snug"
         ></textarea>
         <button
           type="button"
+          onclick={() => (composerExpand = !composerExpand)}
+          aria-pressed={composerExpand}
+          class="text-[11px] px-1.5 py-1 rounded {composerExpand ? 'bg-primary text-on-primary' : 'bg-surface1 text-dim hover:bg-surface2 hover:text-text'} font-mono shrink-0"
+          title={composerExpand ? 'AI-expand: ON — Enter will expand your draft before saving' : 'AI-expand: OFF — Enter saves verbatim'}
+        >AI</button>
+        <button
+          type="button"
           onclick={submitJot}
-          disabled={composerBusy || !composerText.trim()}
+          disabled={composerBusy || expanding || expandedText.length > 0 || !composerText.trim()}
           class="text-[11px] px-2 py-1 rounded bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-40 shrink-0"
-        >{composerBusy ? '…' : 'add'}</button>
+        >{composerBusy ? '…' : composerExpand ? 'expand' : 'add'}</button>
       </div>
+
+      <!-- Expand preview — streaming markdown render of the AI's
+           expanded entry. Visible only after the user submits with
+           expand on. Keep saves through the normal submit path;
+           Discard aborts + returns to the raw composer. Re-expand
+           re-runs the AI on the same seed text. -->
+      {#if expanding || expandedText.length > 0}
+        <div class="border-t border-surface1 px-2 py-1.5">
+          <div class="flex items-baseline gap-2 mb-1">
+            <span class="text-[10px] uppercase tracking-wider text-text font-mono">AI expansion</span>
+            {#if expanding}
+              <span class="text-[10px] text-dim italic font-mono">streaming…</span>
+              <span class="flex-1"></span>
+              <button
+                type="button"
+                onclick={discardExpand}
+                class="text-[10px] text-dim hover:text-text font-mono"
+              >stop</button>
+            {:else}
+              <span class="flex-1"></span>
+              <button
+                type="button"
+                onclick={runExpand}
+                class="text-[10px] text-text hover:underline font-mono"
+                title="re-run the AI on the same seed text"
+              >try again</button>
+              <button
+                type="button"
+                onclick={keepExpand}
+                class="text-[10px] px-1.5 py-0.5 rounded bg-primary text-on-primary font-medium hover:opacity-90"
+              >keep</button>
+              <button
+                type="button"
+                onclick={discardExpand}
+                class="text-[10px] text-dim hover:text-text font-mono"
+              >discard</button>
+            {/if}
+          </div>
+          <div class="bg-mantle border border-surface1 rounded p-2 max-h-[20rem] overflow-y-auto">
+            {#if expandedText.trim()}
+              <MarkdownRenderer body={expandedText} onWikilink={handleWikilink} />
+            {:else}
+              <p class="text-xs text-dim italic">…</p>
+            {/if}
+          </div>
+        </div>
+      {/if}
     </div>
 
     {#if error}
