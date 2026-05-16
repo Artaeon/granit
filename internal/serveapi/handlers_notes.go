@@ -333,16 +333,79 @@ func (s *Server) handleGetLinks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "note not found")
 		return
 	}
+	// Opt-in body snippets — used by the inline-AI menu to feed the
+	// model actual content from linked notes instead of just titles.
+	// Off by default so existing callers (BacklinksPanel) keep their
+	// cheap response shape.
+	withBodies := r.URL.Query().Get("bodies") == "1"
 	bl := []map[string]string{}
 	for _, src := range n.Backlinks {
-		if other := s.cfg.Vault.GetNote(src); other != nil {
-			bl = append(bl, map[string]string{"path": other.RelPath, "title": other.Title})
+		other := s.cfg.Vault.GetNote(src)
+		if other == nil {
+			continue
 		}
+		entry := map[string]string{"path": other.RelPath, "title": other.Title}
+		if withBodies {
+			entry["snippet"] = noteSnippet(other.Content, 400)
+		}
+		bl = append(bl, entry)
+	}
+	// Outgoing: when bodies requested, return rich entries shaped like
+	// the backlink list so the client uses one code path for both.
+	// Legacy mode still returns the bare string list of wikilink titles
+	// for BacklinksPanel compatibility.
+	if withBodies {
+		// One-pass title→note map. O(N) over vault notes, but only on
+		// AI-menu open with the linked-notes toggle on — not a hot path.
+		// Built once per request rather than per-link to avoid N×N.
+		byTitle := make(map[string]*vault.Note, s.cfg.Vault.NoteCount())
+		for _, note := range s.cfg.Vault.SnapshotNotes() {
+			byTitle[note.Title] = note
+		}
+		out := []map[string]string{}
+		for _, title := range n.Links {
+			other := byTitle[title]
+			if other == nil {
+				out = append(out, map[string]string{"title": title})
+				continue
+			}
+			out = append(out, map[string]string{
+				"path":    other.RelPath,
+				"title":   other.Title,
+				"snippet": noteSnippet(other.Content, 400),
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"outgoing":  out,
+			"backlinks": bl,
+		})
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"outgoing":  n.Links,
 		"backlinks": bl,
 	})
+}
+
+// noteSnippet returns a plain-text preview of a note suitable for AI
+// context: frontmatter stripped, leading/trailing whitespace gone,
+// truncated to `max` chars at a word boundary with an ellipsis. The
+// goal is "enough for the model to know what this note is about"
+// without spending tokens on the whole document.
+func noteSnippet(content string, max int) string {
+	body := stripFrontmatterBody(content)
+	body = strings.TrimSpace(body)
+	if len(body) <= max {
+		return body
+	}
+	// Truncate at the last whitespace before max to avoid cutting a
+	// word in half. Fall back to a hard cut if there's no whitespace
+	// (URL-only content, etc).
+	cut := strings.LastIndexAny(body[:max], " \n\t")
+	if cut < max/2 {
+		cut = max
+	}
+	return body[:cut] + "…"
 }
 
 // stripFrontmatterBody removes the leading `---` YAML block if present,
