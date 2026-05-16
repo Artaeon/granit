@@ -28,6 +28,7 @@
   import QuickCreateScheduled from '$lib/calendar/QuickCreateScheduled.svelte';
   import CreateEvent from '$lib/calendar/CreateEvent.svelte';
   import UnifiedCreate from '$lib/calendar/UnifiedCreate.svelte';
+  import FindTime from '$lib/calendar/FindTime.svelte';
   import { parseEventInput, type ParseResult } from '$lib/calendar/quickCreate';
   import TaskBacklog from '$lib/calendar/TaskBacklog.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
@@ -122,6 +123,17 @@
   let unifiedStart = $state(new Date());
   let unifiedEnd = $state(new Date());
   let unifiedKind = $state<'task' | 'event'>('task');
+
+  // Find-time modal — surfaces free gaps in the active calendar feed
+  // for a chosen duration. Picking a gap seeds UnifiedCreate so the
+  // user can lock in a title without re-typing the time.
+  let findTimeOpen = $state(false);
+  function onFindTimePick(start: Date, durationMinutes: number) {
+    unifiedStart = start;
+    unifiedEnd = new Date(start.getTime() + durationMinutes * 60_000);
+    unifiedKind = 'event';
+    unifiedOpen = true;
+  }
 
   let filterDrawerOpen = $state(false);
   // Reactive mobile flag via the shared mediaQuery store. Auto-cleans
@@ -534,7 +546,7 @@
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     // Don't fight the create / detail drawers — they own their own
     // keyboard surface (Escape to close, Enter to submit).
-    if (createOpen || createEventOpen || unifiedOpen || detailOpen) return;
+    if (createOpen || createEventOpen || unifiedOpen || detailOpen || findTimeOpen) return;
     switch (e.key) {
       case 't': gotoToday(); break;
       case 'j': case 'n': next(); break;
@@ -547,6 +559,7 @@
                                         // Google Calendar). Shift+A
                                         // opens the calendar agent.
       case 'A': agentOpen = true; break;
+      case 'f': findTimeOpen = true; break; // 'f' = find a free slot
       case '?': showShortcutHelp = !showShortcutHelp; break;
       default: return;
     }
@@ -1235,6 +1248,21 @@
            so the user can see at a glance that scheduling-by-drag is
            live. Forces day view when toggled on (the side-rail layout
            collapses week-views below useful width). -->
+      <!-- Find time — surfaces the first N free slots that fit a
+           chosen duration. Composes with the active filters since it
+           consumes the same filtered events list. 'f' shortcut. -->
+      <button
+        onclick={() => (findTimeOpen = true)}
+        class="px-2.5 py-1.5 text-xs sm:text-sm rounded border bg-surface0 border-surface1 text-subtext hover:border-primary flex items-center gap-1"
+        title="Find a free slot (f)"
+        aria-label="find free time"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M12 7v5l3 2"/>
+        </svg>
+        <span class="hidden sm:inline">Find</span>
+      </button>
       <button
         onclick={togglePlanMode}
         class="px-2.5 py-1.5 text-xs sm:text-sm rounded border flex items-center gap-1 transition-colors
@@ -1463,6 +1491,7 @@
   defaultNotePath={`Jots/${fmtDateISO(unifiedStart)}.md`}
   onCreated={load}
 />
+<FindTime bind:open={findTimeOpen} events={events} onPick={onFindTimePick} />
 
 <!-- Calendar Agent — scoped to the currently-visible fetch
      window AND the active project filter so the agent sees
