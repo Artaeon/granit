@@ -256,6 +256,11 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/daily/streak", s.handleDailyStreak)
 		r.Get("/api/v1/daily/{date}", s.handleGetDaily)
 		r.Get("/api/v1/jots", s.handleListJots)
+		// Day-activity overview — every note/task/event/habit/jot/
+		// prayer/hub item anchored on a single calendar day. Powers
+		// the "What happened that day" surface on /jots + the live
+		// `## Day overview` block on a daily note.
+		r.Get("/api/v1/day-activity", s.handleGetDayActivity)
 		r.Get("/api/v1/calendar", s.handleCalendar)
 		r.Get("/api/v1/calendar/sources", s.handleListCalendarSources)
 		r.Patch("/api/v1/calendar/sources", s.handlePatchCalendarSources)
