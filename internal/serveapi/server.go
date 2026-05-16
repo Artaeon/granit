@@ -337,6 +337,7 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/hub/tools", s.handleListHubTools)
 		r.Post("/api/v1/hub/tools", s.handleCreateHubTool)
 		r.Post("/api/v1/hub/tools/reorder", s.handleReorderHubTools)
+		r.Post("/api/v1/hub/tools/seed", s.handleSeedHubTools)
 		r.Patch("/api/v1/hub/tools/{id}", s.handlePatchHubTool)
 		r.Delete("/api/v1/hub/tools/{id}", s.handleDeleteHubTool)
 

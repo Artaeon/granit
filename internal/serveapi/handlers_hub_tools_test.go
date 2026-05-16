@@ -49,6 +49,7 @@ func hubToolsTestServer(t *testing.T) (*Server, http.Handler) {
 	r.Get("/api/v1/hub/tools", s.handleListHubTools)
 	r.Post("/api/v1/hub/tools", s.handleCreateHubTool)
 	r.Post("/api/v1/hub/tools/reorder", s.handleReorderHubTools)
+	r.Post("/api/v1/hub/tools/seed", s.handleSeedHubTools)
 	r.Patch("/api/v1/hub/tools/{id}", s.handlePatchHubTool)
 	r.Delete("/api/v1/hub/tools/{id}", s.handleDeleteHubTool)
 	return s, r
@@ -282,4 +283,95 @@ func TestHubTools_Reorder(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("reorder empty: %d", w.Code)
 	}
+}
+
+// TestHubTools_SeedStarterSet pins the additive + idempotent
+// semantics: a fresh seed adds N cards, a second seed adds 0 (the
+// user can spam the button without ending up with duplicates), and
+// hand-rolled cards with the same name as a starter are respected
+// (no overwrite). The user keeps full ownership of the catalogue
+// once it's seeded.
+func TestHubTools_SeedStarterSet(t *testing.T) {
+	_, h := hubToolsTestServer(t)
+
+	seed := func() (added, total int) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/hub/tools/seed", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("seed: %d %s", w.Code, w.Body.String())
+		}
+		var got struct {
+			Added int `json:"added"`
+			Total int `json:"total"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		return got.Added, got.Total
+	}
+
+	// 1. Fresh seed lands all starter cards.
+	added, total := seed()
+	starters := starterToolSet()
+	if added != len(starters) || total != len(starters) {
+		t.Errorf("first seed: added=%d total=%d, want both = %d", added, total, len(starters))
+	}
+
+	// 2. Second seed is a no-op — same names already present.
+	added2, total2 := seed()
+	if added2 != 0 || total2 != total {
+		t.Errorf("second seed: added=%d total=%d, want added=0 total=%d", added2, total2, total)
+	}
+
+	// 3. Hand-rolled "git" with custom commands is NOT overwritten:
+	//    delete + recreate one card, re-seed, verify the hand-rolled
+	//    version still wins (additive seeding skips by name).
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/hub/tools", nil)
+	lw := httptest.NewRecorder()
+	h.ServeHTTP(lw, listReq)
+	var listed struct {
+		Tools []hub.Tool `json:"tools"`
+	}
+	_ = json.Unmarshal(lw.Body.Bytes(), &listed)
+	var gitID string
+	for _, t := range listed.Tools {
+		if t.Name == "git" {
+			gitID = t.ID
+			break
+		}
+	}
+	if gitID == "" {
+		t.Fatal("starter set did not include a git card")
+	}
+	patchBody := `{"commands":[{"label":"my custom","command":"git log --oneline -1"}]}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/hub/tools/"+gitID, bytes.NewBufferString(patchBody))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("custom patch: %d %s", w.Code, w.Body.String())
+	}
+	// Re-seed: should add nothing.
+	added3, _ := seed()
+	if added3 != 0 {
+		t.Errorf("re-seed after custom edit added %d (should be 0)", added3)
+	}
+	// Confirm the custom command survived.
+	listReq2 := httptest.NewRequest(http.MethodGet, "/api/v1/hub/tools", nil)
+	lw2 := httptest.NewRecorder()
+	h.ServeHTTP(lw2, listReq2)
+	var listed2 struct {
+		Tools []hub.Tool `json:"tools"`
+	}
+	_ = json.Unmarshal(lw2.Body.Bytes(), &listed2)
+	for _, t := range listed2.Tools {
+		if t.ID == gitID {
+			if len(t.Commands) != 1 || t.Commands[0].Label != "my custom" {
+				t.Errorf("custom git card mutated by re-seed: %+v", t.Commands)
+			}
+			return
+		}
+	}
+	t.Errorf("custom git card vanished after re-seed")
 }

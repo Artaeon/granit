@@ -195,6 +195,24 @@
     }
   }
 
+  let seeding = $state(false);
+  async function seedStarter() {
+    seeding = true;
+    try {
+      const r = await api.seedHubTools();
+      if (r.added > 0) {
+        toast.success(`added ${r.added} starter tool${r.added === 1 ? '' : 's'}`);
+      } else {
+        toast.info('starter set already loaded');
+      }
+      await load();
+    } catch (e) {
+      toast.error('seed failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      seeding = false;
+    }
+  }
+
   function fallbackIcon(t: HubTool): string {
     if (t.icon?.trim()) return t.icon.trim();
     return (t.name.trim().charAt(0) || '·').toUpperCase();
@@ -249,6 +267,15 @@
       placeholder="search tool name, command, tag…"
       class="flex-1 px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
     />
+    {#if tools.length > 0}
+      <button
+        type="button"
+        onclick={seedStarter}
+        disabled={seeding}
+        class="px-3 py-2 bg-surface0 border border-surface1 text-subtext rounded text-sm hover:border-primary hover:text-text flex-shrink-0 disabled:opacity-50"
+        title="Append the curated starter set (git, Node, Docker, shell)"
+      >{seeding ? 'seeding…' : '✨ Starter set'}</button>
+    {/if}
     <button
       onclick={openCreate}
       class="px-3 py-2 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 flex-shrink-0"
@@ -266,10 +293,19 @@
       "install via brew", "clone dotfiles", "kubectl context switch". One
       click copies each command to your clipboard.
     </p>
-    <button
-      onclick={openCreate}
-      class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
-    >+ Add your first tool</button>
+    <div class="flex items-center justify-center gap-2 flex-wrap">
+      <button
+        onclick={openCreate}
+        class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
+      >+ Add your first tool</button>
+      <button
+        type="button"
+        onclick={seedStarter}
+        disabled={seeding}
+        class="px-4 py-2 bg-surface1 border border-surface1 text-subtext rounded text-sm hover:border-primary hover:text-text disabled:opacity-50"
+        title="Seed git, Node+pnpm, Docker, and shell snippets — edit freely afterward"
+      >{seeding ? 'seeding…' : '✨ Load starter set'}</button>
+    </div>
   </div>
 {:else if visible.length === 0}
   <div class="text-sm text-dim italic">No matches.</div>

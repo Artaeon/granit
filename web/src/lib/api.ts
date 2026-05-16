@@ -1243,6 +1243,12 @@ export const api = {
   // keep their existing position.
   reorderHubTools: (ids: string[]) =>
     req<void>('/hub/tools/reorder', { method: 'POST', body: JSON.stringify({ ids }) }),
+  // Append the curated starter set (git, Node+pnpm, Docker, shell
+  // snippets) to the user's catalogue. Idempotent against duplicates
+  // by name (case-insensitive) so a double-click doesn't end up
+  // with two "git" cards. Returns the count of new tools added.
+  seedHubTools: () =>
+    req<{ added: number; total: number }>('/hub/tools/seed', { method: 'POST' }),
   // Hard-delete a note. Server emits a note.removed WS event; pages
   // subscribe and refresh. No undo / trash folder yet.
   deleteNote: (path: string) =>
