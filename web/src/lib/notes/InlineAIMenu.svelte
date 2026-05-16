@@ -1,0 +1,622 @@
+<!--
+  InlineAIMenu — Notion-style cursor-anchored AI command palette.
+
+  Single entry point for every AI action in the editor. Trigger via
+  Cmd-K or by typing `/ai` at the start of a line; both paths route
+  through inline-ai-trigger.ts which hands us a positioned event.
+
+  Behaviour
+    • Prompt input at top — autofocused, single-line, Enter submits
+      as a free-form "Ask AI to..." request.
+    • Action list below — keyboard-navigable (↑/↓/Enter), adapts to
+      selection state: chips toggle between "operate at cursor" and
+      "rewrite this selection" verbs.
+    • Context toggles — sit at the bottom: "this note" is always on
+      (free, backend already injects); "backlinks" and "recent jots"
+      are opt-in and the menu fetches them just before submission.
+    • Esc closes; click outside closes; clicking an action streams
+      directly into the editor via streamInlineAI and closes the menu.
+
+  The menu DOES NOT render its own preview. Streaming output lands
+  as ghost text in the CodeMirror surface — same visual idiom as the
+  continue-writing chord. Tab/Cmd-Enter accept, Esc reject, Cmd-R
+  regenerate, all handled by inline-ai.ts's keymap. This keeps the
+  user's eye on the document, not on a side panel.
+-->
+<script lang="ts">
+  import { onMount, tick } from 'svelte';
+  import { api, type ChatMessage } from '$lib/api';
+  import { streamInlineAI } from '$lib/editor/inline-ai';
+  import type { InlineAITriggerEvent } from '$lib/editor/inline-ai-trigger';
+  import { toast } from '$lib/components/toast';
+
+  interface Props {
+    event: InlineAITriggerEvent;
+    notePath: string;
+    body: string;
+    onClose: () => void;
+  }
+  let { event, notePath, body, onClose }: Props = $props();
+
+  // Reactive shorthand — the menu opens once per trigger, so the
+  // event is effectively immutable for our lifetime, but Svelte
+  // doesn't know that and re-derives anyway. Cheap.
+  let hasSelection = $derived(event.selection.from !== event.selection.to);
+  let selectionText = $derived(event.selection.text);
+  let selectionLen = $derived(event.selection.to - event.selection.from);
+
+  let promptInput = $state('');
+  let promptEl: HTMLInputElement | undefined = $state();
+  let menuEl: HTMLDivElement | undefined = $state();
+  let highlightedIdx = $state(0);
+  let busy = $state(false);
+
+  // Context toggles. The note body itself is always sent (backend
+  // attaches it as system context when notePath is non-empty); these
+  // toggles add OPTIONAL extra scopes the user can flip on for cross-
+  // note tasks like "what's missing from this note based on my
+  // backlinks?".
+  let useBacklinks = $state(false);
+  let useRecentJots = $state(false);
+
+  // ── presets ──────────────────────────────────────────────────────
+  // The same chip carries its cursor-mode and selection-mode prompts.
+  // The list adapts at render time based on hasSelection. Ordered by
+  // expected use frequency; the top item is what hitting Enter at an
+  // empty prompt does.
+  type Preset = {
+    id: string;
+    label: string;
+    /** Hint shown faded next to the label — what kind of action this
+     *  is at a glance ("rewrite", "generate", etc.). */
+    hint: string;
+    /** Available in cursor mode (no selection)? */
+    cursor: boolean;
+    /** Available in selection mode? */
+    selection: boolean;
+    /** System prompt for the LLM. The user message is built at
+     *  submission time using the current selection or body. */
+    systemForCursor?: string;
+    systemForSelection?: string;
+    /** Whether this preset operates on the whole note body when in
+     *  cursor mode. False means the action only makes sense on a
+     *  selection (chip is hidden in cursor mode). */
+    wholeNote?: boolean;
+  };
+
+  const PRESETS: Preset[] = [
+    {
+      id: 'continue',
+      label: 'Continue writing',
+      hint: 'extend at cursor',
+      cursor: true,
+      selection: false,
+      systemForCursor:
+        "You are a writing assistant continuing the user's prose at the cursor. " +
+        'Match their voice, register, and structure. Continue naturally — write 1-3 sentences ' +
+        '(or 1-2 short paragraphs at most). Do NOT repeat what came before. ' +
+        'Do NOT introduce headers or lists unless the surrounding text already uses them. ' +
+        'Return ONLY the continuation text — no preamble, no quotes, no commentary.'
+    },
+    {
+      id: 'improve',
+      label: 'Improve writing',
+      hint: 'rewrite clearer + tighter',
+      cursor: true,
+      selection: true,
+      wholeNote: true,
+      systemForCursor:
+        'Rewrite the following note for clarity and concision. Preserve voice, structure, ' +
+        'and all the author\'s claims. Drop filler; sharpen verbs; prefer concrete nouns. ' +
+        'Return the polished note in full, ready to paste back. No preamble.',
+      systemForSelection:
+        'Improve the writing of the following passage — clearer, tighter, same voice. ' +
+        'Preserve every claim. Return only the rewritten text, no preamble.'
+    },
+    {
+      id: 'fix-grammar',
+      label: 'Fix grammar & spelling',
+      hint: 'proofread only',
+      cursor: true,
+      selection: true,
+      wholeNote: true,
+      systemForCursor:
+        'Fix grammar, spelling, and punctuation in the following note. Preserve voice, ' +
+        'structure, and meaning exactly. Do NOT shorten, expand, or rephrase. ' +
+        'Return the corrected note in full. No preamble.',
+      systemForSelection:
+        'Fix grammar, spelling, and punctuation in the following. Preserve voice and ' +
+        'meaning exactly. Return only the corrected text, no preamble.'
+    },
+    {
+      id: 'shorter',
+      label: 'Make shorter',
+      hint: 'tighten without losing meaning',
+      cursor: true,
+      selection: true,
+      wholeNote: true,
+      systemForCursor:
+        'Tighten the following note into the shortest faithful version. Drop redundancy ' +
+        'and filler; keep meaning and structure. Return the full shortened note, no preamble.',
+      systemForSelection:
+        'Tighten the following into the shortest faithful version. Drop redundancy ' +
+        'and filler; keep meaning. Return only the shortened text, no preamble.'
+    },
+    {
+      id: 'longer',
+      label: 'Make longer',
+      hint: 'expand with detail',
+      cursor: true,
+      selection: true,
+      wholeNote: true,
+      systemForCursor:
+        'Expand the following note with relevant detail and examples. Preserve every claim ' +
+        'and the existing structure; add depth, not filler. Return the full expanded note, ' +
+        'no preamble.',
+      systemForSelection:
+        'Expand the following into a fuller paragraph (2-4 sentences) without padding or ' +
+        'repetition. Stay in the same voice. Return only the expanded text, no preamble.'
+    },
+    {
+      id: 'summarize',
+      label: 'Summarize',
+      hint: 'bullet TL;DR',
+      cursor: true,
+      selection: true,
+      wholeNote: true,
+      systemForCursor:
+        'Summarize the following note in 3-5 concise bullet points. Lead each bullet with ' +
+        'the concrete claim. Return ONLY the bullet list, no preamble.',
+      systemForSelection:
+        'Summarize the following in 3 concise bullet points. Return ONLY the bullets, no preamble.'
+    },
+    {
+      id: 'explain',
+      label: 'Explain this',
+      hint: 'unpack for a smart non-expert',
+      cursor: false,
+      selection: true,
+      systemForSelection:
+        'Explain the following clearly. Assume the reader knows the broad surrounding ' +
+        'context but not this specific topic. Return a short markdown explanation: ' +
+        'definition, intuition, one concrete example. No preamble.'
+    },
+    {
+      id: 'translate-en',
+      label: 'Translate → English',
+      hint: 'natural English',
+      cursor: false,
+      selection: true,
+      systemForSelection:
+        'Translate the following into clear, natural English. Preserve markdown formatting. ' +
+        'Return only the translation, no preamble.'
+    },
+    {
+      id: 'translate-de',
+      label: 'Translate → German',
+      hint: 'natürliches Deutsch',
+      cursor: false,
+      selection: true,
+      systemForSelection:
+        'Translate the following into clear, natural German. Preserve markdown formatting. ' +
+        'Return only the translation, no preamble.'
+    },
+    {
+      id: 'brainstorm',
+      label: 'Brainstorm ideas',
+      hint: 'generate options at cursor',
+      cursor: true,
+      selection: false,
+      systemForCursor:
+        'Brainstorm 5-7 concrete ideas, angles, or directions relevant to what comes before ' +
+        'the cursor in this note. Format as a markdown bullet list. Be specific, not generic. ' +
+        'Return only the bullets, no preamble.'
+    },
+    {
+      id: 'outline',
+      label: 'Outline this note',
+      hint: 'H2/H3 structure',
+      cursor: true,
+      selection: false,
+      wholeNote: true,
+      systemForCursor:
+        'Read the following note and produce a markdown outline of its sections (H2 / H3 ' +
+        'headings only, no body text). Use existing section titles when present, propose ' +
+        'new ones when there are none. Return only the outline.'
+    },
+    {
+      id: 'questions',
+      label: 'Open questions',
+      hint: 'what this note doesn\'t answer',
+      cursor: true,
+      selection: false,
+      wholeNote: true,
+      systemForCursor:
+        'Read the following note and list 3-5 open questions it raises but doesn\'t answer. ' +
+        'Each question should be specific to the content. Return a short markdown bullet ' +
+        'list, no preamble.'
+    },
+    {
+      id: 'gaps',
+      label: 'Find gaps',
+      hint: 'what\'s missing or assumed',
+      cursor: true,
+      selection: false,
+      wholeNote: true,
+      systemForCursor:
+        'Read the following note as a critical editor. What is missing, unclear, or assumed ' +
+        'without evidence? Return 3-6 specific gaps as a markdown bullet list — each gap ' +
+        'names what\'s missing and what would close it. No preamble.'
+    }
+  ];
+
+  // Filter presets by current mode. Selection mode hides cursor-only
+  // chips and vice versa.
+  let visiblePresets = $derived.by(() => {
+    const filtered = PRESETS.filter((p) => (hasSelection ? p.selection : p.cursor));
+    // Apply prompt text as fuzzy filter when the user starts typing.
+    const q = promptInput.trim().toLowerCase();
+    if (!q) return filtered;
+    return filtered.filter((p) => p.label.toLowerCase().includes(q) || p.hint.toLowerCase().includes(q));
+  });
+
+  // Whenever the visible list changes (mode flip, filter), reset
+  // highlight so keyboard nav starts from the top.
+  $effect(() => {
+    visiblePresets.length;
+    highlightedIdx = 0;
+  });
+
+  // ── context fetch ───────────────────────────────────────────────
+  // Backlinks and recent jots are fetched lazily on submit. Cached
+  // for the menu's lifetime so the user toggling on/off doesn't
+  // re-hit the server.
+  let backlinksCache: string | null = null;
+  let jotsCache: string | null = null;
+
+  async function fetchBacklinks(): Promise<string> {
+    if (backlinksCache !== null) return backlinksCache;
+    try {
+      // /links/{path} returns { outgoing: string[], backlinks: {path,title}[] }
+      // — same endpoint BacklinksPanel uses, so we share the cache the
+      // server already produces for that surface.
+      const r = await api.req<{ backlinks: { path: string; title: string }[] }>(
+        `/links/${encodeURI(notePath)}`
+      );
+      const lines = (r.backlinks ?? [])
+        .slice(0, 10)
+        .map((b) => `- [[${b.title}]] (${b.path})`);
+      backlinksCache = lines.length === 0 ? '' : 'Notes that link to this one:\n' + lines.join('\n');
+      return backlinksCache;
+    } catch {
+      backlinksCache = '';
+      return '';
+    }
+  }
+
+  async function fetchRecentJots(): Promise<string> {
+    if (jotsCache !== null) return jotsCache;
+    try {
+      const r = await api.listJots({ limit: 7 });
+      const blocks = r.jots
+        .slice(0, 7)
+        .map((j) => `### ${j.date}\n${(j.body ?? '').slice(0, 800)}`);
+      jotsCache = blocks.length === 0 ? '' : 'Last week of daily notes:\n\n' + blocks.join('\n\n');
+      return jotsCache;
+    } catch {
+      jotsCache = '';
+      return '';
+    }
+  }
+
+  async function buildContextMessages(systemHead: string): Promise<ChatMessage[]> {
+    const messages: ChatMessage[] = [{ role: 'system', content: systemHead }];
+    if (useBacklinks) {
+      const b = await fetchBacklinks();
+      if (b) messages.push({ role: 'system', content: b });
+    }
+    if (useRecentJots) {
+      const j = await fetchRecentJots();
+      if (j) messages.push({ role: 'system', content: j });
+    }
+    return messages;
+  }
+
+  // ── submit ──────────────────────────────────────────────────────
+
+  async function runPreset(p: Preset) {
+    if (busy) return;
+    busy = true;
+    try {
+      const view = event.view;
+      // If the user typed a custom prompt while a preset was highlighted,
+      // append it as an extra steering instruction.
+      const extra = promptInput.trim();
+      if (hasSelection && p.systemForSelection) {
+        const system = extra ? p.systemForSelection + '\n\nAdditional instruction: ' + extra : p.systemForSelection;
+        const messages = await buildContextMessages(system);
+        messages.push({
+          role: 'user',
+          content: 'Apply the instruction to this text:\n```\n' + selectionText + '\n```'
+        });
+        consumeTriggerRange(view);
+        streamInlineAI(view, {
+          kind: 'replace',
+          from: event.selection.from,
+          to: event.selection.to,
+          messages,
+          notePath,
+          onSettled: ({ ok, error }) => {
+            if (!ok && error) toast.error('AI: ' + error);
+          }
+        });
+      } else if (p.systemForCursor) {
+        const system = extra ? p.systemForCursor + '\n\nAdditional instruction: ' + extra : p.systemForCursor;
+        const messages = await buildContextMessages(system);
+        if (p.wholeNote) {
+          messages.push({
+            role: 'user',
+            content: 'Note body:\n```\n' + body + '\n```\n\nApply the instruction.'
+          });
+        } else if (p.id === 'continue' || p.id === 'brainstorm') {
+          // For pure continuation, send the context before the cursor
+          // so the model writes flowing prose without a doc dump.
+          const cur = event.pos;
+          const start = Math.max(0, cur - 2000);
+          const before = view.state.sliceDoc(start, cur);
+          const after = view.state.sliceDoc(cur, Math.min(view.state.doc.length, cur + 400));
+          messages.push({
+            role: 'user',
+            content:
+              'Text BEFORE cursor:\n```\n' + before + '\n```\n\n' +
+              (after.trim().length > 0
+                ? 'Text AFTER cursor (do not overwrite, just be aware):\n```\n' + after + '\n```\n\n'
+                : '') +
+              'Continue from the cursor:'
+          });
+        }
+        const anchor = consumeTriggerRange(view) ?? event.pos;
+        streamInlineAI(view, {
+          kind: 'insert',
+          anchor,
+          messages,
+          notePath,
+          onSettled: ({ ok, error }) => {
+            if (!ok && error) toast.error('AI: ' + error);
+          }
+        });
+      }
+    } finally {
+      busy = false;
+      onClose();
+    }
+  }
+
+  // Submit a free-form prompt the user typed in. Acts on the selection
+  // if there is one (replace mode), otherwise inserts at cursor.
+  async function runCustomPrompt() {
+    const p = promptInput.trim();
+    if (!p || busy) return;
+    busy = true;
+    try {
+      const view = event.view;
+      if (hasSelection) {
+        const system =
+          'Apply the user\'s instruction to the given text. Return ONLY the resulting text, ' +
+          'no preamble, no commentary, no quoted block. Preserve markdown structure unless the ' +
+          'instruction explicitly says otherwise.';
+        const messages = await buildContextMessages(system);
+        messages.push({
+          role: 'user',
+          content:
+            'Instruction: ' + p + '\n\nText:\n```\n' + selectionText + '\n```'
+        });
+        consumeTriggerRange(view);
+        streamInlineAI(view, {
+          kind: 'replace',
+          from: event.selection.from,
+          to: event.selection.to,
+          messages,
+          notePath,
+          onSettled: ({ ok, error }) => {
+            if (!ok && error) toast.error('AI: ' + error);
+          }
+        });
+      } else {
+        const system =
+          'You are writing inside the user\'s note at the cursor. Carry out the user\'s ' +
+          'instruction and insert the result into the note. Return ONLY the text to insert, ' +
+          'no preamble, no commentary, no surrounding quotes. Use markdown where appropriate.';
+        const messages = await buildContextMessages(system);
+        // Include the surrounding context so the model knows what to anchor against.
+        const cur = event.pos;
+        const start = Math.max(0, cur - 1500);
+        const before = view.state.sliceDoc(start, cur);
+        messages.push({
+          role: 'user',
+          content:
+            'Instruction: ' + p + '\n\n' +
+            'Context BEFORE cursor:\n```\n' + before + '\n```'
+        });
+        const anchor = consumeTriggerRange(view) ?? event.pos;
+        streamInlineAI(view, {
+          kind: 'insert',
+          anchor,
+          messages,
+          notePath,
+          onSettled: ({ ok, error }) => {
+            if (!ok && error) toast.error('AI: ' + error);
+          }
+        });
+      }
+    } finally {
+      busy = false;
+      onClose();
+    }
+  }
+
+  /** If the menu was opened by typing "/ai", strip that text out of
+   *  the doc before the AI insertion happens. Returns the new anchor
+   *  position after the strip (one to the left of the trigger range
+   *  start, since the strip itself shifts positions). */
+  function consumeTriggerRange(view: import('@codemirror/view').EditorView): number | undefined {
+    const t = event.triggerRange;
+    if (!t) return undefined;
+    view.dispatch({
+      changes: { from: t.from, to: t.to, insert: '' },
+      selection: { anchor: t.from }
+    });
+    return t.from;
+  }
+
+  // ── keyboard ────────────────────────────────────────────────────
+
+  function onKey(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      highlightedIdx = (highlightedIdx + 1) % Math.max(1, visiblePresets.length);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      highlightedIdx = (highlightedIdx - 1 + visiblePresets.length) % Math.max(1, visiblePresets.length);
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      // If the prompt input has text AND the focused preset's id is
+      // not what the user is filtering toward, run the prompt as a
+      // custom Ask. If the prompt is empty, run the highlighted
+      // preset. This gives both "type a thought, hit Enter" and
+      // "type to filter, arrow, Enter" patterns.
+      const filtering = promptInput.trim().length > 0 && visiblePresets.length === PRESETS.length;
+      if (filtering) {
+        // Filtered list — interpret Enter as picking the highlighted preset.
+        const p = visiblePresets[highlightedIdx];
+        if (p) runPreset(p);
+        return;
+      }
+      if (promptInput.trim().length > 0) {
+        runCustomPrompt();
+        return;
+      }
+      const p = visiblePresets[highlightedIdx];
+      if (p) runPreset(p);
+    }
+  }
+
+  // ── lifecycle ────────────────────────────────────────────────────
+
+  let viewportPos = $state({ left: 0, top: 0 });
+
+  function clampToViewport() {
+    if (!menuEl) return;
+    const rect = menuEl.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const margin = 8;
+    let left = event.x;
+    let top = event.y;
+    if (left + rect.width > vw - margin) left = vw - margin - rect.width;
+    if (left < margin) left = margin;
+    if (top + rect.height > vh - margin) {
+      // Flip above the trigger anchor when there's no room below.
+      top = Math.max(margin, event.y - rect.height - 28);
+    }
+    viewportPos = { left, top };
+  }
+
+  onMount(() => {
+    promptEl?.focus();
+    // Wait one tick for the menu to lay out so we measure its real
+    // size before clamping.
+    tick().then(clampToViewport);
+    const onResize = () => clampToViewport();
+    const onDocClick = (e: MouseEvent) => {
+      if (!menuEl) return;
+      if (e.target instanceof Node && menuEl.contains(e.target)) return;
+      onClose();
+    };
+    window.addEventListener('resize', onResize);
+    document.addEventListener('mousedown', onDocClick);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      document.removeEventListener('mousedown', onDocClick);
+    };
+  });
+</script>
+
+<div
+  bind:this={menuEl}
+  class="fixed z-50 w-[22rem] max-w-[calc(100vw-1rem)] bg-surface0 border border-surface2 rounded shadow-xl text-text"
+  style="left: {viewportPos.left}px; top: {viewportPos.top}px;"
+  role="dialog"
+  aria-label="AI command menu"
+>
+  <!-- Prompt input -->
+  <div class="flex items-center gap-1.5 px-2 py-1.5 border-b border-surface1">
+    <span class="text-[10px] uppercase tracking-[0.18em] text-dim font-mono">AI</span>
+    {#if hasSelection}
+      <span
+        class="text-[10px] px-1 py-0.5 rounded bg-surface1 text-text font-mono"
+        title="acting on the current selection"
+      >{selectionLen} sel</span>
+    {/if}
+    <input
+      bind:this={promptEl}
+      bind:value={promptInput}
+      onkeydown={onKey}
+      placeholder={hasSelection ? 'tell AI what to do with the selection…' : 'ask AI anything, or pick below…'}
+      class="flex-1 bg-transparent text-[13px] placeholder-dim focus:outline-none"
+      disabled={busy}
+    />
+    {#if busy}<span class="text-[10px] text-dim font-mono">…</span>{/if}
+  </div>
+
+  <!-- Action list -->
+  <ul class="max-h-[18rem] overflow-y-auto py-1" role="listbox">
+    {#each visiblePresets as p, i (p.id)}
+      <li role="option" aria-selected={i === highlightedIdx}>
+        <button
+          type="button"
+          onclick={() => runPreset(p)}
+          onmouseenter={() => (highlightedIdx = i)}
+          class="w-full flex items-baseline justify-between gap-2 px-2 py-1.5 text-left {i === highlightedIdx ? 'bg-surface1' : 'hover:bg-surface1'}"
+          disabled={busy}
+        >
+          <span class="text-[13px] text-text">{p.label}</span>
+          <span class="text-[10px] text-dim font-mono shrink-0">{p.hint}</span>
+        </button>
+      </li>
+    {/each}
+    {#if visiblePresets.length === 0}
+      <li class="px-2 py-2 text-[11px] text-dim italic">
+        No preset matches. Hit Enter to send your prompt as is.
+      </li>
+    {/if}
+  </ul>
+
+  <!-- Context bar -->
+  <div class="flex items-center gap-1.5 px-2 py-1.5 border-t border-surface1 text-[10px] font-mono">
+    <span class="text-dim">context:</span>
+    <span class="px-1 py-0.5 rounded bg-surface1 text-text" title="the current note body is always included">this note</span>
+    <button
+      type="button"
+      onclick={() => (useBacklinks = !useBacklinks)}
+      class="px-1 py-0.5 rounded {useBacklinks ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
+      title="include up to 10 notes that link to this one"
+    >+ backlinks</button>
+    <button
+      type="button"
+      onclick={() => (useRecentJots = !useRecentJots)}
+      class="px-1 py-0.5 rounded {useRecentJots ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
+      title="include the last 7 days of daily notes"
+    >+ 7d jots</button>
+    <span class="ml-auto text-dim opacity-60">↑↓ pick · ⏎ run · Esc</span>
+  </div>
+</div>
