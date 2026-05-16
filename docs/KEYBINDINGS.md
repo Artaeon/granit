@@ -138,6 +138,7 @@ Mirrors Google Calendar bindings so muscle memory carries over.
 | `k` or `p` | Previous period |
 | `d` | Day view |
 | `w` | Week view |
+| `Shift+W` | Workweek view (Mon–Fri only) |
 | `m` | Month view |
 | `y` | Year view |
 | `a` | Agenda view (flat 30-day list) |

@@ -36,7 +36,7 @@
   import { dragStore } from '$lib/calendar/dragStore';
   import { onDestroy } from 'svelte';
 
-  type View = 'day' | 'week' | 'month' | 'year' | 'agenda';
+  type View = 'day' | 'workweek' | 'week' | 'month' | 'year' | 'agenda';
 
   // Persisted last-used view (per device). On a fresh visit (no
   // saved preference) we default to 'day' on small screens because
@@ -486,6 +486,15 @@
       const s = startOfWeek(cursor);
       return Array.from({ length: 7 }, (_, i) => addDays(s, i));
     }
+    if (view === 'workweek') {
+      // Mon–Fri anchored on the week containing cursor. startOfWeek
+      // resolves to Sunday (locale-agnostic in this codebase), so we
+      // step one day forward and emit five days. Saturday/Sunday are
+      // dropped — the time-grid columns scale to fill width.
+      const s = startOfWeek(cursor);
+      const mon = addDays(s, 1);
+      return Array.from({ length: 5 }, (_, i) => addDays(mon, i));
+    }
     return [];
   });
 
@@ -515,14 +524,14 @@
 
   function prev() {
     if (view === 'day') cursor = addDays(cursor, -1);
-    else if (view === 'week') cursor = addDays(cursor, -7);
+    else if (view === 'week' || view === 'workweek') cursor = addDays(cursor, -7);
     else if (view === 'month') cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
     else if (view === 'year') cursor = new Date(cursor.getFullYear() - 1, cursor.getMonth(), 1);
     else if (view === 'agenda') cursor = addDays(cursor, -7);
   }
   function next() {
     if (view === 'day') cursor = addDays(cursor, 1);
-    else if (view === 'week') cursor = addDays(cursor, 7);
+    else if (view === 'week' || view === 'workweek') cursor = addDays(cursor, 7);
     else if (view === 'month') cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
     else if (view === 'year') cursor = new Date(cursor.getFullYear() + 1, cursor.getMonth(), 1);
     else if (view === 'agenda') cursor = addDays(cursor, 7);
@@ -553,6 +562,7 @@
       case 'k': case 'p': prev(); break;
       case 'd': view = 'day'; break;
       case 'w': view = 'week'; break;
+      case 'W': view = 'workweek'; break; // Shift+W = workweek (Mon–Fri)
       case 'm': view = 'month'; break;
       case 'y': view = 'year'; break;
       case 'a': view = 'agenda'; break; // 'a' = agenda view (matches
@@ -1009,6 +1019,14 @@
       }
       return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
     }
+    if (view === 'workweek') {
+      const s = addDays(startOfWeek(cursor), 1); // Mon
+      const e = addDays(s, 4); // Fri
+      if (s.getMonth() === e.getMonth()) {
+        return `${s.toLocaleDateString(undefined, { month: 'short' })} ${s.getDate()}–${e.getDate()} (Mon–Fri)`;
+      }
+      return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} (Mon–Fri)`;
+    }
     if (view === 'month') return cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     if (view === 'year') return String(cursor.getFullYear());
     if (view === 'agenda') return 'Agenda · next 30 days';
@@ -1307,6 +1325,11 @@
           onclick={() => (view = 'day')}
         >Day</button>
         <button
+          class="px-2 sm:px-3 py-1.5 {view === 'workweek' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'} hidden lg:inline-block"
+          onclick={() => (view = 'workweek')}
+          title="Mon–Fri only (Shift+W)"
+        >5d</button>
+        <button
           class="px-2 sm:px-3 py-1.5 {view === 'week' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
           onclick={() => (view = 'week')}
         >Week</button>
@@ -1379,7 +1402,7 @@
       ontouchstart={onTouchStart}
       ontouchend={onTouchEnd}
     >
-      {#if planMode && (view === 'day' || view === 'week')}
+      {#if planMode && (view === 'day' || view === 'week' || view === 'workweek')}
         <!-- Plan layout: backlog on the left (desktop) / top
              (mobile horizontal scroller). The grid takes the rest.
              onTaskDrop is what wires backlog → grid drop semantics;
@@ -1404,7 +1427,7 @@
             />
           </div>
         </div>
-      {:else if view === 'day' || view === 'week'}
+      {:else if view === 'day' || view === 'week' || view === 'workweek'}
         <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} />
       {:else if view === 'month'}
         <div class="h-full overflow-auto">
@@ -1451,6 +1474,7 @@
         <dt class="font-mono text-primary">k / p</dt><dd class="text-subtext">previous period</dd>
         <dt class="font-mono text-primary">d</dt><dd class="text-subtext">day view</dd>
         <dt class="font-mono text-primary">w</dt><dd class="text-subtext">week view</dd>
+        <dt class="font-mono text-primary">Shift+W</dt><dd class="text-subtext">workweek (Mon–Fri only)</dd>
         <dt class="font-mono text-primary">m</dt><dd class="text-subtext">month view</dd>
         <dt class="font-mono text-primary">y</dt><dd class="text-subtext">year view</dd>
         <dt class="font-mono text-primary">a</dt><dd class="text-subtext">agenda view (next 30 days)</dd>
