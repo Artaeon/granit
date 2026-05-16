@@ -114,9 +114,19 @@
     {/each}
   </div>
   <div class="grid grid-cols-7 grid-rows-6 gap-px bg-surface1" style="height: 70vh">
-    {#each cells as c}
+    {#each cells as c, idx}
       {@const isToday = isSameDay(c.date, today)}
       {@const events = eventsByDay.get(c.iso) ?? []}
+      <!-- Edge-aware popover anchoring. The 42-cell grid is laid out
+           in 6 rows × 7 columns. For columns 4..6 (the right half of
+           the week), anchor the popover to the cell's right edge so it
+           doesn't spill past the viewport on a small laptop. For the
+           last two rows (idx >= 28), anchor it to the cell's bottom so
+           it doesn't sink under the page chrome. -->
+      {@const gridCol = idx % 7}
+      {@const gridRow = Math.floor(idx / 7)}
+      {@const popoverPos =
+        (gridCol >= 4 ? 'right-1' : 'left-1') + ' ' + (gridRow >= 4 ? 'bottom-7' : 'top-7')}
       <div
         role="gridcell"
         class="relative p-1.5 overflow-visible flex flex-col gap-0.5 hover:bg-surface0 transition-colors
@@ -184,7 +194,7 @@
                offset is auto so the browser keeps it in viewport on
                right-edge cells. Click backdrop / Escape close it. -->
           <div
-            class="absolute z-30 top-7 left-1 w-56 max-h-72 overflow-y-auto bg-mantle border border-surface1 rounded shadow-lg p-2 space-y-0.5"
+            class="absolute z-30 {popoverPos} w-56 max-h-72 overflow-y-auto bg-mantle border border-surface1 rounded shadow-lg p-2 space-y-0.5"
             role="dialog"
             aria-label="events on {c.iso}"
             onclick={(e) => e.stopPropagation()}
