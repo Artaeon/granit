@@ -238,7 +238,7 @@
            an auth or connectivity problem rather than 8 independent
            module bugs, so call that out plainly. -->
       <div class="bg-base border border-surface1 rounded-lg p-4 mb-6">
-        <p class="text-sm text-warning">Most life-data sources couldn't be reached ({partialFailures.length}/12).</p>
+        <p class="text-sm text-warning">{partialFailures.length} of 12 life-data sources couldn't be reached.</p>
         <p class="text-xs text-dim mt-1">Usually this means the granit server is unreachable or your session expired. Check the server log, or sign out and back in.</p>
       </div>
     {/if}
