@@ -62,8 +62,18 @@
   const PLAN_KEY = 'granit.calendar.planmode';
   let planMode = $state<boolean>(loadStoredString(PLAN_KEY, '0') === '1');
 
+  // Month grid density. Comfy = 3 chips/cell with bigger text;
+  // compact = 6 chips/cell, tighter. Persisted per-device because
+  // the user's preferred density tracks their screen size + how busy
+  // their calendar typically is, not their account.
+  const MONTH_DENSITY_KEY = 'granit.calendar.monthDensity';
+  let monthDensity = $state<'comfy' | 'compact'>(
+    (loadStoredString(MONTH_DENSITY_KEY, 'comfy') === 'compact' ? 'compact' : 'comfy')
+  );
+
   $effect(() => saveStoredString(VIEW_KEY, view));
   $effect(() => saveStoredString(PLAN_KEY, planMode ? '1' : '0'));
+  $effect(() => saveStoredString(MONTH_DENSITY_KEY, monthDensity));
 
   function togglePlanMode() {
     planMode = !planMode;
@@ -1224,6 +1234,24 @@
       <!-- Calendar Agent (Plan my week, Find free time, Day insight,
            Dashboard) lives in the chat sidebar — Run agent on
            /calendar. Header stays minimal: nav + view switcher. -->
+      <!-- Month-only density toggle. Compact = 6 chips/cell with tiny
+           text — useful on busy months / smaller screens; Comfy = 3
+           chips/cell with bigger text — better at-a-glance reading on
+           lighter months. Persisted per-device. -->
+      {#if view === 'month'}
+        <div class="hidden md:flex bg-surface0 border border-surface1 rounded overflow-hidden text-[11px]" title="Month grid density">
+          <button
+            class="px-2 py-1.5 {monthDensity === 'comfy' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (monthDensity = 'comfy')}
+            aria-pressed={monthDensity === 'comfy'}
+          >Comfy</button>
+          <button
+            class="px-2 py-1.5 {monthDensity === 'compact' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (monthDensity = 'compact')}
+            aria-pressed={monthDensity === 'compact'}
+          >Compact</button>
+        </div>
+      {/if}
       <!-- View switcher — Apple Calendar set: Day / Week / Month / Year.
            3-day and Agenda were retired alongside the AI toolbar
            cleanup; Agenda's content lives in /tasks + the chat
@@ -1330,7 +1358,7 @@
         <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} />
       {:else if view === 'month'}
         <div class="h-full overflow-auto">
-          <MonthView cursor={cursor} events={events} onClickEvent={clickEvent} onClickDay={clickDay} />
+          <MonthView cursor={cursor} events={events} density={monthDensity} onClickEvent={clickEvent} onClickDay={clickDay} />
         </div>
       {:else if view === 'year'}
         <div class="h-full overflow-auto">

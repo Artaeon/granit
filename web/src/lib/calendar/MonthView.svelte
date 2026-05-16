@@ -5,14 +5,24 @@
   let {
     cursor,
     events,
+    density = 'comfy',
     onClickEvent,
     onClickDay
   }: {
     cursor: Date;
     events: CalendarEvent[];
+    /** comfy = 3 chips/cell with bigger text · compact = 6 chips/cell
+     *  with tighter chips. Defaults to comfy when the prop is omitted
+     *  so existing call sites keep their previous behaviour. */
+    density?: 'comfy' | 'compact';
     onClickEvent: (ev: CalendarEvent) => void;
     onClickDay: (d: Date) => void;
   } = $props();
+
+  // Per-cell event budget. Compact density buys two more visible chips
+  // at the cost of slightly smaller text — useful for busy months.
+  const maxChips = $derived(density === 'compact' ? 6 : 3);
+  const chipText = $derived(density === 'compact' ? 'text-[10px]' : 'text-[11px]');
 
   let cells = $derived.by(() => {
     const ms = startOfMonth(cursor);
@@ -98,12 +108,12 @@
           {/if}
         </button>
         <div class="flex-1 space-y-px overflow-hidden">
-          {#each events.slice(0, 3) as ev}
+          {#each events.slice(0, maxChips) as ev}
             {@const col = eventTypeColor(ev)}
             {@const allDay = isAllDay(ev)}
             <button
               onclick={() => onClickEvent(ev)}
-              class="group/chip flex items-center gap-1 w-full text-left text-[11px] leading-tight px-1 py-px rounded-sm truncate hover:opacity-90"
+              class="group/chip flex items-center gap-1 w-full text-left {chipText} leading-tight px-1 py-px rounded-sm truncate hover:opacity-90"
               style={allDay
                 ? `background: ${col.bg}; color: ${col.fg}; ${ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}`
                 : `color: var(--color-text); ${ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}`}
@@ -127,11 +137,11 @@
               {/if}
             </button>
           {/each}
-          {#if events.length > 3}
+          {#if events.length > maxChips}
             <button
               onclick={() => onClickDay(c.date)}
               class="text-[10px] text-dim px-1 text-left hover:text-text"
-            >+{events.length - 3} more</button>
+            >+{events.length - maxChips} more</button>
           {/if}
         </div>
       </div>
