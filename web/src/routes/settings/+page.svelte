@@ -12,6 +12,7 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import { relativeTime } from '$lib/util/relativeTime';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
+  import { trayEnabled, clearOpenNote, pinnedTrayNotes } from '$lib/stores/open-note';
 
   // Curated OpenAI model picker — refreshed against
   // developers.openai.com/api/docs/pricing periodically. Server is the
@@ -717,6 +718,7 @@
     { keys: '⌘ S  /  Ctrl+S', what: 'Save the current note' },
     { keys: '⌘ F  /  Ctrl+F', what: 'Find in editor' },
     { keys: '⌘ Z  /  Ctrl+Z', what: 'Undo' },
+    { keys: '⌘⇧ O  /  Ctrl+Shift+O', what: 'Jump back to the last opened note (tray)' },
     { keys: '↵',              what: 'Submit (in any form)' },
     { keys: 'Esc',            what: 'Close modal / palette' }
   ];
@@ -1934,6 +1936,44 @@ git push</code></pre>
     {/if}
 
     {#if tab === 'general'}
+    <!-- Note tray. Slim "last opened note" bar that lives at the
+         viewport bottom (above the mobile nav). Toggle the section
+         off if it feels noisy on a focus-heavy workflow; pins +
+         remembered note are kept either way so re-enabling restores
+         what was there before. -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">Note tray</h2>
+      <label class="flex items-start gap-3 cursor-pointer py-1">
+        <input
+          type="checkbox"
+          checked={$trayEnabled}
+          onchange={(e) => trayEnabled.set((e.target as HTMLInputElement).checked)}
+          class="w-4 h-4 mt-0.5 accent-primary cursor-pointer"
+        />
+        <div class="flex-1">
+          <div class="text-sm text-text">Show note tray</div>
+          <div class="text-[11px] text-dim">Slim bar at the bottom of every page with a one-click jump back to your last opened note. <code>Mod-Shift-O</code> also opens it.</div>
+        </div>
+      </label>
+      {#if $pinnedTrayNotes.length > 0}
+        <div class="mt-3 pt-3 border-t border-surface1">
+          <div class="text-[11px] uppercase tracking-wider text-dim mb-1.5">Pinned in tray ({$pinnedTrayNotes.length})</div>
+          <ul class="text-xs text-subtext space-y-0.5 font-mono">
+            {#each $pinnedTrayNotes as p (p.path)}
+              <li class="truncate" title={p.path}>{p.title || p.path}</li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+      <div class="mt-3 pt-3 border-t border-surface1 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onclick={() => clearOpenNote()}
+          class="text-xs text-dim hover:text-text px-2 py-1 rounded hover:bg-surface1"
+        >Clear remembered note</button>
+      </div>
+    </section>
+
     <!-- Keyboard shortcuts -->
     <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
       <h2 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">Keyboard shortcuts</h2>
