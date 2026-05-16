@@ -535,26 +535,32 @@
 </script>
 
 <div class="h-full overflow-y-auto" id="jots-scroll">
-  <div class="max-w-3xl mx-auto p-4 sm:p-6 lg:p-8">
-    <header class="mb-4">
-      <h1 class="text-2xl sm:text-3xl font-semibold text-text">Jots</h1>
-      <p class="text-sm text-dim mt-1">Every daily note, newest first. Scroll to keep going.</p>
+  <div class="max-w-3xl mx-auto px-3 sm:px-5 lg:px-6 pt-2 pb-6">
+    <!-- Title strip: tight one-row header — title + live counters.
+         Replaces the old two-line h1+subtitle block, freeing ~40px
+         of vertical for actual content. -->
+    <header
+      class="flex items-baseline gap-2 mb-1.5 text-[11px] text-dim border-b border-surface1 pb-1.5"
+    >
+      <span class="text-[13px] font-semibold uppercase tracking-[0.18em] text-text">Jots</span>
+      <span class="opacity-50">·</span>
+      <span class="font-mono">infinite scroll, newest first</span>
+      <span class="ml-auto opacity-60 hidden sm:inline font-mono">? for shortcuts</span>
     </header>
 
-    <!-- Toolbar (sticky) -->
+    <!-- Toolbar (sticky) — compact one-row controls. Wraps on narrow
+         viewports but stays as dense as possible at desktop width. -->
     <div
-      class="sticky top-0 z-20 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2.5 mb-4 bg-base border-b border-surface1"
+      class="sticky top-0 z-20 -mx-3 sm:-mx-5 lg:-mx-6 px-3 sm:px-5 lg:px-6 py-1.5 mb-2 bg-base border-b border-surface1"
     >
-      <div class="flex flex-wrap items-center gap-2">
-        <label class="flex items-center gap-2 text-xs text-dim">
-          <span>jump to</span>
-          <input
-            type="date"
-            onchange={jumpToDate}
-            class="bg-mantle border border-surface1 rounded px-2 py-1 text-xs text-text focus:outline-none focus:border-primary"
-          />
-        </label>
-        <div class="flex-1 min-w-[12rem] flex items-center gap-1">
+      <div class="flex flex-wrap items-center gap-1.5">
+        <input
+          type="date"
+          onchange={jumpToDate}
+          title="jump to date"
+          class="bg-mantle border border-surface1 rounded px-1.5 py-0.5 text-[11px] text-text focus:outline-none focus:border-primary"
+        />
+        <div class="flex-1 min-w-[10rem] flex items-center gap-0.5">
           <input
             type="text"
             bind:value={searchText}
@@ -567,14 +573,14 @@
               }
             }}
             placeholder="search jots…"
-            class="flex-1 bg-mantle border border-surface1 rounded px-2 py-1 text-xs text-text placeholder-dim focus:outline-none focus:border-primary"
+            class="flex-1 bg-mantle border border-surface1 rounded px-1.5 py-0.5 text-[11px] text-text placeholder-dim focus:outline-none focus:border-primary"
           />
           {#if searchText}
             <button
               type="button"
               onclick={clearSearch}
               aria-label="clear search"
-              class="text-xs text-dim hover:text-text px-1.5"
+              class="text-[11px] text-dim hover:text-text px-1"
             >×</button>
           {/if}
         </div>
@@ -583,26 +589,22 @@
             type="button"
             onclick={detectThemes}
             disabled={aiBusy}
-            class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-surface1 text-primary border border-surface2 hover:bg-surface2 disabled:opacity-50"
-            title="Ask AI to find recurring themes in your jots"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
-              <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
-            </svg>
-            {aiBusy ? 'reading…' : 'Themes'}
-          </button>
+            class="text-[11px] px-1.5 py-0.5 rounded bg-surface1 text-text border border-surface2 hover:bg-surface2 disabled:opacity-50"
+            title="ask AI to find recurring themes in your jots"
+          >{aiBusy ? 'reading…' : 'themes'}</button>
         {/if}
         <button
           type="button"
           onclick={openToday}
-          class="text-xs px-2 py-1 rounded bg-surface0 text-subtext hover:bg-surface1"
-        >Today</button>
+          title="open today's daily note"
+          class="text-[11px] px-1.5 py-0.5 rounded bg-surface0 text-subtext hover:bg-surface1"
+        >today</button>
       </div>
 
       {#if aiBusy || aiThemes.length > 0 || aiError}
-        <div class="mt-2 p-2 bg-surface1 border border-surface2 rounded">
-          <div class="flex items-baseline gap-2 mb-1.5">
-            <h3 class="text-[10px] uppercase tracking-wider text-primary font-medium">Recurring themes</h3>
+        <div class="mt-1.5 p-1.5 bg-surface1 border border-surface2 rounded">
+          <div class="flex items-baseline gap-2 mb-1">
+            <h3 class="text-[10px] uppercase tracking-wider text-text font-medium">recurring themes</h3>
             <span class="flex-1"></span>
             {#if aiBusy}
               <span class="text-[10px] text-dim italic">analysing…</span>
@@ -632,7 +634,7 @@
            click sets activeTag; clicking the same chip again clears.
            Hidden when nothing's been loaded yet to avoid layout shift. -->
       {#if allTags.length > 0}
-        <div class="flex flex-wrap items-center gap-1 mt-2 text-[11px]">
+        <div class="flex flex-wrap items-center gap-1 mt-1.5 text-[11px]">
           {#if activeTag}
             <button
               type="button"
@@ -654,7 +656,7 @@
       {/if}
 
       {#if searchResults.length > 0}
-        <div class="mt-2 bg-mantle border border-surface1 rounded p-2 max-h-64 overflow-y-auto">
+        <div class="mt-1.5 bg-mantle border border-surface1 rounded p-1.5 max-h-64 overflow-y-auto">
           <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5 px-1">
             {searchResults.length} match{searchResults.length === 1 ? '' : 'es'}
           </div>
@@ -679,31 +681,33 @@
 
     <!-- Quick-jot composer — Amplenote-style fire-and-forget input
          that appends a timestamped line to today's daily. The user
-         doesn't navigate; the new content lands in the feed below. -->
-    <div class="mb-5 bg-surface0 border border-surface1 rounded-lg focus-within:border-primary transition-colors">
-      <textarea
-        bind:this={composerEl}
-        bind:value={composerText}
-        onkeydown={(e) => {
-          // Enter (without shift) submits; Shift+Enter inserts a newline
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            submitJot();
-          }
-        }}
-        placeholder="What's on your mind? (Enter to save, Shift+Enter for newline)"
-        rows="2"
-        disabled={composerBusy}
-        class="w-full bg-transparent px-3 py-2 text-sm text-text placeholder-dim focus:outline-none resize-y disabled:opacity-50"
-      ></textarea>
-      <div class="flex items-center justify-between px-3 py-1.5 border-t border-surface1">
-        <p class="text-[10px] text-dim">Appends under <code>## Jots</code> in today's daily</p>
+         doesn't navigate; the new content lands in the feed below.
+         Single-row by default; expands as the user types thanks to
+         the bottom-resize textarea and rows=1. -->
+    <div class="mb-3 bg-surface0 border border-surface1 rounded focus-within:border-primary transition-colors">
+      <div class="flex items-start gap-1.5 px-2 py-1.5">
+        <textarea
+          bind:this={composerEl}
+          bind:value={composerText}
+          onkeydown={(e) => {
+            // Enter (without shift) submits; Shift+Enter inserts a newline.
+            // Cmd/Ctrl+Enter also submits as a power-user convenience.
+            if (e.key === 'Enter' && (!e.shiftKey || e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              submitJot();
+            }
+          }}
+          placeholder="jot a thought — Enter saves, Shift+Enter newline"
+          rows="1"
+          disabled={composerBusy}
+          class="flex-1 bg-transparent text-sm text-text placeholder-dim focus:outline-none resize-y disabled:opacity-50 leading-snug"
+        ></textarea>
         <button
           type="button"
           onclick={submitJot}
           disabled={composerBusy || !composerText.trim()}
-          class="text-xs px-3 py-1 rounded bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-50"
-        >{composerBusy ? '…' : 'Add jot'}</button>
+          class="text-[11px] px-2 py-1 rounded bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-40 shrink-0"
+        >{composerBusy ? '…' : 'add'}</button>
       </div>
     </div>
 
@@ -715,12 +719,12 @@
 
     <!-- First-paint skeleton: 3 placeholder cards while the first page lands. -->
     {#if jots.length === 0 && loading}
-      <div class="space-y-4">
+      <div class="space-y-3">
         {#each [0, 1, 2] as _}
-          <div class="bg-surface0 border border-surface1 rounded p-3">
-            <Skeleton class="h-5 w-40 mb-3" />
-            <Skeleton class="h-4 w-full mb-1.5" />
-            <Skeleton class="h-4 w-5/6 mb-1.5" />
+          <div class="bg-surface0 border border-surface1 rounded p-2.5">
+            <Skeleton class="h-4 w-36 mb-2" />
+            <Skeleton class="h-4 w-full mb-1" />
+            <Skeleton class="h-4 w-5/6 mb-1" />
             <Skeleton class="h-4 w-3/4" />
           </div>
         {/each}
@@ -746,37 +750,33 @@
           No jots tagged <span class="text-primary">#{activeTag}</span> yet — keep scrolling to load older dailies.
         </p>
       {/if}
-      <ul class="space-y-5">
+      <ul class="space-y-3">
         {#each visibleJots as jot (jot.path)}
-          <li>
+          <li data-jot-date={jot.date}>
             <article>
               <header
-                class="sticky top-[3.25rem] z-10 -mx-1 px-1 py-1.5 bg-base flex items-baseline gap-2 mb-2"
+                class="sticky top-[2.5rem] z-10 -mx-1 px-1 py-1 bg-base flex items-baseline gap-2 mb-1.5 border-b border-surface1/60"
               >
-                <h2 class="text-base sm:text-lg font-semibold text-text">
+                <h2 class="text-sm font-semibold text-text">
                   {relativeLabel(jot.date, today)}
                 </h2>
-                <span class="text-xs text-dim hidden sm:inline">{fullLabel(jot.date)}</span>
-                <span class="text-xs text-dim sm:hidden">{jot.date}</span>
+                <span class="text-[11px] text-dim hidden sm:inline font-mono">{jot.date}</span>
                 {#if jot.openTasks > 0}
                   <span
-                    class="text-[10px] px-1.5 py-0.5 rounded bg-surface0 text-warning font-medium"
-                  >
-                    {jot.openTasks} open task{jot.openTasks === 1 ? '' : 's'}
-                  </span>
+                    class="text-[10px] px-1 py-0.5 rounded bg-surface1 text-text font-mono"
+                    title="{jot.openTasks} open task{jot.openTasks === 1 ? '' : 's'} in this daily"
+                  >{jot.openTasks}☐</span>
                 {/if}
                 <a
                   href="/notes/{encodeURIComponent(jot.path)}"
-                  class="ml-auto text-xs text-primary hover:underline"
-                >
-                  Open →
-                </a>
+                  class="ml-auto text-[11px] text-text hover:underline opacity-70 hover:opacity-100"
+                >open →</a>
               </header>
-              <div class="bg-surface0 border border-surface1 rounded p-3">
+              <div class="bg-surface0 border border-surface1 rounded p-2.5">
                 {#if jot.body.trim()}
                   <MarkdownRenderer body={jot.body} onWikilink={handleWikilink} />
                 {:else}
-                  <p class="text-sm text-dim italic">empty</p>
+                  <p class="text-xs text-dim italic">empty</p>
                 {/if}
               </div>
 
@@ -785,17 +785,17 @@
                    this date across the vault. Loads lazily on first
                    open so long scrolls don't N+1 the API. -->
               <details
-                class="mt-2 bg-surface0 border border-surface1 rounded text-sm"
+                class="mt-1 bg-surface0 border border-surface1 rounded text-sm"
                 ontoggle={(e) => {
                   if ((e.currentTarget as HTMLDetailsElement).open) {
                     loadDayActivity(jot.date);
                   }
                 }}
               >
-                <summary class="cursor-pointer px-3 py-2 text-xs uppercase tracking-wider text-dim hover:text-text select-none">
-                  What happened that day
+                <summary class="cursor-pointer px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-dim hover:text-text select-none">
+                  what happened that day
                 </summary>
-                <div class="px-3 pb-3 pt-1">
+                <div class="px-2.5 pb-2.5 pt-1">
                   {#if dayActivityLoading[jot.date] && dayActivityCache[jot.date] === undefined}
                     <p class="text-xs text-dim italic">loading…</p>
                   {:else if (dayActivityCache[jot.date]?.length ?? 0) === 0}
@@ -804,17 +804,17 @@
                     {/if}
                   {:else}
                     {#each bucketize(dayActivityCache[jot.date] ?? []) as bucket (bucket.kind)}
-                      <div class="mb-3 last:mb-0">
-                        <h4 class="text-[10px] uppercase tracking-wider text-primary font-medium mb-1">
+                      <div class="mb-2 last:mb-0">
+                        <h4 class="text-[10px] uppercase tracking-[0.18em] text-text font-medium mb-0.5">
                           {bucket.label} <span class="text-dim font-normal">({bucket.items.length})</span>
                         </h4>
-                        <ul class="space-y-0.5">
+                        <ul>
                           {#each bucket.items as it (it.kind + ':' + (it.target_id ?? it.path ?? it.title) + ':' + it.at)}
-                            <li class="flex items-baseline gap-2 text-xs">
-                              <span class="text-dim font-mono w-10 shrink-0">{activityTime(it.at)}</span>
+                            <li class="flex items-baseline gap-1.5 text-[11px] leading-relaxed">
+                              <span class="text-dim font-mono w-9 shrink-0">{activityTime(it.at)}</span>
                               <a
                                 href={activityHref(it)}
-                                class="text-text hover:text-primary truncate"
+                                class="text-text hover:underline truncate"
                               >{it.title}</a>
                               {#if it.detail}
                                 <span class="text-dim truncate">· {it.detail}</span>
