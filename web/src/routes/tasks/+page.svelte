@@ -83,6 +83,26 @@
   //   'only'  — show ONLY archived (the "archive drawer" view).
   // Persisted to localStorage like the other filters.
   let archivedMode = $state<'hide' | 'show' | 'only'>('hide');
+
+  // Smart filter chip — a single-select quick predicate on top of the
+  // existing filter dimensions. Replaces the passive stats chips with
+  // one-click filters so the user can jump from "I see I have 4
+  // overdue" to "showing 4 overdue" in one click without opening any
+  // dialog or learning a new control. Persisted to URL hash so
+  // refreshes / shared links carry the same focus.
+  type SmartFilter =
+    | ''
+    | 'overdue'
+    | 'today'
+    | 'tomorrow'
+    | 'thisWeek'
+    | 'noDue'
+    | 'noPriority'
+    | 'highPriority'
+    | 'hasSubtasks'
+    | 'hasEstimate'
+    | 'noEstimate';
+  let smartFilter = $state<SmartFilter>('');
   // Source filter — separates "tasks the user actually wrote as tasks"
   // from "stray `- [ ]` bullets in reading notes / brainstorm pages".
   // Default is 'all' (every `- [ ]` in the vault shows up, matching the
@@ -133,6 +153,12 @@
       const g = get('group') as Group;
       if (['due', 'priority', 'note', 'project', 'tag', 'goal', 'deadline'].includes(g)) groupBy = g;
     }
+    if (sp.has('smart')) {
+      const v = get('smart') as SmartFilter;
+      if (['overdue', 'today', 'tomorrow', 'thisWeek', 'noDue', 'noPriority', 'highPriority', 'hasSubtasks', 'hasEstimate', 'noEstimate'].includes(v)) {
+        smartFilter = v;
+      }
+    }
     // ?agent=1 launches the Task Agent directly — the sidebar's
     // "Run Task Agent" entry uses this to open the agent from
     // outside the page without a global ref. Consumed once: we
@@ -164,6 +190,7 @@
     if (deadlineFilter) sp.set('deadline', deadlineFilter);
     if (view !== 'list') sp.set('view', view);
     if (groupBy !== 'due') sp.set('group', groupBy);
+    if (smartFilter) sp.set('smart', smartFilter);
     const qs = sp.toString();
     const next = qs ? `${$page.url.pathname}?${qs}` : $page.url.pathname;
     // replaceState (not goto) — we don't want every keystroke in the
@@ -776,6 +803,7 @@
     void deadlineFilter;
     void view;
     void groupBy;
+    void smartFilter;
     untrack(() => syncToUrl());
   });
 
@@ -1005,8 +1033,88 @@
       // For all non-special views, hide currently-snoozed tasks unless explicitly viewing all/done.
       if (status === 'open') out = out.filter((t) => !isSnoozed(t));
     }
+    // Smart filter chip — applied last so it always operates on the
+    // result of every other dimension. Predicates kept inline since
+    // they're tiny; the predicate-by-key map is built outside the
+    // derivation to avoid re-allocating it on every refilter.
+    if (smartFilter) {
+      out = out.filter((t) => smartPredicate(smartFilter, t));
+    }
     return out;
   });
+
+  // Smart-filter live counts — how many tasks would each chip show
+  // given the OTHER active filters. We don't recompute the full filter
+  // chain; we just take the pre-smart `filtered` array (which is the
+  // result of applying every other dimension) and run each predicate.
+  //
+  // The trick: this $derived reads `filtered` AND `smartFilter`, so
+  // when the chip is set, `filtered` is narrowed by it and the counts
+  // would all sum to the visible total — useless. We use a separate
+  // counter that walks `tasks` directly with the non-smart filters
+  // duplicated. To avoid duplicating that whole predicate, we just
+  // count against the loaded tasks (no filters applied) — simple and
+  // gives the user "across the whole vault, how many overdue exist?".
+  // Other active filters are still applied to the visible list.
+  let smartCounts = $derived.by(() => {
+    const counts: Record<string, number> = {};
+    const filters: SmartFilter[] = ['overdue', 'today', 'tomorrow', 'thisWeek', 'noDue', 'noPriority', 'highPriority', 'hasSubtasks', 'hasEstimate', 'noEstimate'];
+    for (const f of filters) counts[f] = 0;
+    for (const t of tasks) {
+      if (t.archived && archivedMode === 'hide') continue;
+      if (isSnoozed(t) && status === 'open') continue;
+      for (const f of filters) {
+        if (smartPredicate(f, t)) counts[f]++;
+      }
+    }
+    return counts;
+  });
+
+  // Smart-filter predicates. Each takes a task and returns true if
+  // the task belongs in that smart-filter bucket. Computed against
+  // today's date (re-derived per call so a long-lived session that
+  // crosses midnight rolls over without a reload).
+  function smartPredicate(sf: SmartFilter, t: Task): boolean {
+    if (!sf) return true;
+    const today = todayISO();
+    const tomorrow = (() => {
+      const d = new Date(today + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      return fmtDateISO(d);
+    })();
+    const weekEnd = (() => {
+      const d = new Date(today + 'T00:00:00');
+      d.setDate(d.getDate() + 7);
+      return fmtDateISO(d);
+    })();
+    const due = t.dueDate ?? '';
+    const sched = t.scheduledStart ? t.scheduledStart.slice(0, 10) : '';
+    const dateSignal = due || sched;
+    switch (sf) {
+      case 'overdue':
+        return !t.done && !!due && due < today;
+      case 'today':
+        return !t.done && (due === today || sched === today);
+      case 'tomorrow':
+        return !t.done && (due === tomorrow || sched === tomorrow);
+      case 'thisWeek':
+        return !t.done && !!dateSignal && dateSignal >= today && dateSignal <= weekEnd;
+      case 'noDue':
+        return !t.done && !due && !sched;
+      case 'noPriority':
+        return !t.done && (t.priority === 0 || t.priority === 4);
+      case 'highPriority':
+        return !t.done && t.priority === 1;
+      case 'hasSubtasks':
+        return !t.done && (childCount.get(t.id) ?? 0) > 0;
+      case 'hasEstimate':
+        return !t.done && !!t.estimatedMinutes && t.estimatedMinutes > 0;
+      case 'noEstimate':
+        return !t.done && (!t.estimatedMinutes || t.estimatedMinutes === 0);
+      default:
+        return true;
+    }
+  }
 
   // At-a-glance stats over the unfiltered open task list. Surfaced
   // as small chips above the list so the user always knows the
@@ -1533,6 +1641,25 @@
         clear: () => (sourceFilter = 'all')
       });
     }
+    if (smartFilter) {
+      const labels: Record<string, string> = {
+        overdue: 'overdue',
+        today: 'today',
+        tomorrow: 'tomorrow',
+        thisWeek: 'this week',
+        noDue: 'no due date',
+        noPriority: 'no priority',
+        highPriority: 'high priority',
+        hasSubtasks: 'has subtasks',
+        hasEstimate: 'has estimate',
+        noEstimate: 'no estimate'
+      };
+      out.push({
+        key: 'smart',
+        label: labels[smartFilter] ?? smartFilter,
+        clear: () => (smartFilter = '')
+      });
+    }
     return out;
   });
   function clearAllFilters() {
@@ -1544,6 +1671,7 @@
     goalFilter = '';
     deadlineFilter = '';
     sourceFilter = 'all';
+    smartFilter = '';
   }
 </script>
 
@@ -2035,25 +2163,89 @@
           <span class="text-[10px] text-dim font-mono tabular-nums select-none">{filtered.length} match{filtered.length === 1 ? '' : 'es'}</span>
         </div>
       {/if}
-      <!-- Stats summary chips. Always reflect the unfiltered set so
-           the user knows total load even with active filters. The
-           overdue / today chips have urgency coloring; doneToday is
-           a positive-tone affirmation; snoozed is muted. Estimate
-           + week-velocity + avg-priority chips were added to give
-           power users a real-time read on workload + throughput. -->
+      <!-- Smart filter chip bar — every chip is a one-click filter
+           that narrows the list to its predicate. The chip lights up
+           when active; clicking again clears (toggle). Counts are
+           live across the loaded tasks so the user always sees how
+           many would be revealed before clicking. The done/velocity
+           chips remain passive (no filter behaviour — they're
+           informational) but live in the same row for a single
+           "at-a-glance" surface. -->
       <div class="px-3 py-2 border-b border-surface1 flex items-center gap-1.5 text-xs flex-shrink-0 flex-wrap">
         <span class="px-2 py-1 rounded bg-surface0 text-subtext font-mono tabular-nums">
           <span class="text-text font-semibold">{stats.open}</span> open
         </span>
-        {#if stats.overdue > 0}
-          <span class="px-2 py-1 rounded bg-surface0 text-error font-mono tabular-nums" title="Tasks past their due date">
-            <span class="font-semibold">{stats.overdue}</span> overdue
-          </span>
+        {#if smartCounts.overdue > 0}
+          <button
+            type="button"
+            onclick={() => (smartFilter = smartFilter === 'overdue' ? '' : 'overdue')}
+            aria-pressed={smartFilter === 'overdue'}
+            title="Tasks past their due date — click to filter"
+            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'overdue' ? 'bg-error text-on-primary' : 'bg-surface0 text-error hover:bg-surface1'}"
+          ><span class="font-semibold">{smartCounts.overdue}</span> overdue</button>
         {/if}
-        {#if stats.todayCount > 0}
-          <span class="px-2 py-1 rounded bg-surface0 text-warning font-mono tabular-nums" title="Tasks due today">
-            <span class="font-semibold">{stats.todayCount}</span> today
-          </span>
+        {#if smartCounts.today > 0}
+          <button
+            type="button"
+            onclick={() => (smartFilter = smartFilter === 'today' ? '' : 'today')}
+            aria-pressed={smartFilter === 'today'}
+            title="Due or scheduled today — click to filter"
+            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'today' ? 'bg-warning text-on-primary' : 'bg-surface0 text-warning hover:bg-surface1'}"
+          ><span class="font-semibold">{smartCounts.today}</span> today</button>
+        {/if}
+        {#if smartCounts.tomorrow > 0}
+          <button
+            type="button"
+            onclick={() => (smartFilter = smartFilter === 'tomorrow' ? '' : 'tomorrow')}
+            aria-pressed={smartFilter === 'tomorrow'}
+            title="Due or scheduled tomorrow — click to filter"
+            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'tomorrow' ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+          ><span class="font-semibold">{smartCounts.tomorrow}</span> tmrw</button>
+        {/if}
+        {#if smartCounts.thisWeek > 0}
+          <button
+            type="button"
+            onclick={() => (smartFilter = smartFilter === 'thisWeek' ? '' : 'thisWeek')}
+            aria-pressed={smartFilter === 'thisWeek'}
+            title="Due or scheduled in the next 7 days — click to filter"
+            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'thisWeek' ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+          ><span class="font-semibold">{smartCounts.thisWeek}</span> 7d</button>
+        {/if}
+        {#if smartCounts.noDue > 0}
+          <button
+            type="button"
+            onclick={() => (smartFilter = smartFilter === 'noDue' ? '' : 'noDue')}
+            aria-pressed={smartFilter === 'noDue'}
+            title="No due date and no scheduled time — click to filter and prioritize"
+            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'noDue' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
+          ><span class="font-semibold">{smartCounts.noDue}</span> no-date</button>
+        {/if}
+        {#if smartCounts.highPriority > 0}
+          <button
+            type="button"
+            onclick={() => (smartFilter = smartFilter === 'highPriority' ? '' : 'highPriority')}
+            aria-pressed={smartFilter === 'highPriority'}
+            title="P1 (highest priority) tasks — click to filter"
+            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'highPriority' ? 'bg-primary text-on-primary' : 'bg-surface0 text-text hover:bg-surface1'}"
+          >!<span class="font-semibold">{smartCounts.highPriority}</span></button>
+        {/if}
+        {#if smartCounts.noPriority > 0}
+          <button
+            type="button"
+            onclick={() => (smartFilter = smartFilter === 'noPriority' ? '' : 'noPriority')}
+            aria-pressed={smartFilter === 'noPriority'}
+            title="No priority set — click to filter and triage"
+            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'noPriority' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
+          ><span class="font-semibold">{smartCounts.noPriority}</span> no-pri</button>
+        {/if}
+        {#if smartCounts.hasSubtasks > 0}
+          <button
+            type="button"
+            onclick={() => (smartFilter = smartFilter === 'hasSubtasks' ? '' : 'hasSubtasks')}
+            aria-pressed={smartFilter === 'hasSubtasks'}
+            title="Tasks with children — click to filter to parent-only"
+            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'hasSubtasks' ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+          >⫶<span class="font-semibold">{smartCounts.hasSubtasks}</span></button>
         {/if}
         {#if stats.doneToday > 0}
           <span class="px-2 py-1 rounded bg-surface0 text-success font-mono tabular-nums" title="Completed today">
