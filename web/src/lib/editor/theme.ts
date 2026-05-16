@@ -58,32 +58,12 @@ export const theme = EditorView.theme(
       textDecoration: 'line-through',
       textDecorationColor: 'var(--color-dim)'
     },
-    // Status pill at the top-right of the editor while a ghost is
-    // active. Monochrome to match the rest of the theme — no purple
-    // gradients. Pure CSS via :has() so we don't have to thread
-    // CodeMirror state through Svelte. Auto-disappears when the
-    // ghost is committed / rejected / typed-through.
-    '&:has(.cm-ghost-text)': { position: 'relative' },
-    '&:has(.cm-ghost-text)::after': {
-      content: '"AI · Tab accept · ⌘R regen · Esc reject"',
-      position: 'absolute',
-      top: '6px',
-      right: '8px',
-      padding: '3px 8px',
-      fontSize: '10px',
-      fontFamily: 'var(--font-mono)',
-      fontWeight: '500',
-      color: 'var(--color-text)',
-      backgroundColor: 'var(--color-surface0)',
-      border: '1px solid var(--color-surface2)',
-      borderRadius: '4px',
-      pointerEvents: 'none',
-      userSelect: 'none',
-      zIndex: '5',
-      backdropFilter: 'blur(4px)',
-      whiteSpace: 'nowrap',
-      letterSpacing: '0.04em'
-    },
+    // The keyboard-hint pill that previously lived here moved to a
+    // proper floating action bar (AIActionBar.svelte) so the user
+    // gets clickable buttons (Keep / Try again / Discard / Stop)
+    // instead of just a reminder of the chords. The bar positions
+    // itself next to the ghost via coordsAtPos; this CSS-only pill
+    // would compete with it.
     // Autocomplete popup
     '.cm-tooltip.cm-tooltip-autocomplete': {
       backgroundColor: 'var(--color-mantle)',

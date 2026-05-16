@@ -34,7 +34,7 @@
 // state field or fight over a shared one. One field + a discriminator
 // is simpler and produces consistent behaviour across actions.
 
-import { EditorView, Decoration, type DecorationSet, WidgetType } from '@codemirror/view';
+import { EditorView, Decoration, type DecorationSet, WidgetType, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 import { StateField, StateEffect, type Extension } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { api, type ChatMessage } from '$lib/api';
@@ -67,8 +67,13 @@ export interface InlineAIRequest {
 
 // ─── State ─────────────────────────────────────────────────────────
 
-interface InlineAIState {
+export interface InlineAIState {
   active: boolean;
+  /** True while a stream is in-flight (between start and onDone/onError).
+   *  Hosts use this to switch the floating action bar between a "Stop"
+   *  affordance (mid-stream) and the Keep/Try-again/Discard cluster
+   *  (post-stream). */
+  streaming: boolean;
   kind: InlineAIKind;
   /** Where the ghost decoration anchors. For insert/append this is
    *  the cursor position; for replace it's the start of the range. */
@@ -84,6 +89,7 @@ interface InlineAIState {
 
 const EMPTY: InlineAIState = {
   active: false,
+  streaming: false,
   kind: 'insert',
   anchor: 0,
   replaceTo: 0,
@@ -201,6 +207,7 @@ export function streamInlineAI(view: EditorView, req: InlineAIRequest): boolean 
   view.dispatch({
     effects: setInlineAI.of({
       active: true,
+      streaming: true,
       kind: req.kind,
       anchor,
       replaceTo,
@@ -227,6 +234,10 @@ export function streamInlineAI(view: EditorView, req: InlineAIRequest): boolean 
       onDone: () => {
         t.flush();
         activeAbort = null;
+        // Mark the ghost as "done streaming" so the host's action bar
+        // flips from Stop → Keep/Try again/Discard. Keep `active: true`
+        // so the ghost stays rendered until the user commits or rejects.
+        view.dispatch({ effects: setInlineAI.of({ streaming: false }) });
         const state = view.state.field(inlineAIField, false);
         req.onSettled?.({ ok: true, text: state?.text ?? '' });
       },
@@ -294,6 +305,44 @@ export function getInlineAIState(view: EditorView | undefined): InlineAIState | 
   if (!view) return null;
   const s = view.state.field(inlineAIField, false);
   return s ?? null;
+}
+
+/** Observer extension — fires `onChange` whenever the inline-ai state
+ *  transitions in a way the host care about (active flips, streaming
+ *  flips, anchor moves, text grows). Hosts use this to drive a Svelte
+ *  $state that renders the floating action bar at the right position
+ *  and in the right mode. The callback is debounced to per-frame via
+ *  the natural CodeMirror update cycle — one fire per dispatched
+ *  transaction at most. */
+export function inlineAIObserver(onChange: (state: InlineAIState | null) => void): Extension {
+  return ViewPlugin.fromClass(
+    class {
+      last: InlineAIState | null;
+      constructor(public view: EditorView) {
+        this.last = view.state.field(inlineAIField, false) ?? null;
+        // Fire once on init so the host knows the starting state
+        // (almost always inactive, but no assumption).
+        onChange(this.last);
+      }
+      update(u: ViewUpdate) {
+        const cur = u.state.field(inlineAIField, false) ?? null;
+        // Bail when nothing the host cares about changed. We compare
+        // the fields that drive the action bar; deeper request object
+        // changes don't matter here.
+        if (
+          (cur?.active ?? false) === (this.last?.active ?? false) &&
+          (cur?.streaming ?? false) === (this.last?.streaming ?? false) &&
+          (cur?.anchor ?? -1) === (this.last?.anchor ?? -1) &&
+          (cur?.replaceTo ?? -1) === (this.last?.replaceTo ?? -1) &&
+          (cur?.text ?? '') === (this.last?.text ?? '')
+        ) {
+          return;
+        }
+        this.last = cur;
+        onChange(cur);
+      }
+    }
+  );
 }
 
 // ─── Continue-writing preset (legacy chord) ────────────────────────

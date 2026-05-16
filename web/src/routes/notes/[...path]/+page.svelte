@@ -35,10 +35,12 @@
   import SelectionToolbar from '$lib/editor/SelectionToolbar.svelte';
   import LinkSuggestPanel from '$lib/notes/LinkSuggestPanel.svelte';
   import InlineAIMenu from '$lib/notes/InlineAIMenu.svelte';
+  import AIActionBar from '$lib/notes/AIActionBar.svelte';
   import {
     inlineAITriggerExtension,
     type InlineAITriggerEvent
   } from '$lib/editor/inline-ai-trigger';
+  import { inlineAIObserver, type InlineAIState } from '$lib/editor/inline-ai';
   import type { EditorView } from '@codemirror/view';
   import ResearchPanel from '$lib/notes/ResearchPanel.svelte';
   import ReferenceNotePanel from '$lib/notes/ReferenceNotePanel.svelte';
@@ -127,6 +129,11 @@
   // Inline AI menu — populated by the inline-ai-trigger extension when
   // the user hits Cmd-K or types "/ai". Cleared when the menu closes.
   let aiTriggerEvent = $state<InlineAITriggerEvent | null>(null);
+
+  // Inline AI ghost state — observed by inlineAIObserver, drives the
+  // floating <AIActionBar> that surfaces Keep / Try again / Discard /
+  // Stop buttons next to the ghost text. Null when no ghost is active.
+  let aiGhostState = $state<InlineAIState | null>(null);
 
   // Reading progress 0..1 — driven by the editor's onScroll callback
   // (rAF-throttled there). When the doc fits in viewport the
@@ -895,13 +902,19 @@
 
   // ── Editor extra extensions ─────────────────────────────────────
   // Editor.svelte reads extraExtensions ONCE at setupView time, so
-  // this array must not be re-created on every render. The trigger
-  // callback writes to aiTriggerEvent (declared above), which Svelte
-  // renders into the floating <InlineAIMenu> near the bottom of the
-  // template.
+  // this array must not be re-created on every render. Two host
+  // bridges live here:
+  //   • inlineAITriggerExtension — turns Cmd-K / "/ai" into a menu
+  //     open event the page renders via <InlineAIMenu>.
+  //   • inlineAIObserver — fires whenever the inline-AI state field
+  //     changes (start/stream/done/clear) so the page can render the
+  //     floating <AIActionBar> with the right buttons.
   const editorAIExtensions = [
     inlineAITriggerExtension((e) => {
       aiTriggerEvent = e;
+    }),
+    inlineAIObserver((s) => {
+      aiGhostState = s;
     })
   ];
 
@@ -2250,6 +2263,13 @@
   container={editorDOM}
   onCommand={(chord) => editor?.dispatchChord(chord)}
 />
+
+<!-- Floating action bar that follows the inline-AI ghost. During
+     streaming it offers a Stop button; after completion it offers
+     Keep / Try again / Discard. Keyboard chords (Tab / ⌘R / Esc)
+     still work — the bar is the click-discoverable surface for the
+     same actions. -->
+<AIActionBar view={editor?.getView?.()} state={aiGhostState} />
 
 <!-- Inline AI menu — Notion-style command palette anchored at the
      cursor. Opens on Cmd-K or when the user types "/ai" at the start
