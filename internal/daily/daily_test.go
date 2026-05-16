@@ -226,3 +226,19 @@ func TestGetDailyPath_ProducesAbsolutePath(t *testing.T) {
 		t.Errorf("expected absolute path, got %q", got)
 	}
 }
+
+// TestDefaultTemplate_ContainsDayActivityMarker pins the contract
+// the day-activity renderer relies on: every freshly-created
+// daily note carries the marker so the live "What happened that
+// day" feed has a stable insertion point. A user who deletes the
+// marker by hand opts out of the live feed — but the default
+// template MUST seed it.
+func TestDefaultTemplate_ContainsDayActivityMarker(t *testing.T) {
+	tmpl := defaultTemplate()
+	if !strings.Contains(tmpl, DayActivityMarker) {
+		t.Errorf("default template missing %q marker", DayActivityMarker)
+	}
+	if !strings.Contains(tmpl, "## Day overview") {
+		t.Error("default template missing '## Day overview' heading")
+	}
+}
