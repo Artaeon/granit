@@ -298,15 +298,15 @@
     },
     {
       id: 'match-tone',
-      label: 'Match the tone of this note',
+      label: 'Match surrounding tone',
       hint: 'rewrite selection in same voice',
       category: 'writing',
       cursor: false,
       selection: true,
       systemForSelection:
-        'Rewrite the following passage so its voice, register, and rhythm match the ' +
-        'surrounding note (provided to you as system context). Preserve meaning. Return only ' +
-        'the rewritten text, no preamble.'
+        'Rewrite the following passage so its voice, register, and rhythm match the text ' +
+        'immediately around it (provided as BEFORE / AFTER context blocks in the user message). ' +
+        'Preserve meaning. Return only the rewritten text, no preamble.'
     },
     {
       id: 'translate-en',

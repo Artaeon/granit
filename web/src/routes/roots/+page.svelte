@@ -45,6 +45,11 @@
 
   let loading = $state(true);
   let loadError = $state('');
+  // Names of sources that failed to load so the UI can show a small
+  // "some data missing" pill instead of silently rendering zeros.
+  // Promise.allSettled never rejects on its own; without this the
+  // user can't tell "no goals yet" from "/api/v1/goals 500'd".
+  let partialFailures = $state<string[]>([]);
 
   // ── Add-item form per ring ────────────────────────────────────
   // Inline composer per section. Keeps the page single-purpose
@@ -77,6 +82,12 @@
         api.listPrayer()
       ]);
       const [r, bs, vs, hs, ms, bks, gs, projs, vens, fin, slog, pry] = results;
+      // Names line up with the array order so we can flag failures
+      // by index without re-listing each variable.
+      const sourceNames = ['roots', 'bible', 'virtues', 'habits', 'measurements', 'books', 'goals', 'projects', 'ventures', 'finance', 'sabbath', 'prayer'];
+      partialFailures = results
+        .map((res, i) => (res.status === 'rejected' ? sourceNames[i] : null))
+        .filter((x): x is string => x !== null);
       if (r.status === 'fulfilled') roots = r.value;
       if (bs.status === 'fulfilled') bibleStreak = bs.value;
       if (vs.status === 'fulfilled') virtues = vs.value.virtues;
@@ -196,15 +207,23 @@
 
 <div class="h-full overflow-y-auto bg-mantle">
   <div class="max-w-6xl mx-auto px-4 py-6">
-    <header class="mb-6">
-      <h1 class="text-2xl font-semibold text-text">Roots</h1>
-      {#if roots?.center}
-        <p class="text-sm text-dim mt-1">
-          Centered in <span class="text-text font-medium">{roots.center}</span>
-          {#if roots.anchor}<span class="text-dim/80"> · {roots.anchor}</span>{/if}
-        </p>
-      {:else}
-        <p class="text-sm text-dim mt-1">Spirit · Mind · Body · Vocation</p>
+    <header class="mb-6 flex items-baseline gap-3">
+      <div class="flex-1">
+        <h1 class="text-2xl font-semibold text-text">Roots</h1>
+        {#if roots?.center}
+          <p class="text-sm text-dim mt-1">
+            Centered in <span class="text-text font-medium">{roots.center}</span>
+            {#if roots.anchor}<span class="text-dim/80"> · {roots.anchor}</span>{/if}
+          </p>
+        {:else}
+          <p class="text-sm text-dim mt-1">Spirit · Mind · Body · Vocation</p>
+        {/if}
+      </div>
+      {#if partialFailures.length > 0}
+        <span
+          class="text-[10px] font-mono px-2 py-1 rounded bg-warning/10 text-warning border border-warning/30"
+          title="Failed to load: {partialFailures.join(', ')}"
+        >{partialFailures.length} source{partialFailures.length === 1 ? '' : 's'} unavailable</span>
       {/if}
     </header>
 
@@ -364,7 +383,7 @@
                 {#each currentlyReading.slice(0, 4) as b (b.id)}
                   <li class="flex items-baseline gap-2">
                     <a href="/books/{encodeURIComponent(b.id)}" class="text-text hover:underline truncate">{b.title}</a>
-                    {#if b.author}<span class="text-dim text-[11px] truncate">{b.author}</span>{/if}
+                    {#if b.authors && b.authors.length > 0}<span class="text-dim text-[11px] truncate">{b.authors.join(', ')}</span>{/if}
                   </li>
                 {/each}
               </ul>
