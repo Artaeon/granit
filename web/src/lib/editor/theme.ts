@@ -37,43 +37,52 @@ export const theme = EditorView.theme(
     // Search/match highlight
     '.cm-searchMatch': { backgroundColor: 'rgba(187,154,247,0.25)' },
     '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'rgba(187,154,247,0.5)' },
-    // AI ghost text — rendered by the continue-writing extension as a
-    // widget after the cursor. Dimmed so it reads as "not yet
-    // committed" without bleeding into the prose. user-select:none
-    // so triple-click word-select doesn't grab it into the user's
-    // own selection.
+    // AI ghost text — rendered by inline-ai.ts as a widget at the
+    // cursor (or alongside the selection it will replace). Dimmed so
+    // it reads as "not yet committed" without bleeding into the
+    // prose. user-select:none so triple-click word-select doesn't
+    // grab it into the user's own selection.
     '.cm-ghost-text': {
       color: 'var(--color-dim)',
-      opacity: '0.7',
+      opacity: '0.75',
       fontStyle: 'italic',
       pointerEvents: 'none',
       userSelect: 'none'
     },
-    // When a ghost is active, surface a small pill at the top-right
-    // of the editor surface so the user sees that AI is continuing
-    // and remembers the Tab / Esc affordance. Pure CSS via :has() —
-    // no Svelte reactive plumbing into CodeMirror state needed. The
-    // pill auto-disappears when the ghost text widget is removed
-    // (accept / reject / type-through).
+    // Replace-mode target — subtle background mark over the range
+    // the ghost will overwrite on accept, so the user sees what's
+    // about to change. Strikethrough hints at the impending delete.
+    '.cm-inline-ai-target': {
+      backgroundColor: 'var(--color-surface1)',
+      opacity: '0.6',
+      textDecoration: 'line-through',
+      textDecorationColor: 'var(--color-dim)'
+    },
+    // Status pill at the top-right of the editor while a ghost is
+    // active. Monochrome to match the rest of the theme — no purple
+    // gradients. Pure CSS via :has() so we don't have to thread
+    // CodeMirror state through Svelte. Auto-disappears when the
+    // ghost is committed / rejected / typed-through.
     '&:has(.cm-ghost-text)': { position: 'relative' },
     '&:has(.cm-ghost-text)::after': {
-      content: '"✨ AI continuing · Tab to accept · Esc to reject"',
+      content: '"AI · Tab accept · ⌘R regen · Esc reject"',
       position: 'absolute',
       top: '6px',
       right: '8px',
       padding: '3px 8px',
       fontSize: '10px',
-      fontFamily: 'var(--font-sans)',
+      fontFamily: 'var(--font-mono)',
       fontWeight: '500',
-      color: 'var(--color-primary)',
-      backgroundColor: 'rgba(187,154,247,0.12)',
-      border: '1px solid rgba(187,154,247,0.3)',
-      borderRadius: '12px',
+      color: 'var(--color-text)',
+      backgroundColor: 'var(--color-surface0)',
+      border: '1px solid var(--color-surface2)',
+      borderRadius: '4px',
       pointerEvents: 'none',
       userSelect: 'none',
       zIndex: '5',
       backdropFilter: 'blur(4px)',
-      whiteSpace: 'nowrap'
+      whiteSpace: 'nowrap',
+      letterSpacing: '0.04em'
     },
     // Autocomplete popup
     '.cm-tooltip.cm-tooltip-autocomplete': {

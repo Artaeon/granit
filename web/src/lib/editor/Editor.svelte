@@ -20,7 +20,7 @@
   import { askAIKeymap, type AskAIRequest } from './ask-ai';
   import { checkboxShortcuts } from './checkbox-shortcuts';
   import { headingShortcuts } from './heading-shortcuts';
-  import { continueWritingExtension } from './continue-writing';
+  import { inlineAIExtension } from './inline-ai';
 
   let {
     value = $bindable(''),
@@ -142,13 +142,17 @@
         // UX + /chat call live in the page (where the toast +
         // settings nav live too).
         askAIKeymap((req) => onAskAI?.(req)),
-        // Continue Writing (Mod-Alt-Space at empty selection).
-        // Streams an AI continuation as ghost text after the cursor;
-        // Tab accepts, Esc rejects. Lives BEFORE the main keymap so
-        // its Tab handler gets first look at the chord — when no
-        // ghost is active it returns false, falling through to the
-        // default Tab indent.
-        continueWritingExtension(),
+        // Inline AI — single extension that backs every AI action
+        // (Continue, Improve, Fix grammar, Summarize, Translate, etc.).
+        // Streams ghost text at the cursor or alongside a selection
+        // it will replace; Tab/Cmd-Enter accept, Esc rejects, Cmd-R
+        // regenerates. Lives BEFORE the main keymap so its Tab
+        // handler gets first look at the chord — when no ghost is
+        // active it returns false, falling through to the default
+        // Tab indent. Continue-writing (Mod-Alt-Space) is the
+        // built-in preset; everything else is host-driven via
+        // streamInlineAI(view, ...).
+        inlineAIExtension(),
         theme,
         // Markdown shortcuts come BEFORE defaultKeymap so Mod-b /
         // Mod-i / Mod-k aren't shadowed by CodeMirror's defaults. Same
