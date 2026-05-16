@@ -151,6 +151,28 @@ visit with the user's template applied.
 | Today-at-a-glance hero widget | `web/src/lib/dashboard/`, `web/src/routes/+page.svelte` |
 | Saved layout presets (focus / morning / shutdown) | `web/src/lib/dashboard/`, `internal/serveapi/handlers_dashboard.go` |
 | Dashboard widget catalogue | `web/src/lib/dashboard/` |
+| Day activity overview (notes, tasks, events, jots, habits, prayer, hub) | `internal/dayactivity/`, `internal/serveapi/handlers_day_activity.go`, `web/src/lib/notes/DayActivityInline.svelte` |
+
+### Day activity
+
+Every Jot in `/jots` carries a collapsed "What happened that day"
+block that, on expand, lists every item created or completed on
+that date: notes, tasks (split into created vs. completed), calendar
+events, habit toggles, prayer intentions added or answered, hub
+links added, and the day's timestamped jot bullets. Each entry is a
+direct link into the relevant surface, turning the daily feed into
+a navigation hub for any past date.
+
+The same feed renders inline inside a daily note: the default
+template seeds a `## Day overview` heading followed by the marker
+comment `<!-- granit:day-activity -->`. The preview renderer detects
+the marker and substitutes the live feed in place — the marker
+itself stays in the underlying markdown so external editors
+(Obsidian, vim) round-trip it unchanged, but the rendered content
+is computed on every render so it stays current without ever
+writing back to disk. Backed by `GET /api/v1/day-activity?date=…`,
+which delegates to `internal/dayactivity` (single source of truth
+for the cross-surface aggregation; pure read, no writes).
 
 ---
 
