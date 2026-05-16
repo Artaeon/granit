@@ -31,6 +31,11 @@
   let searchText = $state('');
   let searchResults = $state<Note[]>([]);
   let searching = $state(false);
+  let searchEl = $state<HTMLInputElement | undefined>();
+
+  // Keyboard navigation
+  let currentJotIdx = $state(-1);
+  let showShortcuts = $state(false);
 
   // Hashtag filter — when non-empty, jots must mention EVERY active
   // tag (AND filter). Clicking a `#tag` chip toggles membership.
@@ -637,6 +642,94 @@
     }
   }
 
+  // ── keyboard shortcuts ────────────────────────────────────────────
+  // Amplenote-style single-key navigation. Active only when no input
+  // has focus (otherwise typing "j" into the composer would scroll
+  // instead of insert). Esc remains active inside inputs as a way out.
+  function isTypingTarget(t: EventTarget | null): boolean {
+    if (!t) return false;
+    const el = t as HTMLElement;
+    const tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    return el.isContentEditable;
+  }
+
+  function scrollToJot(idx: number) {
+    if (typeof document === 'undefined') return;
+    const cards = document.querySelectorAll<HTMLElement>('[data-jot-date]');
+    if (!cards.length) return;
+    const clamped = Math.max(0, Math.min(idx, cards.length - 1));
+    currentJotIdx = clamped;
+    // block:start lands the header just under the sticky toolbar; the
+    // browser's smooth scroll handles the rest. Card's data-jot-date
+    // attribute is set in the template above so this lookup stays
+    // independent of class names.
+    cards[clamped].scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function onShortcutKey(e: KeyboardEvent) {
+    // Esc always honored, even inside inputs — it's the universal "back out".
+    if (e.key === 'Escape') {
+      if (showShortcuts) {
+        showShortcuts = false;
+        e.preventDefault();
+        return;
+      }
+      if (isTypingTarget(e.target)) {
+        (e.target as HTMLElement).blur();
+        return;
+      }
+      if (hasAnyFilter) {
+        clearAllFilters();
+        e.preventDefault();
+      } else if (searchText) {
+        clearSearch();
+        e.preventDefault();
+      }
+      return;
+    }
+    if (isTypingTarget(e.target)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    switch (e.key) {
+      case '?':
+        e.preventDefault();
+        showShortcuts = !showShortcuts;
+        return;
+      case '/':
+        e.preventDefault();
+        searchEl?.focus();
+        return;
+      case 'c':
+        e.preventDefault();
+        composerEl?.focus();
+        return;
+      case 'j':
+        e.preventDefault();
+        scrollToJot(currentJotIdx + 1);
+        return;
+      case 'k':
+        e.preventDefault();
+        scrollToJot(Math.max(0, currentJotIdx - 1));
+        return;
+      case 'g':
+        e.preventDefault();
+        currentJotIdx = -1;
+        document.getElementById('jots-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      case 'G':
+        e.preventDefault();
+        // End-of-feed: load another page first so the user sees motion
+        // instead of an abrupt stop, then scroll to the bottom of
+        // what's currently rendered.
+        loadMore();
+        document.getElementById('jots-scroll')?.scrollTo({
+          top: document.getElementById('jots-scroll')?.scrollHeight ?? 0,
+          behavior: 'smooth'
+        });
+        return;
+    }
+  }
+
   // ── lifecycle ─────────────────────────────────────────────────────
   // Debounce WS-driven refetches per-date — a flurry of writes (the
   // user typing into a daily) shouldn't trigger a refetch per
@@ -690,9 +783,12 @@
       scheduleRefetch(m.date);
     });
 
+    window.addEventListener('keydown', onShortcutKey);
+
     return () => {
       observer?.disconnect();
       offWs();
+      window.removeEventListener('keydown', onShortcutKey);
       for (const t of pendingRefetch.values()) clearTimeout(t);
       pendingRefetch.clear();
     };
@@ -726,7 +822,12 @@
           {/if}
         </span>
       {/if}
-      <span class="ml-auto opacity-60 hidden sm:inline font-mono">? for shortcuts</span>
+      <button
+        type="button"
+        onclick={() => (showShortcuts = !showShortcuts)}
+        class="ml-auto opacity-60 hidden sm:inline font-mono hover:opacity-100 hover:text-text"
+        title="show keyboard shortcuts (press ?)"
+      >? shortcuts</button>
     </header>
 
     <!-- Toolbar (sticky) — compact one-row controls. Wraps on narrow
@@ -744,16 +845,15 @@
         <div class="flex-1 min-w-[10rem] flex items-center gap-0.5">
           <input
             type="text"
+            bind:this={searchEl}
             bind:value={searchText}
             onkeydown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
                 runSearch();
-              } else if (e.key === 'Escape') {
-                clearSearch();
               }
             }}
-            placeholder="search jots…"
+            placeholder="search jots…  /"
             class="flex-1 bg-mantle border border-surface1 rounded px-1.5 py-0.5 text-[11px] text-text placeholder-dim focus:outline-none focus:border-primary"
           />
           {#if searchText}
@@ -1076,3 +1176,39 @@
     {/if}
   </div>
 </div>
+
+<!-- Keyboard shortcuts overlay. Backdrop click + Esc both dismiss
+     (Esc handled by onShortcutKey at the top level). Placed at the
+     document root so the fixed positioning isn't constrained by the
+     internal scroll container. -->
+{#if showShortcuts}
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+    onclick={(e) => { if (e.currentTarget === e.target) showShortcuts = false; }}
+    role="presentation"
+  >
+    <div class="bg-surface0 border border-surface1 rounded shadow-xl max-w-sm w-full p-4 text-text">
+      <div class="flex items-baseline mb-2">
+        <h3 class="text-xs uppercase tracking-[0.18em] font-semibold">Keyboard shortcuts</h3>
+        <button
+          type="button"
+          onclick={() => (showShortcuts = false)}
+          class="ml-auto text-dim hover:text-text text-sm"
+          aria-label="close shortcuts"
+        >×</button>
+      </div>
+      <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
+        <dt class="font-mono text-text">j</dt><dd class="text-dim">next jot</dd>
+        <dt class="font-mono text-text">k</dt><dd class="text-dim">previous jot</dd>
+        <dt class="font-mono text-text">g</dt><dd class="text-dim">top of feed</dd>
+        <dt class="font-mono text-text">G</dt><dd class="text-dim">end of feed (load more)</dd>
+        <dt class="font-mono text-text">c</dt><dd class="text-dim">focus composer</dd>
+        <dt class="font-mono text-text">/</dt><dd class="text-dim">focus search</dd>
+        <dt class="font-mono text-text">?</dt><dd class="text-dim">toggle this overlay</dd>
+        <dt class="font-mono text-text">Esc</dt><dd class="text-dim">clear filters / blur / dismiss</dd>
+        <dt class="font-mono text-text">⏎</dt><dd class="text-dim">save jot (in composer)</dd>
+        <dt class="font-mono text-text">⇧⏎</dt><dd class="text-dim">newline in composer</dd>
+      </dl>
+    </div>
+  </div>
+{/if}
