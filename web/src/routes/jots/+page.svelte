@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
-  import { api, fmtDateISO, type Jot, type Note } from '$lib/api';
+  import { api, fmtDateISO, type DayActivityItem, type Jot, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { rafThrottle } from '$lib/util/streamThrottle';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
@@ -84,6 +84,102 @@
   // Sentinel + observer for infinite scroll.
   let sentinel: HTMLDivElement | undefined = $state();
   let observer: IntersectionObserver | null = null;
+
+  // ─── per-day activity (lazy, on-expand) ──────────────────────────
+  // The Jots feed shows one daily-note body per entry; under it a
+  // collapsed <details> block surfaces every OTHER thing created on
+  // that same day (notes, tasks created/completed, events, habits,
+  // prayer, hub items). Each block fetches lazily on first open so
+  // a long scroll doesn't N+1 the API.
+  // Per-date cache + loading flags as plain records — Svelte 5
+  // tracks property additions and re-renders on reassignment, so
+  // this is the simplest reactive pattern for "memo by string key".
+  let dayActivityCache = $state<Record<string, DayActivityItem[]>>({});
+  let dayActivityLoading = $state<Record<string, boolean>>({});
+
+  async function loadDayActivity(date: string) {
+    if (dayActivityCache[date] !== undefined || dayActivityLoading[date]) return;
+    dayActivityLoading = { ...dayActivityLoading, [date]: true };
+    try {
+      const r = await api.dayActivity(date);
+      dayActivityCache = { ...dayActivityCache, [date]: r.items };
+    } catch {
+      // Soft-fail — empty list keeps the UI honest; user can refresh.
+      dayActivityCache = { ...dayActivityCache, [date]: [] };
+    } finally {
+      const next = { ...dayActivityLoading };
+      delete next[date];
+      dayActivityLoading = next;
+    }
+  }
+
+  // Group activity items by their Kind so the renderer can render a
+  // labelled bucket per category instead of one undifferentiated
+  // list. Order of buckets is fixed so the layout stays stable
+  // across re-renders even as items shift.
+  type Bucket = { kind: string; label: string; items: DayActivityItem[] };
+  const KIND_LABELS: Record<string, string> = {
+    note_created: 'Notes created',
+    task_created: 'Tasks created',
+    task_completed: 'Tasks completed',
+    event: 'Calendar',
+    habit: 'Habits',
+    prayer: 'Prayer',
+    hub_item: 'Hub',
+    jot: 'Jots'
+  };
+  const BUCKET_ORDER: string[] = [
+    'event',
+    'task_created',
+    'task_completed',
+    'note_created',
+    'jot',
+    'habit',
+    'prayer',
+    'hub_item'
+  ];
+
+  function bucketize(items: DayActivityItem[]): Bucket[] {
+    const groups = new Map<string, DayActivityItem[]>();
+    for (const it of items) {
+      const arr = groups.get(it.kind) ?? [];
+      arr.push(it);
+      groups.set(it.kind, arr);
+    }
+    const out: Bucket[] = [];
+    for (const k of BUCKET_ORDER) {
+      const arr = groups.get(k);
+      if (arr && arr.length > 0) {
+        out.push({ kind: k, label: KIND_LABELS[k] ?? k, items: arr });
+      }
+    }
+    // Stray kinds the server might add later get appended at the end
+    // so a future "measurement" entry surfaces without a UI release.
+    for (const [k, arr] of groups) {
+      if (BUCKET_ORDER.indexOf(k) === -1 && arr.length > 0) {
+        out.push({ kind: k, label: KIND_LABELS[k] ?? k, items: arr });
+      }
+    }
+    return out;
+  }
+
+  function activityHref(it: DayActivityItem): string {
+    if (it.path) return `/notes/${encodeURIComponent(it.path)}`;
+    if (it.kind === 'event') return '/calendar';
+    if (it.kind === 'prayer') return '/prayer';
+    if (it.kind === 'hub_item') return '/hub';
+    if (it.kind === 'habit') return '/habits';
+    if (it.kind === 'task_created' || it.kind === 'task_completed') return '/tasks';
+    return '#';
+  }
+
+  function activityTime(at: string): string {
+    const d = new Date(at);
+    if (Number.isNaN(d.getTime())) return '';
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
 
   // ─── AI: theme detection across loaded jots ──────────────────────
   // Reads the last 20-30 loaded jot bodies and surfaces 3-5 recurring
@@ -683,6 +779,54 @@
                   <p class="text-sm text-dim italic">empty</p>
                 {/if}
               </div>
+
+              <!-- What happened that day — collapsed Amplenote-style
+                   overview of every item created/completed/touched on
+                   this date across the vault. Loads lazily on first
+                   open so long scrolls don't N+1 the API. -->
+              <details
+                class="mt-2 bg-surface0 border border-surface1 rounded text-sm"
+                ontoggle={(e) => {
+                  if ((e.currentTarget as HTMLDetailsElement).open) {
+                    loadDayActivity(jot.date);
+                  }
+                }}
+              >
+                <summary class="cursor-pointer px-3 py-2 text-xs uppercase tracking-wider text-dim hover:text-text select-none">
+                  What happened that day
+                </summary>
+                <div class="px-3 pb-3 pt-1">
+                  {#if dayActivityLoading[jot.date] && dayActivityCache[jot.date] === undefined}
+                    <p class="text-xs text-dim italic">loading…</p>
+                  {:else if (dayActivityCache[jot.date]?.length ?? 0) === 0}
+                    {#if dayActivityCache[jot.date] !== undefined}
+                      <p class="text-xs text-dim italic">No tracked activity on this day.</p>
+                    {/if}
+                  {:else}
+                    {#each bucketize(dayActivityCache[jot.date] ?? []) as bucket (bucket.kind)}
+                      <div class="mb-3 last:mb-0">
+                        <h4 class="text-[10px] uppercase tracking-wider text-primary font-medium mb-1">
+                          {bucket.label} <span class="text-dim font-normal">({bucket.items.length})</span>
+                        </h4>
+                        <ul class="space-y-0.5">
+                          {#each bucket.items as it (it.kind + ':' + (it.target_id ?? it.path ?? it.title) + ':' + it.at)}
+                            <li class="flex items-baseline gap-2 text-xs">
+                              <span class="text-dim font-mono w-10 shrink-0">{activityTime(it.at)}</span>
+                              <a
+                                href={activityHref(it)}
+                                class="text-text hover:text-primary truncate"
+                              >{it.title}</a>
+                              {#if it.detail}
+                                <span class="text-dim truncate">· {it.detail}</span>
+                              {/if}
+                            </li>
+                          {/each}
+                        </ul>
+                      </div>
+                    {/each}
+                  {/if}
+                </div>
+              </details>
             </article>
           </li>
         {/each}

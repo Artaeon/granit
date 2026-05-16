@@ -83,6 +83,36 @@ export interface JotsResponse {
   hasMore: boolean;
 }
 
+// Day-activity — every item created/completed/touched on a single
+// calendar day. The server (internal/dayactivity) is the source of
+// truth; this matches the JSON shape it emits. Kind is open-ended
+// so a future server-side addition (e.g. 'measurement') round-trips
+// without a typescript regen.
+export type DayActivityKind =
+  | 'note_created'
+  | 'task_created'
+  | 'task_completed'
+  | 'event'
+  | 'habit'
+  | 'prayer'
+  | 'jot'
+  | 'hub_item'
+  | string;
+
+export interface DayActivityItem {
+  kind: DayActivityKind;
+  at: string;
+  title: string;
+  detail?: string;
+  path?: string;
+  target_id?: string;
+}
+
+export interface DayActivityResponse {
+  date: string;
+  items: DayActivityItem[];
+}
+
 export interface Task {
   id: string;
   notePath: string;
@@ -1320,6 +1350,15 @@ export const api = {
     if (params.limit !== undefined) qs.set('limit', String(params.limit));
     const suffix = qs.toString() ? `?${qs}` : '';
     return req<JotsResponse>(`/jots${suffix}`);
+  },
+  // Day activity — every item (notes, tasks, events, habits, prayer,
+  // hub links, jots) anchored on a single calendar day. Powers the
+  // collapsed "What happened that day" details block on each Jot
+  // header + the live `## Day overview` section on daily notes.
+  dayActivity: (date: string, limit?: number) => {
+    const qs = new URLSearchParams({ date });
+    if (limit !== undefined) qs.set('limit', String(limit));
+    return req<DayActivityResponse>(`/day-activity?${qs.toString()}`);
   },
   dailyContext: () =>
     req<{
