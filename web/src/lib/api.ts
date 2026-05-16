@@ -2310,14 +2310,16 @@ export const api = {
   getSabbath: () =>
     req<{
       active_on: string;
+      skip_on: string;
       active_now: boolean;
       active_today: boolean;
       remaining_minutes: number;
       schedule: SabbathSchedulePayload;
     }>('/sabbath'),
-  putSabbath: (body: { active_on?: string; schedule?: SabbathSchedulePayload }) =>
+  putSabbath: (body: { active_on?: string; skip_on?: string; schedule?: SabbathSchedulePayload }) =>
     req<{
       active_on: string;
+      skip_on: string;
       active_now: boolean;
       active_today: boolean;
       remaining_minutes: number;

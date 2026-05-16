@@ -30,6 +30,7 @@ import { api, type SabbathSchedulePayload } from '$lib/api';
 
 const KEY = 'granit.sabbath.activeOn';
 const SCHEDULE_KEY = 'granit.sabbath.schedule';
+const SKIP_KEY = 'granit.sabbath.skipOn';
 
 // Modules considered "work" — hidden when sabbath is active. The
 // list is intentional, not user-configurable: the point of sabbath
@@ -201,7 +202,17 @@ function loadManualActive(): boolean {
   return loadStoredString(KEY, '') === todayISO();
 }
 
+// Skip — the "exit sabbath" override. When the user dismisses an
+// otherwise-scheduled sabbath, we record today's date here AND PUT
+// it to the server so server-side gates (push, agents, AI) also
+// stop silencing for the day. The schedule itself is untouched;
+// next week's sabbath fires normally.
+function loadSkipToday(): boolean {
+  return loadStoredString(SKIP_KEY, '') === todayISO();
+}
+
 function computeInitial(): boolean {
+  if (loadSkipToday()) return false;
   if (loadManualActive()) return true;
   return scheduleSaysNow(loadScheduleLocal(), new Date());
 }
@@ -216,17 +227,27 @@ export const sabbath: Readable<boolean> & {
 } = {
   subscribe,
   enable() {
+    // Re-entering manually also clears the skip — if you change your
+    // mind and want sabbath back on today, the skip shouldn't keep
+    // suppressing the schedule on the next focus.
+    saveStoredString(SKIP_KEY, undefined);
     saveStoredString(KEY, todayISO());
     set(true);
+    // Tell the server too so server gates re-engage.
+    api.putSabbath({ skip_on: '' }).catch(() => undefined);
   },
   disable() {
+    // Clear the manual flag AND record a skip-today. The skip is the
+    // escape hatch: without it, an active schedule would re-assert
+    // immediately and the user would think the button was broken.
+    // PUT the skip to the server so push/agent/AI gates also stop
+    // silencing for the day. Schedule itself is untouched — next
+    // week's sabbath still fires.
     saveStoredString(KEY, undefined);
-    // Recompute — if the SCHEDULE still says we're in sabbath, we
-    // stay in sabbath even after a manual disable. The user can't
-    // override the schedule by toggling off; they have to disable
-    // the schedule itself. This is intentional: schedule is the
-    // discipline, manual toggle is the convenience.
-    set(scheduleSaysNow(get(sabbathSchedule), new Date()));
+    const today = todayISO();
+    saveStoredString(SKIP_KEY, today);
+    set(false);
+    api.putSabbath({ skip_on: today, active_on: '' }).catch(() => undefined);
   },
   toggle() {
     if (get({ subscribe })) this.disable();
@@ -277,12 +298,28 @@ async function refetchSchedule() {
         suppressServerSync = false;
       }
       // Recompute the active flag now that the schedule may have changed.
-      set(loadManualActive() || scheduleSaysNow(remote, new Date()));
+      set(computeActiveAt(remote, new Date()));
+    }
+    // Server's skip_on is authoritative — pull it down so other
+    // devices honor a skip that originated here, and so a skip set
+    // by today's PUT survives a manual page reload.
+    if (typeof res.skip_on === 'string') {
+      if (res.skip_on) saveStoredString(SKIP_KEY, res.skip_on);
+      else if (loadStoredString(SKIP_KEY, '') !== '') saveStoredString(SKIP_KEY, undefined);
     }
   } catch {
     // Server unreachable / auth not yet hydrated — try again on next
     // visibilitychange. The local copy is fine until then.
   }
+}
+
+// computeActiveAt is the single source of truth for "is sabbath
+// active right now": skip wins → manual wins → schedule. Matches the
+// Go IsActiveAt ordering.
+function computeActiveAt(s: SabbathSchedule, at: Date): boolean {
+  if (loadSkipToday()) return false;
+  if (loadManualActive()) return true;
+  return scheduleSaysNow(s, at);
 }
 
 function schedulesEqual(a: SabbathSchedule, b: SabbathSchedule): boolean {
@@ -303,9 +340,9 @@ if (typeof window !== 'undefined') {
     if (document.visibilityState !== 'visible') return;
     // Re-fetch the schedule (server may have changed) and re-evaluate
     // local active state (date may have rolled over, or window may
-    // have just opened/closed).
+    // have just opened/closed, or a skip may have expired).
     refetchSchedule();
-    const fresh = loadManualActive() || scheduleSaysNow(get(sabbathSchedule), new Date());
+    const fresh = computeActiveAt(get(sabbathSchedule), new Date());
     if (fresh !== get({ subscribe })) set(fresh);
   });
 }
