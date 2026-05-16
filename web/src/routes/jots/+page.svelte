@@ -1430,22 +1430,24 @@
                      dayActivityCache populated as soon as the page
                      loads; shows nothing while the request is in
                      flight so the header doesn't shift. -->
-                {@const sum = summarize(dayActivityCache[jot.date])}
-                {#if sum.total > 0}
-                  <span class="flex items-baseline gap-1 text-[10px] font-mono text-dim">
-                    {#if sum.events > 0}
-                      <span class="text-text" title="{sum.events} calendar event{sum.events === 1 ? '' : 's'}">{sum.events}cal</span>
-                    {/if}
-                    {#if sum.tasksDone > 0}
-                      <span class="text-text" title="{sum.tasksDone} task{sum.tasksDone === 1 ? '' : 's'} completed">{sum.tasksDone}✓</span>
-                    {/if}
-                    {#if sum.tasksCreated > 0}
-                      <span title="{sum.tasksCreated} task{sum.tasksCreated === 1 ? '' : 's'} created">+{sum.tasksCreated}</span>
-                    {/if}
-                    {#if sum.notes > 0}
-                      <span title="{sum.notes} note{sum.notes === 1 ? '' : 's'} created">{sum.notes}n</span>
-                    {/if}
-                  </span>
+                {#if dayActivityCache[jot.date]}
+                  {@const sum = summarize(dayActivityCache[jot.date])}
+                  {#if sum.total > 0}
+                    <span class="flex items-baseline gap-1 text-[10px] font-mono text-dim">
+                      {#if sum.events > 0}
+                        <span class="text-text" title="{sum.events} calendar event{sum.events === 1 ? '' : 's'}">{sum.events}cal</span>
+                      {/if}
+                      {#if sum.tasksDone > 0}
+                        <span class="text-text" title="{sum.tasksDone} task{sum.tasksDone === 1 ? '' : 's'} completed">{sum.tasksDone}✓</span>
+                      {/if}
+                      {#if sum.tasksCreated > 0}
+                        <span title="{sum.tasksCreated} task{sum.tasksCreated === 1 ? '' : 's'} created">+{sum.tasksCreated}</span>
+                      {/if}
+                      {#if sum.notes > 0}
+                        <span title="{sum.notes} note{sum.notes === 1 ? '' : 's'} created">{sum.notes}n</span>
+                      {/if}
+                    </span>
+                  {/if}
                 {/if}
                 <a
                   href="/notes/{encodeURIComponent(jot.path)}"
