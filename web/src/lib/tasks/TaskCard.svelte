@@ -59,6 +59,22 @@
 
   const priorityClass = priorityBorderClass;
 
+  // Mirror the heuristic the tasks page uses for its Source filter so
+  // the "n" badge below stays consistent with what the user sees in
+  // the sourceFilter sidebar. Daily notes (YYYY-MM-DD.md) and anything
+  // under daily/, tasks/, projects/ count as task surfaces; everything
+  // else is a note-body task we mark with the "n" pill.
+  const taskFolderPrefixes = ['daily/', 'tasks/', 'projects/'];
+  const reDailyName = /(?:^|\/)\d{4}-\d{2}-\d{2}\.md$/;
+  let isNoteBody = $derived.by(() => {
+    const p = task.notePath;
+    if (!p) return false;
+    if (reDailyName.test(p)) return false;
+    const lower = p.toLowerCase();
+    for (const prefix of taskFolderPrefixes) if (lower.startsWith(prefix)) return false;
+    return true;
+  });
+
   function priorityBadge(p: number): { label: string; cls: string } | null {
     const tone = priorityTone(p);
     if (tone === 'dim') return null;
@@ -524,6 +540,22 @@
           {/if}
           {#if task.estimatedMinutes}
             <span class="text-[10px] font-mono text-dim flex-shrink-0" title="estimate">{task.estimatedMinutes}m</span>
+          {/if}
+          <!-- Source distinction. Task-like paths (daily notes,
+               Tasks/, Projects/, Daily/) are the "expected" home for
+               todo-style checkboxes. A task picked up from anywhere
+               else in the vault is an Amplenote-style note-body task —
+               useful for capture, but easy to lose track of. Surface
+               it as a tiny "n" pill so the user can spot which rows
+               come from random notes vs. their actual task surfaces.
+               Hides on .done so completed lists stay clean. -->
+          {#if !task.done && isNoteBody}
+            <a
+              href="/notes/{encodeURIComponent(task.notePath)}"
+              class="text-[10px] font-mono px-1 rounded bg-surface1 text-dim hover:text-text flex-shrink-0"
+              title="from note: {task.notePath}"
+              onclick={(e) => e.stopPropagation()}
+            >n</a>
           {/if}
         </div>
 

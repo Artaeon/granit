@@ -72,7 +72,13 @@
   let helpOpen = $state(false);
   let status = $state<'open' | 'done' | 'all'>('open');
   let q = $state('');
-  let tagFilter = $state('');
+  // tagFilters — multi-tag filter with AND semantics. Clicking a tag
+  // chip toggles its membership; the visible list shrinks to tasks
+  // that carry EVERY active tag. URL serialization is comma-separated
+  // (?tag=foo,bar) so shared links round-trip; the backend listTasks
+  // call passes only the first tag (the endpoint supports a single
+  // tag param) and the rest are AND-narrowed client-side.
+  let tagFilters = $state<string[]>([]);
   let projectFilter = $state('');
   let priorityFilter = $state<number | ''>('');
   let goalFilter = $state('');
@@ -137,7 +143,12 @@
       if (s === 'open' || s === 'done' || s === 'all') status = s;
     }
     if (sp.has('q')) q = get('q');
-    if (sp.has('tag')) tagFilter = get('tag');
+    if (sp.has('tag')) {
+      // Comma-separated list. Empty entries (leading/trailing comma,
+      // accidental double comma) get filtered out so a stale URL
+      // doesn't ghost in an empty-string "tag".
+      tagFilters = get('tag').split(',').map((s) => s.trim()).filter(Boolean);
+    }
     if (sp.has('project')) projectFilter = get('project');
     if (sp.has('priority')) {
       const n = Number(get('priority'));
@@ -183,7 +194,7 @@
     const sp = new URLSearchParams();
     if (status !== 'open') sp.set('status', status);
     if (q) sp.set('q', q);
-    if (tagFilter) sp.set('tag', tagFilter);
+    if (tagFilters.length > 0) sp.set('tag', tagFilters.join(','));
     if (projectFilter) sp.set('project', projectFilter);
     if (priorityFilter !== '') sp.set('priority', String(priorityFilter));
     if (goalFilter) sp.set('goal', goalFilter);
@@ -728,7 +739,10 @@
       // over the wire when the user wants P1 only.
       const params: Parameters<typeof api.listTasks>[0] = {};
       if (status !== 'all') params.status = status;
-      if (tagFilter) params.tag = tagFilter;
+      // The backend endpoint accepts a single tag; for multi-tag
+      // filters we pass the first to narrow the server response and
+      // AND-narrow the rest client-side in the `filtered` derivation.
+      if (tagFilters.length > 0) params.tag = tagFilters[0];
       if (priorityFilter !== '') params.priority = priorityFilter;
       if (projectFilter) params.project = projectFilter;
       if (goalFilter) params.goal = goalFilter;
@@ -759,7 +773,7 @@
   }
 
   // Single load driver: an effect that keys off $auth + filters. When
-  // auth resolves (or changes) it fires; when status/tagFilter change
+  // auth resolves (or changes) it fires; when status/tagFilters change
   // it fires. We don't pair it with onMount(load) — that would cause
   // a double-fetch on initial paint and (more importantly) was the
   // source of the "stays loading" bug when an early call set
@@ -778,7 +792,7 @@
   $effect(() => {
     void $auth;
     void status;
-    void tagFilter;
+    void tagFilters;
     void priorityFilter;
     void projectFilter;
     void goalFilter;
@@ -796,7 +810,7 @@
   $effect(() => {
     void status;
     void q;
-    void tagFilter;
+    void tagFilters;
     void projectFilter;
     void priorityFilter;
     void goalFilter;
@@ -993,6 +1007,20 @@
       out = out.filter((t) => t.text.toLowerCase().includes(ql) || t.notePath.toLowerCase().includes(ql));
     }
     if (priorityFilter !== '') out = out.filter((t) => t.priority === priorityFilter);
+    // Multi-tag AND filter — the backend already narrowed by the first
+    // tag (if any), so we only need to re-check the rest here. Doing
+    // it client-side keeps the filter UI snappy: clicking a second
+    // tag chip doesn't force a refetch + re-render of the whole list.
+    if (tagFilters.length > 1) {
+      out = out.filter((t) => {
+        const tags = t.tags ?? [];
+        // Skip index 0 since the server already filtered by it.
+        for (let i = 1; i < tagFilters.length; i++) {
+          if (!tags.includes(tagFilters[i])) return false;
+        }
+        return true;
+      });
+    }
     if (goalFilter) out = out.filter((t) => t.goalId === goalFilter);
     if (deadlineFilter) out = out.filter((t) => t.deadlineId === deadlineFilter);
     if (projectFilter) {
@@ -1193,7 +1221,12 @@
     name: string;
     status: 'open' | 'done' | 'all';
     q: string;
+    // Legacy string `tag` was a single tag; newer presets persist
+    // the multi-tag array directly. captureCurrentAsPreset writes
+    // both fields so older code paths reading `tag` still work,
+    // and applyPreset prefers the array when present.
     tag: string;
+    tags?: string[];
     project: string;
     priority: number | '';
     goal: string;
@@ -1219,7 +1252,7 @@
     const next = presets.filter((p) => p.name !== trimmed);
     next.unshift({
       name: trimmed,
-      status, q, tag: tagFilter, project: projectFilter,
+      status, q, tag: tagFilters[0] ?? '', tags: [...tagFilters], project: projectFilter,
       priority: priorityFilter, goal: goalFilter, deadline: deadlineFilter,
       view, groupBy,
       sortBy, sourceFilter, smartFilter, archivedMode
@@ -1229,7 +1262,9 @@
     toast.success(`Saved preset "${trimmed}"`);
   }
   function applyPreset(p: FilterPreset) {
-    status = p.status; q = p.q; tagFilter = p.tag; projectFilter = p.project;
+    status = p.status; q = p.q;
+    tagFilters = Array.isArray(p.tags) ? [...p.tags] : (p.tag ? [p.tag] : []);
+    projectFilter = p.project;
     priorityFilter = p.priority; goalFilter = p.goal; deadlineFilter = p.deadline;
     view = p.view; groupBy = p.groupBy;
     sortBy = p.sortBy ?? 'auto';
@@ -1242,7 +1277,10 @@
     persistPresets();
   }
   function presetMatches(p: FilterPreset): boolean {
-    return p.status === status && p.q === q && p.tag === tagFilter
+    const presetTags = (p.tags && Array.isArray(p.tags)) ? p.tags : (p.tag ? [p.tag] : []);
+    if (presetTags.length !== tagFilters.length) return false;
+    if (presetTags.some((t, i) => t !== tagFilters[i])) return false;
+    return p.status === status && p.q === q
       && p.project === projectFilter && p.priority === priorityFilter
       && p.goal === goalFilter && p.deadline === deadlineFilter
       && p.view === view && p.groupBy === groupBy
@@ -1588,7 +1626,7 @@
   let activeFilterCount = $derived(
     (priorityFilter !== '' ? 1 : 0) +
       (projectFilter ? 1 : 0) +
-      (tagFilter ? 1 : 0) +
+      tagFilters.length +
       (goalFilter ? 1 : 0) +
       (deadlineFilter ? 1 : 0) +
       (q ? 1 : 0) +
@@ -1640,11 +1678,13 @@
         clear: () => (projectFilter = '')
       });
     }
-    if (tagFilter) {
+    // One filter chip per active tag — clicking × removes that
+    // single tag, not the whole multi-tag filter set.
+    for (const t of tagFilters) {
       out.push({
-        key: 'tag',
-        label: `#${tagFilter.replace(/^#/, '')}`,
-        clear: () => (tagFilter = '')
+        key: `tag:${t}`,
+        label: `#${t.replace(/^#/, '')}`,
+        clear: () => (tagFilters = tagFilters.filter((x) => x !== t))
       });
     }
     if (goalFilter) {
@@ -1696,7 +1736,7 @@
     status = 'open';
     priorityFilter = '';
     projectFilter = '';
-    tagFilter = '';
+    tagFilters = [];
     goalFilter = '';
     deadlineFilter = '';
     sourceFilter = 'all';
@@ -1807,9 +1847,11 @@
         <div class="text-xs uppercase tracking-wider text-dim mb-2">Tags</div>
         <div class="flex flex-wrap gap-1">
           {#each allTags.slice(0, 24) as t}
+            {@const active = tagFilters.includes(t)}
             <button
-              class="text-xs px-2 py-1 rounded {tagFilter === t ? 'bg-primary text-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
-              onclick={() => (tagFilter = tagFilter === t ? '' : t)}
+              class="text-xs px-2 py-1 rounded {active ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+              onclick={() => (tagFilters = active ? tagFilters.filter((x) => x !== t) : [...tagFilters, t])}
+              title={active ? `Remove #${t} from filter` : `Add #${t} to filter (AND-combine with current)`}
             >
               #{t}
             </button>
@@ -1863,7 +1905,7 @@
     {/if}
 
     <button
-      onclick={() => { priorityFilter = ''; projectFilter = ''; tagFilter = ''; goalFilter = ''; deadlineFilter = ''; q = ''; }}
+      onclick={() => { priorityFilter = ''; projectFilter = ''; tagFilters = []; goalFilter = ''; deadlineFilter = ''; q = ''; }}
       class="w-full text-xs text-dim hover:text-text underline pt-2"
     >
       reset filters
@@ -2412,7 +2454,7 @@
           </p>
           <button
             onclick={() => {
-              q = ''; tagFilter = ''; projectFilter = ''; priorityFilter = '';
+              q = ''; tagFilters = []; projectFilter = ''; priorityFilter = '';
               goalFilter = ''; deadlineFilter = ''; status = 'open';
             }}
             class="px-3 py-1.5 bg-surface0 border border-surface1 hover:border-primary rounded text-sm text-subtext"
