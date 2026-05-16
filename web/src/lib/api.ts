@@ -796,6 +796,29 @@ export interface Vision {
   season_total?: number;
 }
 
+// Roots — the "rooted in Christ" diagram. Single record per vault.
+// Ring numbers: 1=Identity, 2=Callings, 3=Gifts, 4=Longings. The
+// server sends ring_labels so the client never has to hard-code
+// them — single source of truth lives in internal/roots.
+export interface RootsNode {
+  id: string;
+  ring: number;
+  label: string;
+  description?: string;
+  scripture?: string;
+  related_notes?: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Roots {
+  center?: string;
+  anchor?: string;
+  nodes?: RootsNode[];
+  updated_at: string;
+  ring_labels: Record<number, string>;
+}
+
 // Prayer intentions — active prayer list with status lifecycle.
 export type PrayerStatus = 'praying' | 'answered' | 'archived';
 export interface PrayerIntention {
@@ -1872,6 +1895,9 @@ export const api = {
   // a patch-merge: the form is a flat five-field shape and a full
   // body is the least-surprising contract.
   getVision: () => req<Vision>('/vision'),
+  getRoots: () => req<Roots>('/roots'),
+  putRoots: (r: { center?: string; anchor?: string; nodes?: Partial<RootsNode>[] }) =>
+    req<Roots>('/roots', { method: 'PUT', body: JSON.stringify(r) }),
   putVision: (v: Partial<Vision>) =>
     req<Vision>('/vision', { method: 'PUT', body: JSON.stringify(v) }),
 

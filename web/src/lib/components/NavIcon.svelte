@@ -213,4 +213,15 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z"/>
   </svg>
+{:else if name === 'roots'}
+  <!-- Concentric rings with a central mark — the diagram itself.
+       Reads as rootedness/centeredness rather than the goal-arrow
+       motifs used elsewhere; mirrors the page's actual layout so
+       the icon teaches what the surface is. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/>
+    <circle cx="12" cy="12" r="5.5" opacity="0.75"/>
+    <circle cx="12" cy="12" r="8.5" opacity="0.5"/>
+    <circle cx="12" cy="12" r="11" opacity="0.3"/>
+  </svg>
 {/if}

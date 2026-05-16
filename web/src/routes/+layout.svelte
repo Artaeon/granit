@@ -218,7 +218,8 @@
         { href: '/people', label: 'People', icon: 'people', moduleId: 'people' },
         { href: '/measurements', label: 'Metrics', icon: 'measurements', moduleId: 'measurements' },
         { href: '/prayer', label: 'Prayer', icon: 'prayer', moduleId: 'prayer' },
-        { href: '/scripture', label: 'Scripture', icon: 'scripture', moduleId: 'scripture' }
+        { href: '/scripture', label: 'Scripture', icon: 'scripture', moduleId: 'scripture' },
+        { href: '/roots', label: 'Roots', icon: 'roots', moduleId: 'roots' }
       ]
     },
     {
