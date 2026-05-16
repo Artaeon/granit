@@ -6,6 +6,13 @@
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import HubImportDialog from '$lib/notes/HubImportDialog.svelte';
+  import HubToolsSection from './HubToolsSection.svelte';
+
+  // Two tabs: 'links' (the existing launcher) and 'tools' (the new
+  // setup-command catalogue). Default to links because the existing
+  // user base lives there; the tab pill makes the new surface
+  // discoverable without forcing it on every visit.
+  let activeTab = $state<'links' | 'tools'>('links');
 
   // /hub — the personal launch pad. The "single login, find
   // everything I need" page the user described. Three concerns
@@ -362,18 +369,44 @@
       subtitle="Quick-access links, tools, and small credentials — your single login to the things you use every day."
     >
       {#snippet actions()}
-        <button
-          type="button"
-          onclick={() => (importOpen = true)}
-          class="px-3 py-1.5 bg-surface0 border border-surface1 text-subtext rounded text-sm hover:border-primary hover:text-text"
-          title="Paste a browser bookmark export and pick which ones to add"
-        >↓ Import</button>
-        <button
-          onclick={openCreate}
-          class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
-        >+ Add to hub</button>
+        {#if activeTab === 'links'}
+          <button
+            type="button"
+            onclick={() => (importOpen = true)}
+            class="px-3 py-1.5 bg-surface0 border border-surface1 text-subtext rounded text-sm hover:border-primary hover:text-text"
+            title="Paste a browser bookmark export and pick which ones to add"
+          >↓ Import</button>
+          <button
+            onclick={openCreate}
+            class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
+          >+ Add to hub</button>
+        {/if}
       {/snippet}
     </PageHeader>
+
+    <!-- Tab switcher between the link launcher and the new tools
+         catalogue. Pill-style so the two surfaces feel like peers
+         rather than primary/secondary. -->
+    <nav class="flex gap-1 mb-4 border-b border-surface1" aria-label="Hub sections">
+      <button
+        type="button"
+        onclick={() => (activeTab = 'links')}
+        class="px-3 py-1.5 text-sm border-b-2 -mb-px transition-colors
+          {activeTab === 'links' ? 'border-primary text-text font-medium' : 'border-transparent text-subtext hover:text-text'}"
+        aria-current={activeTab === 'links' ? 'page' : undefined}
+      >Links <span class="text-dim tabular-nums">({items.length})</span></button>
+      <button
+        type="button"
+        onclick={() => (activeTab = 'tools')}
+        class="px-3 py-1.5 text-sm border-b-2 -mb-px transition-colors
+          {activeTab === 'tools' ? 'border-primary text-text font-medium' : 'border-transparent text-subtext hover:text-text'}"
+        aria-current={activeTab === 'tools' ? 'page' : undefined}
+      >Tools</button>
+    </nav>
+
+    {#if activeTab === 'tools'}
+      <HubToolsSection />
+    {:else}
 
     <!-- Search + category chips -->
     <div class="space-y-3 mb-4">
@@ -569,13 +602,20 @@
         {/each}
       </div>
     {/if}
+    {/if}
 
     <footer class="mt-10 pt-4 border-t border-surface1 text-[11px] text-dim">
-      Stored in <code class="font-mono">.granit/hub.json</code> with file-system
-      restricted access (0o600). Credentials are saved in plain text — use
-      <a href="https://bitwarden.com" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">Bitwarden</a>
-      or another password manager for sensitive secrets. The hub is for the
-      convenience tier (URLs, internal tools, low-risk creds).
+      {#if activeTab === 'links'}
+        Stored in <code class="font-mono">.granit/hub.json</code> with file-system
+        restricted access (0o600). Credentials are saved in plain text — use
+        <a href="https://bitwarden.com" target="_blank" rel="noopener noreferrer" class="text-secondary hover:underline">Bitwarden</a>
+        or another password manager for sensitive secrets. The hub is for the
+        convenience tier (URLs, internal tools, low-risk creds).
+      {:else}
+        Tools live in <code class="font-mono">.granit/hub-tools.json</code>.
+        One-click copy lands the command in your clipboard — paste into a
+        terminal to run it.
+      {/if}
     </footer>
   </div>
 </div>

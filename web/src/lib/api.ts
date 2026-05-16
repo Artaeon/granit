@@ -822,6 +822,33 @@ export interface HubItem {
   created_at?: string;
   updated_at?: string;
 }
+
+// HubCommand — one row of a tool's setup-command list. Label is
+// the human reading ("install via brew"); Command is the shell
+// line that lands in the clipboard on copy. Notes is optional
+// context (pre-conditions, expected output, etc).
+export interface HubCommand {
+  label: string;
+  command: string;
+  notes?: string;
+}
+
+// HubTool — a curated catalogue card. The "tools" half of the hub:
+// program name + an ordered list of setup commands the user copies
+// into a terminal. Separate from HubItem (links) — different shape,
+// different storage file (.granit/hub-tools.json).
+export interface HubTool {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  tags?: string[];
+  commands: HubCommand[];
+  sort_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
 export interface Virtue {
   id: string;
   name: string;
@@ -1196,6 +1223,32 @@ export const api = {
   // from reaching their destination.
   visitHubItem: (id: string) =>
     req<void>(`/hub/items/${encodeURIComponent(id)}/visit`, { method: 'POST' }),
+
+  // Hub tools — curated setup-command catalogue at
+  // .granit/hub-tools.json. Same module as the link launcher; a
+  // separate file (and a separate WS event hub.tools.changed) so
+  // a tab on the tools section can refresh independently.
+  listHubTools: () => req<{ tools: HubTool[]; total: number }>('/hub/tools'),
+  createHubTool: (tool: Partial<HubTool>) =>
+    req<HubTool>('/hub/tools', { method: 'POST', body: JSON.stringify(tool) }),
+  patchHubTool: (id: string, patch: Partial<HubTool>) =>
+    req<HubTool>(`/hub/tools/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch)
+    }),
+  deleteHubTool: (id: string) =>
+    req<void>(`/hub/tools/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // Drag-to-reorder for tool cards. Server rewrites sort_order
+  // 1..N on each ID in the array order; tools not in the array
+  // keep their existing position.
+  reorderHubTools: (ids: string[]) =>
+    req<void>('/hub/tools/reorder', { method: 'POST', body: JSON.stringify({ ids }) }),
+  // Append the curated starter set (git, Node+pnpm, Docker, shell
+  // snippets) to the user's catalogue. Idempotent against duplicates
+  // by name (case-insensitive) so a double-click doesn't end up
+  // with two "git" cards. Returns the count of new tools added.
+  seedHubTools: () =>
+    req<{ added: number; total: number }>('/hub/tools/seed', { method: 'POST' }),
   // Hard-delete a note. Server emits a note.removed WS event; pages
   // subscribe and refresh. No undo / trash folder yet.
   deleteNote: (path: string) =>

@@ -330,6 +330,17 @@ func (s *Server) Handler() http.Handler {
 		r.Patch("/api/v1/hub/items/{id}", s.handlePatchHubItem)
 		r.Delete("/api/v1/hub/items/{id}", s.handleDeleteHubItem)
 
+		// Hub tools — curated setup-command catalogue. Same module as
+		// the link launcher (no separate enable/disable); separate
+		// file at .granit/hub-tools.json so shapes evolve apart. See
+		// handlers_hub_tools.go for the rationale.
+		r.Get("/api/v1/hub/tools", s.handleListHubTools)
+		r.Post("/api/v1/hub/tools", s.handleCreateHubTool)
+		r.Post("/api/v1/hub/tools/reorder", s.handleReorderHubTools)
+		r.Post("/api/v1/hub/tools/seed", s.handleSeedHubTools)
+		r.Patch("/api/v1/hub/tools/{id}", s.handlePatchHubTool)
+		r.Delete("/api/v1/hub/tools/{id}", s.handleDeleteHubTool)
+
 		// Deadlines — top-level "this matters by date X" markers backed
 		// by .granit/deadlines.json. See internal/deadlines for the
 		// schema; the calendar overlay lives in handlers_calendar.go.

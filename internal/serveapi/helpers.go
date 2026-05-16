@@ -24,6 +24,10 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // that the client had to percent-encode (most commonly "/"). Always
 // use this helper instead of chi.URLParam for entity keys that come
 // from user content.
+//
+// Forgiving on bad escapes: a malformed "%" returns the raw value
+// rather than dropping the request, so handlers that compare against
+// a clean ID don't 404 on a quirky encoder upstream.
 func urlParam(r *http.Request, name string) string {
 	raw := chi.URLParam(r, name)
 	if decoded, err := url.PathUnescape(raw); err == nil {
