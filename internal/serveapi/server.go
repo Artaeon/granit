@@ -251,6 +251,11 @@ func (s *Server) Handler() http.Handler {
 
 		r.Get("/api/v1/tasks", s.handleListTasks)
 		r.Post("/api/v1/tasks", s.handleCreateTask)
+		// Duplicate-pair finder — deterministic Jaccard-similarity
+		// scan over open tasks. Literal path registered BEFORE
+		// /tasks/{id} so chi matches it as a fixed segment rather
+		// than treating "duplicates" as a task id.
+		r.Get("/api/v1/tasks/duplicates", s.handleTaskDuplicates)
 		r.Delete("/api/v1/tasks/{id}", s.handleDeleteTask)
 		r.Get("/api/v1/tasks/{id}", s.handleGetTask)
 		r.Patch("/api/v1/tasks/{id}", s.handlePatchTask)

@@ -1556,6 +1556,20 @@ export const api = {
     parentLine?: number;
   }) => req<Task>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
   deleteTask: (id: string) => req<void>(`/tasks/${id}`, { method: 'DELETE' }),
+  // Duplicate-pair finder — deterministic scan, no AI cost. Returns
+  // open task pairs whose normalised-token Jaccard similarity is
+  // above `threshold` (default 0.6, overridable via query). Cap of
+  // 25 pairs server-side; client decides what to render. UI calls
+  // patchTask({ done: true, triage: 'dropped' }) on the loser to
+  // merge a pair down to one task.
+  taskDuplicates: (opts?: { threshold?: number }) => {
+    const qs = opts?.threshold !== undefined ? `?threshold=${opts.threshold}` : '';
+    return req<{
+      pairs: { a: Task; b: Task; similarity: number }[];
+      threshold: number;
+      scanned: number;
+    }>(`/tasks/duplicates${qs}`);
+  },
 
   // Daily
   daily: (date: string = 'today') => req<Note>(`/daily/${date}`),
