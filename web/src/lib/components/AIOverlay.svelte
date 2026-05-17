@@ -15,7 +15,7 @@
   } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
-  import { loadStoredString, saveStoredString } from '$lib/util/storage';
+  import { saveStoredString } from '$lib/util/storage';
   import {
     PANEL_WIDTH_MIN,
     PANEL_WIDTH_MAX,
