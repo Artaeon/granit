@@ -254,6 +254,46 @@
     }
   }
 
+  // Quick due-date setters — hover affordance for the most-common
+  // "stop opening the drawer just to set a date" gesture. Mirror
+  // of the priority cycle but with three concrete buckets rather
+  // than a cycle because dates have no natural rotation order
+  // (today / tomorrow / +7d covers the 90% case; the drawer + the
+  // detail page still own arbitrary-date edits).
+  function isoOffset(days: number): string {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${m}-${day}`;
+  }
+  async function setDueOffset(e: Event, days: number) {
+    e.stopPropagation();
+    if (busy) return;
+    busy = true;
+    try {
+      const updated = await api.patchTask(task.id, { dueDate: isoOffset(days) });
+      task = updated;
+      onChanged?.(updated);
+    } finally {
+      busy = false;
+    }
+  }
+  async function clearDue(e: Event) {
+    e.stopPropagation();
+    if (busy || !task.dueDate) return;
+    busy = true;
+    try {
+      // The PATCH contract accepts '' to clear dueDate; same idiom
+      // the detail-drawer's clear button uses.
+      const updated = await api.patchTask(task.id, { dueDate: '' });
+      task = updated;
+      onChanged?.(updated);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function saveEdit(e: Event) {
     e?.preventDefault();
     e?.stopPropagation();
@@ -604,6 +644,13 @@
         {#if !compact}
           <div class="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs">
             {#if task.dueDate}
+              <!-- Due-date chip + a sibling × clear affordance that
+                   appears on group-hover. Clearing was previously a
+                   detail-drawer-only gesture; the inline × keeps the
+                   surface flat. The chip itself stays a span (not a
+                   button) because re-clicking with no contract for
+                   what it'd do would be a footgun — keep cycle + set
+                   verbs explicit. -->
               <span
                 class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] {dueClass} bg-surface1"
                 title="due {task.dueDate}"
@@ -611,6 +658,45 @@
                 <span class="text-[9px]" aria-hidden="true">{dueIcon(task.dueDate)}</span>
                 {dueLabel(task.dueDate)}
               </span>
+              <button
+                type="button"
+                onclick={clearDue}
+                disabled={busy}
+                title="Clear due date"
+                aria-label="Clear due date"
+                class="text-[10px] text-dim opacity-0 group-hover:opacity-100 hover:text-error px-1 rounded transition-opacity disabled:opacity-50"
+              >×</button>
+            {:else}
+              <!-- Quick due-date setters when none is set. Three
+                   buckets cover the 90% case ("I want this done
+                   soon, but not right now"). Specific-date edits
+                   still go through the detail drawer or inline-edit
+                   form. Hidden until group-hover so quiet rows
+                   don't get noisy. -->
+              <div class="hidden sm:inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <span class="text-[10px] text-dim">due:</span>
+                <button
+                  type="button"
+                  onclick={(e) => setDueOffset(e, 0)}
+                  disabled={busy}
+                  title="Due today"
+                  class="text-[10px] px-1.5 py-0.5 rounded bg-surface1 text-subtext hover:bg-surface2 hover:text-text disabled:opacity-50"
+                >today</button>
+                <button
+                  type="button"
+                  onclick={(e) => setDueOffset(e, 1)}
+                  disabled={busy}
+                  title="Due tomorrow"
+                  class="text-[10px] px-1.5 py-0.5 rounded bg-surface1 text-subtext hover:bg-surface2 hover:text-text disabled:opacity-50"
+                >tomorrow</button>
+                <button
+                  type="button"
+                  onclick={(e) => setDueOffset(e, 7)}
+                  disabled={busy}
+                  title="Due in 7 days"
+                  class="text-[10px] px-1.5 py-0.5 rounded bg-surface1 text-subtext hover:bg-surface2 hover:text-text disabled:opacity-50"
+                >+7d</button>
+              </div>
             {/if}
             {#if task.scheduledStart}
               <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-primary bg-surface1">
