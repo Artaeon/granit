@@ -71,6 +71,156 @@ export function isAllDay(ev: CalendarEvent): boolean {
   return !ev.start;
 }
 
+/**
+ * MultiDayBand — a contiguous run of days where the same all-day
+ * event appears, ready to be rendered as a single grid-spanning
+ * bar in the workweek / week view (column-start..column-end with
+ * lane-stacking).
+ *
+ * `startCol` / `endCol` are 0-indexed positions inside the days[]
+ * array the caller supplies. `lane` is assigned greedily so two
+ * overlapping bands stack into separate rows without colliding —
+ * 0 is the topmost lane.
+ */
+export interface MultiDayBand {
+  event: CalendarEvent;
+  startCol: number; // 0-indexed inclusive
+  endCol: number; // 0-indexed inclusive
+  lane: number;
+}
+
+/**
+ * computeMultiDayBands — given the visible days[] and the full
+ * event list, returns spanning bars for every all-day event that
+ * appears on >=2 consecutive days, plus the set of (eventKey, date)
+ * pairs the caller should EXCLUDE from the per-day all-day chip
+ * strip (otherwise the same event would render both as a band
+ * AND as repeated chips).
+ *
+ * Grouping key: events are clustered by `eventId` when present (set
+ * for ICS + native events) or by `title+source` fallback for legacy
+ * shapes. Single-day appearances are NOT folded into bands —
+ * they keep rendering as standalone chips so a 1-day all-day event
+ * doesn't show up as a "band of one" with the same visual weight
+ * as a 5-day vacation.
+ *
+ * Lane assignment is greedy: bands sorted by startCol, each band
+ * lands in the first lane whose previous band's endCol is < the
+ * incoming band's startCol. Stable enough that two-day overlaps
+ * pile up deterministically.
+ */
+export function computeMultiDayBands(
+  days: Date[],
+  events: CalendarEvent[]
+): { bands: MultiDayBand[]; consumed: Set<string> } {
+  const consumed = new Set<string>();
+  if (days.length < 2) {
+    return { bands: [], consumed };
+  }
+  // Day-key → column index. fmtDateISO matches the keys
+  // eventDayKey / dayList uses elsewhere.
+  const colByKey = new Map<string, number>();
+  days.forEach((d, i) => colByKey.set(fmtDateISO(d), i));
+
+  // Cluster all-day events by stable key.
+  function clusterKey(ev: CalendarEvent): string {
+    if (ev.eventId) return 'id:' + ev.eventId;
+    return 'tit:' + (ev.title ?? '') + '|src:' + (ev.source ?? '');
+  }
+
+  const cols = new Map<string, { ev: CalendarEvent; columns: number[] }>();
+  for (const ev of events) {
+    if (!isAllDay(ev)) continue;
+    if (!ev.date) continue;
+    const col = colByKey.get(ev.date);
+    if (col === undefined) continue;
+    const k = clusterKey(ev);
+    let bucket = cols.get(k);
+    if (!bucket) {
+      bucket = { ev, columns: [] };
+      cols.set(k, bucket);
+    }
+    bucket.columns.push(col);
+  }
+
+  // Partition each cluster's columns into runs of consecutive
+  // integers. [0,1,2,4,5] → [[0,1,2],[4,5]]. A 5-day event with a
+  // gap (rare but possible if the user has skipped one date)
+  // produces two bands.
+  interface Run {
+    ev: CalendarEvent;
+    key: string;
+    startCol: number;
+    endCol: number;
+  }
+  const runs: Run[] = [];
+  for (const [key, bucket] of cols) {
+    const sorted = [...new Set(bucket.columns)].sort((a, b) => a - b);
+    if (sorted.length < 2) continue; // single-day → no band
+    let runStart = sorted[0];
+    let runEnd = sorted[0];
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] === runEnd + 1) {
+        runEnd = sorted[i];
+        continue;
+      }
+      // Gap — close the current run, start a new one.
+      if (runEnd > runStart) {
+        runs.push({ ev: bucket.ev, key, startCol: runStart, endCol: runEnd });
+      }
+      runStart = sorted[i];
+      runEnd = sorted[i];
+    }
+    if (runEnd > runStart) {
+      runs.push({ ev: bucket.ev, key, startCol: runStart, endCol: runEnd });
+    }
+  }
+
+  // Lane assignment: greedy left-to-right.
+  runs.sort((a, b) => a.startCol - b.startCol);
+  const lanes: number[] = []; // lanes[i] = endCol of the last band in lane i
+  const bands: MultiDayBand[] = [];
+  for (const r of runs) {
+    let lane = -1;
+    for (let i = 0; i < lanes.length; i++) {
+      if (lanes[i] < r.startCol) {
+        lane = i;
+        lanes[i] = r.endCol;
+        break;
+      }
+    }
+    if (lane === -1) {
+      lane = lanes.length;
+      lanes.push(r.endCol);
+    }
+    bands.push({
+      event: r.ev,
+      startCol: r.startCol,
+      endCol: r.endCol,
+      lane
+    });
+    // Mark every (key, dayKey) pair the band consumes so the per-day
+    // chip strip can skip these.
+    for (let c = r.startCol; c <= r.endCol; c++) {
+      const dayKey = fmtDateISO(days[c]);
+      consumed.add(r.key + '|' + dayKey);
+    }
+  }
+  return { bands, consumed };
+}
+
+/**
+ * consumedKey — match the (clusterKey, dayKey) format that
+ * computeMultiDayBands uses for its consumed set, so callers can
+ * filter the per-day all-day chip list with one Set.has().
+ */
+export function consumedKey(ev: CalendarEvent, dayKey: string): string {
+  const cluster = ev.eventId
+    ? 'id:' + ev.eventId
+    : 'tit:' + (ev.title ?? '') + '|src:' + (ev.source ?? '');
+  return cluster + '|' + dayKey;
+}
+
 // "P1 critical" → text-error, etc.
 export function priorityColor(p: number): string {
   if (p === 1) return 'var(--color-error)';

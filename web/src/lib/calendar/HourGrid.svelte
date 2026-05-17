@@ -9,7 +9,9 @@
     fmtTime,
     isAllDay,
     isSameDay,
-    layoutDay
+    layoutDay,
+    computeMultiDayBands,
+    consumedKey
   } from './utils';
   import { dragStore, type DraggedTask } from './dragStore';
   import { glyphForKind } from './eventTypes';
@@ -214,6 +216,17 @@
     }
     return m;
   });
+
+  // Multi-day all-day events get folded into spanning bands above
+  // the per-day strip. Single-day all-day events stay as chips in
+  // their day cell. Bands carry lane assignments so two overlapping
+  // multi-day events stack without colliding.
+  let multiDay = $derived(computeMultiDayBands(days, events));
+  // Total lane count drives the strip's height; bands carry their
+  // own lane index relative to this count.
+  let bandLaneCount = $derived(
+    multiDay.bands.reduce((max, b) => Math.max(max, b.lane + 1), 0)
+  );
 
   let now = $state(new Date());
   onMount(() => {
@@ -554,11 +567,47 @@
         {/each}
       </div>
 
+      <!-- Multi-day band strip: spanning bars for all-day events
+           that cover 2+ consecutive days. Renders ABOVE the per-day
+           all-day strip so a 5-day vacation reads as one continuous
+           bar instead of five repeated chips. Lanes stack vertically
+           so overlapping spans (e.g. vacation + a mid-week conference)
+           don't collide. The first column matches the gutter width
+           (the "all-day" label column) — we offset the spanning grid
+           by 1 column so the math aligns with the daily strip below.
+           Hidden when no bands exist (single-day events only). -->
+      {#if multiDay.bands.length > 0}
+        <div
+          class="grid border-b border-surface1 py-0.5"
+          style="grid-template-columns: {cols}; row-gap: 2px;"
+        >
+          <div class="text-[10px] text-dim p-1 text-right">multi-day</div>
+          <!-- The bands sit in a CSS grid spanning days.length
+               columns. Each band uses grid-column-start/end (1-indexed
+               in CSS Grid; +1 to convert our 0-indexed col + +1 again
+               to skip the gutter column) and grid-row by lane. -->
+          <div
+            class="col-span-full grid relative"
+            style="grid-template-columns: {cols}; grid-template-rows: repeat({bandLaneCount}, minmax(18px, auto)); gap: 2px;"
+          >
+            {#each multiDay.bands as b ((b.event.eventId ?? b.event.title) + '|' + b.startCol + '|' + b.endCol)}
+              {@const c = eventTypeColor(b.event)}
+              <button
+                onclick={() => onClickEvent(b.event)}
+                class="text-left text-[10px] leading-tight py-0.5 rounded-sm truncate font-semibold"
+                style="grid-column: {b.startCol + 2} / {b.endCol + 3}; grid-row: {b.lane + 1}; background: {c.bg}; color: {c.fg}; padding-left: 7px; padding-right: 5px; box-shadow: inset 3px 0 0 rgba(0,0,0,0.28); {b.event.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}"
+                title={(b.event.title ?? '') + ' · ' + (b.endCol - b.startCol + 1) + ' days'}
+              >{b.event.title}</button>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
       <div class="grid border-b border-surface1 min-h-[28px]" style="grid-template-columns: {cols}">
         <div class="text-[10px] text-dim p-1 text-right">all-day</div>
         {#each days as d}
           {@const dayKey = fmtDateISO(d)}
-          {@const list = (eventsByDay.get(dayKey) ?? []).filter(isAllDay)}
+          {@const list = (eventsByDay.get(dayKey) ?? []).filter((ev) => isAllDay(ev) && !multiDay.consumed.has(consumedKey(ev, dayKey)))}
           {@const expanded = expandedAllDay.has(dayKey)}
           {@const visible = expanded ? list : list.slice(0, ALL_DAY_VISIBLE)}
           {@const hidden = list.length - visible.length}
