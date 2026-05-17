@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type HabitInfo, type HabitsResponse , todayISO } from '$lib/api';
+  import { api, type Goal, type HabitInfo, type HabitsResponse , todayISO } from '$lib/api';
   import { rafThrottle } from '$lib/util/streamThrottle';
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
@@ -111,6 +111,130 @@
     aiBusy = false;
     aiInsights = [];
     aiError = '';
+  }
+
+  // ── Suggest habits from goals ─────────────────────────────────────
+  // Separate AI surface from the insights one. Insights are
+  // observations on the existing data; this is a *generative* move:
+  // given the user's active goals, propose 2-4 fresh habits whose
+  // daily practice would ladder toward those goals. Each suggestion
+  // is a one-click "add" — no editing dialog, the habit lands on
+  // today's daily note immediately and the user can rename / archive
+  // later if they don't like it.
+  //
+  // We deliberately keep the prompt scoped to goals, not the whole
+  // life-context blob — habits proposed from goals stay grounded
+  // ("learn German" → "10 min Anki" beats a goal-less suggestion
+  // like "drink more water"). When there are no active goals the
+  // button stays clickable but the helper text on the empty state
+  // points the user at /goals.
+  let suggestBusy = $state(false);
+  let suggestAbort: AbortController | null = null;
+  let suggestedHabits = $state<{ name: string; rationale: string }[]>([]);
+  let suggestError = $state('');
+
+  async function aiSuggestHabits() {
+    if (suggestBusy) return;
+    suggestAbort?.abort();
+    suggestAbort = new AbortController();
+    suggestBusy = true;
+    suggestError = '';
+    suggestedHabits = [];
+    let goals: Goal[] = [];
+    try {
+      const r = await api.listGoals();
+      goals = (r.goals ?? []).filter((g) => g.status === 'active' || !g.status);
+    } catch (e) {
+      suggestError = e instanceof Error ? e.message : String(e);
+      suggestBusy = false;
+      suggestAbort = null;
+      return;
+    }
+    if (goals.length === 0) {
+      suggestError = 'No active goals — open /goals and set one first.';
+      suggestBusy = false;
+      suggestAbort = null;
+      return;
+    }
+    // Compact goal payload. Truncate descriptions so the prompt
+    // stays bounded even when the user has a dozen verbose goals.
+    const goalLines = goals
+      .slice(0, 15)
+      .map((g) => {
+        const desc = g.description ? ' — ' + g.description.slice(0, 120) : '';
+        const cat = g.category ? ` [${g.category}]` : '';
+        return `- ${g.title}${cat}${desc}`;
+      })
+      .join('\n');
+    const existingHabits = (data?.habits ?? []).map((h) => h.name).join(', ');
+    const system =
+      'You propose new daily / weekly HABITS the user could add to ladder toward their stated goals. ' +
+      'Output STRICT JSON, no fences, no preamble, no commentary — exactly:\n' +
+      '{"habits":[{"name":"<2-6 word habit>","rationale":"<one sentence linking it to a goal>"},...]}\n\n' +
+      'Rules:\n' +
+      '- 2-4 habits, no more.\n' +
+      '- Each habit must be specific + repeatable in one day (e.g. "10 min Anki", not "study more").\n' +
+      '- Each habit must clearly ladder toward at least one named goal.\n' +
+      '- Do NOT propose habits the user is already tracking. Existing habits: ' + (existingHabits || '(none)') + '.';
+    const user = 'Active goals:\n' + goalLines + '\n\nPropose habits.';
+    let buf = '';
+    try {
+      const throttle = rafThrottle((full) => { buf = full; });
+      await api.chatStream(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ],
+        undefined,
+        {
+          onChunk: throttle.onChunk,
+          onDone: () => {
+            throttle.flush();
+            // Parse leniently — strip ``` fences, find first {...}.
+            let s = buf.trim().replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '');
+            if (!s.startsWith('{')) {
+              const m = s.match(/\{[\s\S]*\}/);
+              if (m) s = m[0];
+            }
+            try {
+              const parsed = JSON.parse(s) as { habits?: { name?: unknown; rationale?: unknown }[] };
+              const list = (parsed.habits ?? [])
+                .map((h) => ({
+                  name: typeof h.name === 'string' ? h.name.trim() : '',
+                  rationale: typeof h.rationale === 'string' ? h.rationale.trim() : ''
+                }))
+                .filter((h) => h.name.length > 0)
+                .slice(0, 4);
+              suggestedHabits = list;
+              if (list.length === 0) suggestError = 'AI returned no habits — try again.';
+            } catch {
+              suggestError = 'AI returned malformed output — try again.';
+            }
+          },
+          onError: (err) => {
+            throttle.flush();
+            suggestError = err.message;
+          }
+        },
+        suggestAbort.signal
+      );
+    } finally {
+      suggestBusy = false;
+      suggestAbort = null;
+    }
+  }
+
+  function dismissSuggestions() {
+    suggestAbort?.abort();
+    suggestBusy = false;
+    suggestedHabits = [];
+    suggestError = '';
+  }
+
+  async function adoptSuggestion(name: string) {
+    addName = name;
+    await addHabit();
+    suggestedHabits = suggestedHabits.filter((h) => h.name !== name);
   }
 
   // Add-habit-from-web. The existing toggleHabit endpoint already
@@ -472,6 +596,51 @@
       </section>
     {/if}
 
+    <!-- AI-suggested habits from goals. Distinct surface from "Pattern
+         insight" above: that one observes existing data, this one
+         generates new habits to add. Each suggestion is one-click
+         adopt; rationale stays visible so the user knows WHY this
+         habit was proposed for which goal. -->
+    {#if suggestedHabits.length > 0 || suggestBusy || suggestError}
+      <section class="mb-4 p-3 bg-surface1 border border-secondary/40 rounded-lg">
+        <div class="flex items-baseline gap-2 mb-2">
+          <h3 class="text-xs uppercase tracking-wider text-secondary font-medium">Habits from your goals</h3>
+          <span class="flex-1"></span>
+          {#if suggestBusy}
+            <span class="text-[11px] text-dim italic">proposing…</span>
+          {:else if suggestedHabits.length > 0}
+            <button onclick={aiSuggestHabits} class="text-[11px] text-secondary hover:underline">regenerate</button>
+          {/if}
+          <button onclick={dismissSuggestions} class="text-[11px] text-dim hover:text-text">dismiss</button>
+        </div>
+        {#if suggestError}
+          <p class="text-xs text-error">{suggestError}</p>
+        {:else if suggestedHabits.length === 0 && suggestBusy}
+          <p class="text-xs text-dim italic">reading your goals…</p>
+        {:else}
+          <ul class="space-y-1.5">
+            {#each suggestedHabits as h (h.name)}
+              <li class="flex items-start gap-2">
+                <button
+                  type="button"
+                  onclick={() => adoptSuggestion(h.name)}
+                  disabled={addBusy}
+                  class="text-[11px] px-2 py-0.5 rounded bg-secondary text-on-secondary hover:opacity-90 disabled:opacity-50 flex-shrink-0 mt-0.5"
+                  title="Track this habit starting today"
+                >+ add</button>
+                <div class="min-w-0 flex-1">
+                  <div class="text-sm text-text font-medium">{h.name}</div>
+                  {#if h.rationale}
+                    <div class="text-[11px] text-subtext leading-snug">{h.rationale}</div>
+                  {/if}
+                </div>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </section>
+    {/if}
+
     <!-- View + sort controls. Both rows wrap on narrow screens; the
          view toggle uses a segmented pill, the sort uses a select to
          keep horizontal space tight on phones. -->
@@ -503,6 +672,20 @@
               <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
             </svg>
             Insight
+          </button>
+        {/if}
+        {#if suggestedHabits.length === 0 && !suggestBusy && !suggestError}
+          <button
+            type="button"
+            onclick={aiSuggestHabits}
+            class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-surface1 text-secondary border border-surface2 hover:bg-surface2"
+            title="Propose habits that ladder toward your active goals"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12l4 4 10-10"/>
+              <path d="M12 21v-3"/>
+            </svg>
+            Suggest from goals
           </button>
         {/if}
         <label class="text-xs text-dim flex items-center gap-1.5">
