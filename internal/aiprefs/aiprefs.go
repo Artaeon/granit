@@ -59,6 +59,12 @@ const (
 	// live in <vault>/.granit/web-search.json so the prefs file
 	// doesn't carry secrets.
 	FeatureWebSearch Feature = "web_search"
+	// FeaturePlanExtract — weekly-plan freeform note → structured
+	// proposal of tasks/milestones to create, matched against the
+	// user's existing ventures/projects/goals. Context includes this
+	// week's calendar + open tasks + recent activity so the model
+	// proposes things that fit the actual week, not in a vacuum.
+	FeaturePlanExtract Feature = "plan_extract"
 )
 
 // FeatureConfig is the per-feature setting record.
@@ -109,6 +115,13 @@ func Defaults() Preferences {
 			// Provider is empty because the provider choice lives in
 			// .granit/web-search.json (DuckDuckGo by default).
 			FeatureWebSearch: {Enabled: false, Provider: ""},
+			// On by default — the weekly planner is the synthesis
+			// layer between freeform note and structured plan; off
+			// would mean the new /plans page can't function. The
+			// review step is required client-side so AI never silently
+			// commits, satisfying the same "user always sees the
+			// edits" posture as inbox triage.
+			FeaturePlanExtract: {Enabled: true, Provider: ""},
 		},
 		RedactionEnabled: true,
 		DefaultProvider:  "ollama",
