@@ -65,6 +65,7 @@
     persistActiveThreadId,
     deriveLibraryLabel
   } from '$lib/chat/history';
+  import { findPrecedingUserIndex, buildBranchTitle, pruneNumKeyedRecord } from '$lib/chat/branch';
   import { retrieveForRag, type RagHit } from '$lib/chat/rag';
   import {
     parseFollowups,
@@ -535,16 +536,12 @@
     }
     if (userIdx < 0 || userIdx >= messages.length || messages[userIdx].role !== 'user') return;
     // Truncate everything from the user message onward — send() will
-    // re-push the user message + open the assistant slot.
+    // re-push the user message + open the assistant slot. Per-turn
+    // data keyed by gone indices gets pruned so the inline-sources
+    // block doesn't dangle pointing at messages that no longer exist.
     messages = messages.slice(0, userIdx);
-    // Clean per-turn data keyed by indices that no longer exist so
-    // the inline-sources block doesn't dangle pointing at gone turns.
-    perTurnRagHits = Object.fromEntries(
-      Object.entries(perTurnRagHits).filter(([k]) => Number(k) < userIdx)
-    );
-    expandedSources = Object.fromEntries(
-      Object.entries(expandedSources).filter(([k]) => Number(k) < userIdx)
-    );
+    perTurnRagHits = pruneNumKeyedRecord(perTurnRagHits, userIdx);
+    expandedSources = pruneNumKeyedRecord(expandedSources, userIdx);
     input = content;
     void send();
   }
@@ -552,13 +549,7 @@
   function regenAssistantMessage(assistantIdx: number) {
     if (assistantIdx < 0 || assistantIdx >= messages.length) return;
     if (messages[assistantIdx].role !== 'assistant') return;
-    let userIdx = -1;
-    for (let j = assistantIdx - 1; j >= 0; j--) {
-      if (messages[j].role === 'user') {
-        userIdx = j;
-        break;
-      }
-    }
+    const userIdx = findPrecedingUserIndex(messages, assistantIdx);
     if (userIdx === -1) return;
     replayFromUserMessage(userIdx, messages[userIdx].content);
   }
@@ -614,7 +605,7 @@
     const sourceTitle = activeThreadId
       ? getThread(activeThreadId)?.title ?? deriveThreadTitle(messages)
       : deriveThreadTitle(messages);
-    const newTitle = (sourceTitle.length > 60 ? sourceTitle.slice(0, 60) : sourceTitle) + ' (branch)';
+    const newTitle = buildBranchTitle(sourceTitle);
     const branched = upsertThread({
       // No id ⇒ new thread.
       title: newTitle,
