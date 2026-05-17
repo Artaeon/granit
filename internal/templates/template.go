@@ -241,6 +241,51 @@ status: active
 
 `,
 		},
+		{
+			// Sermon notes — anchored to the date so the file naturally
+			// sorts chronologically inside Sermons/. The "Passages"
+			// frontmatter field lists each reference on its own line so
+			// dataview queries / downstream tooling can iterate them
+			// without parsing prose. The body's "Key passages" section
+			// is where the user pastes refs that the scripture page's
+			// parseRefs() picks up to render Jump-to chips later.
+			Name: "Sermon Notes",
+			Content: `---
+title: {{title}}
+date: {{date}}
+type: sermon
+tags: [sermon]
+preacher:
+series:
+passages:
+  -
+---
+
+# {{title}}
+
+**Date:** {{date}}
+**Preacher:**
+**Series:**
+
+## Key passages
+-
+
+## Main points
+1.
+2.
+3.
+
+## Notes
+
+
+## Application
+-
+
+## Questions for reflection
+-
+
+`,
+		},
 	}
 }
 
