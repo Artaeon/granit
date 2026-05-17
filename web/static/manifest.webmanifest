@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "name": "Granit",
   "short_name": "Granit",
   "description": "Your vault, anywhere. Web companion to Granit.",
@@ -48,26 +49,72 @@
     {
       "name": "Today",
       "short_name": "Today",
+      "description": "Today's dashboard — tasks, calendar, deadlines at a glance",
       "url": "/",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [
+        { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+        { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+      ]
+    },
+    {
+      "name": "Quick capture",
+      "short_name": "Capture",
+      "description": "Drop a note straight into Inbox — AI titles, tags, and links it",
+      "url": "/notes?capture=1",
+      "icons": [
+        { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+        { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+      ]
     },
     {
       "name": "Tasks",
       "short_name": "Tasks",
+      "description": "Open tasks, priorities, and scheduled work",
       "url": "/tasks",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [
+        { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+        { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+      ]
     },
     {
       "name": "Calendar",
       "short_name": "Calendar",
+      "description": "Day, week, and month views with tasks and events",
       "url": "/calendar",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [
+        { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+        { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+      ]
     },
     {
-      "name": "Morning",
+      "name": "Notes",
+      "short_name": "Notes",
+      "description": "Stream view — recent thoughts, quick capture, smart collections",
+      "url": "/notes",
+      "icons": [
+        { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+        { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+      ]
+    },
+    {
+      "name": "Scripture",
+      "short_name": "Scripture",
+      "description": "Verse of the day, memorisation drill, bible reader",
+      "url": "/scripture",
+      "icons": [
+        { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+        { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+      ]
+    },
+    {
+      "name": "Morning routine",
       "short_name": "Morning",
+      "description": "Daily startup — focus, gratitude, today's plan",
       "url": "/morning",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [
+        { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+        { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+      ]
     }
   ]
 }

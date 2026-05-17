@@ -221,6 +221,17 @@
       openCapture();
     };
     window.addEventListener('keydown', onKey);
+    // Deep-link from the PWA shortcut: /notes?capture=1 auto-opens
+    // the quick-capture dialog. We only honour the flag on first
+    // mount so a back-nav onto /notes doesn't re-pop the dialog at
+    // the user. The history.replaceState rinses the flag so a
+    // subsequent reload also stays clean.
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('capture') === '1') {
+      openCapture();
+      const u = new URL(window.location.href);
+      u.searchParams.delete('capture');
+      window.history.replaceState({}, '', u.pathname + (u.search || '') + (u.hash || ''));
+    }
     return () => {
       unsub();
       document.removeEventListener('visibilitychange', onVisible);
