@@ -466,6 +466,9 @@ func (s *Server) Handler() http.Handler {
 		// the visible text (keeps checkbox state + per-line markers).
 		r.Delete("/api/v1/habits/{name}", s.handleDeleteHabit)
 		r.Patch("/api/v1/habits/{name}", s.handleRenameHabit)
+		// Stack anchor — empty `after` clears, non-empty sets. Same
+		// .granit/habits-stacks.json sidecar the TUI reads.
+		r.Put("/api/v1/habits/{name}/stack", s.handleSetHabitStack)
 
 		r.Get("/api/v1/search", s.handleSearch)
 

@@ -435,6 +435,38 @@
     editingTarget = null;
   }
 
+  // ----- Stack anchor ("after I do X, I do this") -----
+  // Behavioural-science staple: anchoring a new habit to an
+  // existing completed action makes consistency easier than
+  // willpower. Persisted server-side in
+  // .granit/habits-stacks.json via PUT /api/v1/habits/{name}/stack
+  // — same sidecar the TUI reads.
+  let editingStack = $state<string | null>(null);
+  let stackDraft = $state('');
+  function startStackEdit(h: HabitInfo) {
+    editingStack = h.name;
+    stackDraft = h.stackAfter ?? '';
+  }
+  function cancelStackEdit() {
+    editingStack = null;
+    stackDraft = '';
+  }
+  async function submitStackEdit(name: string) {
+    const next = stackDraft.trim();
+    busy = name;
+    try {
+      await api.setHabitStack(name, next);
+      editingStack = null;
+      stackDraft = '';
+      await load();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      (await import('$lib/components/toast')).toast.error(`stack update failed: ${msg}`);
+    } finally {
+      busy = null;
+    }
+  }
+
   // ----- Rename / delete -----
   // Habits have no record file — these handlers rewrite the underlying
   // `## Habits` checkbox lines across every daily note. The backend
@@ -998,6 +1030,49 @@
                     <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => bumpTarget(h.name, 1)}>+</button>
                     <button class="ml-1 px-1.5 py-0.5 text-dim hover:text-text underline" onclick={() => clearTarget(h.name)}>clear</button>
                     <button class="ml-auto px-1.5 py-0.5 text-dim hover:text-text" onclick={() => (editingTarget = null)}>done</button>
+                  </div>
+                {/if}
+                <!-- Stack anchor — chain badge when set, "+ stack"
+                     button when not. Edit pops a small inline form
+                     with a select of every other (non-self) habit.
+                     Behavioural-science play: anchoring beats
+                     willpower for habit consistency. -->
+                {#if editingStack === h.name}
+                  <div class="mt-1.5 flex items-center gap-1.5 text-[11px] flex-wrap">
+                    <span class="text-dim">after</span>
+                    <select
+                      bind:value={stackDraft}
+                      class="px-1.5 py-0.5 bg-surface1 border border-surface2 rounded text-text text-[11px]"
+                    >
+                      <option value="">(none — clear anchor)</option>
+                      {#each data?.habits.filter((other) => other.name !== h.name) ?? [] as other (other.name)}
+                        <option value={other.name}>{other.name}</option>
+                      {/each}
+                    </select>
+                    <button
+                      class="px-1.5 py-0.5 bg-primary text-on-primary rounded text-[11px] disabled:opacity-50"
+                      disabled={busy === h.name}
+                      onclick={() => submitStackEdit(h.name)}
+                    >save</button>
+                    <button class="px-1.5 py-0.5 text-dim hover:text-text" onclick={cancelStackEdit}>cancel</button>
+                  </div>
+                {:else if h.stackAfter}
+                  <div class="mt-1.5 flex items-center gap-1.5 text-[11px]">
+                    <button
+                      type="button"
+                      onclick={() => startStackEdit(h)}
+                      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border border-secondary/40 bg-surface0 text-secondary hover:bg-surface1"
+                      title="stack anchor — click to edit or clear"
+                    >🔗 after {h.stackAfter}</button>
+                  </div>
+                {:else}
+                  <div class="mt-1.5">
+                    <button
+                      type="button"
+                      onclick={() => startStackEdit(h)}
+                      class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1 text-dim border-surface2 hover:text-text"
+                      title="anchor this habit to another habit you already do"
+                    >+ stack after…</button>
                   </div>
                 {/if}
               </div>

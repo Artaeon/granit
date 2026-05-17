@@ -13,6 +13,8 @@ import (
 
 	"github.com/artaeon/granit/internal/atomicio"
 	"github.com/artaeon/granit/internal/config"
+	"github.com/artaeon/granit/internal/habits"
+	"github.com/artaeon/granit/internal/wshub"
 )
 
 // Habits are derived from `## Habits` sections in daily notes. Each checkbox
@@ -39,6 +41,14 @@ type habitInfo struct {
 	DoneToday     bool       `json:"doneToday"`
 	NotePathToday string     `json:"notePathToday,omitempty"`
 	TaskIDToday   string     `json:"taskIdToday,omitempty"`
+	// StackAfter is the name of the habit this one is anchored to —
+	// "after I do <StackAfter>, I do this habit." Behavioural-
+	// science staple for building a new habit on top of an existing
+	// completed action. Empty when no anchor is configured. Read
+	// from the .granit/habits-stacks.json sidecar via the habits
+	// package — same source the TUI uses, so cross-surface edits
+	// stay in sync.
+	StackAfter string `json:"stackAfter,omitempty"`
 }
 
 var (
@@ -166,9 +176,18 @@ func (s *Server) handleListHabits(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Stack anchors are sidecar data — the same source the TUI uses
+	// via .granit/habits-stacks.json. Reading here keeps every
+	// `## Habits` surface (web list + TUI heatmap + future widgets)
+	// agreeing on what's anchored to what.
+	stacks := habits.Load(s.cfg.Vault.Root).Stacks
+
 	out := make([]habitInfo, 0, len(names))
 	for name := range names {
 		info := habitInfo{Name: name}
+		if anchor, ok := stacks[name]; ok && anchor != "" {
+			info.StackAfter = anchor
+		}
 		// Build day list back to windowStart, oldest → newest
 		for d := windowStart; !d.After(now); d = d.AddDate(0, 0, 1) {
 			ds := d.Format("2006-01-02")
@@ -629,4 +648,51 @@ func (s *Server) handleRenameHabit(w http.ResponseWriter, r *http.Request) {
 		"newName":      newName,
 		"filesTouched": touched,
 	})
+}
+
+// handleSetHabitStack writes the stack-anchor sidecar entry for one
+// habit. Empty / missing `after` clears the anchor. We don't
+// validate that `after` refers to an existing habit — referential
+// integrity is the user's responsibility (and a stale reference
+// renders as "after <unknown>" which is the right signal to
+// either rename or clear it). PUT semantics: the value sent is
+// the new state, period.
+type habitStackBody struct {
+	After string `json:"after"`
+}
+
+func (s *Server) handleSetHabitStack(w http.ResponseWriter, r *http.Request) {
+	name := urlParam(r, "name")
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "habit name required")
+		return
+	}
+	var body habitStackBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	// Read existing sidecar so we don't clobber other entries —
+	// we're patching one key in a map.
+	d := habits.Load(s.cfg.Vault.Root)
+	after := strings.TrimSpace(body.After)
+	if after == "" {
+		delete(d.Stacks, name)
+	} else {
+		// Self-reference would create a degenerate "after me, I do
+		// me" loop. Reject so the UI doesn't have to.
+		if after == name {
+			writeError(w, http.StatusBadRequest, "stack anchor cannot reference the habit itself")
+			return
+		}
+		d.Stacks[name] = after
+	}
+	if err := habits.SaveStacks(s.cfg.Vault.Root, d.Stacks); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// Broadcast so other tabs / surfaces refresh. The path matches
+	// the SidecarPaths() entry the package documents.
+	s.hub.Broadcast(wshub.Event{Type: "state.changed", Path: ".granit/habits-stacks.json"})
+	writeJSON(w, http.StatusOK, map[string]any{"name": name, "after": after})
 }

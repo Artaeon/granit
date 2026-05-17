@@ -2352,6 +2352,14 @@ export const api = {
       `/habits/${encodeURIComponent(name)}`,
       { method: 'PATCH', body: JSON.stringify({ new_name: newName }) }
     ),
+  // Habit stacking — anchor `name` to `after` ("after I do <after>,
+  // I do <name>"). Empty `after` clears the anchor. Server rejects
+  // self-references. Writes the .granit/habits-stacks.json sidecar.
+  setHabitStack: (name: string, after: string) =>
+    req<{ name: string; after: string }>(
+      `/habits/${encodeURIComponent(name)}/stack`,
+      { method: 'PUT', body: JSON.stringify({ after }) }
+    ),
 
   // Morning routine — saves a `## Daily Plan` block into today's daily note
   saveMorning: (body: {
@@ -2913,6 +2921,10 @@ export interface HabitInfo {
   doneToday: boolean;
   notePathToday?: string;
   taskIdToday?: string;
+  // Habit stacking — when set, the name of another habit this one
+  // is anchored to. "After I do <stackAfter>, I do this." Behavioural-
+  // science anchoring; the UI surfaces it as a chain.
+  stackAfter?: string;
 }
 
 export interface HabitsResponse {

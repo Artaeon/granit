@@ -8,6 +8,7 @@
 //	<vault>/.granit/habits-categories.json  — per-habit category
 //	<vault>/.granit/habits-notes.json       — per-day per-habit free-text note
 //	<vault>/.granit/habits-archived.json    — archived-name set
+//	<vault>/.granit/habits-stacks.json      — per-habit "after X" anchor
 //
 // The web API previously parsed `## Habits` checkbox sections inside
 // daily notes — a separate data model that showed zero rows for users
@@ -63,6 +64,16 @@ type Data struct {
 	Categories  map[string]string // habit → category name
 	Notes       map[string]string // "habit|YYYY-MM-DD" → free text
 	Archived    map[string]bool   // habit → archived
+	// Stacks maps a habit name to the OTHER habit it follows
+	// ("after I do <stack-anchor>, I do this habit"). Behavioural-
+	// science staple — anchoring a new habit to an existing
+	// completed action beats willpower for building consistency.
+	// Empty string / missing entry = no anchor, no stack.
+	// The anchor must reference another habit's Name; we don't
+	// validate referential integrity in this package (a stale
+	// reference just renders as "after <unknown>" which is the
+	// signal to either rename or clear it).
+	Stacks map[string]string // habit → name of the habit it follows
 }
 
 // HabitsDir returns the path to <vault>/Habits/.
@@ -90,6 +101,7 @@ func Load(vaultRoot string) Data {
 		Categories:  map[string]string{},
 		Notes:       map[string]string{},
 		Archived:    map[string]bool{},
+		Stacks:      map[string]string{},
 	}
 	d.Habits, d.Logs = loadHabitsMD(vaultRoot)
 	loadJSONInto(sidecarPath(vaultRoot, "habits-frequency.json"), &d.Frequencies)
@@ -97,6 +109,7 @@ func Load(vaultRoot string) Data {
 	loadJSONInto(sidecarPath(vaultRoot, "habits-categories.json"), &d.Categories)
 	loadJSONInto(sidecarPath(vaultRoot, "habits-notes.json"), &d.Notes)
 	loadJSONInto(sidecarPath(vaultRoot, "habits-archived.json"), &d.Archived)
+	loadJSONInto(sidecarPath(vaultRoot, "habits-stacks.json"), &d.Stacks)
 	return d
 }
 
@@ -223,6 +236,15 @@ func SaveArchived(vaultRoot string, m map[string]bool) error {
 	return saveSidecar(vaultRoot, "habits-archived.json", m)
 }
 
+// SaveStacks persists the per-habit stack-anchor map. Empty-string
+// values are written through — the caller is responsible for
+// pruning them if they want a "no anchor" entry GONE rather than
+// "anchor explicitly cleared". Pruning isn't done here because the
+// two states are indistinguishable in JSON anyway.
+func SaveStacks(vaultRoot string, m map[string]string) error {
+	return saveSidecar(vaultRoot, "habits-stacks.json", m)
+}
+
 // saveSidecar is a tiny helper that mkdir's .granit and atomic-writes
 // indented JSON, identical to the pattern the TUI was using inline.
 func saveSidecar(vaultRoot, name string, v interface{}) error {
@@ -252,6 +274,7 @@ func SidecarPaths() []string {
 		".granit/habits-categories.json",
 		".granit/habits-notes.json",
 		".granit/habits-archived.json",
+		".granit/habits-stacks.json",
 	}
 }
 
