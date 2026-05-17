@@ -58,10 +58,17 @@ func (s *Server) handleTaskDuplicates(w http.ResponseWriter, r *http.Request) {
 	all := s.cfg.TaskStore.All()
 	// Filter to open tasks. The dup-find is about "am I tracking
 	// the same thing twice in my live list" — completed / dropped
-	// items shouldn't pollute the comparison.
+	// / archived items shouldn't pollute the comparison. Archived
+	// is the soft-delete flag from the task drawer's archive
+	// gesture; without this filter, an archived "call Mom" would
+	// score against a live "phone Mom" and surface as a
+	// false-positive pair the user can't even merge into.
 	open := make([]*tasks.Task, 0, len(all))
 	for _, t := range all {
 		if t.Done {
+			continue
+		}
+		if t.Archived {
 			continue
 		}
 		if t.Triage == tasks.TriageDropped {
