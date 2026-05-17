@@ -67,6 +67,7 @@
   import MentionPicker, { type MentionRef } from '$lib/components/MentionPicker.svelte';
   import ChatHistoryRail from '$lib/components/ChatHistoryRail.svelte';
   import { focusOnMount } from '$lib/util/focusOnMount';
+  import { hasActiveEditor, insertAtCursor } from '$lib/stores/active-editor';
 
   // AIOverlay — global AI panel. Slides in from the right on
   // desktop, becomes a bottom sheet on mobile. Triggered with
@@ -2634,6 +2635,26 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                     >
                       {#if pinnedIndex[i]}★{:else}☆{/if}
                     </button>
+                    <!-- Insert at cursor — only when a note editor is
+                         actively mounted (notes/[...path] page). Drops
+                         this reply's text where the cursor is, exactly
+                         like a paste; replaces any selection. Lets the
+                         user drag a chat answer into the doc without
+                         leaving the conversation. -->
+                    {#if $hasActiveEditor}
+                      <button
+                        type="button"
+                        onclick={() => insertAtCursor(m.content)}
+                        class="tap-target inline-flex items-center justify-center w-7 h-7 rounded text-dim hover:text-primary hover:bg-surface0 active:bg-surface1 leading-none transition-colors"
+                        aria-label="Insert this reply at the editor's cursor"
+                        title="Insert this reply at the current cursor position in the open note"
+                      >
+                        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M5 12h11"/>
+                          <path d="M12 5l7 7-7 7"/>
+                        </svg>
+                      </button>
+                    {/if}
                   </span>
                 {/if}
               </div>

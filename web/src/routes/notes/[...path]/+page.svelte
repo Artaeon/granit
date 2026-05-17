@@ -51,6 +51,7 @@
   import NotePresentation from '$lib/notes/NotePresentation.svelte';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
   import { recordOpenNote, updateOpenNoteScroll } from '$lib/stores/open-note';
+  import { registerActiveEditor } from '$lib/stores/active-editor';
 
   type ViewMode = 'edit' | 'preview' | 'split';
   const VIEW_KEY = 'granit.note.viewMode';
@@ -234,6 +235,20 @@
   // The CodeMirror DOM exists only after mount, so this stays
   // `undefined` until then and the toolbar simply doesn't render.
   let editorDOM = $derived(editor?.getDOM());
+
+  // Register the current editor view as the "active editor" so
+  // cross-surface features (AIOverlay's "insert at cursor", future
+  // drop-into-note actions) can target this note's cursor without
+  // each feature needing to know about the editor page. Deregisters
+  // on unmount or when the editor binding goes away.
+  $effect(() => {
+    const view = editor?.getView?.();
+    if (view) {
+      registerActiveEditor(view);
+      return () => registerActiveEditor(null);
+    }
+    return undefined;
+  });
 
   // Per-note scroll position cache lives in $lib/notes/noteHistory —
   // see the imports at the top. Pixel-accurate (not line-accurate)
