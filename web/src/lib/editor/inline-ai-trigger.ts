@@ -1,17 +1,21 @@
-// Inline-AI trigger — the two ways a user opens the new AI menu.
+// Inline-AI trigger — the two ways a user opens the AI menu.
 //
-//   1. Cmd-K (Ctrl-K on non-Mac) — opens the menu at the cursor
-//      regardless of what's typed there. Works with or without a
-//      selection. Power-user shortcut, mirrors Notion / Linear /
-//      Raycast / every other tool that has a "command palette at
-//      cursor" affordance.
+//   1. Mod-/ (Cmd-/ on Mac, Ctrl-/ elsewhere) — opens the menu at
+//      the cursor regardless of what's typed there. Works with or
+//      without a selection. Power-user shortcut. Pairs naturally
+//      with the "/ai" slash trigger ("the chord for the / surface").
+//
+//      Originally Mod-K, but that's already taken by the global
+//      CommandPalette (universal search) and markdown-shortcuts
+//      (make-link), and three handlers vying for the same chord
+//      made the trigger unreliable.
 //
 //   2. Typing "/ai" at the start of a line — opens the menu inline
 //      so a user who lives in the keyboard but doesn't know the
-//      Cmd-K chord can discover the feature by trial. The "/ai"
-//      trigger string is consumed (deleted from the doc) when the
-//      menu picks any action, so the eventual insertion replaces
-//      the trigger rather than appearing after it.
+//      chord can discover the feature by trial. The "/ai" trigger
+//      string is consumed (deleted from the doc) when the menu
+//      picks any action, so the eventual insertion replaces the
+//      trigger rather than appearing after it.
 //
 // Both paths land in the same callback the host page passes in. The
 // host owns the popover positioning + mount; this extension just
@@ -131,10 +135,18 @@ export function inlineAITriggerExtension(
     makeTypedTriggerPlugin(onTrigger),
     keymap.of([
       {
-        // Cmd-K (Ctrl-K elsewhere). Notion/Linear/Raycast convention.
-        // Cmd-K is otherwise unbound in our editor; CodeMirror's
-        // built-in search uses Cmd-F so we don't shadow it.
-        key: 'Mod-k',
+        // Mod-/ opens the inline-AI menu at the cursor or over the
+        // current selection. Mirrors the discoverability path (the
+        // user types `/ai` to open the same menu — the chord is
+        // "the shortcut for the / surface").
+        //
+        // Originally bound to Mod-K, but K is already taken by both
+        // the global CommandPalette (universal search) AND
+        // markdown-shortcuts.ts (make-link). Three handlers fighting
+        // for Mod-K made the trigger unreliable. Mod-/ is otherwise
+        // unbound in this editor (we don't enable CodeMirror's
+        // toggle-comment), so the menu opens cleanly.
+        key: 'Mod-/',
         preventDefault: true,
         run: (view) => {
           const pos = view.state.selection.main.head;
