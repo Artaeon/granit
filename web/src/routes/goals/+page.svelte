@@ -27,6 +27,7 @@
     goalTargetTone
   } from '$lib/goals/util';
   import GoalKanbanCard from '$lib/goals/GoalKanbanCard.svelte';
+  import GoalCard from '$lib/goals/GoalCard.svelte';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // View modes — `cards` is the rich card layout (the existing UI),
@@ -1465,105 +1466,20 @@
       <div class="space-y-4">
         {#each visibleGoals as g (g.id)}
           {@const p = progress(g)}
-          {@const sc = statusColor(g.status)}
           {@const tone = goalTargetTone(g.status, g.target_date)}
-          {@const chip = targetChip(g.target_date)}
           {@const roll = rollupFor(g)}
           {@const aiOpen = aiGoalId === g.id}
           <article
             class="bg-surface0 border border-surface1 rounded-lg overflow-hidden hover:border-primary transition-colors {tone ? 'border-l-4' : ''}"
             style={tone ? `border-left-color: var(--color-${tone});` : ''}
           >
-            <button
-              type="button"
-              onclick={() => openDetail(g)}
-              class="w-full text-left p-4 flex flex-col gap-2"
-            >
-              <div class="flex items-start gap-3">
-                <div class="flex-1 min-w-0">
-                  <h2 class="text-base sm:text-lg font-semibold text-text break-words">{@html inlineMd(g.title)}</h2>
-                  {#if g.description}
-                    <p class="text-sm text-subtext mt-1 break-words">{@html inlineMd(g.description)}</p>
-                  {/if}
-                </div>
-                <div class="flex flex-col items-end gap-1 flex-shrink-0">
-                  <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded {sc.bg} {sc.text}">
-                    {g.status ?? 'active'}
-                  </span>
-                  {#if stalledGoals.some((s) => s.id === g.id)}
-                    <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-surface0 text-warning" title="No edits in 30+ days, no recent completed tasks">
-                      stalled
-                    </span>
-                  {/if}
-                </div>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-dim">
-                {#if g.target_date}
-                  <span class="inline-flex items-baseline gap-1.5">
-                    <span>🎯 {fmtTargetDate(g.target_date)}</span>
-                    {#if chip && (g.status === 'active' || g.status === 'paused')}
-                      <span
-                        class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium tabular-nums whitespace-nowrap"
-                        style="background: color-mix(in srgb, var(--color-{chip.tone}) 14%, transparent); color: var(--color-{chip.tone});"
-                      >{chip.label}</span>
-                    {/if}
-                  </span>
-                {/if}
-                {#if g.project}<span>📁 {g.project}</span>{/if}
-                {#if g.venture}<span class="text-secondary">🏢 {g.venture}</span>{/if}
-                {#if g.category}<span>· {g.category}</span>{/if}
-                {#if p.total > 0}<span>{p.done}/{p.total} milestones</span>{/if}
-                {#if g.review_frequency}<span>↻ {g.review_frequency}</span>{/if}
-              </div>
-
-              {#if g.tags && g.tags.length > 0}
-                <div class="flex flex-wrap gap-1">
-                  {#each g.tags as t}
-                    <span class="text-[10px] px-1.5 py-0.5 bg-surface1 text-subtext rounded">#{t}</span>
-                  {/each}
-                </div>
-              {/if}
-
-              {#if p.total > 0}
-                <div class="mt-1">
-                  <div class="h-1.5 bg-mantle rounded-full overflow-hidden">
-                    <div class="h-full bg-primary transition-all" style="width: {p.pct}%"></div>
-                  </div>
-                  <div class="text-[10px] text-dim mt-1">{p.pct}% complete</div>
-                </div>
-              {/if}
-
-              <!-- Roll-up chips: linked tasks (open + done) and the
-                   matched project. Renders nothing when a goal has
-                   no execution behind it so the cards for orphan
-                   goals don't get noisier. The chips look passive
-                   (they live inside the card-wide button) but stay
-                   visually distinct so they read as "context"
-                   rather than "card body". -->
-              {#if roll.open + roll.done > 0 || roll.project}
-                <div class="flex flex-wrap items-center gap-1.5 pt-1.5 mt-1 border-t border-surface1 text-[11px]">
-                  {#if roll.open > 0}
-                    <span class="px-1.5 py-0.5 bg-surface1 text-subtext rounded tabular-nums" title="open tasks linked to this goal">
-                      {roll.open} open task{roll.open === 1 ? '' : 's'}
-                    </span>
-                  {/if}
-                  {#if roll.done > 0}
-                    <span class="px-1.5 py-0.5 bg-surface0 text-success rounded tabular-nums" title="completed tasks linked to this goal">
-                      {roll.done} done
-                    </span>
-                  {/if}
-                  {#if roll.project}
-                    <span class="px-1.5 py-0.5 bg-surface1 text-secondary rounded truncate max-w-[14rem]" title="linked project">
-                      📁 {roll.project.name}
-                      {#if typeof roll.project.progress === 'number'}
-                        <span class="opacity-70 tabular-nums ml-0.5">{roll.project.progress}%</span>
-                      {/if}
-                    </span>
-                  {/if}
-                </div>
-              {/if}
-            </button>
+            <GoalCard
+              goal={g}
+              progress={p}
+              rollup={roll}
+              stalled={stalledGoals.some((s) => s.id === g.id)}
+              onClick={() => openDetail(g)}
+            />
 
             <!-- AI "next milestone" affordance — only on living goals
                  (active / paused). Sits in a footer strip outside the
