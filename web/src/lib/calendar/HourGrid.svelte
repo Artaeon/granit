@@ -25,7 +25,8 @@
     onReschedule,
     onMove,
     onResize,
-    onTaskDrop
+    onTaskDrop,
+    hourPx = 48
   }: {
     days: Date[];
     events: CalendarEvent[];
@@ -64,6 +65,13 @@
      *  it's non-null, slot pointer handlers take the task-drop path
      *  instead of slot-drag-to-create. */
     onTaskDrop?: (taskId: string, start: Date, durationMinutes: number) => void | Promise<void>;
+    /** Pixel height per hour-row. Parent owns the density preset and
+     *  maps it to a pixel value (compact 32 / normal 48 / spacious 72).
+     *  Default keeps backwards-compat with the prior hardcoded 48. All
+     *  internal layout math (event top/height, drag/resize coords,
+     *  initial scroll) reads from this prop, so a parent flip
+     *  re-renders the grid at the new density without a remount. */
+    hourPx?: number;
   } = $props();
 
   /**
@@ -162,7 +170,12 @@
     };
   });
 
-  const HOUR_PX = 48;
+  // HOUR_PX aliased to the `hourPx` prop so every layout-math site
+  // (top/height calculations, drag/resize pointer math, the initial
+  // scroll-to-now) keeps using the same local name. Renaming all
+  // ~10 call sites would be churn for no benefit — the alias keeps
+  // the diff scoped to one line.
+  let HOUR_PX = $derived(hourPx);
   const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
   let scrollEl: HTMLDivElement | undefined = $state();

@@ -72,6 +72,28 @@
     (loadStoredString(MONTH_DENSITY_KEY, 'comfy') === 'compact' ? 'compact' : 'comfy')
   );
 
+  // Time-grid density. Three steps map to per-hour pixel heights:
+  //   compact 32px — sees ~14h on a typical laptop without scroll;
+  //                  tradeoff is event titles can run out of vertical
+  //                  room on 15-min slots.
+  //   normal  48px — historical default; titles + locations fit on a
+  //                  30-min event without truncation.
+  //   spacious 72px — meeting-heavy days where the user wants room to
+  //                   read every event title even on 15-min slots.
+  // Per-device because preference tracks the user's screen size +
+  // how busy their typical day looks, same logic as month density.
+  type HourDensity = 'compact' | 'normal' | 'spacious';
+  const HOUR_DENSITY_KEY = 'granit.calendar.hourDensity';
+  function loadHourDensity(): HourDensity {
+    const v = loadStoredString(HOUR_DENSITY_KEY, 'normal');
+    return v === 'compact' || v === 'spacious' ? v : 'normal';
+  }
+  let hourDensity = $state<HourDensity>(loadHourDensity());
+  let hourPx = $derived(
+    hourDensity === 'compact' ? 32 : hourDensity === 'spacious' ? 72 : 48
+  );
+  $effect(() => saveStoredString(HOUR_DENSITY_KEY, hourDensity));
+
   $effect(() => saveStoredString(VIEW_KEY, view));
   $effect(() => saveStoredString(PLAN_KEY, planMode ? '1' : '0'));
   $effect(() => saveStoredString(MONTH_DENSITY_KEY, monthDensity));
@@ -1349,6 +1371,34 @@
           >Compact</button>
         </div>
       {/if}
+      <!-- Time-grid density — compact / normal / spacious, applies to
+           Day / Week / Workweek views. Maps to per-hour pixel height
+           in HourGrid (32/48/72). On a typical laptop, compact fits
+           ~14 hours without scroll; spacious is two-clicks of vertical
+           space for meeting-heavy days where the user wants room to
+           read every title on a 15-min slot. -->
+      {#if view === 'day' || view === 'week' || view === 'workweek'}
+        <div class="hidden sm:flex bg-surface0 border border-surface1 rounded overflow-hidden text-[11px]" title="Time-grid density (per-hour height)">
+          <button
+            class="px-2 py-1.5 {hourDensity === 'compact' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (hourDensity = 'compact')}
+            aria-pressed={hourDensity === 'compact'}
+            title="32px / hour — sees the most at once, tight"
+          >Compact</button>
+          <button
+            class="px-2 py-1.5 {hourDensity === 'normal' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (hourDensity = 'normal')}
+            aria-pressed={hourDensity === 'normal'}
+            title="48px / hour — historical default"
+          >Normal</button>
+          <button
+            class="px-2 py-1.5 {hourDensity === 'spacious' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (hourDensity = 'spacious')}
+            aria-pressed={hourDensity === 'spacious'}
+            title="72px / hour — room to read every event on a 15-min slot"
+          >Spacious</button>
+        </div>
+      {/if}
       <!-- View switcher — Apple Calendar set: Day / Week / Month / Year.
            3-day and Agenda were retired alongside the AI toolbar
            cleanup; Agenda's content lives in /tasks + the chat
@@ -1499,11 +1549,12 @@
               onResize={resizeEvent}
               writableSources={calSources.filter((s) => s.writable).map((s) => s.source)}
               onTaskDrop={dropTask}
+              {hourPx}
             />
           </div>
         </div>
       {:else if view === 'day' || view === 'week' || view === 'workweek'}
-        <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} />
+        <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} {hourPx} />
       {:else if view === 'month'}
         <div class="h-full overflow-auto">
           <MonthView cursor={cursor} events={events} density={monthDensity} onClickEvent={clickEvent} onClickDay={clickDay} />
