@@ -9,9 +9,13 @@ import (
 // TestLoad smoke-checks that the embedded JSON parses and contains the
 // 66-book Protestant canon with expected high-water-mark counts.
 func TestLoad(t *testing.T) {
-	b, err := Load()
+	m, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
+	}
+	b, ok := m[DefaultTranslation]
+	if !ok {
+		t.Fatalf("Load: default translation %q missing", DefaultTranslation)
 	}
 	if got, want := len(b.Books), 66; got != want {
 		t.Fatalf("books: got %d want %d", got, want)
@@ -31,7 +35,7 @@ func TestLoad(t *testing.T) {
 		{"Psalms", "Yahweh is my shepherd", 23, 1},
 	}
 	for _, tc := range cases {
-		bk := FindBook(tc.book)
+		bk := FindBook("", tc.book)
 		if bk == nil {
 			t.Errorf("FindBook(%q) returned nil", tc.book)
 			continue
@@ -61,7 +65,7 @@ func TestLoad(t *testing.T) {
 // TestBooks ensures the summary list mirrors Load and reports correct
 // chapter counts (these are stable / well-known numbers).
 func TestBooks(t *testing.T) {
-	books, err := Books()
+	books, err := Books("")
 	if err != nil {
 		t.Fatalf("Books: %v", err)
 	}
@@ -96,24 +100,24 @@ func TestBooks(t *testing.T) {
 // they all hit the same book.
 func TestFindBookAliases(t *testing.T) {
 	for _, q := range []string{"JHN", "John", "john", "JoHn"} {
-		b := FindBook(q)
+		b := FindBook("", q)
 		if b == nil || b.Code != "JHN" {
 			t.Errorf("FindBook(%q) → %v", q, b)
 		}
 	}
 	for _, q := range []string{"1corinthians", "1 Corinthians", "1CO", "1Corinthians"} {
-		b := FindBook(q)
+		b := FindBook("", q)
 		if b == nil || b.Code != "1CO" {
 			t.Errorf("FindBook(%q) → %v", q, b)
 		}
 	}
-	if FindBook("Psalm") == nil {
+	if FindBook("", "Psalm") == nil {
 		t.Error("FindBook(Psalm) should resolve via the Psalms alias")
 	}
-	if FindBook("Songofsongs") == nil {
+	if FindBook("", "Songofsongs") == nil {
 		t.Error("FindBook(Songofsongs) should resolve to Song of Solomon")
 	}
-	if FindBook("not-a-book") != nil {
+	if FindBook("", "not-a-book") != nil {
 		t.Error("FindBook(not-a-book) should return nil")
 	}
 }
@@ -141,7 +145,7 @@ func TestRandomReturnsValidPassage(t *testing.T) {
 			t.Errorf("reference %q missing book %q", p.Reference, p.Book)
 		}
 		// Confirm the verse actually exists in the loaded data.
-		bk := FindBook(p.BookCode)
+		bk := FindBook("", p.BookCode)
 		if bk == nil {
 			t.Fatalf("BookCode %q not found", p.BookCode)
 		}
@@ -206,7 +210,7 @@ func TestRandomTestamentFilter(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Random: %v", err)
 		}
-		bk := FindBook(p.BookCode)
+		bk := FindBook("", p.BookCode)
 		if bk == nil || bk.Testament != "NT" {
 			t.Errorf("NT filter ignored: got book %q (%s)", p.Book, bk.Testament)
 		}
@@ -216,7 +220,7 @@ func TestRandomTestamentFilter(t *testing.T) {
 // TestSearch spot-checks that an obvious phrase returns hits in
 // canonical order and the limit is respected.
 func TestSearch(t *testing.T) {
-	hits, err := Search("In the beginning", 5)
+	hits, err := Search("", "In the beginning", 5)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -232,7 +236,7 @@ func TestSearch(t *testing.T) {
 	}
 
 	// Empty query → no error, no hits.
-	hits, err = Search("   ", 10)
+	hits, err = Search("", "   ", 10)
 	if err != nil {
 		t.Fatalf("Search empty: %v", err)
 	}
@@ -241,8 +245,8 @@ func TestSearch(t *testing.T) {
 	}
 
 	// Case-insensitive: "JESUS" should hit just like "jesus".
-	upper, _ := Search("JESUS", 3)
-	lower, _ := Search("jesus", 3)
+	upper, _ := Search("", "JESUS", 3)
+	lower, _ := Search("", "jesus", 3)
 	if len(upper) != len(lower) || (len(upper) > 0 && upper[0].Reference != lower[0].Reference) {
 		t.Errorf("case sensitivity broke search: upper=%d lower=%d", len(upper), len(lower))
 	}

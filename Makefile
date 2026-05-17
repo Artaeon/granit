@@ -1,4 +1,4 @@
-.PHONY: build run clean test install size completion web-setup web-build web-dev web-serve
+.PHONY: build run clean test install size completion web-setup web-build web-dev web-serve fetch-strongs
 
 BINARY=granit
 MODULE=github.com/artaeon/granit
@@ -48,6 +48,21 @@ install: build
 size: build
 	@echo "Binary size: $$(du -h $(BUILD_DIR)/$(BINARY) | cut -f1)"
 	@echo "To compress further: upx --best $(BUILD_DIR)/$(BINARY)"
+
+# Populate the optional Strong's lexicon + tagged-bible JSONs that
+# internal/scripture/bible embeds. The script is interactive-friendly
+# (heavily commented, no auto-download of unverified URLs) — see
+# scripts/fetch-strongs.sh for details. Rebuild after running so the
+# new bytes land in the binary.
+fetch-strongs:
+	bash scripts/fetch-strongs.sh
+
+# Populate the optional ASV / KJV / BBE translation JSONs that sit
+# alongside web.json in internal/scripture/bible. Same playbook as
+# fetch-strongs: heavily commented stub, no auto-download. Rebuild
+# afterward so go:embed picks up the new bytes.
+fetch-translations:
+	bash scripts/fetch-bible-translations.sh
 
 scan:
 	go run ./cmd/granit/ scan $(VAULT)

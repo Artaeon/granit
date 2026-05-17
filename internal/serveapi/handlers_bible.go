@@ -13,8 +13,23 @@ import (
 // handleBibleBooks returns the canonical book list with chapter counts —
 // used by the web reader to populate the book/chapter picker. Cheap call;
 // data is loaded once and cached for the lifetime of the process.
+//
+// Optional ?translation=<id> picks an alternate translation (must be
+// bundled). Empty/unknown falls back to the default (WEB) — keeping
+// existing single-Bible callers working unchanged.
 func (s *Server) handleBibleBooks(w http.ResponseWriter, r *http.Request) {
-	books, err := bible.Books()
+	translation := strings.TrimSpace(r.URL.Query().Get("translation"))
+	b, err := bible.Get(translation)
+	if err != nil {
+		// Fall back to default rather than 404'ing — old callers
+		// don't supply a translation and expect WEB.
+		b, err = bible.Default()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	books, err := bible.Books(b.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -22,9 +37,10 @@ func (s *Server) handleBibleBooks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"books": books,
 		"meta": map[string]string{
-			"name":         "World English Bible",
-			"abbreviation": "WEB",
-			"license":      "Public Domain",
+			"id":           b.ID,
+			"name":         b.Name,
+			"abbreviation": b.Abbreviation,
+			"license":      b.License,
 		},
 	})
 }
@@ -35,7 +51,8 @@ func (s *Server) handleBibleBooks(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBibleChapter(w http.ResponseWriter, r *http.Request) {
 	bookKey := chi.URLParam(r, "book")
 	chStr := chi.URLParam(r, "chapter")
-	bk := bible.FindBook(bookKey)
+	translation := strings.TrimSpace(r.URL.Query().Get("translation"))
+	bk := bible.FindBook(translation, bookKey)
 	if bk == nil {
 		writeError(w, http.StatusNotFound, "book not found: "+bookKey)
 		return
@@ -69,8 +86,9 @@ func (s *Server) handleBibleChapter(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBibleRandom(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	opts := bible.RandomOptions{
-		Book:      strings.TrimSpace(q.Get("book")),
-		Testament: strings.TrimSpace(q.Get("testament")),
+		Book:        strings.TrimSpace(q.Get("book")),
+		Testament:   strings.TrimSpace(q.Get("testament")),
+		Translation: strings.TrimSpace(q.Get("translation")),
 	}
 	if l := q.Get("length"); l != "" {
 		if n, err := strconv.Atoi(l); err == nil {
@@ -95,13 +113,14 @@ func (s *Server) handleBibleRandom(w http.ResponseWriter, r *http.Request) {
 // than an error so the UI can debounce without try/catch noise.
 func (s *Server) handleBibleSearch(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
+	translation := strings.TrimSpace(r.URL.Query().Get("translation"))
 	limit := 50
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 200 {
 			limit = n
 		}
 	}
-	hits, err := bible.Search(query, limit)
+	hits, err := bible.Search(translation, query, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

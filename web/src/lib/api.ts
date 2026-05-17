@@ -655,6 +655,55 @@ export interface BibleSearchHit {
   reference: string;
 }
 
+// Per-translation metadata for the bible translation picker. Returned
+// by /bible/translations. WEB is always present; ASV / KJV / BBE only
+// appear when the corresponding JSON has been dropped into
+// internal/scripture/bible/ via scripts/fetch-bible-translations.sh.
+export interface TranslationInfo {
+  id: string;           // lowercase, e.g. "web", "asv"
+  name: string;         // "World English Bible"
+  abbreviation: string; // "WEB"
+  license: string;      // "Public Domain"
+  year?: number;        // 1901 (ASV), 1611 (KJV), etc.
+}
+
+// One column of a passage-compare response. Verses are clamped to the
+// requested range and (when populated) the reference is server-rendered
+// against this translation's book naming.
+export interface PassageCompareTranslation {
+  id: string;
+  name: string;
+  abbreviation: string;
+  reference: string;
+  verses: BibleVerse[];
+}
+
+// Strong's lexicon entry — Greek (G####) or Hebrew (H####) word study
+// data. Mirrors internal/scripture/bible.StrongsEntry. All fields are
+// optional in upstream data; treat empty strings as "missing".
+export interface StrongsEntry {
+  lemma?: string;       // original-language form, e.g. "ἀγάπη"
+  translit?: string;    // transliteration, e.g. "agápē"
+  strongs_def?: string; // Strong's own definition
+  kjv_def?: string;     // gloss of how the KJV renders the word
+  derivation?: string;  // etymology / root note
+}
+
+// One word in the tagged bible. `strongs` may be empty for untagged
+// glue words ("the", punctuation, etc.) depending on the upstream
+// dataset's granularity — the UI just renders those as plain text.
+export interface TaggedWord {
+  text: string;
+  strongs?: string;
+}
+
+// One verse from the tagged bible. `n` is the 1-indexed verse number
+// matching the equivalent BibleVerse.n.
+export interface TaggedVerse {
+  n: number;
+  words: TaggedWord[];
+}
+
 // Saved bible passage with optional note. Persisted to
 // .granit/bible-bookmarks.json so the TUI can read the same set.
 export interface BibleBookmark {
@@ -1910,6 +1959,50 @@ export const api = {
   bibleSearch: (query: string, limit = 50) =>
     req<{ hits: BibleSearchHit[]; total: number; query: string }>(
       `/bible/search?q=${encodeURIComponent(query)}&limit=${limit}`
+    ),
+
+  // Translation-aware reads. /bible/translations returns every bundled
+  // translation (WEB by default, plus ASV / KJV / BBE if those have been
+  // fetched into internal/scripture/bible/). /bible/passage-compare
+  // returns the same passage rendered in N translations side by side —
+  // unknown ids are skipped silently rather than erroring out the whole
+  // request, so a stale client doesn't break when a translation is
+  // removed.
+  bibleTranslations: () =>
+    req<{ translations: TranslationInfo[]; total: number }>('/bible/translations'),
+  biblePassageCompare: (params: {
+    book: string;
+    chapter: number;
+    verseFrom?: number;
+    verseTo?: number;
+    translations: string[];
+  }) => {
+    const qs = new URLSearchParams();
+    qs.set('book', params.book);
+    qs.set('chapter', String(params.chapter));
+    if (params.verseFrom) qs.set('verseFrom', String(params.verseFrom));
+    if (params.verseTo) qs.set('verseTo', String(params.verseTo));
+    if (params.translations.length) qs.set('translations', params.translations.join(','));
+    return req<{
+      translations: PassageCompareTranslation[];
+      book: string;
+      chapter: number;
+      verseFrom: number;
+      verseTo: number;
+    }>(`/bible/passage-compare?${qs.toString()}`);
+  },
+
+  // Strong's lexicon + tagged-bible word study. Both data sources are
+  // optional (fetched via scripts/fetch-strongs.sh, not bundled in
+  // source) so callers should hit strongsStatus() first and degrade
+  // gracefully when either is absent.
+  strongsStatus: () =>
+    req<{ lexicon: boolean; tagged: boolean }>('/bible/strongs/status'),
+  strongsEntry: (code: string) =>
+    req<StrongsEntry>('/bible/strongs/' + encodeURIComponent(code)),
+  taggedChapter: (book: string, chapter: number) =>
+    req<{ book: string; chapter: number; verses: TaggedVerse[] }>(
+      `/bible/tagged?book=${encodeURIComponent(book)}&chapter=${chapter}`
     ),
 
   // Bible bookmarks — saved passages, optional note.

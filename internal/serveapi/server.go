@@ -687,7 +687,11 @@ func (s *Server) Handler() http.Handler {
 		// Bible — full embedded WEB (World English Bible, public domain)
 		// as a reader + random-passage source. Backed by
 		// internal/scripture/bible (loaded once from a go:embed JSON).
+		// Additional public-domain translations (ASV / KJV / BBE) can
+		// be dropped alongside web.json — see scripts/fetch-bible-translations.sh.
 		r.Get("/api/v1/bible/books", s.handleBibleBooks)
+		r.Get("/api/v1/bible/translations", s.handleBibleTranslations)
+		r.Get("/api/v1/bible/passage-compare", s.handleBiblePassageCompare)
 		// Reading-habit streak — parallel surface to /api/v1/daily/streak.
 		r.Get("/api/v1/bible/streak", s.handleBibleStreak)
 		r.Post("/api/v1/bible/read", s.handleBibleReadRecord)
@@ -699,6 +703,13 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/api/v1/bible/bookmarks", s.handleCreateBibleBookmark)
 		r.Patch("/api/v1/bible/bookmarks/{id}", s.handlePatchBibleBookmark)
 		r.Delete("/api/v1/bible/bookmarks/{id}", s.handleDeleteBibleBookmark)
+		// Strong's lexicon + tagged-bible word-study endpoints.
+		// Backed by internal/scripture/bible/{strongs,tagged}.go.
+		// Both gracefully degrade when the optional JSON data isn't
+		// bundled — clients hit /status first to find out.
+		r.Get("/api/v1/bible/strongs/status", s.handleStrongsStatus)
+		r.Get("/api/v1/bible/strongs/{code}", s.handleStrongsEntry)
+		r.Get("/api/v1/bible/tagged", s.handleTaggedChapter)
 		r.Get("/api/v1/bible/{book}/{chapter}", s.handleBibleChapter)
 
 		// Devices — authState.Sessions exposed for management.
