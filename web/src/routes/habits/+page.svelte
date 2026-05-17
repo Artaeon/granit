@@ -365,6 +365,32 @@
 
   // Habits remaining today — the Today header surfaces "X / Y done"
   // so the user reads progress at a glance.
+  // Reverse-lookup index: habitName → list of OTHER habits that
+  // anchor to it. Lets the UI surface chains in both directions —
+  // when a habit IS an anchor for others, the page shows "triggers:
+  // Y, Z" alongside the existing "after X" badge so the user sees
+  // the full chain without scrolling through every row to find
+  // forward references.
+  //
+  // Empty entries are intentionally absent (rather than `: []`) so
+  // template `{#if anchorsFor[name]?.length}` reads cleanly.
+  let anchorsFor = $derived.by<Record<string, string[]>>(() => {
+    const out: Record<string, string[]> = {};
+    if (!data) return out;
+    for (const h of data.habits) {
+      const anchor = h.stackAfter;
+      if (!anchor) continue;
+      if (!out[anchor]) out[anchor] = [];
+      out[anchor].push(h.name);
+    }
+    // Stable ordering — alphabetical, so a 2-tab user doesn't see
+    // the list reshuffle when something unrelated changes.
+    for (const k of Object.keys(out)) {
+      out[k].sort();
+    }
+    return out;
+  });
+
   let todayDone = $derived(data ? data.habits.filter((h) => h.doneToday).length : 0);
   let todayTotal = $derived(data ? data.habits.length : 0);
   let undoneToday = $derived(data ? data.habits.filter((h) => !h.doneToday && h.taskIdToday) : []);
@@ -1057,22 +1083,34 @@
                     <button class="px-1.5 py-0.5 text-dim hover:text-text" onclick={cancelStackEdit}>cancel</button>
                   </div>
                 {:else if h.stackAfter}
-                  <div class="mt-1.5 flex items-center gap-1.5 text-[11px]">
+                  <div class="mt-1.5 flex items-center gap-1.5 text-[11px] flex-wrap">
                     <button
                       type="button"
                       onclick={() => startStackEdit(h)}
                       class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border border-secondary/40 bg-surface0 text-secondary hover:bg-surface1"
                       title="stack anchor — click to edit or clear"
                     >🔗 after {h.stackAfter}</button>
+                    {#if anchorsFor[h.name]?.length}
+                      <span
+                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider bg-surface1 text-dim"
+                        title="other habits anchored to this one"
+                      >→ triggers {anchorsFor[h.name].join(', ')}</span>
+                    {/if}
                   </div>
                 {:else}
-                  <div class="mt-1.5">
+                  <div class="mt-1.5 flex items-center gap-1.5 text-[11px] flex-wrap">
                     <button
                       type="button"
                       onclick={() => startStackEdit(h)}
                       class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1 text-dim border-surface2 hover:text-text"
                       title="anchor this habit to another habit you already do"
                     >+ stack after…</button>
+                    {#if anchorsFor[h.name]?.length}
+                      <span
+                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider bg-surface1 text-dim"
+                        title="other habits anchored to this one"
+                      >→ triggers {anchorsFor[h.name].join(', ')}</span>
+                    {/if}
                   </div>
                 {/if}
               </div>
