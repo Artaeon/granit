@@ -159,7 +159,7 @@
                   <div class="text-[11px] text-dim">
                     Day {a.dayOfPlan} of {a.lengthDays} ·
                     started {new Date(a.startedAt).toLocaleDateString()}
-                    {#if a.finished} · <span class="text-positive">finished</span>{/if}
+                    {#if a.finished} · <span class="text-success">finished</span>{/if}
                   </div>
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">
@@ -216,7 +216,7 @@
             <p class="text-[12px] text-subtext mt-2 flex-1">{p.description}</p>
             <div class="mt-3 flex items-center gap-2">
               {#if a}
-                <span class="text-[11px] text-positive">
+                <span class="text-[11px] text-success">
                   Active · day {a.dayOfPlan}/{p.lengthDays}
                 </span>
                 <button
