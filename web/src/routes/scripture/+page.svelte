@@ -19,6 +19,9 @@
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
   import type { AgentPreset } from '$lib/api';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
+  import TranslationDiff from '$lib/scripture/TranslationDiff.svelte';
+  import WordStudy from '$lib/scripture/WordStudy.svelte';
+  import TaggedVerse from '$lib/scripture/TaggedVerse.svelte';
 
   // Four modes:
   //   read   — verse-of-the-day in big type, "another one" button,
@@ -978,6 +981,26 @@
   let pickerShowOT = $state(true);
   let pickerShowNT = $state(true);
 
+  // ─── Translation comparison + Strong's word study toggles ────────
+  // Both are opt-in panels that ride on top of the existing chapter
+  // view. The components themselves handle the "data not bundled"
+  // case gracefully, so a vanilla install just shows a single
+  // translation + no Strong's data without ceremony.
+  let compareOpen = $state(false);
+  let wordStudyMode = $state(false);
+  let selectedStrong = $state<string | null>(null);
+  // Lazy-fetched once; null until we know. Lets the toggle button
+  // render disabled+"not bundled" cleanly instead of flashing on/off.
+  let strongsAvailable = $state<{ lexicon: boolean; tagged: boolean } | null>(null);
+  async function ensureStrongsStatus() {
+    if (strongsAvailable !== null) return;
+    try {
+      strongsAvailable = await api.strongsStatus();
+    } catch {
+      strongsAvailable = { lexicon: false, tagged: false };
+    }
+  }
+
   async function ensureBibleIndex() {
     if (bibleBooks.length > 0 || bibleLoading) return;
     bibleLoading = true;
@@ -1068,6 +1091,10 @@
       biblePassage = null;
       pushRecent(bibleChapter.book, bibleChapter.bookCode, bibleChapter.chapter);
       bumpStreak();
+      // Lazy-fetch Strong's status the first time the user lands in a
+      // chapter — drives the "Word study" toggle's disabled/enabled
+      // state. Fires once per session, cached afterward.
+      ensureStrongsStatus();
     } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
@@ -1700,6 +1727,62 @@
               {bibleChapter.book} · chapter {bibleChapter.chapter} of {bibleChapter.chapters} · WEB (Public Domain)
             </p>
           </article>
+
+          <!-- Translation + word-study toggles. Both are opt-in panels
+               that ride on top of the chapter view. The components
+               themselves handle the data-not-bundled case gracefully
+               (TranslationDiff shows a "drop more JSONs alongside
+               web.json" hint; TaggedVerse / WordStudy show a "run
+               scripts/fetch-strongs.sh" hint). Buttons stay enabled
+               either way so the user can discover the surface and
+               find out how to unlock it. -->
+          <div class="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onclick={() => (compareOpen = !compareOpen)}
+              class="text-xs px-2.5 py-1 rounded border transition-colors {compareOpen ? 'bg-primary text-on-primary border-primary' : 'bg-mantle border-surface1 text-subtext hover:border-primary hover:text-text'}"
+              title="Compare this chapter across the bundled translations"
+            >{compareOpen ? 'Hide translations' : 'Compare translations'}</button>
+            <button
+              type="button"
+              onclick={() => (wordStudyMode = !wordStudyMode)}
+              class="text-xs px-2.5 py-1 rounded border transition-colors {wordStudyMode ? 'bg-primary text-on-primary border-primary' : 'bg-mantle border-surface1 text-subtext hover:border-primary hover:text-text'}"
+              title="Toggle Strong's word-study mode — tap any word to see its lexicon entry"
+            >{wordStudyMode ? 'Exit word study' : 'Word study mode'}{#if strongsAvailable && !strongsAvailable.tagged}<span class="opacity-70"> · not bundled</span>{/if}</button>
+          </div>
+
+          {#if compareOpen}
+            <div class="mt-3">
+              <TranslationDiff
+                bookCode={bibleChapter.bookCode}
+                chapter={bibleChapter.chapter}
+              />
+            </div>
+          {/if}
+
+          {#if wordStudyMode}
+            <!-- Word-study panel sits in-flow under the chapter so the
+                 user keeps their place. The TaggedVerse component
+                 renders the whole chapter with each word tappable;
+                 onSelectStrong populates `selectedStrong`, which mounts
+                 the lexicon card beneath. -->
+            <div class="mt-4 bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4">
+              <h3 class="text-xs uppercase tracking-wider text-dim font-medium mb-2">Word study</h3>
+              <TaggedVerse
+                bookCode={bibleChapter.bookCode}
+                chapter={bibleChapter.chapter}
+                onSelectStrong={(code) => (selectedStrong = code)}
+              />
+              {#if selectedStrong}
+                <div class="mt-3 pt-3 border-t border-surface1">
+                  <WordStudy
+                    strongsCode={selectedStrong}
+                    onClose={() => (selectedStrong = null)}
+                  />
+                </div>
+              {/if}
+            </div>
+          {/if}
         {/if}
 
         <!-- Book / chapter picker -->
