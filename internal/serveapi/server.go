@@ -402,6 +402,13 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/api/v1/plans/extract", s.handlePlanExtract)
 		r.Post("/api/v1/plans/commit", s.handlePlanCommit)
 
+		// AI prompt library — user-curated saved prompts, surfaced
+		// in both the inline AI menu and the chat overlay so the
+		// user's go-to phrasings are one click away from any AI
+		// surface. Single record per vault under .granit/ai-prompts.json.
+		r.Get("/api/v1/ai/prompts", s.handleGetAIPrompts)
+		r.Put("/api/v1/ai/prompts", s.handlePutAIPrompts)
+
 		// Prayer intentions — active prayer list with status lifecycle
 		// (praying → answered → archived). State at .granit/prayer/.
 		r.Get("/api/v1/prayer/intentions", s.handleListPrayer)
