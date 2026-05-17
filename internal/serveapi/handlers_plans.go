@@ -298,10 +298,18 @@ func (s *Server) buildPlanSnapshot(now time.Time) planVaultSnapshot {
 				DueDate: t.DueDate, ScheduledTime: t.ScheduledTime,
 			})
 		}
+		// Sort by signal score (project + due date give highest
+		// priority). Stable tiebreak on ID so the 80-cap doesn't
+		// shuffle arbitrarily between extracts — a user with 200
+		// signal-0 tasks would otherwise see the proposal change
+		// without the plan text changing.
 		sort.Slice(open, func(i, j int) bool {
 			scoreI := taskSignal(open[i])
 			scoreJ := taskSignal(open[j])
-			return scoreI > scoreJ
+			if scoreI != scoreJ {
+				return scoreI > scoreJ
+			}
+			return open[i].ID < open[j].ID
 		})
 		if len(open) > 80 {
 			open = open[:80]
@@ -445,14 +453,15 @@ func (s *Server) handlePlanCommit(w http.ResponseWriter, r *http.Request) {
 	}
 	planPath := "Plans/" + weekISO + ".md"
 
-	// Ensure the plan note exists with the freeform body + per-venture
-	// commitment section headings before we ask TaskStore to insert
-	// task lines under those headings. The headings have to be present
-	// at write-time or TaskStore.Create will fall back to appending at
-	// the end of the file, which would scatter tasks instead of
-	// grouping them under their venture.
-	ventureBuckets := groupItemsByVenture(req.Items)
-	if err := s.writePlanScaffold(planPath, req.PlanText, weekISO, ventureBuckets, now); err != nil {
+	// Two-bucket map: allBuckets has every committed item (used for
+	// frontmatter, so the metadata is a complete record). taskBuckets
+	// is the subset that needs heading sections in the body — milestones
+	// don't live in the plan note, they go to their goal's milestone
+	// list, so we don't want empty "### Venture" headings created for a
+	// milestone-only venture.
+	allBuckets := groupItemsByVenture(req.Items)
+	taskBuckets := filterTaskBuckets(allBuckets)
+	if err := s.writePlanScaffold(planPath, req.PlanText, weekISO, taskBuckets, now); err != nil {
 		writeError(w, http.StatusInternalServerError, "writing plan note: "+err.Error())
 		return
 	}
@@ -510,8 +519,10 @@ func (s *Server) handlePlanCommit(w http.ResponseWriter, r *http.Request) {
 
 	// Stamp final frontmatter with the IDs the TaskStore minted so
 	// future tooling (e.g. /morning's "this week's commitments")
-	// can resolve plan→tasks without re-parsing the body.
-	if err := s.stampPlanFrontmatter(planPath, weekISO, resp.CreatedTaskIDs, ventureBuckets, now); err != nil {
+	// can resolve plan→tasks without re-parsing the body. allBuckets
+	// (not taskBuckets) so the metadata reflects every commitment,
+	// including milestones routed to goals.
+	if err := s.stampPlanFrontmatter(planPath, weekISO, resp.CreatedTaskIDs, allBuckets, now); err != nil {
 		// Non-fatal: tasks are already created. Surface the issue
 		// but return success so the user sees their commitments
 		// land. Future runs can rewrite the frontmatter cleanly.
@@ -526,15 +537,22 @@ func (s *Server) handlePlanCommit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// groupItemsByVenture buckets accepted items by venture name. Personal
-// items (no venture) land under the empty-string key, which the
-// scaffold writer renders under a "Personal" subsection.
+// groupItemsByVenture buckets accepted items by venture name. Both
+// tasks and milestones contribute so the plan note's
+// commitments_by_venture frontmatter is a complete record of what
+// the user committed to this week, not just the task subset.
+// Milestone labels are prefixed with "(milestone) " in the frontmatter
+// so a reader can tell what kind of commitment each line is without
+// cross-referencing the body — we don't keep the kind in a parallel
+// structure because the YAML round-trip then has to carry per-item
+// objects, and the simple label list is what the future portfolio
+// view will glance over.
+//
+// Personal items (no venture) land under the empty-string key,
+// which the scaffold writer renders under a "Personal" subsection.
 func groupItemsByVenture(items []planCommitItem) map[string][]planCommitItem {
 	out := make(map[string][]planCommitItem)
 	for _, it := range items {
-		if it.Kind != "task" {
-			continue
-		}
 		out[it.VentureName] = append(out[it.VentureName], it)
 	}
 	return out
@@ -548,6 +566,27 @@ func planSectionFor(venture string) string {
 		return "### Personal"
 	}
 	return "### " + venture
+}
+
+// filterTaskBuckets keeps only the task entries from each bucket.
+// Milestones don't get rendered into the plan note body (they go to
+// goals.AddMilestone instead) so they shouldn't trigger a "### Venture"
+// section here — a milestone-only venture would otherwise leave an
+// empty heading behind.
+func filterTaskBuckets(buckets map[string][]planCommitItem) map[string][]planCommitItem {
+	out := make(map[string][]planCommitItem, len(buckets))
+	for v, items := range buckets {
+		filtered := make([]planCommitItem, 0, len(items))
+		for _, it := range items {
+			if it.Kind == "task" {
+				filtered = append(filtered, it)
+			}
+		}
+		if len(filtered) > 0 {
+			out[v] = filtered
+		}
+	}
+	return out
 }
 
 // writePlanScaffold writes (or overwrites) the plan note with:
@@ -612,7 +651,14 @@ func (s *Server) stampPlanFrontmatter(planPath, weekISO string, taskIDs []string
 	for v, items := range buckets {
 		labels := make([]string, 0, len(items))
 		for _, it := range items {
-			labels = append(labels, it.Label)
+			// Prefix milestones so a glance at the frontmatter tells
+			// the reader which commitments became tasks vs. which
+			// became goal-attached milestones.
+			if it.Kind == "milestone" {
+				labels = append(labels, "(milestone) "+it.Label)
+			} else {
+				labels = append(labels, it.Label)
+			}
 		}
 		commitmentsByVenture[v] = labels
 	}

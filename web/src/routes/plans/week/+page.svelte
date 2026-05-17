@@ -291,9 +291,9 @@
             bind:value={planText}
             placeholder={`This week —
 
-MealTime: ship plan-day-1 feature, call St. Margaret's about the pilot
-LugmayrKern: 5 doctor letters out by Wednesday, Dr Schatz website check
-Nor: get the e-commerce store live, write product copy
+<Venture A>: ship feature X, call key customer about the pilot
+<Venture B>: send 5 client letters by Wednesday, finish landing page
+<Venture C>: get the store live, write product copy
 Personal: weekly review Friday, prep Sunday sermon notes
 `}
             class="flex-1 min-h-[24rem] w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-text font-mono text-[13px] focus:outline-none focus:border-primary resize-y leading-relaxed"
