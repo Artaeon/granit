@@ -406,7 +406,13 @@
       deletePrompt = 'recurring-ics';
       return;
     }
-    if (event.rrule && event.type === 'event' && event.eventId && event.start) {
+    // All-day recurring events have event.date but NO event.start —
+    // the previous gate required event.start and silently fell
+    // through to the nuclear delete-whole-series path. Accept either
+    // anchor so daily/weekly all-day series stop getting wiped when
+    // the user means "skip just today". exDateKey() already handles
+    // both shapes (event.start for timed, event.date for all-day).
+    if (event.rrule && event.type === 'event' && event.eventId && (event.start || event.date)) {
       deletePrompt = 'recurring-native';
       return;
     }
