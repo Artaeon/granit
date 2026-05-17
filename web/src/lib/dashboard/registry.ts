@@ -131,7 +131,12 @@ export const widgetRegistry: WidgetMeta[] = [
   // Roots — four-domain snapshot mirroring the /roots dashboard
   // at glanceable density. Spirit (Bible streak), Mind (books
   // reading), Body (top habit streak), Vocation (top open goal).
-  { type: 'roots', label: 'Roots snapshot', description: 'One line per life domain — Spirit, Mind, Body, Vocation', span: 1, load: lazy(() => import('./widgets/RootsWidget.svelte')) }
+  { type: 'roots', label: 'Roots snapshot', description: 'One line per life domain — Spirit, Mind, Body, Vocation', span: 1, load: lazy(() => import('./widgets/RootsWidget.svelte')) },
+  // Weekly-plan commitments — pulls tasks whose notePath matches the
+  // current ISO week's plan note, groups by venture (the "### Venture"
+  // heading they sit under in the plan), shows done/total per group.
+  // Bridge between the Sunday planning ritual and the daily view.
+  { type: 'weekly-plan', label: 'Weekly plan commitments', description: 'This week\'s committed tasks from /plans/week, grouped by venture', span: 1, load: lazy(() => import('./widgets/WeeklyPlanWidget.svelte')) }
 ];
 
 export function widgetMeta(type: string): WidgetMeta | undefined {

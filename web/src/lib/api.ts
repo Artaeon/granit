@@ -2764,7 +2764,8 @@ export type DashboardWidgetType =
   | 'today-stream'
   | 'recent-annotations'
   | 'sabbath'
-  | 'roots';
+  | 'roots'
+  | 'weekly-plan';
 
 export interface DashboardWidget {
   id: string;
