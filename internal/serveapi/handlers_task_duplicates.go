@@ -63,8 +63,16 @@ func (s *Server) handleTaskDuplicates(w http.ResponseWriter, r *http.Request) {
 	// gesture; without this filter, an archived "call Mom" would
 	// score against a live "phone Mom" and surface as a
 	// false-positive pair the user can't even merge into.
+	// Index loop, not value loop — TaskStore.All() returns []Task
+	// (values, not pointers) and the response payload carries
+	// *tasks.Task. &all[i] is a stable pointer into the backing
+	// array for the request's lifetime since we never reallocate
+	// `all`. Range-by-value would either copy (wasteful) or — with
+	// `&t` from `for _, t := range all` — produce the classic Go
+	// loop-variable-aliasing bug.
 	open := make([]*tasks.Task, 0, len(all))
-	for _, t := range all {
+	for i := range all {
+		t := &all[i]
 		if t.Done {
 			continue
 		}
