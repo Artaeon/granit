@@ -74,7 +74,15 @@
     mergingId = loser.id;
     try {
       await api.patchTask(loser.id, { done: true, triage: 'dropped' });
-      pairs = pairs.filter((p) => p !== pair);
+      // Drop the current pair AND every other stale pair that
+      // references the just-dropped task. Otherwise a transitive
+      // duplicate "A pairs with B and B pairs with C" would leave a
+      // dangling B-C card after the user merges A-B; the next click
+      // would "merge" against a task that's already gone, which
+      // succeeds (idempotent patch) but reads as a confusing no-op.
+      pairs = pairs.filter(
+        (p) => p !== pair && p.a.id !== loser.id && p.b.id !== loser.id
+      );
       await onReload();
       toast.success('Merged — kept the other task.');
     } catch (e) {
