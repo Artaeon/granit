@@ -577,29 +577,29 @@
            by 1 column so the math aligns with the daily strip below.
            Hidden when no bands exist (single-day events only). -->
       {#if multiDay.bands.length > 0}
+        <!-- Flat layout: label spans every lane row in column 1
+             (the "multi-day" gutter); bands live in columns 2..N+1
+             with grid-row by lane. Previously a nested col-span-full
+             grid duplicated the column template, which made the
+             label stack ABOVE the bands instead of sitting to their
+             left like the all-day strip below it. -->
         <div
           class="grid border-b border-surface1 py-0.5"
-          style="grid-template-columns: {cols}; row-gap: 2px;"
+          style="grid-template-columns: {cols}; grid-template-rows: repeat({bandLaneCount}, minmax(18px, auto)); gap: 2px;"
         >
-          <div class="text-[10px] text-dim p-1 text-right">multi-day</div>
-          <!-- The bands sit in a CSS grid spanning days.length
-               columns. Each band uses grid-column-start/end (1-indexed
-               in CSS Grid; +1 to convert our 0-indexed col + +1 again
-               to skip the gutter column) and grid-row by lane. -->
           <div
-            class="col-span-full grid relative"
-            style="grid-template-columns: {cols}; grid-template-rows: repeat({bandLaneCount}, minmax(18px, auto)); gap: 2px;"
-          >
-            {#each multiDay.bands as b ((b.event.eventId ?? b.event.title) + '|' + b.startCol + '|' + b.endCol)}
-              {@const c = eventTypeColor(b.event)}
-              <button
-                onclick={() => onClickEvent(b.event)}
-                class="text-left text-[10px] leading-tight py-0.5 rounded-sm truncate font-semibold"
-                style="grid-column: {b.startCol + 2} / {b.endCol + 3}; grid-row: {b.lane + 1}; background: {c.bg}; color: {c.fg}; padding-left: 7px; padding-right: 5px; box-shadow: inset 3px 0 0 rgba(0,0,0,0.28); {b.event.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}"
-                title={(b.event.title ?? '') + ' · ' + (b.endCol - b.startCol + 1) + ' days'}
-              >{b.event.title}</button>
-            {/each}
-          </div>
+            class="text-[10px] text-dim p-1 text-right self-center"
+            style="grid-column: 1; grid-row: 1 / -1;"
+          >multi-day</div>
+          {#each multiDay.bands as b ((b.event.eventId ?? b.event.title) + '|' + b.startCol + '|' + b.endCol)}
+            {@const c = eventTypeColor(b.event)}
+            <button
+              onclick={() => onClickEvent(b.event)}
+              class="text-left text-[10px] leading-tight py-0.5 rounded-sm truncate font-semibold"
+              style="grid-column: {b.startCol + 2} / {b.endCol + 3}; grid-row: {b.lane + 1}; background: {c.bg}; color: {c.fg}; padding-left: 7px; padding-right: 5px; box-shadow: inset 3px 0 0 rgba(0,0,0,0.28); {b.event.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}"
+              title={(b.event.title ?? '') + ' · ' + (b.endCol - b.startCol + 1) + ' days'}
+            >{b.event.title}</button>
+          {/each}
         </div>
       {/if}
 
