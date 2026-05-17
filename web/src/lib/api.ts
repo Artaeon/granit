@@ -648,6 +648,34 @@ export interface ScriptureTopic {
   count: number;
 }
 
+// Lectionary — bundled multi-day reading plans. The list endpoint
+// returns just the summary fields (no `readings`); the detail endpoint
+// fills in the full day-by-day schedule.
+export interface LectionaryPlan {
+  id: string;
+  name: string;
+  description: string;
+  lengthDays: number;
+  readings?: LectionaryDayReadings[];
+}
+export interface LectionaryDayReadings {
+  day: number;       // 1-indexed
+  passages: string[]; // e.g. ["Gen 1", "Matt 1", "Ezra 1", "Acts 1"]
+}
+// Active plan view: state (planId, startedAt) merged with the snapshot
+// of today's readings + which day of the plan the user is on. Empty
+// `todayPassages` means the plan has run past its end (finished=true)
+// or the plan id is stale.
+export interface ActiveLectionaryPlan {
+  planId: string;
+  planName: string;
+  lengthDays: number;
+  startedAt: string;       // RFC3339
+  dayOfPlan: number;       // 1-indexed; may exceed lengthDays past the end
+  finished: boolean;
+  todayPassages: string[]; // empty when finished
+}
+
 // Bible — bundled World English Bible (PD). Mirrors
 // internal/scripture/bible types.
 export interface BibleVerse {
@@ -2074,6 +2102,40 @@ export const api = {
   deleteBibleBookmark: (id: string) =>
     req<void>(`/bible/bookmarks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
+  // Lectionary — bundled Bible reading plans (M'Cheyne 1-year,
+  // chronological NT, 90-day NT). The list endpoint returns plan
+  // summaries WITHOUT readings (cheap); the detail endpoint returns
+  // the full plan including every day. /plans/active joins user state
+  // with today's readings for each active plan so the page renders in
+  // a single round trip.
+  lectionaryPlans: () =>
+    req<{ plans: LectionaryPlan[]; total: number }>('/scripture/plans'),
+  lectionaryPlan: (id: string) =>
+    req<LectionaryPlan & { readings: LectionaryDayReadings[] }>(
+      `/scripture/plans/${encodeURIComponent(id)}`
+    ),
+  lectionaryPlanDay: (id: string, day: number) =>
+    req<LectionaryDayReadings>(
+      `/scripture/plans/${encodeURIComponent(id)}/day/${day}`
+    ),
+  lectionaryActivePlans: () =>
+    req<{ active: ActiveLectionaryPlan[]; total: number }>('/scripture/plans/active'),
+  lectionaryStartPlan: (id: string) =>
+    req<{ active: ActiveLectionaryPlan[]; total: number }>(
+      `/scripture/plans/${encodeURIComponent(id)}/start`,
+      { method: 'POST' }
+    ),
+  lectionaryStopPlan: (id: string) =>
+    req<{ active: ActiveLectionaryPlan[]; total: number }>(
+      `/scripture/plans/${encodeURIComponent(id)}/start`,
+      { method: 'DELETE' }
+    ),
+  lectionaryScheduleToday: (id: string) =>
+    req<{ task: Task; day: number; passages: string[] }>(
+      `/scripture/plans/${encodeURIComponent(id)}/schedule-today`,
+      { method: 'POST' }
+    ),
+
   // Finance — accounts / subscriptions / income streams / goals.
   // The overview endpoint is a single composite read for the
   // dashboard summary, so the page hydrates in one round trip.
@@ -2533,6 +2595,117 @@ export const api = {
       warning?: string;
     }>('/ai/suggest-links', { method: 'POST', body: JSON.stringify(body), signal }),
 
+  // Vault maintenance — weekly digest (streamed) + orphan rescue
+  // + per-suggestion apply. The weekly-digest endpoint serves SSE
+  // with three event kinds: `suggestion` (data is one MaintenanceSuggestion
+  // JSON object), `done` (data is {count}), `error` (data is {message}).
+  // Returns an AbortController so the caller can cancel mid-stream
+  // — mirrors the chatStream contract.
+  maintenanceWeeklyDigest: (
+    handlers: {
+      onSuggestion: (s: MaintenanceSuggestion) => void;
+      onDone?: () => void;
+      onError?: (err: Error) => void;
+    },
+    options?: { lookbackDays?: number; maxSuggestions?: number }
+  ): AbortController => {
+    const ctrl = new AbortController();
+    (async () => {
+      const headers = new Headers({ 'Content-Type': 'application/json' });
+      const tok = getToken();
+      if (tok) headers.set('Authorization', `Bearer ${tok}`);
+      let res: Response;
+      try {
+        res = await fetch('/api/v1/maintenance/weekly-digest', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(options ?? {}),
+          signal: ctrl.signal
+        });
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+        handlers.onError?.(e instanceof Error ? e : new Error(String(e)));
+        return;
+      }
+      if (!res.ok) {
+        let msg = res.statusText;
+        try {
+          const body = await res.json();
+          if (body?.error) msg = body.error;
+        } catch {}
+        handlers.onError?.(new ApiError(res.status, msg));
+        return;
+      }
+      if (!res.body) {
+        handlers.onError?.(new Error('No response body'));
+        return;
+      }
+      // SSE parser — same hand-rolled shape as chatStream. Each event
+      // is a `field: value` block terminated by a blank line. We only
+      // care about `event` (suggestion/done/error) + `data` (JSON).
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let event = '';
+      let dataLines: string[] = [];
+
+      const flush = () => {
+        if (dataLines.length === 0) return;
+        const data = dataLines.join('\n');
+        dataLines = [];
+        try {
+          if (event === 'error') {
+            const parsed = JSON.parse(data) as { message?: string };
+            handlers.onError?.(new Error(parsed.message ?? 'stream error'));
+          } else if (event === 'done') {
+            handlers.onDone?.();
+          } else if (event === 'suggestion') {
+            const parsed = JSON.parse(data) as MaintenanceSuggestion;
+            handlers.onSuggestion(parsed);
+          }
+        } catch {
+          // Malformed event — skip rather than abort the whole stream.
+        }
+        event = '';
+      };
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, idx).replace(/\r$/, '');
+            buf = buf.slice(idx + 1);
+            if (line === '') {
+              flush();
+              continue;
+            }
+            if (line.startsWith('event: ')) event = line.slice(7).trim();
+            else if (line.startsWith('data: ')) dataLines.push(line.slice(6));
+          }
+        }
+        if (dataLines.length > 0) flush();
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+        handlers.onError?.(e instanceof Error ? e : new Error(String(e)));
+      }
+    })();
+    return ctrl;
+  },
+
+  maintenanceOrphans: (opts?: { suggest?: boolean }) => {
+    const qs = opts?.suggest ? '?suggest=1' : '';
+    return req<{ orphans: OrphanNote[] }>(`/maintenance/orphans${qs}`);
+  },
+
+  maintenanceApply: (s: MaintenanceSuggestion) =>
+    req<{ ok: boolean; next?: string; target?: string }>(
+      '/maintenance/apply-suggestion',
+      { method: 'POST', body: JSON.stringify(s) }
+    ),
+
   // Notification preferences — per-category toggles, quiet
   // hours, defaults. Stored at .granit/notifications.json.
   getNotificationPrefs: () =>
@@ -2824,6 +2997,45 @@ export interface AIDeadlineProposal {
   id: string;
   due_date: string;
   rationale: string;
+}
+
+// Vault-maintenance suggestion union. The server emits these as
+// NDJSON over SSE for the weekly-digest endpoint, and accepts the
+// same shape POSTed at the apply endpoint. Discriminated by `kind`
+// — TypeScript narrows each branch when a switch on `kind` is used,
+// which is exactly how the maintenance page handles them.
+export type MaintenanceSuggestion =
+  | { kind: 'merge'; notes: string[]; reason?: string }
+  | {
+      kind: 'retitle';
+      note: string;
+      currentTitle?: string;
+      suggestedTitle: string;
+      reason?: string;
+    }
+  | {
+      kind: 'missing-tags';
+      note: string;
+      suggestedTags: string[];
+      reason?: string;
+    }
+  | {
+      kind: 'add-backlink';
+      fromNotePath: string;
+      toNotePath: string;
+      anchorText?: string;
+    };
+
+export interface BacklinkSuggestion {
+  from: string;
+  excerpt?: string;
+}
+
+export interface OrphanNote {
+  path: string;
+  title: string;
+  modTime: string;
+  suggestedBacklinks?: BacklinkSuggestion[];
 }
 
 export interface NotificationPrefs {

@@ -630,6 +630,17 @@ func (s *Server) Handler() http.Handler {
 		// research / learning-plan workflows.
 		r.Post("/api/v1/ai/generate-chapter", s.handleAIGenerateChapter)
 
+		// Vault maintenance — weekly digest (SSE stream of mergers
+		// / retitles / missing-tags suggestions) + orphan rescue
+		// (deterministic list of notes with zero backlinks, with an
+		// opt-in AI step to propose 2-3 candidate sources per
+		// orphan). The apply endpoint mutates ONE note at a time;
+		// cross-note merges are refused for safety — the suggestion
+		// surface returns a "merge-prep" hint instead.
+		r.Post("/api/v1/maintenance/weekly-digest", s.handleMaintenanceWeeklyDigest)
+		r.Get("/api/v1/maintenance/orphans", s.handleMaintenanceOrphans)
+		r.Post("/api/v1/maintenance/apply-suggestion", s.handleMaintenanceApplySuggestion)
+
 		// Recurring tasks — same .granit/recurring.json file the TUI's
 		// recurringtasks overlay edits. Server fires due rules at
 		// midnight + on every list/mutate.

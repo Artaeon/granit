@@ -226,6 +226,27 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z"/>
   </svg>
+{:else if name === 'plans'}
+  <!-- Reading plan — a calendar grid with a checkmark inside one cell.
+       Reads as "scheduled daily reading" without colliding with the
+       /calendar icon (which is an empty grid) or /scripture (open book).
+       The check sits in the second column so it doesn't overlap the
+       outer frame at small render sizes. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <rect x="3" y="4" width="18" height="17" rx="2"/>
+    <path d="M3 9h18"/>
+    <path d="M8 4v3M16 4v3"/>
+    <path d="m9.5 14.5 2 2 4-4"/>
+  </svg>
+{:else if name === 'wrench'}
+  <!-- Wrench — vault maintenance. Stroke wrench tilted ~45° so it
+       reads distinctly from `settings` (the cog), the only other
+       tool-y icon in the rail. Used by /review/maintenance for the
+       weekly digest + orphan-rescue surfaces. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <path d="M14.7 6.3a4 4 0 0 0 5.3 5.3l-9.3 9.3a2.5 2.5 0 0 1-3.5-3.5z"/>
+    <path d="M14.7 6.3 18 3l3 3-3.3 3.3"/>
+  </svg>
 {:else if name === 'roots'}
   <!-- Concentric rings with a central mark — the diagram itself.
        Reads as rootedness/centeredness rather than the goal-arrow

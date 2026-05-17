@@ -204,6 +204,7 @@
         { href: '/vision', label: 'Vision', icon: 'vision', moduleId: 'vision' },
         { href: '/plans/week', label: 'Weekly plan', icon: 'review' },
         { href: '/review', label: 'Review', icon: 'review', moduleId: 'weekly_review' },
+        { href: '/review/maintenance', label: 'Maintenance', icon: 'wrench' },
         { href: '/goals', label: 'Goals', icon: 'goals', moduleId: 'goals' },
         { href: '/deadlines', label: 'Deadlines', icon: 'deadline', moduleId: 'deadlines' },
         { href: '/projects', label: 'Projects', icon: 'projects', moduleId: 'projects' },
@@ -221,6 +222,7 @@
         { href: '/measurements', label: 'Metrics', icon: 'measurements', moduleId: 'measurements' },
         { href: '/prayer', label: 'Prayer', icon: 'prayer', moduleId: 'prayer' },
         { href: '/scripture', label: 'Scripture', icon: 'scripture', moduleId: 'scripture' },
+        { href: '/scripture/plans', label: 'Plans', icon: 'plans', moduleId: 'scripture' },
         { href: '/roots', label: 'Roots', icon: 'roots', moduleId: 'roots' }
       ]
     },

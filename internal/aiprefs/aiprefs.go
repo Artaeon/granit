@@ -65,6 +65,16 @@ const (
 	// week's calendar + open tasks + recent activity so the model
 	// proposes things that fit the actual week, not in a vacuum.
 	FeaturePlanExtract Feature = "plan_extract"
+	// FeatureMaintenanceDigest — weekly vault hygiene pass. Scans the
+	// last N days of touched notes, proposes mergers / retitles /
+	// missing tags. Streams suggestions; user accepts each one. Same
+	// posture as inbox triage: AI proposes, user commits.
+	FeatureMaintenanceDigest Feature = "maintenance_digest"
+	// FeatureMaintenanceOrphans — orphan-rescue. List of notes with
+	// zero incoming wikilinks; for each, AI suggests 2-3 candidate
+	// backlink sources. AI step is opt-in per request (?suggest=1)
+	// since it can be expensive on a sparse vault.
+	FeatureMaintenanceOrphans Feature = "maintenance_orphans"
 )
 
 // FeatureConfig is the per-feature setting record.
@@ -122,6 +132,12 @@ func Defaults() Preferences {
 			// commits, satisfying the same "user always sees the
 			// edits" posture as inbox triage.
 			FeaturePlanExtract: {Enabled: true, Provider: ""},
+			// Vault-maintenance features. Off by default — both
+			// generate edits across the wider vault rather than the
+			// single note in front of the user, so consent is more
+			// load-bearing than for the inline AI surfaces.
+			FeatureMaintenanceDigest:  {Enabled: false, Provider: "ollama"},
+			FeatureMaintenanceOrphans: {Enabled: false, Provider: "ollama"},
 		},
 		RedactionEnabled: true,
 		DefaultProvider:  "ollama",
