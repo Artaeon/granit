@@ -30,6 +30,7 @@
   import { streamInlineAI } from '$lib/editor/inline-ai';
   import type { InlineAITriggerEvent } from '$lib/editor/inline-ai-trigger';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
+  import { record as recordSharedPrompt, list as listSharedPrompts } from '$lib/ai/recentPrompts';
 
   interface Props {
     event: InlineAITriggerEvent;
@@ -63,6 +64,19 @@
   let history = $state<string[]>(loadHistory());
   let historyIdx = $state(-1); // -1 = live input; 0 = most recent
 
+  // Cross-source recents — prompts the user wrote in the global chat
+  // overlay that this note's per-note history hasn't already seen.
+  // Filtered to source=chat so we don't show the user their own
+  // inline prompts twice. Computed once on mount; not reactive
+  // because the menu lifecycle is short — opening it again rebuilds.
+  let crossRecents = $state<{ prompt: string }[]>([]);
+  function refreshCrossRecents() {
+    const seen = new Set(history.map((h) => h.toLowerCase()));
+    crossRecents = listSharedPrompts({ source: 'chat', limit: 6 })
+      .filter((r) => !seen.has(r.prompt.toLowerCase()))
+      .slice(0, 2);
+  }
+
   function loadHistory(): string[] {
     if (typeof window === 'undefined') return [];
     try {
@@ -86,6 +100,11 @@
       // localStorage can throw in private mode or when full; we drop
       // the persistence and keep the in-memory list usable.
     }
+    // Also write to the shared recent-prompts log so the chat
+    // overlay can offer this prompt as a recent. Non-fatal if the
+    // log write fails for any reason — per-note history above is the
+    // primary record for this surface.
+    recordSharedPrompt({ prompt: p, source: 'inline', notePath });
   }
 
   // Context toggles.
@@ -921,6 +940,7 @@
 
   onMount(() => {
     promptEl?.focus();
+    refreshCrossRecents();
     // Wait one tick for the menu to lay out so we measure its real
     // size before clamping.
     tick().then(clampToViewport);
@@ -971,18 +991,38 @@
        have to hit Up repeatedly to fish out a recent prompt. Hidden
        once the user starts typing a fresh prompt (the list would
        drift out from under their fingers and pop in/out as they
-       filter). Click runs the prompt immediately as a custom Ask. -->
-  {#if history.length > 0 && promptInput.length === 0 && !busy}
-    <div class="flex flex-wrap items-center gap-1 px-2 py-1 border-b border-surface1">
-      <span class="text-[10px] text-dim font-mono uppercase tracking-wider">recent:</span>
-      {#each history.slice(0, 3) as h, i (h + ':' + i)}
-        <button
-          type="button"
-          onclick={() => { promptInput = h; runCustomPrompt(); }}
-          class="text-[11px] px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-text max-w-[12rem] truncate"
-          title={h}
-        >{h}</button>
-      {/each}
+       filter). Click runs the prompt immediately as a custom Ask.
+       Below the per-note recents, an optional row of recents from
+       the chat overlay so prompts the user wrote in conversation
+       are one click away here too. -->
+  {#if (history.length > 0 || crossRecents.length > 0) && promptInput.length === 0 && !busy}
+    <div class="px-2 py-1 border-b border-surface1 space-y-0.5">
+      {#if history.length > 0}
+        <div class="flex flex-wrap items-center gap-1">
+          <span class="text-[10px] text-dim font-mono uppercase tracking-wider">recent:</span>
+          {#each history.slice(0, 3) as h, i (h + ':' + i)}
+            <button
+              type="button"
+              onclick={() => { promptInput = h; runCustomPrompt(); }}
+              class="text-[11px] px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-text max-w-[12rem] truncate"
+              title={h}
+            >{h}</button>
+          {/each}
+        </div>
+      {/if}
+      {#if crossRecents.length > 0}
+        <div class="flex flex-wrap items-center gap-1">
+          <span class="text-[10px] text-dim font-mono uppercase tracking-wider" title="from the Cmd+J chat sidebar">from chat:</span>
+          {#each crossRecents as r, i (r.prompt + ':' + i)}
+            <button
+              type="button"
+              onclick={() => { promptInput = r.prompt; runCustomPrompt(); }}
+              class="text-[11px] px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-subtext max-w-[12rem] truncate"
+              title={r.prompt}
+            >↗ {r.prompt}</button>
+          {/each}
+        </div>
+      {/if}
     </div>
   {/if}
 

@@ -68,6 +68,7 @@
   import ChatHistoryRail from '$lib/components/ChatHistoryRail.svelte';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { hasActiveEditor, insertAtCursor } from '$lib/stores/active-editor';
+  import { record as recordSharedPrompt, list as listSharedPrompts, type RecentPrompt } from '$lib/ai/recentPrompts';
 
   // AIOverlay — global AI panel. Slides in from the right on
   // desktop, becomes a bottom sheet on mobile. Triggered with
@@ -360,6 +361,24 @@
   $effect(() => {
     void messages.length;
     persistHistory(messages);
+  });
+
+  // Cross-source recents the chat overlay surfaces above the composer
+  // on a fresh thread — prompts the user wrote in the inline AI menu
+  // on a note. Computed once on open + after each send so a chat reply
+  // doesn't blank the recents until the user starts a new thread.
+  // Capped at 3 so it doesn't crowd the composer; source='inline' so
+  // we don't echo the user's own chat prompts.
+  let crossRecentInlinePrompts = $state<RecentPrompt[]>([]);
+  function refreshCrossRecentInlinePrompts() {
+    crossRecentInlinePrompts = listSharedPrompts({ source: 'inline', limit: 3 });
+  }
+  // Re-derive whenever the conversation state changes — opens a fresh
+  // thread → recents become visible again; sends a message → fine to
+  // leave as-is since the strip won't render until messages clears.
+  $effect(() => {
+    void messages.length;
+    refreshCrossRecentInlinePrompts();
   });
 
   // ── Long-term thread history (localStorage, LRU 30) ──────────────
@@ -1757,6 +1776,10 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
     abort?.abort();
     abort = new AbortController();
     const userMsg: ChatMessage = { role: 'user', content: text };
+    // Record to the shared cross-source recents log so the inline
+    // AI menu can offer this prompt as a chat-source recent next
+    // time the user opens it on a note. Non-fatal if storage fails.
+    recordSharedPrompt({ prompt: text, source: 'chat' });
     // Build the prelude — a system message containing the
     // active agent mode's posture, optionally the vault snapshot
     // (on non-note routes when attached), optionally retrieved
@@ -2961,6 +2984,27 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
               aria-label="Remove reference"
             >×</button>
           </span>
+        {/each}
+      </div>
+    {/if}
+
+    <!-- Cross-source recents — prompts the user wrote in the inline
+         AI menu on a note. Only renders when this is a fresh chat
+         (no messages yet) AND the composer is empty, so we don't
+         drift items in/out under the user's fingers mid-conversation.
+         Click a chip → loads it into the composer; the user reviews
+         then sends. We don't auto-send (the inline menu's context
+         may not apply here, so the user might want to edit first). -->
+    {#if !busy && !$sabbath && messages.length === 0 && input.trim().length === 0 && crossRecentInlinePrompts.length > 0}
+      <div class="border-t border-surface1 px-4 py-1.5 flex flex-wrap items-center gap-1 text-[11px] flex-shrink-0">
+        <span class="text-dim self-center" title="recent prompts from the inline AI menu in your notes">from notes:</span>
+        {#each crossRecentInlinePrompts as r, i (r.prompt + ':' + i)}
+          <button
+            type="button"
+            onclick={() => { input = r.prompt; inputEl?.focus(); }}
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-subtext max-w-[14rem] truncate"
+            title={r.notePath ? `from ${r.notePath}: ${r.prompt}` : r.prompt}
+          >↗ {r.prompt}</button>
         {/each}
       </div>
     {/if}
