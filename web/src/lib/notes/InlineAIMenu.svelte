@@ -29,6 +29,7 @@
   import { api, type ChatMessage } from '$lib/api';
   import { streamInlineAI } from '$lib/editor/inline-ai';
   import type { InlineAITriggerEvent } from '$lib/editor/inline-ai-trigger';
+  import { openAIOverlay } from '$lib/stores/ai-overlay';
 
   interface Props {
     event: InlineAITriggerEvent;
@@ -789,6 +790,38 @@
     }
   }
 
+  // ── send-to-chat bridge ─────────────────────────────────────────
+  // Escape hatch from inline edit → conversation. When a user's
+  // intent grows past "rewrite this passage" into "let's talk about
+  // this", the inline menu would force them to either commit a stub
+  // and continue elsewhere or close + reopen the Cmd+J overlay
+  // manually. This button seeds the overlay with the current note
+  // path, the selection (if any), and the prompt they typed, then
+  // closes the inline menu. The overlay opens with the prefilled
+  // composer; the user reviews and sends. Nothing is inserted into
+  // the doc by this path.
+  function sendToChat() {
+    if (busy) return;
+    const userPrompt = promptInput.trim();
+    // Build a seed that names the source (so the chat reply isn't
+    // contextless) and frames the conversation around what the user
+    // was about to do. Selection text is included verbatim when
+    // short; truncated with an ellipsis when long.
+    const sourceLine = `(From [[${notePath}]])`;
+    let body = userPrompt || 'Help me think about this.';
+    if (hasSelection) {
+      const sel = selectionText.length > 600
+        ? selectionText.slice(0, 600) + '…'
+        : selectionText;
+      body += '\n\nSelection:\n```\n' + sel + '\n```';
+    }
+    openAIOverlay({
+      text: sourceLine + '\n\n' + body,
+      send: false
+    });
+    onClose();
+  }
+
   /** If the menu was opened by typing "/ai", strip that text out of
    *  the doc before the AI insertion happens. Returns the new anchor
    *  position after the strip (one to the left of the trigger range
@@ -1021,6 +1054,16 @@
       class="px-1 py-0.5 rounded {useRecentJots ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
       title="include the last 7 days of daily notes"
     >+ 7d jots</button>
+    <!-- Hand-off to the global chat sidebar. Seeded with the note
+         path + selection + the prompt the user was typing; nothing
+         gets inserted into the doc by this path. -->
+    <button
+      type="button"
+      onclick={sendToChat}
+      disabled={busy}
+      class="px-1 py-0.5 rounded bg-surface0 text-dim hover:bg-surface1 hover:text-text"
+      title="open the Cmd+J chat sidebar pre-filled with this note + your prompt"
+    >↗ chat</button>
     <span class="ml-auto text-dim opacity-60 hidden sm:inline">
       ↑↓ {history.length > 0 ? 'history/pick' : 'pick'} · ⏎ run · Esc
     </span>
