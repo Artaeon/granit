@@ -22,6 +22,7 @@
   import TranslationDiff from '$lib/scripture/TranslationDiff.svelte';
   import WordStudy from '$lib/scripture/WordStudy.svelte';
   import TaggedVerse from '$lib/scripture/TaggedVerse.svelte';
+  import BibleBookmarksMode from '$lib/scripture/BibleBookmarksMode.svelte';
 
   // Four modes:
   //   read   — verse-of-the-day in big type, "another one" button,
@@ -161,21 +162,13 @@
     aiSearchQuery = '';
   }
 
-  // Bookmarks — saved bible passages, .granit/bible-bookmarks.json.
-  // Loaded lazily on first visit to the bookmarks tab; live-updates
-  // via WS state.changed (TUI bookmark UI lands later, same file).
-  let bookmarks = $state<BibleBookmark[]>([]);
-  let bookmarksLoaded = $state(false);
-
-  async function loadBookmarks() {
-    try {
-      const r = await api.listBibleBookmarks();
-      bookmarks = r.bookmarks;
-      bookmarksLoaded = true;
-    } catch (e) {
-      toast.error('failed to load bookmarks: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
+  // The bookmarks list (.granit/bible-bookmarks.json) lives inside
+  // $lib/scripture/BibleBookmarksMode.svelte — that component owns
+  // the lazy load + delete + save-note + its own WS subscription.
+  // The parent still owns the CREATE path (bookmarkPassage /
+  // bookmarkVerse below) because those are triggered from the
+  // bible-reader buttons; the panel auto-refreshes via WS when the
+  // server emits state.changed on the bookmark file.
 
   onMount(() => {
     load();
@@ -192,9 +185,9 @@
     });
     return onWsEvent((ev) => {
       if (ev.type !== 'state.changed') return;
-      if (ev.path === '.granit/bible-bookmarks.json' && bookmarksLoaded) {
-        loadBookmarks();
-      }
+      // .granit/bible-bookmarks.json is owned by BibleBookmarksMode
+      // (it carries its own onWsEvent listener); we only handle the
+      // prayer file here.
       if (ev.path === '.granit/prayer/intentions.json' && intentionsLoaded) {
         loadIntentions();
       }
@@ -216,7 +209,10 @@
         note: note || undefined
       });
       toast.success('bookmark saved');
-      if (bookmarksLoaded) await loadBookmarks();
+      // No explicit reload — the server emits state.changed on
+      // .granit/bible-bookmarks.json, and BibleBookmarksMode picks
+      // it up to refresh its list. Skips a redundant fetch when the
+      // panel isn't open yet.
     } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
@@ -235,29 +231,6 @@
         text: v.text
       });
       toast.success('verse bookmarked');
-      if (bookmarksLoaded) await loadBookmarks();
-    } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-
-  async function deleteBookmark(b: BibleBookmark) {
-    if (!confirm(`Remove bookmark "${b.reference}"?`)) return;
-    try {
-      await api.deleteBibleBookmark(b.id);
-      toast.success('bookmark removed');
-      await loadBookmarks();
-    } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-
-  // Note-edit happens inline; this commits the change.
-  async function saveBookmarkNote(b: BibleBookmark, note: string) {
-    try {
-      await api.patchBibleBookmark(b.id, { note });
-      toast.success('note saved');
-      await loadBookmarks();
     } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
@@ -265,7 +238,8 @@
 
   // Open a bookmark in the bible reader: load its chapter, scroll to
   // the first verse. The user can copy the saved snippet but the
-  // chapter view shows the canonical translation alongside.
+  // chapter view shows the canonical translation alongside. Called
+  // by BibleBookmarksMode via the onOpenBookmark prop.
   async function openBookmark(b: BibleBookmark) {
     mode = 'bible';
     await ensureBibleIndex();
@@ -1267,8 +1241,8 @@
       >Bible</button>
       <button
         class="px-4 py-2 {mode === 'bookmarks' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-        onclick={() => { mode = 'bookmarks'; if (!bookmarksLoaded) loadBookmarks(); }}
-      >Bookmarks {#if bookmarks.length > 0}<span class="text-[10px] opacity-70">{bookmarks.length}</span>{/if}</button>
+        onclick={() => (mode = 'bookmarks')}
+      >Bookmarks</button>
       <button
         class="px-4 py-2 {mode === 'intentions' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
         onclick={() => { mode = 'intentions'; if (!intentionsLoaded) loadIntentions(); }}
@@ -1953,50 +1927,10 @@
         </div>
       {/if}
     {:else if mode === 'bookmarks'}
-      {#if !bookmarksLoaded}
-        <div class="text-sm text-dim">loading bookmarks…</div>
-      {:else if bookmarks.length === 0}
-        <div class="bg-surface0 border border-surface1 rounded-lg p-6 text-center">
-          <p class="text-sm text-dim">
-            No bookmarks yet. Open a passage in the Bible tab and click <span class="text-primary">★ Bookmark</span> to save it.
-          </p>
-        </div>
-      {:else}
-        <ul class="space-y-3">
-          {#each bookmarks as b (b.id)}
-            <li class="bg-surface0 border border-surface1 rounded-lg p-3">
-              <div class="flex items-baseline gap-2 mb-2">
-                <button
-                  type="button"
-                  onclick={() => openBookmark(b)}
-                  class="text-sm text-primary font-mono hover:underline"
-                >{b.reference}</button>
-                <span class="flex-1"></span>
-                <button
-                  type="button"
-                  onclick={() => deleteBookmark(b)}
-                  class="text-xs text-dim hover:text-error"
-                  aria-label="Remove bookmark"
-                >remove</button>
-              </div>
-              <p class="text-sm text-text font-serif italic leading-relaxed">"{b.text}"</p>
-              <textarea
-                value={b.note ?? ''}
-                placeholder="Add a personal note…"
-                onblur={(e) => {
-                  const v = (e.currentTarget as HTMLTextAreaElement).value;
-                  if (v !== (b.note ?? '')) saveBookmarkNote(b, v);
-                }}
-                class="w-full mt-3 px-2 py-1.5 bg-mantle border border-surface1 rounded text-xs text-text placeholder-dim focus:outline-none focus:border-primary resize-y"
-                rows="2"
-              ></textarea>
-            </li>
-          {/each}
-        </ul>
-        <p class="text-[11px] text-dim italic mt-3">
-          Synced via <code>.granit/bible-bookmarks.json</code> — same file the granit TUI reads.
-        </p>
-      {/if}
+      <BibleBookmarksMode
+        active={mode === 'bookmarks'}
+        onOpenBookmark={openBookmark}
+      />
     {:else if mode === 'intentions'}
       {#if !intentionsLoaded}
         <div class="text-sm text-dim">loading prayer list…</div>
