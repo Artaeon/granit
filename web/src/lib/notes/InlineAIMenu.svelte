@@ -2,8 +2,9 @@
   InlineAIMenu — Notion-style cursor-anchored AI command palette.
 
   Single entry point for every AI action in the editor. Trigger via
-  Cmd-K or by typing `/ai` at the start of a line; both paths route
-  through inline-ai-trigger.ts which hands us a positioned event.
+  Cmd-/ (Ctrl-/ on non-Mac) or by typing `/ai` at the start of a line;
+  both paths route through inline-ai-trigger.ts which hands us a
+  positioned event.
 
   Behaviour
     • Prompt input at top — autofocused, single-line, Enter submits
@@ -954,8 +955,10 @@
 
   <!-- Action list — grouped by category. The flat index (i) still
        drives keyboard nav; headers between groups are zero-cost
-       visuals that don't affect highlightedIdx. -->
-  <ul class="max-h-[20rem] overflow-y-auto py-1" role="listbox">
+       visuals that don't affect highlightedIdx.
+       max-h adapts to viewport so a phone with the keyboard up
+       doesn't get a list that runs off-screen. -->
+  <ul class="max-h-[20rem] sm:max-h-[20rem] [max-height:50vh] overflow-y-auto py-1" role="listbox">
     {#each visiblePresets as p, i (p.id)}
       {@const showHeader = i === 0 || visiblePresets[i - 1].category !== p.category}
       {#if showHeader}
@@ -983,8 +986,10 @@
     {/if}
   </ul>
 
-  <!-- Context bar -->
-  <div class="flex items-center gap-1.5 px-2 py-1.5 border-t border-surface1 text-[10px] font-mono">
+  <!-- Context bar — wraps on narrow screens so the toggles don't
+       overflow the menu width; keyboard hint hides on touch since
+       there are no chords to read. -->
+  <div class="flex items-center flex-wrap gap-x-1.5 gap-y-1 px-2 py-1.5 border-t border-surface1 text-[10px] font-mono">
     <span class="text-dim">scope:</span>
     <!-- Note vs. section — exclusive toggle. The note button is
          always available; the section button only when the cursor
@@ -1016,7 +1021,7 @@
       class="px-1 py-0.5 rounded {useRecentJots ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
       title="include the last 7 days of daily notes"
     >+ 7d jots</button>
-    <span class="ml-auto text-dim opacity-60">
+    <span class="ml-auto text-dim opacity-60 hidden sm:inline">
       ↑↓ {history.length > 0 ? 'history/pick' : 'pick'} · ⏎ run · Esc
     </span>
   </div>

@@ -155,7 +155,7 @@
 
 {#if aiState && aiState.active && pos.visible}
   <div
-    class="fixed z-40 flex items-center gap-1 bg-base border border-surface2 rounded shadow-lg p-1 text-[11px] font-mono"
+    class="fixed z-40 flex flex-wrap items-center gap-1 bg-base border border-surface2 rounded shadow-lg p-1 text-[11px] font-mono max-w-[calc(100vw-1rem)]"
     style="left: {pos.left}px; top: {pos.top}px;"
     role="toolbar"
     aria-label="AI result actions"
@@ -165,7 +165,7 @@
       <button
         type="button"
         onclick={discard}
-        class="px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-text"
+        class="px-2 py-1 sm:px-1.5 sm:py-0.5 rounded bg-surface0 hover:bg-surface1 text-text"
         title="abort streaming"
       >Stop</button>
     {:else if aiState.error}
@@ -179,40 +179,40 @@
       <button
         type="button"
         onclick={retry}
-        class="px-1.5 py-0.5 rounded bg-primary text-on-primary font-medium hover:opacity-90"
+        class="px-2 py-1 sm:px-1.5 sm:py-0.5 rounded bg-primary text-on-primary font-medium hover:opacity-90"
         title="re-run the same request"
       >Retry</button>
       {#if aiState.text.length > 0}
         <button
           type="button"
           onclick={keep}
-          class="px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-text"
+          class="px-2 py-1 sm:px-1.5 sm:py-0.5 rounded bg-surface0 hover:bg-surface1 text-text"
           title="keep what made it through before the error"
         >Keep partial</button>
       {/if}
       <button
         type="button"
         onclick={discard}
-        class="px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-dim hover:text-text"
+        class="px-2 py-1 sm:px-1.5 sm:py-0.5 rounded bg-surface0 hover:bg-surface1 text-dim hover:text-text"
         title="throw it away"
       >Discard</button>
     {:else}
       <button
         type="button"
         onclick={keep}
-        class="px-1.5 py-0.5 rounded bg-primary text-on-primary font-medium hover:opacity-90"
+        class="px-2 py-1 sm:px-1.5 sm:py-0.5 rounded bg-primary text-on-primary font-medium hover:opacity-90"
         title="commit the AI result into the note (Tab)"
       >Keep</button>
       <button
         type="button"
         onclick={retry}
-        class="px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-text"
+        class="px-2 py-1 sm:px-1.5 sm:py-0.5 rounded bg-surface0 hover:bg-surface1 text-text"
         title="re-run the same request (⌘R)"
       >Try again</button>
       <button
         type="button"
         onclick={discard}
-        class="px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-dim hover:text-text"
+        class="px-2 py-1 sm:px-1.5 sm:py-0.5 rounded bg-surface0 hover:bg-surface1 text-dim hover:text-text"
         title="throw away the result (Esc)"
       >Discard</button>
       <!-- Follow-up — type a refinement instruction and Enter re-fires
@@ -238,7 +238,7 @@
           }
         }}
         placeholder="refine: shorter, add example, translate…"
-        class="flex-1 min-w-[8rem] bg-surface0 border border-surface1 rounded px-1.5 py-0.5 text-text placeholder-dim focus:outline-none focus:border-primary"
+        class="basis-full sm:basis-auto sm:flex-1 sm:min-w-[8rem] bg-surface0 border border-surface1 rounded px-2 py-1 sm:px-1.5 sm:py-0.5 text-text placeholder-dim focus:outline-none focus:border-primary"
       />
     {/if}
   </div>
