@@ -26,8 +26,53 @@ import { loadStored, saveStored } from '$lib/util/storage';
 
 const THREADS_KEY = 'granit.chat.threads';
 const PINNED_KEY = 'granit.chat.pinned';
+// Key for the IN-FLIGHT (this-tab-only) thread id. sessionStorage
+// scope so a duplicated tab gets its own conversation. Exported so
+// the AIOverlay component reads/writes via the same name the
+// dedicated /chat page would use.
+export const ACTIVE_THREAD_KEY = 'granit.chat.overlay.activeId';
 const MAX_THREADS = 30;
 const MAX_MESSAGES_PER_THREAD = 60;
+
+// loadActiveThreadId / persistActiveThreadId are the
+// sessionStorage shims for "which thread is this tab currently
+// editing". Empty string ('') means "no active thread, blank
+// canvas" — the writer normalises null/undefined to delete-the-key
+// rather than store the literal "null". Kept in sessionStorage
+// rather than localStorage so a second tab on the same browser
+// doesn't accidentally clobber the first tab's draft.
+export function loadActiveThreadId(): string {
+  if (typeof sessionStorage === 'undefined') return '';
+  try {
+    return sessionStorage.getItem(ACTIVE_THREAD_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function persistActiveThreadId(id: string): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    if (id) sessionStorage.setItem(ACTIVE_THREAD_KEY, id);
+    else sessionStorage.removeItem(ACTIVE_THREAD_KEY);
+  } catch {
+    // quota / privacy mode / storage disabled — silently drop.
+    // A failed persist means the draft id won't survive a reload;
+    // the user's actual messages are still in component state.
+  }
+}
+
+// deriveLibraryLabel seeds the "save this prompt to library" input
+// with a 4-word, 32-char-max preview of the message content so the
+// user has something to edit rather than an empty field. Most
+// labels are a quick tweak of the seed.
+//
+// Returns "" for empty / whitespace-only input — the caller's form
+// submit gates on a non-empty label already, so the seed empty is
+// a valid intermediate state.
+export function deriveLibraryLabel(content: string): string {
+  return content.trim().split(/\s+/).filter(Boolean).slice(0, 4).join(' ').slice(0, 32);
+}
 
 export interface ChatThread {
   /** Stable id — base36 of createdAt millis. */

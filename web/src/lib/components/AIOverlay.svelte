@@ -60,7 +60,10 @@
     deleteThread,
     togglePin,
     isPinned,
-    deriveThreadTitle
+    deriveThreadTitle,
+    loadActiveThreadId,
+    persistActiveThreadId,
+    deriveLibraryLabel
   } from '$lib/chat/history';
   import { retrieveForRag, type RagHit } from '$lib/chat/rag';
   import {
@@ -358,10 +361,10 @@
   let savingLibraryBusy = $state(false);
   function openSaveLibrary(idx: number, content: string) {
     savingLibraryIdx = idx;
-    // Seed label with first few words so the user has something to
-    // edit rather than starting from blank — most labels are a quick
-    // tweak of the first phrase.
-    savingLibraryLabel = content.trim().split(/\s+/).slice(0, 4).join(' ').slice(0, 32);
+    // Seed label with the first few words so the user has something
+    // to edit rather than starting from blank — most labels are a
+    // quick tweak of the seed. Helper lives in chat/history.
+    savingLibraryLabel = deriveLibraryLabel(content);
   }
   function cancelSaveLibrary() {
     savingLibraryIdx = null;
@@ -399,18 +402,10 @@
   // doesn't have to remember to "save". A "new thread" button stashes
   // the current state and starts fresh; the picker below restores
   // any past thread.
-  const ACTIVE_THREAD_KEY = 'granit.chat.overlay.activeId';
-  function loadActiveThreadId(): string {
-    if (typeof sessionStorage === 'undefined') return '';
-    try { return sessionStorage.getItem(ACTIVE_THREAD_KEY) ?? ''; } catch { return ''; }
-  }
-  function persistActiveThreadId(id: string) {
-    if (typeof sessionStorage === 'undefined') return;
-    try {
-      if (id) sessionStorage.setItem(ACTIVE_THREAD_KEY, id);
-      else sessionStorage.removeItem(ACTIVE_THREAD_KEY);
-    } catch {}
-  }
+  // Active-thread-id persistence shims + the key constant live in
+  // $lib/chat/history alongside the rest of the thread store. Same
+  // sessionStorage scope (per-tab) so a duplicated tab gets its
+  // own draft conversation.
   let activeThreadId = $state<string>(loadActiveThreadId());
   let historyOpen = $state(false);
   let historyRailRef: ChatHistoryRail | undefined = $state();
