@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, fmtDateISO, type Goal, type Milestone, type Task } from '$lib/api';
+  import { api, fmtDateISO, type Goal, type Milestone, type Task, type Scripture } from '$lib/api';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -48,6 +48,97 @@
 
   // Reviews — buffer for "Log review".
   let reviewBuf = $state('');
+
+  // ── Topical verse for this goal ─────────────────────────────────
+  // Surfaces a scripture verse whose topic matches the goal — either
+  // via category (life-area defaults below) or a tag whose name lines
+  // up with a known catalogue topic. Walks the same /scripture topic
+  // index ScriptureWidget / VerseForMoodWidget use, so the user gets
+  // a consistent scripture surface across the app without a separate
+  // backend.
+  //
+  // Category map is intentionally short — picks ONE topic per
+  // category that the catalogue carries. If we ever want richer
+  // overlap, push it into a config; today the simplicity is the
+  // feature.
+  const CATEGORY_TO_TOPIC: Record<string, string> = {
+    spiritual: 'faith',
+    health: 'discipline',
+    career: 'diligence',
+    learning: 'wisdom',
+    relationships: 'love',
+    finance: 'generosity',
+    creative: 'creation'
+    // 'other' deliberately omitted — better no verse than a misaligned one.
+  };
+
+  let verses = $state<Scripture[]>([]);
+  let verseCursor = $state(0);
+  let verseTopic = $state<string | null>(null);
+  let verseLoading = $state(false);
+
+  // Resolve a candidate topic from the goal. Tags win over category
+  // because a user-set tag is a stronger signal of intent than the
+  // coarse life-area bucket. Match is case-insensitive against the
+  // tag string itself — the catalogue topics are lowercase tokens
+  // like "faith", "patience", so a tag "patience" lines up directly.
+  let goalTopic = $derived.by(() => {
+    if (!goal) return null;
+    const tags = (goal.tags ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean);
+    for (const t of tags) {
+      // The known-topic set is the union of CATEGORY_TO_TOPIC values
+      // plus a few extras that appear in scripture.Defaults. Cheap
+      // local guard — listScriptures() returns empty for unknown
+      // topics anyway, so a miss here just costs one round-trip.
+      if (KNOWN_TOPICS.has(t)) return t;
+    }
+    if (goal.category && CATEGORY_TO_TOPIC[goal.category]) {
+      return CATEGORY_TO_TOPIC[goal.category];
+    }
+    return null;
+  });
+
+  // Hand-curated list of topics known to exist in scripture.Defaults.
+  // Used to gate tag-based lookups so we don't burn a round-trip on
+  // every random tag. Drawn from internal/scripture/scripture.go.
+  const KNOWN_TOPICS: ReadonlySet<string> = new Set([
+    'anxiety', 'fear', 'hope', 'patience', 'gratitude', 'joy', 'grief',
+    'anger', 'suffering', 'rest', 'peace', 'guidance', 'faith', 'love',
+    'wisdom', 'discipline', 'diligence', 'generosity', 'creation',
+    'forgiveness', 'humility', 'mercy', 'prayer', 'trust', 'endurance',
+    'courage', 'contentment', 'friendship'
+  ]);
+
+  // Fetch verses when the resolved topic changes. Ignored if no
+  // topic resolves; verses array stays empty and the section hides.
+  $effect(() => {
+    const topic = goalTopic;
+    if (!topic) {
+      verses = [];
+      verseTopic = null;
+      verseCursor = 0;
+      return;
+    }
+    if (topic === verseTopic && verses.length > 0) return;
+    verseLoading = true;
+    verseTopic = topic;
+    verseCursor = 0;
+    api.listScriptures(topic)
+      .then((r) => {
+        verses = r.scriptures;
+      })
+      .catch(() => {
+        verses = [];
+      })
+      .finally(() => {
+        verseLoading = false;
+      });
+  });
+
+  function nextVerse() {
+    if (verses.length <= 1) return;
+    verseCursor = (verseCursor + 1) % verses.length;
+  }
 
   // ── Linked tasks + burn-up ───────────────────────────────────────
   // Tasks carry a free goalId reference; we fetch all and filter
@@ -985,6 +1076,37 @@
             </ul>
           {/if}
         </section>
+
+        <!-- Verse for this goal — silently hidden when no topic resolves
+             (no category mapping, no matching tag). Single line of dense
+             chrome; the "next" walk-through reuses the same per-topic
+             cursor pattern VerseForMoodWidget uses on the dashboard. -->
+        {#if verses.length > 0}
+          {@const v = verses[verseCursor]}
+          <section>
+            <div class="flex items-baseline justify-between mb-1.5">
+              <h3 class="text-xs uppercase tracking-wider text-dim font-medium">
+                Verse for this goal{#if verseTopic}<span class="opacity-70"> · {verseTopic}</span>{/if}
+              </h3>
+              {#if verses.length > 1}
+                <div class="flex items-center gap-2 text-[11px]">
+                  <span class="text-dim">{verseCursor + 1}/{verses.length}</span>
+                  <button onclick={nextVerse} class="text-secondary hover:underline">next ↻</button>
+                </div>
+              {/if}
+            </div>
+            <blockquote class="text-sm text-text leading-relaxed font-serif italic px-3 py-2 border-l-2 border-secondary/40 bg-surface0/50 rounded-r">
+              "{v.text}"
+              {#if v.source}
+                <cite class="block mt-1 text-xs text-subtext not-italic">— {v.source}</cite>
+              {/if}
+            </blockquote>
+          </section>
+        {:else if verseLoading}
+          <section>
+            <p class="text-xs text-dim italic">Loading verse…</p>
+          </section>
+        {/if}
 
         <!-- Notes -->
         <section>
