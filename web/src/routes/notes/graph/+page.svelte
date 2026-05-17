@@ -46,6 +46,27 @@
   let dragOriginPanX = 0;
   let dragOriginPanY = 0;
 
+  // Multi-touch tracking for pinch-zoom on mobile. Wheel events don't
+  // fire on touch devices, so without pinch the graph is panned-only
+  // on phones — useless on a 5000-node vault where the user needs to
+  // zoom into a cluster. We track the active pointers in a Map keyed
+  // by pointerId; when exactly two are down we drop the single-pointer
+  // pan into pinch mode and recompute zoom from their distance ratio.
+  // Single-pointer pan resumes the moment one finger lifts.
+  const pointers = new Map<number, { x: number; y: number }>();
+  let pinching = false;
+  let pinchStartDist = 0;
+  let pinchStartZoom = 1;
+  // The midpoint of the two fingers (in screen pixels relative to the
+  // SVG's bounding box) at the moment pinch starts. We anchor the zoom
+  // around this point so the spot under the user's fingers stays put
+  // as they spread / squeeze.
+  let pinchAnchorX = 0;
+  let pinchAnchorY = 0;
+  // panX/panY at pinch start, for anchor math during pinch.
+  let pinchStartPanX = 0;
+  let pinchStartPanY = 0;
+
   // Viewport dims. SVG is set to fill its container; we observe its
   // ResizeObserver to get current width/height so the centring force
   // and the initial node placement work in real pixels.
@@ -335,23 +356,92 @@
 
   // --- pan + zoom handlers ----------------------------------------------
 
+  // Helper: pinch math. Distance between the two active pointers in
+  // screen pixels (used to derive the scale factor). Returns 0 when
+  // we don't have exactly two pointers down — caller branches.
+  function pointerPairDistance(): number {
+    if (pointers.size !== 2) return 0;
+    const [a, b] = Array.from(pointers.values());
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.hypot(dx, dy);
+  }
+  function pointerPairMidpoint(): { x: number; y: number } {
+    if (pointers.size !== 2) return { x: 0, y: 0 };
+    const [a, b] = Array.from(pointers.values());
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+
   function onPointerDown(ev: PointerEvent) {
-    if (ev.button !== 0) return;
+    // Touch / pen come through as button === 0 — keep them; only skip
+    // secondary mouse buttons (right-click, middle-click).
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    svgEl?.setPointerCapture(ev.pointerId);
+
+    if (pointers.size >= 2) {
+      // Two fingers: enter pinch mode. Drop any pan-in-progress so the
+      // graph doesn't lurch when the second finger lands.
+      dragging = false;
+      pinching = true;
+      pinchStartDist = pointerPairDistance();
+      pinchStartZoom = zoom;
+      pinchStartPanX = panX;
+      pinchStartPanY = panY;
+      const mid = pointerPairMidpoint();
+      const rect = svgEl?.getBoundingClientRect();
+      pinchAnchorX = mid.x - (rect?.left ?? 0);
+      pinchAnchorY = mid.y - (rect?.top ?? 0);
+      return;
+    }
+
+    // Single pointer: pan as before.
     dragging = true;
     dragStartX = ev.clientX;
     dragStartY = ev.clientY;
     dragOriginPanX = panX;
     dragOriginPanY = panY;
-    svgEl?.setPointerCapture(ev.pointerId);
   }
   function onPointerMove(ev: PointerEvent) {
+    const tracked = pointers.get(ev.pointerId);
+    if (tracked) {
+      tracked.x = ev.clientX;
+      tracked.y = ev.clientY;
+    }
+
+    if (pinching) {
+      // Recompute zoom from distance ratio and anchor the scale around
+      // the pinch midpoint (screen-local pixels). Same anchor-math as
+      // the wheel handler — the canvas point under the anchor stays
+      // under the anchor as the scale changes.
+      const dist = pointerPairDistance();
+      if (dist <= 0 || pinchStartDist <= 0) return;
+      const newZoom = Math.max(0.2, Math.min(5, pinchStartZoom * (dist / pinchStartDist)));
+      const factor = newZoom / pinchStartZoom;
+      panX = pinchAnchorX - (pinchAnchorX - pinchStartPanX) * factor;
+      panY = pinchAnchorY - (pinchAnchorY - pinchStartPanY) * factor;
+      zoom = newZoom;
+      return;
+    }
+
     if (!dragging) return;
     panX = dragOriginPanX + (ev.clientX - dragStartX);
     panY = dragOriginPanY + (ev.clientY - dragStartY);
   }
   function onPointerUp(ev: PointerEvent) {
-    dragging = false;
+    pointers.delete(ev.pointerId);
     svgEl?.releasePointerCapture(ev.pointerId);
+    if (pointers.size < 2 && pinching) {
+      // Lifting one finger ends the pinch. If a single finger remains
+      // we DON'T resume pan (would feel like an accidental shove
+      // right when the user finishes their zoom). They tap-and-drag
+      // again to pan.
+      pinching = false;
+      dragging = false;
+    }
+    if (pointers.size === 0) {
+      dragging = false;
+    }
   }
   function onWheel(ev: WheelEvent) {
     ev.preventDefault();
@@ -452,7 +542,7 @@
     {:else}
       <svg
         bind:this={svgEl}
-        class="absolute inset-0 h-full w-full cursor-grab"
+        class="absolute inset-0 h-full w-full cursor-grab graph-canvas"
         class:cursor-grabbing={dragging}
         onpointerdown={onPointerDown}
         onpointermove={onPointerMove}
@@ -523,4 +613,13 @@
      plugin. */
   :global(.cursor-grab) { cursor: grab; }
   :global(.cursor-grabbing) { cursor: grabbing; }
+
+  /* Two-finger pinch-zoom + single-finger pan need full pointer-event
+     control; without touch-action:none the browser intercepts the
+     gesture for native page-scroll / page-zoom and the graph never
+     sees the second pointer at all. Scoped to the canvas so the rest
+     of the page (filter dropdowns) still uses normal touch behaviour. */
+  .graph-canvas {
+    touch-action: none;
+  }
 </style>
