@@ -227,10 +227,12 @@
     </p>
   </header>
 
-  <!-- Mobile: horizontal scroller. Desktop: vertical scroller. The
-       parent layout switches between flex-row (mobile, top strip) and
-       flex-row split (desktop, side rail) — see calendar/+page.svelte. -->
-  <div class="flex-1 overflow-x-auto md:overflow-x-visible md:overflow-y-auto">
+  <!-- Single scroll axis on every form factor — vertical. The mobile
+       parent (calendar/+page.svelte) now gives this aside a real
+       clamp()-bounded height, so a vertical scroller shows 5–6 cards
+       at once instead of fighting a 128px horizontal strip where only
+       one card fit at a time. -->
+  <div class="flex-1 overflow-y-auto">
     {#if loading && filtered.length === 0}
       <div class="p-4 text-xs text-dim italic">loading…</div>
     {:else if filtered.length === 0}
@@ -238,7 +240,7 @@
         Nothing for today. P1–P3 tasks and tasks due today or overdue surface here.
       </div>
     {:else}
-      <ul class="flex flex-row md:flex-col gap-1.5 md:gap-1 p-2">
+      <ul class="flex flex-col gap-1 p-2">
         {#each filtered as t (t.id)}
           {@const tone = priorityTone(t.priority)}
           {@const scheduled = isToday(t.scheduledStart)}
@@ -254,8 +256,7 @@
               ? `scheduled at ${fmtScheduled(t.scheduledStart)} — drag on the grid to move`
               : 'drag onto the grid to schedule'}
             class="group flex items-stretch gap-2 px-2 py-1.5 rounded-md bg-base text-xs transition-colors
-              {scheduled ? 'opacity-45 cursor-default' : 'cursor-grab active:cursor-grabbing hover:bg-surface0'}
-              flex-shrink-0 md:flex-shrink min-w-[200px] md:min-w-0"
+              {scheduled ? 'opacity-45 cursor-default' : 'cursor-grab active:cursor-grabbing hover:bg-surface0'}"
             style="touch-action: {scheduled ? 'auto' : 'none'};"
           >
             <!-- Priority accent bar — vertical strip on the left in the

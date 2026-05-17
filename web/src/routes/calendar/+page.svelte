@@ -1240,19 +1240,19 @@
   </Drawer>
 
   <div class="flex-1 flex flex-col min-w-0">
-    <header class="flex items-center gap-1 sm:gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 flex-wrap">
+    <header class="flex items-center gap-1 px-2 sm:px-3 py-1.5 border-b border-surface1 flex-shrink-0 flex-wrap">
       <button
         onclick={() => (filterDrawerOpen = true)}
         aria-label="filters"
-        class="md:hidden w-9 h-9 flex items-center justify-center text-subtext hover:bg-surface0 rounded"
+        class="md:hidden w-8 h-8 flex items-center justify-center text-subtext hover:bg-surface0 rounded"
       >
         <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M3 6h18M6 12h12M9 18h6" stroke-linecap="round" />
         </svg>
       </button>
-      <button onclick={gotoToday} class="px-2.5 py-1.5 text-sm bg-surface0 border border-surface1 rounded hover:border-primary">today</button>
-      <button onclick={prev} aria-label="prev" class="w-8 h-8 flex items-center justify-center text-sm bg-surface0 border border-surface1 rounded hover:border-primary">‹</button>
-      <button onclick={next} aria-label="next" class="w-8 h-8 flex items-center justify-center text-sm bg-surface0 border border-surface1 rounded hover:border-primary">›</button>
+      <button onclick={gotoToday} class="px-2 py-1 text-xs sm:text-sm bg-surface0 border border-surface1 rounded hover:border-primary">today</button>
+      <button onclick={prev} aria-label="prev" class="w-7 h-7 flex items-center justify-center text-sm bg-surface0 border border-surface1 rounded hover:border-primary">‹</button>
+      <button onclick={next} aria-label="next" class="w-7 h-7 flex items-center justify-center text-sm bg-surface0 border border-surface1 rounded hover:border-primary">›</button>
       <h2 class="text-sm sm:text-base text-text font-medium truncate">{headline}</h2>
       <!-- Jump to a specific date. Hidden on the smallest screens
            where the header is already crowded; the prev/next +
@@ -1314,7 +1314,10 @@
            chips/cell with bigger text — better at-a-glance reading on
            lighter months. Persisted per-device. -->
       {#if view === 'month'}
-        <div class="hidden md:flex bg-surface0 border border-surface1 rounded overflow-hidden text-[11px]" title="Month grid density">
+        <!-- Density toggle was desktop-only (hidden md:flex). Mobile
+             users on a busy month benefit from compact even more than
+             desktop ones — show it on phones too. -->
+        <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-[11px]" title="Month grid density">
           <button
             class="px-2 py-1.5 {monthDensity === 'comfy' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
             onclick={() => (monthDensity = 'comfy')}
@@ -1337,7 +1340,7 @@
           onclick={() => (view = 'day')}
         >Day</button>
         <button
-          class="px-2 sm:px-3 py-1.5 {view === 'workweek' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'} hidden lg:inline-block"
+          class="px-2 sm:px-3 py-1.5 {view === 'workweek' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'} hidden sm:inline-block"
           onclick={() => (view = 'workweek')}
           title="Mon–Fri only (Shift+W)"
         >5d</button>
@@ -1415,12 +1418,16 @@
       ontouchend={onTouchEnd}
     >
       {#if planMode && (view === 'day' || view === 'week' || view === 'workweek')}
-        <!-- Plan layout: backlog on the left (desktop) / top
-             (mobile horizontal scroller). The grid takes the rest.
-             onTaskDrop is what wires backlog → grid drop semantics;
-             slot drag-to-create stays on via onSlotRange. -->
+        <!-- Plan layout: backlog on the left (desktop) / top scroller
+             (mobile). The mobile strip used to be 128px tall and read
+             one task per line in a tight horizontal scroller — too
+             cramped to scan, too short to drag from. Bumped to 44dvh
+             on phones (clamped at 320px) so the backlog feels like a
+             real surface, not a footnote. AI button + 4-5 cards visible
+             before scroll. The grid keeps the rest of the viewport
+             via flex-1. -->
         <div class="h-full flex flex-col md:flex-row gap-2 md:gap-3 min-h-0">
-          <aside class="md:w-72 md:flex-shrink-0 h-32 md:h-auto overflow-x-auto md:overflow-visible">
+          <aside class="md:w-72 md:flex-shrink-0 md:h-auto flex-shrink-0 overflow-hidden md:overflow-visible" style="height: clamp(220px, 44dvh, 320px);">
             <TaskBacklog onRefresh={load} />
           </aside>
           <div class="flex-1 min-w-0 min-h-0">
