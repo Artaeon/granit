@@ -879,6 +879,69 @@
     else toast.info(`${correct} / ${drill.hidden.size} correct`);
   }
 
+  // ─── Spaced-repetition scheduling ─────────────────────────────────
+  // After a drill the user can schedule a 5-step review series on the
+  // calendar: day 1, 3, 7, 14, 30 from today. Each step is a scheduled
+  // task anchored to today's daily note (we can't predict a future
+  // daily note's existence, and the calendar surfaces task_scheduled
+  // rows by scheduledStart, not by notePath). The user lands on a
+  // calendar row at 09:00 on each offset day with a one-line task to
+  // review the verse — text body carries the verse so the calendar
+  // hover already shows what to recite.
+  const REVIEW_INTERVALS = [1, 3, 7, 14, 30];
+
+  // Scheduling can be busy for a moment (5 sequential POSTs). Track
+  // state so the button can disable + show progress without firing
+  // duplicate series.
+  let schedulingReview = $state(false);
+
+  async function scheduleVerseReview(verse: Scripture) {
+    if (schedulingReview) return;
+    schedulingReview = true;
+    try {
+      // Daily note ensures today's daily exists — the task store
+      // requires a real notePath. Failing to ensure → no anchor →
+      // no series.
+      const today = await api.daily('today');
+      const baseDate = new Date();
+      baseDate.setHours(9, 0, 0, 0);
+      const label = verse.source ? verse.source : verse.text.slice(0, 40) + '…';
+      const verseBody = verse.source
+        ? `${verse.source}: "${verse.text}"`
+        : `"${verse.text}"`;
+      let scheduled = 0;
+      for (const days of REVIEW_INTERVALS) {
+        const at = new Date(baseDate.getTime() + days * 86_400_000);
+        try {
+          await api.createTask({
+            notePath: today.path,
+            text: `Review verse · ${label} (day ${days})\n${verseBody}`,
+            scheduledStart: at.toISOString(),
+            durationMinutes: 5,
+            tags: ['memory-verse']
+          });
+          scheduled++;
+        } catch (e) {
+          // Surface the failure but keep going — partial schedule is
+          // better than dropping the whole series. The toast at the
+          // end summarises the outcome either way.
+          console.error('Failed to schedule review day', days, e);
+        }
+      }
+      if (scheduled === REVIEW_INTERVALS.length) {
+        toast.success(`Review scheduled — ${scheduled} sessions over the next 30 days.`);
+      } else if (scheduled > 0) {
+        toast.info(`Scheduled ${scheduled} of ${REVIEW_INTERVALS.length} reviews — some failed.`);
+      } else {
+        toast.error('Failed to schedule review series.');
+      }
+    } catch (e) {
+      toast.error('schedule failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      schedulingReview = false;
+    }
+  }
+
   let filteredAll = $derived.by(() => {
     const term = q.trim().toLowerCase();
     if (!term) return all;
@@ -1367,6 +1430,16 @@
               onclick={startDrill}
               class="px-4 py-2 text-sm bg-primary text-on-primary rounded"
             >Next verse →</button>
+            <!-- Drop a 5-session review series on the calendar at 1/3/
+                 7/14/30-day offsets. Visible only post-reveal because
+                 scheduling before checking the drill conflates
+                 "I'm learning this" with "I've shown I know this". -->
+            <button
+              onclick={() => drill && scheduleVerseReview(drill.verse)}
+              disabled={schedulingReview || !drill}
+              class="px-4 py-2 text-sm bg-surface0 border border-surface1 rounded hover:border-secondary text-subtext hover:text-text disabled:opacity-50"
+              title="Schedule review on day 1, 3, 7, 14, and 30 from today"
+            >{schedulingReview ? 'scheduling…' : 'Schedule review ↻'}</button>
           {/if}
           <button
             onclick={startDrill}
