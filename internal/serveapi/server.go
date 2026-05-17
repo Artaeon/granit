@@ -225,6 +225,12 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/vault", s.handleVault)
 		r.Get("/api/v1/notes", s.handleListNotes)
 		r.Post("/api/v1/notes", s.handleCreateNote)
+		// Concept-graph endpoint — whole-vault wikilink network shaped
+		// for the force-directed view at /notes/graph. Must register
+		// BEFORE the `/api/v1/notes/*` wildcard so chi matches the
+		// literal `graph` segment instead of treating it as a note
+		// path. Lives in handlers_notes_graph.go.
+		r.Get("/api/v1/notes/graph", s.handleNotesGraph)
 		r.Get("/api/v1/notes/*", s.handleGetNote)
 		r.Put("/api/v1/notes/*", s.handlePutNote)
 		r.Delete("/api/v1/notes/*", s.handleDeleteNote)

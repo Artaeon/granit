@@ -229,6 +229,7 @@
       label: 'Knowledge',
       items: [
         { href: '/notes', label: 'Notes', icon: 'notes' },
+        { href: '/notes/graph', label: 'Graph', icon: 'graph' },
         { href: '/search', label: 'Search', icon: 'search' },
         { href: '/books', label: 'Books', icon: 'books', moduleId: 'books' },
         { href: '/templates', label: 'Templates', icon: 'templates' },
@@ -457,7 +458,19 @@
   });
 
   let activeNav = $derived.by(() => {
-    return nav.find((n) => n.href === $page.url.pathname || (n.href !== '/' && $page.url.pathname.startsWith(n.href)));
+    // Longest-href wins so a sub-route (e.g. /notes/graph) doesn't
+    // resolve to its parent (/notes) just because the array order
+    // puts the parent first. Without this, the mobile header label
+    // and the active-pill highlight would both stick on the parent
+    // when the user is actually on the child route.
+    const pathname = $page.url.pathname;
+    let best: NavItem | undefined;
+    for (const n of nav) {
+      if (n.href === pathname || (n.href !== '/' && pathname.startsWith(n.href + '/'))) {
+        if (!best || n.href.length > best.href.length) best = n;
+      }
+    }
+    return best;
   });
   let title = $derived(activeNav?.label ?? 'everything');
   let showBackToSection = $derived(
@@ -482,7 +495,7 @@
 </svelte:head>
 
 {#snippet navItem(item: NavItem, isCompact: boolean, opts: { showPinAction?: boolean } = {})}
-  {@const active = $page.url.pathname === item.href || (item.href !== '/' && $page.url.pathname.startsWith(item.href))}
+  {@const active = activeNav?.href === item.href}
   {@const badge = item.href === '/tasks' && overdueTaskCount > 0
     ? { count: overdueTaskCount, tone: 'error' as const, label: `${overdueTaskCount} overdue` }
     : item.href === '/calendar' && todayEventCount > 0

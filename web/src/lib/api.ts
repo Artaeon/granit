@@ -61,6 +61,29 @@ export interface NoteList {
   offset: number;
 }
 
+// Concept-graph payload — whole-vault wikilink network shaped for the
+// force-directed view at /notes/graph. `degree` is the GLOBAL degree
+// (computed before the limit-clip on the server) so a node's visual
+// size matches how connected it really is, even when half its
+// neighbours fell off the visible set.
+export interface NotesGraphNode {
+  id: string;
+  title: string;
+  path: string;
+  degree: number;
+  tags?: string[];
+}
+
+export interface NotesGraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface NotesGraph {
+  nodes: NotesGraphNode[];
+  edges: NotesGraphEdge[];
+}
+
 export interface VaultInfo {
   root: string;
   notes: number;
@@ -1358,6 +1381,20 @@ export const api = {
     return req<NoteList>(`/notes${suffix}`);
   },
   getNote: (path: string) => req<Note>(`/notes/${encodeURI(path)}`),
+  // Concept-graph fetch — backs the force-directed view at /notes/graph.
+  // Filters compose: a tag+folder pair narrows to notes that match
+  // BOTH (plus their direct neighbours, server-side). `limit` caps
+  // node count and the server keeps the highest-degree nodes when
+  // clipping so the visible structure is the anchored part of the
+  // web, not 300 random orphans.
+  notesGraph: (params: { tag?: string; folder?: string; limit?: number } = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== '') qs.set(k, String(v));
+    }
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return req<NotesGraph>(`/notes/graph${suffix}`);
+  },
   putNote: (path: string, body: { frontmatter?: Record<string, unknown>; body: string }, etag?: string) => {
     const headers: Record<string, string> = {};
     if (etag) headers['If-Match'] = etag;

@@ -130,6 +130,19 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
     <path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M9 13h6M9 17h4"/>
   </svg>
+{:else if name === 'graph'}
+  <!-- Concept graph — three nodes joined by two edges, reading as
+       "this is a network view of your notes". Distinct from /notes
+       (document icon) and /tags (tag icon): the three orbiting dots
+       around a centre signal a hand-laid web rather than a hierarchy. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/>
+    <circle cx="5" cy="5" r="2"/>
+    <circle cx="19" cy="5" r="2"/>
+    <circle cx="5" cy="19" r="2"/>
+    <circle cx="19" cy="19" r="2"/>
+    <path d="M6.5 6.5l4 4M17.5 6.5l-4 4M6.5 17.5l4-4M17.5 17.5l-4-4"/>
+  </svg>
 {:else if name === 'books'}
   <!-- Open book — two facing pages with a centre crease. Reads as
        "long-form reading" rather than the file/note metaphor; the
