@@ -520,12 +520,22 @@
         <div></div>
         {#each days as d}
           {@const isToday = isSameDay(d, new Date())}
+          {@const dayKey = fmtDateISO(d)}
+          {@const dayList = eventsByDay.get(dayKey) ?? []}
+          {@const dayCount = dayList.length}
           <div class="px-1 py-2 border-l border-surface1 text-center">
             <div class="text-[10px] {isToday ? 'text-primary' : 'text-dim'} uppercase tracking-wider">{d.toLocaleDateString(undefined, { weekday: 'short' })}</div>
             {#if isToday}
               <div class="mt-0.5 inline-flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary text-on-primary font-semibold text-base sm:text-lg">{d.getDate()}</div>
             {:else}
               <div class="text-lg sm:text-xl text-text">{d.getDate()}</div>
+            {/if}
+            <!-- Density chip: count of items for the day, dim and
+                 inline so a glance at the header reveals which day
+                 of the visible window is loaded. Hidden on 0 to
+                 keep empty days quiet. -->
+            {#if dayCount > 0}
+              <div class="mt-0.5 text-[9px] font-mono tabular-nums {isToday ? 'text-primary/80' : 'text-dim'}">{dayCount}</div>
             {/if}
           </div>
         {/each}
