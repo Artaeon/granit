@@ -136,7 +136,7 @@
   {#if loadingList}
     <div class="text-dim text-xs">Loading translations…</div>
   {:else if error}
-    <div class="text-red-300 text-xs">{error}</div>
+    <div class="text-error text-xs">{error}</div>
   {:else if available.length === 0}
     <div class="text-dim text-xs italic">No translations bundled.</div>
   {:else}

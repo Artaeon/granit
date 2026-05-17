@@ -88,11 +88,11 @@
     <div class="text-dim text-xs">Loading tagged text…</div>
   {:else if notBundled}
     <div class="text-xs text-dim space-y-1">
-      <div class="text-amber-300">Tagged bible not bundled.</div>
+      <div class="text-warning">Tagged bible not bundled.</div>
       <div>Run <code class="text-text">scripts/fetch-strongs.sh</code> and rebuild to enable word study.</div>
     </div>
   {:else if error}
-    <div class="text-red-300 text-xs">{error}</div>
+    <div class="text-error text-xs">{error}</div>
   {:else if shown.length === 0}
     <div class="text-dim text-xs italic">No tagged verses to display.</div>
   {:else}

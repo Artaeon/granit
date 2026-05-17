@@ -80,10 +80,10 @@
     <div class="flex items-baseline gap-2 min-w-0">
       <span
         class="text-[10px] uppercase tracking-wider font-mono px-1.5 py-0.5 rounded border"
-        class:border-blue-400={language(strongsCode) === 'greek'}
-        class:text-blue-300={language(strongsCode) === 'greek'}
-        class:border-amber-400={language(strongsCode) === 'hebrew'}
-        class:text-amber-300={language(strongsCode) === 'hebrew'}
+        class:border-info={language(strongsCode) === 'greek'}
+        class:text-info={language(strongsCode) === 'greek'}
+        class:border-warning={language(strongsCode) === 'hebrew'}
+        class:text-warning={language(strongsCode) === 'hebrew'}
         class:border-surface2={language(strongsCode) === 'unknown'}
         class:text-dim={language(strongsCode) === 'unknown'}
       >{strongsCode}</span>
@@ -108,11 +108,11 @@
     <div class="text-dim text-xs">Loading…</div>
   {:else if notBundled}
     <div class="text-xs text-dim space-y-1">
-      <div class="text-amber-300">Strong's lexicon not bundled.</div>
+      <div class="text-warning">Strong's lexicon not bundled.</div>
       <div>Run <code class="text-text">scripts/fetch-strongs.sh</code> and rebuild to enable word study.</div>
     </div>
   {:else if error}
-    <div class="text-red-300 text-xs">{error}</div>
+    <div class="text-error text-xs">{error}</div>
   {:else if entry}
     {#if entry.strongs_def}
       <div>
