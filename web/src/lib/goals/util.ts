@@ -64,3 +64,48 @@ export function targetChip(s: string | undefined | null): { label: string; tone:
   if (days < 60) return { label: `in ${Math.round(days / 7)}w`, tone: days <= 30 ? 'warning' : 'info' };
   return { label: `in ${Math.round(days / 30)}mo`, tone: 'subtext' };
 }
+
+/**
+ * Status-pill colors. active=primary, paused=subtext, completed=
+ * success, archived=dim. Pulled out of the /goals page so the same
+ * mapping is reachable from card / kanban-card / detail surfaces.
+ */
+export function statusColor(s?: string): { bg: string; text: string } {
+  switch (s) {
+    case 'active':
+      return { bg: 'bg-primary/15', text: 'text-primary' };
+    case 'paused':
+      return { bg: 'bg-surface1', text: 'text-subtext' };
+    case 'completed':
+      return { bg: 'bg-surface0', text: 'text-success' };
+    case 'archived':
+      return { bg: 'bg-surface1', text: 'text-dim' };
+    default:
+      return { bg: 'bg-surface1', text: 'text-subtext' };
+  }
+}
+
+/**
+ * Friendly date — "Jan 12, 2026". Returns the input unchanged when it
+ * can't be parsed (a goal may carry "Q4 2026" as a free-text target;
+ * we want to show that string, not "Invalid Date").
+ */
+export function fmtTargetDate(s: string | undefined | null): string {
+  if (!s) return '';
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  return s;
+}
+
+/**
+ * Card left-border tone for a goal, taking status into account.
+ * Completed + archived goals stay neutral — a past-target completed
+ * goal shouldn't shout. Only `active` and `paused` get the
+ * urgency-tone border.
+ */
+export function goalTargetTone(status: string | undefined, target_date: string | undefined | null): string | null {
+  if (status === 'completed' || status === 'archived') return null;
+  return targetUrgencyTone(daysUntilTarget(target_date));
+}

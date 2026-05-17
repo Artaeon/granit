@@ -19,6 +19,7 @@
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { daysUntilTarget, targetChip, targetBorderColor } from '$lib/goals/util';
+  import GoalKanbanCard from '$lib/goals/GoalKanbanCard.svelte';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // View modes — `cards` is the rich card layout (the existing UI),
@@ -1739,40 +1740,11 @@
                 <div class="text-[11px] text-dim italic text-center py-4">—</div>
               {:else}
                 {#each colGoals as g (g.id)}
-                  {@const p = progress(g)}
-                  {@const tone = targetTone(g)}
-                  {@const chip = targetChip(g.target_date)}
-                  <button
-                    type="button"
-                    onclick={() => openDetail(g)}
-                    class="w-full text-left p-2.5 bg-mantle rounded border border-surface1 hover:border-primary transition-colors {tone ? 'border-l-4' : ''}"
-                    style={tone ? `border-left-color: var(--color-${tone});` : ''}
-                  >
-                    <div class="text-sm font-medium text-text break-words leading-snug">{@html inlineMd(g.title)}</div>
-                    <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mt-1.5 text-[11px] text-dim">
-                      {#if g.target_date}
-                        <span class="font-mono tabular-nums">{fmtDate(g.target_date)}</span>
-                      {/if}
-                      {#if chip && (g.status === 'active' || g.status === 'paused')}
-                        <span class="tabular-nums" style="color: var(--color-{chip.tone});">{chip.label}</span>
-                      {/if}
-                    </div>
-                    {#if g.venture || g.project}
-                      <div class="text-[11px] text-secondary truncate mt-0.5">
-                        {#if g.venture}🏢 {g.venture}{/if}
-                        {#if g.venture && g.project} · {/if}
-                        {#if g.project}📁 {g.project}{/if}
-                      </div>
-                    {/if}
-                    {#if p.total > 0}
-                      <div class="mt-1.5">
-                        <div class="h-1 bg-surface1 rounded-full overflow-hidden">
-                          <div class="h-full bg-primary" style="width: {p.pct}%"></div>
-                        </div>
-                        <div class="text-[10px] text-dim mt-0.5 tabular-nums">{p.done}/{p.total} · {p.pct}%</div>
-                      </div>
-                    {/if}
-                  </button>
+                  <GoalKanbanCard
+                    goal={g}
+                    progress={progress(g)}
+                    onClick={() => openDetail(g)}
+                  />
                 {/each}
               {/if}
             </div>
