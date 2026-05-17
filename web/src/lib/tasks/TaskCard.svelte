@@ -234,6 +234,26 @@
     tick().then(() => editInputEl?.focus());
   }
 
+  // Cycle priority none→P1→P2→P3→none on a click. Common edit
+  // that previously required opening the detail drawer or
+  // entering inline-edit mode + tabbing to the priority select.
+  // Cycle order: 0 → 1 → 2 → 3 → 0. The badge stays visible at
+  // P0 thanks to the "+ P" affordance label, so the user has a
+  // way back to setting a priority after clearing it.
+  async function cyclePriority(e: Event) {
+    e.stopPropagation();
+    if (busy) return;
+    const next = ((task.priority || 0) + 1) % 4; // 0..3
+    busy = true;
+    try {
+      const updated = await api.patchTask(task.id, { priority: next });
+      task = updated;
+      onChanged?.(updated);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function saveEdit(e: Event) {
     e?.preventDefault();
     e?.stopPropagation();
@@ -535,8 +555,28 @@
               <span class="ml-1 text-[10px] text-dim font-mono">+{childCount}</span>
             {/if}
           </button>
+          <!-- Priority badge — clickable to cycle none→P1→P2→P3→none
+               so users don't open the detail drawer just to bump
+               priority. At priority 0 the button stays visible as a
+               "+ P" affordance so there's a way back from a clear.
+               Stops click propagation so the surrounding card click
+               (which opens detail) doesn't fire. -->
           {#if badge}
-            <span class="text-[10px] font-mono px-1.5 rounded {badge.cls} flex-shrink-0">{badge.label}</span>
+            <button
+              type="button"
+              onclick={cyclePriority}
+              disabled={busy}
+              title="Cycle priority (P0 → P1 → P2 → P3)"
+              class="text-[10px] font-mono px-1.5 rounded {badge.cls} flex-shrink-0 hover:brightness-110 disabled:opacity-50 cursor-pointer"
+            >{badge.label}</button>
+          {:else}
+            <button
+              type="button"
+              onclick={cyclePriority}
+              disabled={busy}
+              title="Set priority (P0 → P1)"
+              class="text-[10px] font-mono px-1.5 rounded text-dim opacity-0 group-hover:opacity-100 hover:text-text hover:bg-surface1 border border-surface2 flex-shrink-0 disabled:opacity-50 cursor-pointer transition-opacity"
+            >+ P</button>
           {/if}
           {#if task.estimatedMinutes}
             <span class="text-[10px] font-mono text-dim flex-shrink-0" title="estimate">{task.estimatedMinutes}m</span>
