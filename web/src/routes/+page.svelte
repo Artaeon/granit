@@ -35,7 +35,13 @@
     // Quick links — hub favorites surfaced next to the by-when
     // widgets so the morning view answers both "when" and "where"
     // at a glance.
-    { id: 'w-quick-links', type: 'quick-links', afterId: 'w-top-deadlines', enabled: true }
+    { id: 'w-quick-links', type: 'quick-links', afterId: 'w-top-deadlines', enabled: true },
+    // Verse-for-mood sits next to Today's verse so the scripture
+    // column on the dashboard answers both "what's today's verse"
+    // and "what does scripture say about what I'm feeling right
+    // now". Disabled by default so the user opts in via customize-
+    // mode — not every dashboard wants a second scripture tile.
+    { id: 'w-verse-for-mood', type: 'verse-for-mood', afterId: 'w-scripture', enabled: false }
   ];
 
   // Auth state machine on the landing page:

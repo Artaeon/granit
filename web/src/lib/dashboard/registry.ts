@@ -93,6 +93,11 @@ export const widgetRegistry: WidgetMeta[] = [
   // so cost-conscious LLM use stays ambient rather than buried.
   { type: 'ai-usage', label: 'AI usage', description: 'Today\'s AI call count + tokens + cost — streamlined dashboard tile', span: 1, load: lazy(() => import('./widgets/AIUsageWidget.svelte')) },
   { type: 'scripture', label: 'Today\'s verse', description: 'Daily scripture / quote rotation', span: 1, load: lazy(() => import('./widgets/ScriptureWidget.svelte')) },
+  // Verse-for-mood — companion to Today's verse. Tap a mood chip
+  // ("anxious", "hopeful", …); the widget pulls verses carrying the
+  // matching topic from the bundled catalogue. No AI call; uses the
+  // /scripture topical index that already lives in scripture.go.
+  { type: 'verse-for-mood', label: 'Verse for a mood', description: 'Tap a mood — get a verse on that theme. Topical, no AI required.', span: 1, load: lazy(() => import('./widgets/VerseForMoodWidget.svelte')) },
   { type: 'daily-note', label: 'Daily note', description: 'Link to today\'s daily note', span: 1, load: lazy(() => import('./widgets/DailyNoteWidget.svelte')) },
   // Quick capture spans the full row — the input row is wide and
   // the recent-captures strip below it benefits from breathing room.

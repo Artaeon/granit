@@ -2780,6 +2780,7 @@ export type DashboardWidgetType =
   | 'now'
   | 'streaks'
   | 'scripture'
+  | 'verse-for-mood'
   | 'today-focus'
   | 'top-deadlines'
   | 'vision'
