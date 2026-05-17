@@ -1423,6 +1423,51 @@
       {/if}
     </form>
 
+    <!-- Type filter strip — dense always-visible pill row that mirrors
+         the sidebar Filters section. One tap toggles a type in/out of
+         the visible set. Count chip shows how many of each type are in
+         the loaded window so empty buckets are obvious (and the user
+         doesn't waste a tap toggling something that has nothing to
+         show anyway). Active = filled with the type's tone; inactive
+         = dim outline. Counts pull from typeCounts which spans the
+         whole loaded window (NOT the post-filter view) so toggling a
+         type back on shows what it would surface. -->
+    <div class="flex items-center gap-1 px-2 sm:px-3 py-1 border-b border-surface1 flex-shrink-0 overflow-x-auto">
+      {#each [
+        { key: 'event', label: 'Events', tone: 'info' },
+        { key: 'ics_event', label: 'ICS', tone: 'info' },
+        { key: 'task_scheduled', label: 'Scheduled', tone: 'primary' },
+        { key: 'task_due', label: 'Due', tone: 'warning' },
+        { key: 'deadline', label: 'Deadlines', tone: 'error' },
+        { key: 'goal_target', label: 'Goals', tone: 'mauve' },
+        { key: 'daily', label: 'Daily', tone: 'secondary' }
+      ] as f (f.key)}
+        {@const visible = !hidden.has(f.key as EventFilterKey)}
+        {@const count = typeCounts[f.key] ?? 0}
+        <button
+          type="button"
+          onclick={() => toggleType(f.key as EventFilterKey)}
+          aria-pressed={visible}
+          title="{visible ? 'Hide' : 'Show'} {f.label} ({count} in window)"
+          class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded border whitespace-nowrap transition-colors {visible
+            ? 'border-transparent text-on-primary'
+            : 'bg-surface0 border-surface1 text-dim hover:text-text hover:border-primary'} {count === 0 && visible ? 'opacity-50' : ''}"
+          style:background={visible ? `var(--color-${f.tone})` : undefined}
+        >
+          {f.label}
+          <span class="font-mono tabular-nums opacity-80">{count}</span>
+        </button>
+      {/each}
+      {#if hidden.size > 0}
+        <button
+          type="button"
+          onclick={() => (hidden = new Set())}
+          class="ml-1 px-1.5 py-0.5 text-[10px] text-warning hover:text-error whitespace-nowrap"
+          title="Show all hidden types"
+        >clear ({hidden.size})</button>
+      {/if}
+    </div>
+
     <div
       class="flex-1 overflow-hidden p-2 sm:p-3"
       role="region"
