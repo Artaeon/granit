@@ -35,27 +35,10 @@
   } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
+  import { isoWeekString, planNotePath } from '$lib/util/isoWeek';
 
-  // ── Week + plan-note loading ────────────────────────────────────
-  function currentWeekISO(): string {
-    // ISO week — same formula Go's time.ISOWeek uses (Mon..Sun).
-    // The browser's Intl APIs don't expose ISO week directly so we
-    // compute. Used only for the display label + the API call.
-    const d = new Date();
-    const target = new Date(d.valueOf());
-    const dayNr = (d.getDay() + 6) % 7;
-    target.setDate(target.getDate() - dayNr + 3);
-    const firstThursday = target.valueOf();
-    target.setMonth(0, 1);
-    if (target.getDay() !== 4) {
-      target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
-    }
-    const week = 1 + Math.ceil((firstThursday - target.valueOf()) / 604_800_000);
-    const year = d.getFullYear();
-    return `${year}-W${String(week).padStart(2, '0')}`;
-  }
-  const weekISO = currentWeekISO();
-  const planPath = `Plans/${weekISO}.md`;
+  const weekISO = isoWeekString();
+  const planPath = planNotePath();
 
   // ── Editor state ────────────────────────────────────────────────
   let planText = $state('');

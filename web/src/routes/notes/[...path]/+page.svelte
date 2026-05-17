@@ -1877,15 +1877,19 @@
             <path d="M21 21l-4.5-4.5" stroke-linecap="round"/>
           </svg>
         </button>
-        <!-- AI affordance: open the new InlineAIMenu at the editor's
-             cursor. Cmd-K from inside the editor does the same thing
+        <!-- AI affordance: open the InlineAIMenu at the editor's
+             cursor. Cmd-/ from inside the editor does the same thing
              with a keystroke; this button is for click-first users
-             and as a discoverable entry point in the toolbar. -->
+             and as a discoverable entry point in the toolbar.
+             (Previously bound to Mod-k, but that chord is now
+             claimed by the global CommandPalette + markdown-link —
+             dispatching it here would either open search or wrap
+             the selection as a link.) -->
         {#if note}
           <button
             type="button"
-            onclick={() => editor?.dispatchChord('Mod-k')}
-            title="AI — Cmd-K or type /ai in the editor"
+            onclick={() => editor?.dispatchChord('Mod-/')}
+            title="AI — Cmd-/ or type /ai in the editor"
             class="w-9 h-9 flex items-center justify-center text-subtext hover:text-text hover:bg-surface0 rounded flex-shrink-0 text-[10px] font-mono uppercase tracking-wider"
           >AI</button>
         {/if}
@@ -2085,7 +2089,7 @@
           aria-hidden="true"
         ></div>
       {/if}
-      <!-- EditorAIBar removed — the inline AI menu (Cmd-K / "/ai") is
+      <!-- EditorAIBar removed — the inline AI menu (Cmd-/ / "/ai") is
            the only AI entry point now. See $lib/notes/InlineAIMenu.svelte
            and its trigger registration in editorAIExtensions above. -->
       <div class="flex-1 min-h-0 p-2 sm:p-3">
@@ -2287,7 +2291,7 @@
 <AIActionBar view={editor?.getView?.()} aiState={aiGhostState} />
 
 <!-- Inline AI menu — Notion-style command palette anchored at the
-     cursor. Opens on Cmd-K or when the user types "/ai" at the start
+     cursor. Opens on Cmd-/ or when the user types "/ai" at the start
      of a line. Streams output as ghost text in the editor; the user
      accepts/rejects/regenerates without ever leaving the document. -->
 {#if aiTriggerEvent && note}

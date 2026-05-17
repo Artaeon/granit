@@ -17,23 +17,10 @@
   import { onMount } from 'svelte';
   import { api, type Task } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
+  import { isoWeekString, planNotePath } from '$lib/util/isoWeek';
 
-  function currentWeekISO(): string {
-    // ISO week — same formula Go's time.ISOWeek uses (Mon..Sun).
-    const d = new Date();
-    const target = new Date(d.valueOf());
-    const dayNr = (d.getDay() + 6) % 7;
-    target.setDate(target.getDate() - dayNr + 3);
-    const firstThursday = target.valueOf();
-    target.setMonth(0, 1);
-    if (target.getDay() !== 4) {
-      target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
-    }
-    const week = 1 + Math.ceil((firstThursday - target.valueOf()) / 604_800_000);
-    return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
-  }
-  const weekISO = currentWeekISO();
-  const planPath = `Plans/${weekISO}.md`;
+  const weekISO = isoWeekString();
+  const planPath = planNotePath();
 
   let tasks = $state<Task[]>([]);
   let buckets = $state<{ venture: string; total: number; done: number }[]>([]);
@@ -70,9 +57,13 @@
 
   // Walk the plan note body line-by-line, tracking the most recent
   // "### <Venture>" heading. For each task, look up the venture by
-  // its lineNum. Tasks land under their heading because TaskStore
-  // inserts directly after a matching section, so the heading above
-  // them is always the right one.
+  // its lineNum.
+  //
+  // Important — only count tasks that actually sit UNDER a "### "
+  // subheading. If the user wrote a checkbox in the freeform "## Plan"
+  // body (above any subheading), TaskStore still picks it up, but
+  // it's not a committed item — it's an unstructured thought.
+  // Surfacing it as 'Personal' would over-report committed work.
   function computeBuckets(body: string, ts: Task[]): { venture: string; total: number; done: number }[] {
     const lines = body.split('\n');
     const headingByLine: string[] = new Array(lines.length + 1).fill('');
@@ -85,7 +76,8 @@
     }
     const map = new Map<string, { total: number; done: number }>();
     for (const t of ts) {
-      const venture = headingByLine[t.lineNum] || 'Personal';
+      const venture = headingByLine[t.lineNum];
+      if (!venture) continue; // pre-heading body checkbox → not a commitment
       const cur = map.get(venture) ?? { total: 0, done: 0 };
       cur.total += 1;
       if (t.done) cur.done += 1;
