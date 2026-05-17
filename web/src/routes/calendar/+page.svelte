@@ -345,7 +345,13 @@
         ev.type === 'note.changed' ||
         ev.type === 'note.removed' ||
         ev.type === 'event.changed' ||
-        ev.type === 'event.removed'
+        ev.type === 'event.removed' ||
+        // task.changed fires from handlers_tasks.go on create / patch /
+        // schedule / delete. Without it, dropping a task on the grid
+        // or creating one via UnifiedCreate wouldn't repaint until the
+        // user reloaded — the file-watcher's note.changed often races
+        // the same-process write debounce and skips it.
+        ev.type === 'task.changed'
       ) {
         load();
         // Habits live inside daily notes — a note change might mean a
@@ -361,6 +367,12 @@
       // server signals .granit/deadlines.json changed (TUI edit, web
       // edit in another tab, or anything else that calls SaveAll).
       if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') load();
+      // ICS mutations (create/edit/delete a new event in a subscribed
+      // .ics file) broadcast as state.changed with a calendar path —
+      // e.g. "calendars/personal.ics" or "merged.ics". Match the
+      // path-shape rather than enumerate sources so new calendars added
+      // mid-session refresh automatically.
+      if (ev.type === 'state.changed' && ev.path && /\.ics$/.test(ev.path)) load();
       // Project metadata changed (rename, colour, status) — refresh
       // the picker so the filter dropdown stays in sync. We don't
       // touch the event feed here; project_id on events is captured

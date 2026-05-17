@@ -16,7 +16,23 @@ import (
 	"github.com/artaeon/granit/internal/daily"
 	"github.com/artaeon/granit/internal/granitmeta"
 	"github.com/artaeon/granit/internal/tasks"
+	"github.com/artaeon/granit/internal/wshub"
 )
+
+// broadcastTaskChange notifies open clients that a task was created,
+// updated, scheduled, or deleted. The file watcher technically fires
+// note.changed for the underlying markdown write too — but the watcher
+// debounces and ignores writes from the same process to avoid feedback
+// loops, so dashboards/calendars wouldn't refresh until the next
+// unrelated edit. An explicit task.changed broadcast closes that gap
+// and matches the rest of the API surface (event.changed, deadlines
+// state.changed, etc).
+func (s *Server) broadcastTaskChange(id string) {
+	if s == nil || s.hub == nil {
+		return
+	}
+	s.hub.Broadcast(wshub.Event{Type: "task.changed", ID: id})
+}
 
 type taskView struct {
 	ID              string     `json:"id"`
@@ -501,6 +517,7 @@ func (s *Server) handlePatchTask(w http.ResponseWriter, r *http.Request) {
 	s.rescanMu.Unlock()
 
 	t, _ := store.GetByID(id)
+	s.broadcastTaskChange(id)
 	writeJSON(w, http.StatusOK, taskToView(t))
 }
 
@@ -592,6 +609,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 			t, _ = s.cfg.TaskStore.GetByID(t.ID)
 		}
 	}
+	s.broadcastTaskChange(t.ID)
 	writeJSON(w, http.StatusCreated, taskToView(t))
 }
 
@@ -614,6 +632,7 @@ func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.broadcastTaskChange(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
