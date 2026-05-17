@@ -1778,7 +1778,7 @@
             onclick={() => gotoDaily('today')}
             aria-label="today"
             title="jump to today"
-            class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-primary hidden sm:inline-flex flex-shrink-0"
+            class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-primary hidden md:inline-flex flex-shrink-0"
           >today</button>
         {/if}
         <button
@@ -1791,7 +1791,7 @@
         >
           {pinned.has(note.path) ? '★' : '☆'}
         </button>
-        <span class="text-xs text-dim hidden sm:inline">
+        <span class="text-xs text-dim hidden lg:inline">
           {wordCount} words{#if wordCount >= 50} · {readingMinutes} min read{#if viewMode === 'preview' && previewProgress > 0.05 && previewProgress < 0.95} · {Math.max(1, Math.ceil(readingMinutes * (1 - previewProgress)))} left{/if}{/if}
         </span>
         <!-- AI-draft back-link chip — surfaces for notes saved
@@ -1811,11 +1811,13 @@
              so the streak chip doesn't squeeze the title row on narrow
              viewports; the badge still renders on the dashboard and
              at sm+. -->
-        <span class="hidden sm:inline-flex">
+        <span class="hidden lg:inline-flex">
           <StreakBadge />
         </span>
-        <!-- view-mode toggle -->
-        <div class="hidden sm:flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs">
+        <!-- view-mode toggle: 3-button strip from md+ (when there's room
+             for icon + tooltip), 2-button toggle below md so the header
+             keeps its save button on-screen on phones. -->
+        <div class="hidden md:flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs">
           {#each [{m: 'edit', l: 'edit', i: '✎'}, {m: 'split', l: 'split', i: '⊟'}, {m: 'preview', l: 'preview', i: '👁'}] as v}
             <button
               onclick={() => setViewMode(v.m as ViewMode)}
@@ -1826,11 +1828,14 @@
             </button>
           {/each}
         </div>
-        <!-- mobile: 2-mode toggle (edit/preview only) -->
+        <!-- mobile: 2-mode toggle (edit/preview only). Sub-md so it
+             only appears when the 3-button strip above is hidden — both
+             at the same breakpoint to avoid a dead window where neither
+             toggle renders. -->
         <button
           onclick={() => setViewMode(viewMode === 'preview' ? 'edit' : 'preview')}
           aria-label={viewMode === 'preview' ? 'edit source' : 'show preview'}
-          class="sm:hidden w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+          class="md:hidden w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
         >
           {viewMode === 'preview' ? '✎' : '👁'}
         </button>
@@ -1841,7 +1846,7 @@
           onclick={() => (helpOpen = true)}
           title="Keyboard shortcuts (?)"
           aria-label="Keyboard shortcuts"
-          class="hidden sm:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+          class="hidden lg:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
         >
           <span class="font-mono text-sm">?</span>
         </button>
@@ -1854,7 +1859,7 @@
           onclick={() => (printOpen = true)}
           title="Export as PDF (header + footer)"
           aria-label="Export as PDF"
-          class="hidden sm:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+          class="hidden lg:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
             <path d="M6 9V4h12v5"/>
@@ -1870,7 +1875,7 @@
           onclick={() => editor?.openFind()}
           title="Find / replace (Mod-F)"
           aria-label="Find in note"
-          class="hidden sm:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+          class="hidden lg:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
         >
           <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8">
             <circle cx="11" cy="11" r="7"/>
@@ -1893,10 +1898,15 @@
             class="w-9 h-9 flex items-center justify-center text-subtext hover:text-text hover:bg-surface0 rounded flex-shrink-0 text-[10px] font-mono uppercase tracking-wider"
           >AI</button>
         {/if}
-        <!-- Mobile overflow trigger — collapses the secondary buttons
-             (find, print, slideshow, audio, reading, focus, help)
-             into one menu on phones. Hidden on sm+ where there's
-             room for those buttons inline. -->
+        <!-- Overflow trigger — collapses the secondary buttons
+             (find, print, slideshow, audio, reading, focus, history,
+             help) into one menu on every viewport below lg. The
+             header used to ungate all 8 at sm and force-cram them
+             onto 700-1000px tablets; the result was a row that
+             pushed the breadcrumbs off the right edge. Hiding the
+             buttons at sm and lifting the threshold to lg is the
+             responsive fix — desktop unchanged, everything below
+             gets one predictable affordance. -->
         <button
           bind:this={overflowTriggerEl}
           onclick={() => (overflowOpen = !overflowOpen)}
@@ -1904,7 +1914,7 @@
           aria-haspopup="menu"
           aria-expanded={overflowOpen}
           title="More actions"
-          class="sm:hidden w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-lg leading-none"
+          class="lg:hidden w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-lg leading-none"
         >⋯</button>
         <!-- Slideshow — open the note as a fullscreen deck split
              on H2 boundaries. Mod-Shift-P also opens it. Hidden on
@@ -1914,7 +1924,7 @@
           onclick={() => (presentationOpen = true)}
           title="Slideshow (Mod-Shift-P)"
           aria-label="Open slideshow presentation"
-          class="hidden sm:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base text-subtext hover:text-primary hover:bg-surface0"
+          class="hidden lg:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base text-subtext hover:text-primary hover:bg-surface0"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
             <rect x="3" y="4" width="18" height="13" rx="1.5"/>
@@ -1931,7 +1941,7 @@
           title={audioOpen ? 'Close read-aloud player' : 'Read this note aloud (browser TTS)'}
           aria-label={audioOpen ? 'Close audio player' : 'Open audio player'}
           aria-pressed={audioOpen}
-          class="hidden sm:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
+          class="hidden lg:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
             {audioOpen ? 'bg-surface1 text-secondary' : 'text-subtext hover:text-secondary hover:bg-surface0'}"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
@@ -1951,7 +1961,7 @@
           title={readingMode ? 'Exit reading mode (Mod-Shift-R)' : 'Reading mode (Mod-Shift-R)'}
           aria-label={readingMode ? 'Exit reading mode' : 'Enter reading mode'}
           aria-pressed={readingMode}
-          class="hidden sm:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
+          class="hidden lg:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
             {readingMode ? 'bg-surface1 text-primary' : 'text-subtext hover:text-primary hover:bg-surface0'}"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
@@ -1969,7 +1979,7 @@
           title={focusMode ? 'Exit focus mode (Mod-Shift-Z)' : 'Focus mode (Mod-Shift-Z)'}
           aria-label={focusMode ? 'Exit focus mode' : 'Enter focus mode'}
           aria-pressed={focusMode}
-          class="hidden sm:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
+          class="hidden lg:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
             {focusMode ? 'bg-surface1 text-primary' : 'text-subtext hover:text-primary hover:bg-surface0'}"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
@@ -1991,7 +2001,7 @@
           onclick={() => (historyOpen = true)}
           title="Version history — every save creates a backup. Nothing is ever lost."
           aria-label="Version history"
-          class="hidden sm:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+          class="hidden lg:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
             <circle cx="12" cy="12" r="9"/>
