@@ -16,6 +16,20 @@
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
+  import {
+    PANEL_WIDTH_MIN,
+    PANEL_WIDTH_MAX,
+    type SheetSnap,
+    SHEET_SNAP_KEY,
+    clampPanelWidth,
+    loadPanelWidth,
+    persistPanelWidth,
+    nextPanelWidthForKey,
+    loadSheetSnap,
+    snapHeightPx,
+    clampSheetHeight,
+    nearestSnap
+  } from './ai-overlay-geometry';
   import { rafThrottle } from '$lib/util/streamThrottle';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import {
@@ -102,21 +116,11 @@
   let scrollEl: HTMLDivElement | undefined = $state();
 
   // ── Resizable panel (desktop only) ──────────────────────────────
-  // The default 420px panel is comfortable for short chats but tight
-  // when the history rail is open or the user is reading a long
-  // assistant reply with a code block. Users drag the left edge to
-  // widen the panel; the chosen width persists in localStorage so a
-  // single tweak sticks across sessions. Mobile (bottom-sheet) ignores
-  // this — width is always 100vw there.
-  const PANEL_WIDTH_KEY = 'granit.chat.overlay.width';
-  const PANEL_WIDTH_MIN = 360;
-  const PANEL_WIDTH_MAX = 720;
-  const PANEL_WIDTH_DEFAULT = 420;
-  function loadPanelWidth(): number {
-    const n = parseInt(loadStoredString(PANEL_WIDTH_KEY, ''), 10);
-    if (!Number.isFinite(n)) return PANEL_WIDTH_DEFAULT;
-    return Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, n));
-  }
+  // Geometry helpers + constants live in ./ai-overlay-geometry.ts.
+  // This component owns the panel's reactive $state (panelWidth /
+  // resizing / sheetSnap / sheetDragging) and the pointer-event
+  // handlers; the math + load/persist + snap rules come from the
+  // helper.
   let panelWidth = $state<number>(loadPanelWidth());
   let resizing = $state(false);
 
@@ -132,9 +136,6 @@
       document.documentElement.style.setProperty('--ai-pinned-w', '0px');
     }
   });
-  function persistPanelWidth(n: number) {
-    saveStoredString(PANEL_WIDTH_KEY, String(n));
-  }
   function onResizeStart(e: PointerEvent) {
     // Pointer-events lets one handler cover mouse + touch + pen. We
     // capture so the user can drag past the panel edge without losing
@@ -145,9 +146,8 @@
     target.setPointerCapture(e.pointerId);
     function onMove(ev: PointerEvent) {
       // Panel is right-anchored; widening means pulling LEFT, which
-      // increases (window.innerWidth - clientX). Clamp to min/max.
-      const w = window.innerWidth - ev.clientX;
-      panelWidth = Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, w));
+      // increases (window.innerWidth - clientX). Clamp via helper.
+      panelWidth = clampPanelWidth(window.innerWidth - ev.clientX);
     }
     function onUp() {
       resizing = false;
@@ -162,37 +162,23 @@
     target.addEventListener('pointercancel', onUp);
   }
   function onResizeKey(e: KeyboardEvent) {
-    // Keyboard fallback for accessibility — left/right arrow nudges
-    // the panel by 16px steps. Home/End jumps to min/max.
-    let next = panelWidth;
-    if (e.key === 'ArrowLeft') next = Math.min(PANEL_WIDTH_MAX, panelWidth + 16);
-    else if (e.key === 'ArrowRight') next = Math.max(PANEL_WIDTH_MIN, panelWidth - 16);
-    else if (e.key === 'Home') next = PANEL_WIDTH_MAX;
-    else if (e.key === 'End') next = PANEL_WIDTH_MIN;
-    else return;
+    // Keyboard fallback for accessibility — ArrowLeft widens (right-
+    // anchored panel), ArrowRight narrows; Home/End jump to extremes.
+    // Rule lives in nextPanelWidthForKey so both surfaces (mouse drag,
+    // keyboard) agree on bounds.
+    const next = nextPanelWidthForKey(panelWidth, e.key);
+    if (next === null) return;
     e.preventDefault();
     panelWidth = next;
     persistPanelWidth(next);
   }
 
   // ── Mobile bottom-sheet snap points ────────────────────────────
-  // Three snap heights cover the common modes a mobile user wants:
-  //   - peek (~35%): read history while the page underneath stays
-  //     usefully visible. Quick glance / one-line follow-up.
-  //   - mid (~65%): default, active conversation surface.
-  //   - full (~92%): long thread, browsing history, multi-turn
-  //     scrolling without compose-cramping.
-  // The drag handle bar at the top of the sheet becomes the affordance
-  // — pull up to grow, pull down to shrink, release snaps to the
-  // nearest point. Desktop ignores all of this (the resize handle on
-  // the left edge keeps governing width as before).
-  type SheetSnap = 'peek' | 'mid' | 'full';
-  const SHEET_SNAP_KEY = 'granit.ai.sheet.snap';
-  const SHEET_SNAP_PCT: Record<SheetSnap, number> = { peek: 35, mid: 65, full: 92 };
-  function loadSheetSnap(): SheetSnap {
-    const v = loadStoredString(SHEET_SNAP_KEY, 'mid');
-    return v === 'peek' || v === 'full' ? v : 'mid';
-  }
+  // Three snap heights — peek (~35%), mid (~65%), full (~92%) —
+  // defined in ai-overlay-geometry.ts. The drag handle bar at the
+  // top of the sheet is the affordance; release snaps to nearest.
+  // Desktop ignores all this (the left-edge resize handle keeps
+  // governing width).
   let sheetSnap = $state<SheetSnap>(loadSheetSnap());
   $effect(() => saveStoredString(SHEET_SNAP_KEY, sheetSnap));
   // While the user drags, follow the finger 1:1. On release the
@@ -200,53 +186,33 @@
   let sheetDragHeight = $state<number | null>(null);
   let sheetDragging = $state(false);
 
-  function snapHeightPx(snap: SheetSnap): number {
-    if (typeof window === 'undefined') return 480;
-    return Math.round(window.innerHeight * SHEET_SNAP_PCT[snap] / 100);
-  }
-
   function onSheetHandleDown(e: PointerEvent) {
     // Desktop has its own left-edge resize handle; ignore the
     // mobile-only drag-handle on >=md.
     if (typeof window === 'undefined' || window.innerWidth >= 768) return;
     e.preventDefault();
     const startY = e.clientY;
-    const startH = panelEl?.getBoundingClientRect().height ?? snapHeightPx(sheetSnap);
+    const viewportH = window.innerHeight;
+    const startH = panelEl?.getBoundingClientRect().height ?? snapHeightPx(sheetSnap, viewportH);
     sheetDragging = true;
     sheetDragHeight = startH;
     const target = e.currentTarget as HTMLElement;
     target.setPointerCapture(e.pointerId);
-    const minPx = window.innerHeight * 0.18;
-    const maxPx = window.innerHeight * 0.95;
     function move(ev: PointerEvent) {
       // Pulling UP grows the sheet; clientY decreases as the finger
-      // moves up, so dy is negative and we subtract.
+      // moves up, so dy is negative and we subtract. Clamp via helper.
       const dy = ev.clientY - startY;
-      let h = startH - dy;
-      if (h < minPx) h = minPx;
-      if (h > maxPx) h = maxPx;
-      sheetDragHeight = h;
+      sheetDragHeight = clampSheetHeight(startH - dy, viewportH);
     }
     function up() {
       target.releasePointerCapture(e.pointerId);
       target.removeEventListener('pointermove', move);
       target.removeEventListener('pointerup', up);
       target.removeEventListener('pointercancel', up);
-      // Snap to nearest by % distance — keeps the gesture predictable
-      // regardless of how vh the user has after a soft keyboard
-      // shows/hides between drag start and end.
+      // Snap to nearest. window.innerHeight read fresh in case a soft
+      // keyboard shifted vh between drag start and end.
       const finalH = sheetDragHeight ?? startH;
-      const ratio = (finalH / window.innerHeight) * 100;
-      let best: SheetSnap = 'mid';
-      let bestDist = Infinity;
-      for (const s of ['peek', 'mid', 'full'] as SheetSnap[]) {
-        const d = Math.abs(SHEET_SNAP_PCT[s] - ratio);
-        if (d < bestDist) {
-          bestDist = d;
-          best = s;
-        }
-      }
-      sheetSnap = best;
+      sheetSnap = nearestSnap(finalH, window.innerHeight);
       sheetDragHeight = null;
       sheetDragging = false;
     }
@@ -309,7 +275,7 @@
   let mobileSheetHeight = $derived(
     sheetDragging && sheetDragHeight !== null
       ? `${Math.round(sheetDragHeight)}px`
-      : `${snapHeightPx(sheetSnap)}px`
+      : `${snapHeightPx(sheetSnap, typeof window === 'undefined' ? 800 : window.innerHeight)}px`
   );
 
   let busy = $state(false);
