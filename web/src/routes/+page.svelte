@@ -336,17 +336,19 @@
   // a render-time filter so the user's preset/layout choices are
   // untouched. Toggle is at the top of the page.
   //
-  // The essentials list is curated, not user-configurable: greeting
-  // (date anchor), at-a-glance (today's counts), today-focus (the
-  // morning commitment), today-tasks (the working list), calendar-
-  // week (what's coming), top-deadlines (the by-when pressure).
-  // Six tiles, one screen, no scrolling on a typical desktop.
+  // Curated set: greeting (date anchor), at-a-glance (today's counts),
+  // today-stream (the chronological feed — covers events + scheduled
+  // + due + deadlines in one), today-focus (the morning commitment),
+  // today-tasks (action surface for due/overdue rows), top-deadlines
+  // (by-when pressure). Six tiles, no scrolling on a typical desktop.
+  // calendar-week was dropped because today-stream's tomorrow/day-
+  // after preview covers the same ground for the focus-mode use.
   const FOCUS_ESSENTIALS = new Set<import('$lib/api').DashboardWidgetType>([
     'greeting',
     'at-a-glance',
+    'today-stream',
     'today-focus',
     'today-tasks',
-    'calendar-week',
     'top-deadlines'
   ]);
   const FOCUS_KEY = 'granit.dashboard.focus';
@@ -495,7 +497,9 @@
   </div>
 {:else}
   <div class="h-full overflow-y-auto">
-    <div class="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+    <!-- Tighter padding + max-width: power-UI density beats breathing
+         room when the user wants everything on one screen. -->
+    <div class="p-3 sm:p-4 lg:p-6 max-w-7xl mx-auto">
       {#if loadError}<div class="text-sm text-error mb-4">{loadError}</div>{/if}
 
       {#if aiNotConfigured}
@@ -705,7 +709,7 @@
              auto-fills empty space instead of leaving a phonebook-style
              waterfall. items-start keeps each widget at its natural
              height (no ugly empty padding inside short widgets). -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 items-start" style="grid-auto-flow: dense;">
+        <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-3 items-start" style="grid-auto-flow: dense;">
           {#each activeWidgets as { widget, meta } (widget.id)}
             <!-- Each widget chunk is loaded lazily via meta.load();
                  the registry's loader is memoised so re-renders await

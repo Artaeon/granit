@@ -73,17 +73,25 @@
   }
 </script>
 
-{#if loaded && deadlines !== null}
-  <section class="bg-surface0 border border-surface1 rounded-lg p-3">
-    <div class="flex items-baseline justify-between mb-3">
-      <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Top deadlines</h2>
-      <a href="/deadlines" class="text-xs text-secondary hover:underline">all →</a>
+<section class="bg-surface0 border border-surface1 rounded-lg p-3">
+  <div class="flex items-baseline justify-between mb-3">
+    <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Top deadlines</h2>
+    <a href="/deadlines" class="text-xs text-secondary hover:underline">all →</a>
+  </div>
+  {#if !loaded}
+    <ul class="space-y-2">
+      {#each [0,1,2] as i (i)}
+        <li class="flex items-baseline gap-2 py-1.5 pl-2.5">
+          <span class="flex-1 h-3 bg-surface1 rounded animate-pulse {i === 1 ? 'w-3/4' : ''}"></span>
+          <span class="w-12 h-3 bg-surface1 rounded animate-pulse"></span>
+        </li>
+      {/each}
+    </ul>
+  {:else if visible.length === 0}
+    <div class="text-sm text-dim italic">
+      No deadlines coming up — <a href="/deadlines" class="text-secondary hover:underline">set one →</a>
     </div>
-    {#if visible.length === 0}
-      <div class="text-sm text-dim italic">
-        No deadlines coming up — <a href="/deadlines" class="text-secondary hover:underline">set one →</a>
-      </div>
-    {:else}
+  {:else}
       <ul class="space-y-2">
         {#each visible as { d, days } (d.id)}
           <li
@@ -123,6 +131,5 @@
           + {extra} more →
         </a>
       {/if}
-    {/if}
-  </section>
-{/if}
+  {/if}
+</section>
