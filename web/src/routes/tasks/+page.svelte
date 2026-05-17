@@ -20,6 +20,7 @@
   import TaskAgent from '$lib/tasks/TaskAgent.svelte';
   import AIStaleVerdicts from '$lib/tasks/AIStaleVerdicts.svelte';
   import AskTasks from '$lib/tasks/AskTasks.svelte';
+  import TaskDuplicates from '$lib/tasks/TaskDuplicates.svelte';
   import { isTypingTarget } from '$lib/util/isTypingTarget';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { rafThrottle } from '$lib/util/streamThrottle';
@@ -33,7 +34,7 @@
     type PlanItem
   } from '$lib/tasks/aiPrompts';
 
-  type View = 'list' | 'kanban' | 'today' | 'week' | 'triage' | 'inbox' | 'stale' | 'quickwins' | 'review' | 'eisenhower';
+  type View = 'list' | 'kanban' | 'today' | 'week' | 'triage' | 'inbox' | 'stale' | 'duplicates' | 'quickwins' | 'review' | 'eisenhower';
   type Group = 'due' | 'priority' | 'note' | 'project' | 'tag' | 'goal' | 'deadline';
   // Explicit sort overrides the per-group "auto" sort (which sorts
   // every bucket by due-then-priority). Set to anything other than
@@ -294,7 +295,7 @@
     if (sp.has('deadline')) deadlineFilter = get('deadline');
     if (sp.has('view')) {
       const v = get('view') as View;
-      if (['list', 'kanban', 'today', 'week', 'triage', 'inbox', 'stale', 'quickwins', 'review', 'eisenhower'].includes(v)) view = v;
+      if (['list', 'kanban', 'today', 'week', 'triage', 'inbox', 'stale', 'duplicates', 'quickwins', 'review', 'eisenhower'].includes(v)) view = v;
     }
     if (sp.has('group')) {
       const g = get('group') as Group;
@@ -2095,6 +2096,11 @@
             {/if}
           </button>
           <button
+            class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'duplicates' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (view = 'duplicates')}
+            title="near-duplicate task pairs by text similarity — deterministic scan, no AI"
+          >Duplicates</button>
+          <button
             class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'review' ? 'bg-primary text-on-primary' : viewCounts.review > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface2'}"
             onclick={() => (view = 'review')}
             title="completed in the last 7 days — celebrate the wins"
@@ -2816,6 +2822,10 @@
               </div>
             {/each}
           </div>
+        </div>
+      {:else if view === 'duplicates'}
+        <div class="max-w-3xl">
+          <TaskDuplicates onReload={load} />
         </div>
       {:else if view === 'quickwins'}
         <div class="max-w-3xl">
