@@ -165,6 +165,20 @@
     hidden = next;
   }
 
+  // Stable filter chip catalog — hoisted so each render iterates the
+  // same array (an inline literal in the template would tear keyed
+  // children down on every re-render). Drives both the always-visible
+  // pill strip above the grid and the sidebar Filters section.
+  const FILTER_CHIPS: ReadonlyArray<{ key: EventFilterKey; label: string; tone: string }> = [
+    { key: 'event',          label: 'Events',     tone: 'info' },
+    { key: 'ics_event',      label: 'ICS',        tone: 'info' },
+    { key: 'task_scheduled', label: 'Scheduled',  tone: 'primary' },
+    { key: 'task_due',       label: 'Due',        tone: 'warning' },
+    { key: 'deadline',       label: 'Deadlines',  tone: 'error' },
+    { key: 'goal_target',    label: 'Goals',      tone: 'mauve' },
+    { key: 'daily',          label: 'Daily',      tone: 'secondary' }
+  ];
+
   // Project filter — when set to a non-empty project name, the grid
   // only shows events + tasks linked to that project (via project_id
   // on the wire shape). Persisted per-device so a user using the
@@ -1217,18 +1231,10 @@
          empty before hiding them. -->
     <div class="space-y-1 text-xs">
       <h3 class="text-dim uppercase tracking-wider mb-2">Filters</h3>
-      {#each [
-        { key: 'daily', label: 'Daily note', tone: 'secondary' },
-        { key: 'task_scheduled', label: 'Scheduled task', tone: 'primary' },
-        { key: 'task_due', label: 'Task due', tone: 'warning' },
-        { key: 'event', label: 'Event', tone: 'info' },
-        { key: 'ics_event', label: 'ICS calendars', tone: 'info' },
-        { key: 'deadline', label: 'Deadlines', tone: 'error' },
-        { key: 'goal_target', label: 'Goal targets', tone: 'mauve' }
-      ] as f}
-        {@const isHidden = hidden.has(f.key as EventFilterKey)}
+      {#each FILTER_CHIPS as f (f.key)}
+        {@const isHidden = hidden.has(f.key)}
         <button
-          onclick={() => toggleType(f.key as EventFilterKey)}
+          onclick={() => toggleType(f.key)}
           class="w-full flex items-center gap-2 px-2 py-1 rounded hover:bg-surface0 {isHidden ? 'opacity-40' : ''}"
         >
           <span class="w-2 h-2 rounded-full" style="background: var(--color-{f.tone})"></span>
@@ -1433,20 +1439,12 @@
          whole loaded window (NOT the post-filter view) so toggling a
          type back on shows what it would surface. -->
     <div class="flex items-center gap-1 px-2 sm:px-3 py-1 border-b border-surface1 flex-shrink-0 overflow-x-auto">
-      {#each [
-        { key: 'event', label: 'Events', tone: 'info' },
-        { key: 'ics_event', label: 'ICS', tone: 'info' },
-        { key: 'task_scheduled', label: 'Scheduled', tone: 'primary' },
-        { key: 'task_due', label: 'Due', tone: 'warning' },
-        { key: 'deadline', label: 'Deadlines', tone: 'error' },
-        { key: 'goal_target', label: 'Goals', tone: 'mauve' },
-        { key: 'daily', label: 'Daily', tone: 'secondary' }
-      ] as f (f.key)}
-        {@const visible = !hidden.has(f.key as EventFilterKey)}
+      {#each FILTER_CHIPS as f (f.key)}
+        {@const visible = !hidden.has(f.key)}
         {@const count = typeCounts[f.key] ?? 0}
         <button
           type="button"
-          onclick={() => toggleType(f.key as EventFilterKey)}
+          onclick={() => toggleType(f.key)}
           aria-pressed={visible}
           title="{visible ? 'Hide' : 'Show'} {f.label} ({count} in window)"
           class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded border whitespace-nowrap transition-colors {visible

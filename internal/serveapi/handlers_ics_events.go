@@ -381,8 +381,18 @@ func applyCRUDToRecord(rec *icsRecord, body icsEventCRUD) error {
 	return nil
 }
 
-// parseClientTime accepts either an RFC3339 timestamp (timed event) or
-// a YYYY-MM-DD all-day date. AllDay forces the latter.
+// parseClientTime accepts any of the time shapes the calendar wire
+// emits: zoned/UTC RFC3339 ("2026-05-17T09:00:00Z" or "+02:00"),
+// floating timed ("2026-05-17T09:00:00" or "2026-05-17T09:00", no zone),
+// or all-day ("2026-05-17"). AllDay forces the date-only branch.
+//
+// Floating timed values are critical for ICS round-trip: the calendar
+// feed emits them WITHOUT a zone for events whose DTSTART had no TZID
+// and no Z (RFC 5545 §3.3.5 floating time). A previous narrower parser
+// rejected those, so any "skip this occurrence" gesture on a floating
+// recurring event 400'd and the user was nudged into "delete entire
+// series" — wiping all instances. Floating values parse as UTC so the
+// wall-clock digits round-trip losslessly.
 func parseClientTime(s string, allDay bool) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if allDay || len(s) == 10 {
@@ -393,10 +403,18 @@ func parseClientTime(s string, allDay bool) (time.Time, error) {
 	if t, err := time.Parse(time.RFC3339, s); err == nil {
 		return t, nil
 	}
-	if t, err := time.ParseInLocation("2006-01-02T15:04", s, time.Local); err == nil {
+	// Floating WITH seconds (the feed's emitted shape for floating ICS
+	// occurrences). Parse in UTC to preserve the literal digits — the
+	// downstream EXDATE / overrides path matches by wall-clock string.
+	if t, err := time.ParseInLocation("2006-01-02T15:04:05", s, time.UTC); err == nil {
 		return t, nil
 	}
-	return time.Time{}, fmt.Errorf("expected RFC3339 or YYYY-MM-DD, got %q", s)
+	// Floating without seconds — minute-precision form sometimes used
+	// by simpler clients.
+	if t, err := time.ParseInLocation("2006-01-02T15:04", s, time.UTC); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("expected RFC3339, floating ISO, or YYYY-MM-DD, got %q", s)
 }
 
 func (s *Server) requireWritableICS(w http.ResponseWriter, source string) *icsSource {
@@ -596,22 +614,24 @@ func (s *Server) handleSkipICSOccurrence(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "date required")
 		return
 	}
-	// Accept RFC3339 timed and plain YYYY-MM-DD all-day. Normalise
-	// to the wire form the writer expects (no dashes, no colons).
+	// Use the unified parseClientTime so floating timed shapes are
+	// accepted alongside RFC3339 and all-day forms. Previously this
+	// path used a narrower parser that rejected floating values, so
+	// users got 400 errors on "skip this one" for any recurring event
+	// whose DTSTART had no zone — and were funnelled into the
+	// destructive "delete entire series" path instead.
+	t, err := parseClientTime(body.Date, false)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "date must be RFC3339, floating ISO, or YYYY-MM-DD")
+		return
+	}
 	var ics string
 	if len(body.Date) == 10 {
-		t, err := time.Parse("2006-01-02", body.Date)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "date must be RFC3339 or YYYY-MM-DD")
-			return
-		}
 		ics = t.Format("20060102")
 	} else {
-		t, err := time.Parse(time.RFC3339, body.Date)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "date must be RFC3339 or YYYY-MM-DD")
-			return
-		}
+		// Stored as UTC wall-clock — the in-memory isExcluded check
+		// matches against the same shape (t.UTC().Format("...")) and
+		// expandRRULE produces the same shape on floating instances.
 		ics = t.UTC().Format("20060102T150405Z")
 	}
 
