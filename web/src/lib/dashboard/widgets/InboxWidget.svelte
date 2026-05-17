@@ -4,18 +4,18 @@
   import { onWsEvent } from '$lib/ws';
   import TaskRow from '$lib/components/TaskRow.svelte';
 
-  // InboxWidget is the user's "what should I touch right now?" surface.
-  // We split open tasks into three actionable buckets:
+  // InboxWidget is the "what's slipping?" surface. Today / overdue
+  // live in TodayTasksWidget; this one owns the buckets that AREN'T
+  // already visible there:
   //
-  //   Today      — overdue + due-today (sorted by priority then date)
   //   Quick wins — open, no scheduled commitment, estimated ≤30 min
   //                (or a heuristic "quick" task: short text, no due, P3+)
   //   Stale      — P1/P2 not touched in 7+ days — risk of dropping
   //
-  // Each row is a TaskRow so the user can mark done in-place. We still
-  // load triage=inbox so the section count matches the granit triage
-  // semantic, but render from a broader "open" pool to surface stale work
-  // that has slipped past its inbox state.
+  // Previously we ALSO surfaced a Today bucket here, which duplicated
+  // TodayTasks's Today/Overdue sections row-for-row. The triage count
+  // chip in the header still reflects the granit inbox semantic so the
+  // widget remains useful as a triage launcher.
 
   let inbox = $state<Task[]>([]);
   let allOpen = $state<Task[]>([]);
@@ -64,26 +64,22 @@
     return Math.floor((Date.now() - t) / 86_400_000);
   }
 
-  let todaySection = $derived.by(() => {
-    return allOpen
-      .filter((t) => t.dueDate && t.dueDate <= today)
-      .sort(priCmp);
-  });
+  // Filter out anything that's already due/overdue — TodayTasks owns
+  // those rows; we don't want a row appearing in both lists.
+  let notTodayOrOverdue = $derived.by(() =>
+    allOpen.filter((t) => !t.dueDate || t.dueDate > today)
+  );
 
   let quickWins = $derived.by(() => {
-    // Prefer tasks with an explicit short estimate. Fall back to a
-    // heuristic: short text, no due-date pressure, low priority — these
-    // are the kind of "knock it off the list" wins the user wants.
-    const explicit = allOpen.filter(
+    const explicit = notTodayOrOverdue.filter(
       (t) => (t.estimatedMinutes ?? 0) > 0 && (t.estimatedMinutes ?? 0) <= QUICK_MAX_MIN
     );
     if (explicit.length >= 3) {
       return explicit.sort((a, b) => (a.estimatedMinutes! - b.estimatedMinutes!)).slice(0, 6);
     }
-    const heuristic = allOpen.filter(
+    const heuristic = notTodayOrOverdue.filter(
       (t) =>
         !t.scheduledStart &&
-        (!t.dueDate || t.dueDate >= today) &&
         t.text.length <= 60 &&
         (t.priority === 0 || t.priority >= 3)
     );
@@ -91,17 +87,14 @@
   });
 
   let staleSection = $derived.by(() => {
-    return allOpen
+    return notTodayOrOverdue
       .filter((t) => (t.priority === 1 || t.priority === 2))
       .filter((t) => daysSince(t.updatedAt ?? t.createdAt) >= STALE_DAYS)
       .sort((a, b) => daysSince(b.updatedAt ?? b.createdAt) - daysSince(a.updatedAt ?? a.createdAt))
       .slice(0, 6);
   });
 
-  // Hide overlap: a task that's already in `today` shouldn't also show as
-  // a quick win or stale. The user only needs to see it once.
-  let quickWinsDeduped = $derived(quickWins.filter((t) => !todaySection.includes(t)));
-  let staleDeduped = $derived(staleSection.filter((t) => !todaySection.includes(t) && !quickWinsDeduped.includes(t)));
+  let staleDeduped = $derived(staleSection.filter((t) => !quickWins.includes(t)));
 </script>
 
 <section class="bg-surface0 border border-surface1 rounded-lg p-3">
@@ -120,28 +113,13 @@
   {:else if allOpen.length === 0}
     <div class="text-sm text-success">all clear — inbox empty</div>
   {:else}
-    {#if todaySection.length > 0}
-      <h3 class="text-[11px] uppercase tracking-wider text-error mb-1.5 flex items-baseline gap-1.5">
-        <span class="w-1.5 h-1.5 rounded-full bg-error inline-block"></span>
-        Today · {todaySection.length}
-      </h3>
-      <div class="space-y-px mb-3">
-        {#each todaySection.slice(0, 6) as t (t.id)}
-          <TaskRow task={t} onChanged={load} />
-        {/each}
-        {#if todaySection.length > 6}
-          <div class="text-[11px] text-dim pl-6">+{todaySection.length - 6} more</div>
-        {/if}
-      </div>
-    {/if}
-
-    {#if quickWinsDeduped.length > 0}
+    {#if quickWins.length > 0}
       <h3 class="text-[11px] uppercase tracking-wider text-info mb-1.5 flex items-baseline gap-1.5">
         <span class="w-1.5 h-1.5 rounded-full bg-info inline-block"></span>
-        Quick wins · {quickWinsDeduped.length}
+        Quick wins · {quickWins.length}
       </h3>
       <div class="space-y-px mb-3">
-        {#each quickWinsDeduped as t (t.id)}
+        {#each quickWins as t (t.id)}
           <TaskRow task={t} onChanged={load} />
         {/each}
       </div>
@@ -160,8 +138,8 @@
       </div>
     {/if}
 
-    {#if todaySection.length === 0 && quickWinsDeduped.length === 0 && staleDeduped.length === 0}
-      <div class="text-sm text-dim italic">nothing to action right now — open <a href="/tasks" class="text-secondary hover:underline">Tasks</a> to plan ahead</div>
+    {#if quickWins.length === 0 && staleDeduped.length === 0}
+      <div class="text-sm text-dim italic">nothing slipping — Today/Overdue lives in the Tasks tile above</div>
     {/if}
 
     <div class="pt-3 mt-1 border-t border-surface1 flex items-center justify-between">
