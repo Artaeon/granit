@@ -18,6 +18,7 @@
   import Drawer from '$lib/components/Drawer.svelte';
   import EisenhowerView from '$lib/tasks/EisenhowerView.svelte';
   import TaskAgent from '$lib/tasks/TaskAgent.svelte';
+  import AIStaleVerdicts from '$lib/tasks/AIStaleVerdicts.svelte';
   import { isTypingTarget } from '$lib/util/isTypingTarget';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { rafThrottle } from '$lib/util/streamThrottle';
@@ -26,12 +27,9 @@
   import { focusOnMount } from '$lib/util/focusOnMount';
   import {
     buildPlanDayPrompt,
-    buildStaleVerdictPrompt,
     roundUpTo15Min,
     validatePlanItems,
-    validateStaleVerdicts,
-    type PlanItem,
-    type StaleVerdict
+    type PlanItem
   } from '$lib/tasks/aiPrompts';
 
   type View = 'list' | 'kanban' | 'today' | 'week' | 'triage' | 'inbox' | 'stale' | 'quickwins' | 'review' | 'eisenhower';
@@ -612,123 +610,10 @@
     saveProposals(TRIAGE_KEY, []);
   }
 
-  // ── AI Stale-task verdict ───────────────────────────────────────
-  // For tasks the user hasn't touched in 7+ days, ask the model:
-  // "is this still real, or is it dead weight?" Returns a verdict
-  // per task — keep / defer / archive — with a one-line rationale.
-  // The user can accept-archive inline (sets done=true, triage='dropped')
-  // or apply-defer (resets the updatedAt by patching nothing
-  // material — actually, better: bump the snoozedUntil one week
-  // forward so the task drops out of the stale view) or just keep
-  // it (no-op).
-  //
-  // Goes through chatStream → /chat/stream so audit / sabbath /
-  // redaction / cost all apply.
-  let aiStaleBusy = $state(false);
-  let aiStaleError = $state('');
-  let aiStaleRaw = $state('');
-  let aiStaleVerdicts = $state<StaleVerdict[]>([]);
-  let aiStaleAbort: AbortController | null = null;
-  let aiStaleApplyingId = $state<string>('');
-
-  async function runAIStaleVerdict() {
-    if (aiStaleBusy) return;
-    aiStaleBusy = true;
-    aiStaleError = '';
-    aiStaleRaw = '';
-    aiStaleVerdicts = [];
-    aiStaleAbort = new AbortController();
-    // Build the candidate list: every stale task in the current
-    // filtered view, capped at 25 to keep prompt size sane. The
-    // user is on the Stale view when they click this; the
-    // filter set is what they see.
-    const candidates = filtered.filter(isStale).slice(0, 25);
-    if (candidates.length === 0) {
-      aiStaleBusy = false;
-      toast.info('No stale tasks to evaluate.');
-      return;
-    }
-    const { system, user } = buildStaleVerdictPrompt(candidates, todayISO());
-    // Same shape as runAIFocus — coalesce per-frame so the JSON
-    // parser doesn't run on every token of a growing buffer.
-    const stT = rafThrottle((full) => {
-      aiStaleRaw = full;
-      const block = extractJsonBlock(full);
-      if (!block) return;
-      try {
-        const parsed = JSON.parse(block) as { verdicts?: StaleVerdict[] };
-        if (Array.isArray(parsed.verdicts)) {
-          aiStaleVerdicts = validateStaleVerdicts(parsed.verdicts, tasks);
-        }
-      } catch {}
-    });
-    try {
-      await api.chatStream(
-        [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ],
-        undefined,
-        {
-          onChunk: stT.onChunk,
-          onDone: () => { stT.flush(); },
-          onError: (err) => { stT.flush(); aiStaleError = err.message; }
-        },
-        aiStaleAbort.signal
-      );
-    } finally {
-      aiStaleBusy = false;
-      aiStaleAbort = null;
-    }
-  }
-  function cancelAIStale() { aiStaleAbort?.abort(); }
-  function dismissAIStale() {
-    aiStaleRaw = '';
-    aiStaleError = '';
-    aiStaleVerdicts = [];
-  }
-
-  // Apply a verdict:
-  //   archive → done=true + triage='dropped' (matches existing
-  //             "drop this task" semantics from triage flow)
-  //   defer   → snoozedUntil = today + 14 days (so it drops out of
-  //             the stale view AND the open list until then)
-  //   keep    → no-op; remove the verdict so the user can move on
-  async function applyStaleVerdict(v: StaleVerdict) {
-    aiStaleApplyingId = v.taskId;
-    try {
-      if (v.verdict === 'archive') {
-        await api.patchTask(v.taskId, { done: true, triage: 'dropped' });
-      } else if (v.verdict === 'defer') {
-        const t = new Date();
-        t.setDate(t.getDate() + 14);
-        await api.patchTask(v.taskId, {
-          snoozedUntil: t.toISOString(),
-          triage: 'snoozed'
-        });
-      }
-      // Drop the verdict regardless of action — the user has decided.
-      aiStaleVerdicts = aiStaleVerdicts.filter((x) => x.taskId !== v.taskId);
-      if (v.verdict !== 'keep') await load();
-    } catch (e) {
-      toast.error('Apply failed: ' + (errorMessage(e)));
-    } finally {
-      aiStaleApplyingId = '';
-    }
-  }
-  function skipStaleVerdict(taskId: string) {
-    aiStaleVerdicts = aiStaleVerdicts.filter((x) => x.taskId !== taskId);
-  }
-  // Bulk archive counter for the panel header. Derived so the
-  // "archive all 5" button label updates as the user accepts /
-  // skips individual rows.
-  let staleArchiveCount = $derived(
-    aiStaleVerdicts.filter((v) => v.verdict === 'archive').length
-  );
-  async function archiveAllStaleVerdicts() {
-    const items = aiStaleVerdicts.filter((v) => v.verdict === 'archive');
-    for (const v of items) await applyStaleVerdict(v);
-  }
+  // The AI Stale-task verdict surface (✨ AI verdicts button + the
+  // accept/defer/archive panel) lives in $lib/tasks/AIStaleVerdicts.svelte.
+  // The parent passes the candidate set + the full task list and reloads
+  // when a verdict is applied.
 
   // AI deadline-detect — sister feature to triage. Scans every open
   // task with no due_date and proposes one (or stays silent) based on
@@ -3018,110 +2903,11 @@
         </div>
       {:else if view === 'stale'}
         <div class="max-w-3xl">
-          <div class="flex items-baseline gap-3 mb-4">
-            <p class="text-sm text-dim flex-1">Tasks that haven't been touched in 7+ days. Drop, snooze, or do them.</p>
-            {#if aiStaleBusy}
-              <button
-                onclick={cancelAIStale}
-                class="px-3 py-1.5 text-xs bg-surface0 text-warning rounded hover:bg-surface1 flex-shrink-0"
-                title="Cancel the in-flight verdict scan"
-              >✨ thinking… cancel</button>
-            {:else if aiStaleVerdicts.length > 0 || aiStaleError || aiStaleRaw}
-              <button
-                onclick={() => void runAIStaleVerdict()}
-                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface2 flex-shrink-0"
-                title="Re-evaluate stale tasks"
-              >↻ re-scan</button>
-              <button
-                onclick={dismissAIStale}
-                class="px-3 py-1.5 text-xs text-dim hover:text-error flex-shrink-0"
-              >dismiss</button>
-            {:else}
-              <button
-                onclick={() => void runAIStaleVerdict()}
-                disabled={filtered.filter(isStale).length === 0}
-                class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface2 disabled:opacity-50 flex-shrink-0"
-                title="AI verdict on each stale task: keep, defer 2 weeks, or archive"
-              >✨ AI verdicts</button>
-            {/if}
-          </div>
-
-          {#if aiStaleError}
-            <div class="mb-5 p-3 bg-surface0 border border-error rounded text-xs text-error">
-              {aiStaleError}
-            </div>
-          {/if}
-
-          {#if aiStaleVerdicts.length > 0}
-            <!-- Verdict panel. Each row: keep / defer / archive with
-                 a one-line rationale. Accept-archive sets the task
-                 done + triage='dropped'; defer snoozes 14 days; keep
-                 is a no-op (just dismisses the row). User stays in
-                 control — every action goes through applyStaleVerdict
-                 which round-trips through patchTask + load. -->
-            <div class="mb-5 p-3 bg-surface1 border border-surface2 rounded">
-              <div class="flex items-center mb-2">
-                <div class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">AI verdicts ({aiStaleVerdicts.length})</div>
-                {#if staleArchiveCount > 1}
-                  <button
-                    onclick={() => void archiveAllStaleVerdicts()}
-                    disabled={!!aiStaleApplyingId}
-                    class="text-[10px] text-error hover:underline mr-2 disabled:opacity-50"
-                    title="Archive all {staleArchiveCount} dead-weight tasks"
-                  >archive all {staleArchiveCount}</button>
-                {/if}
-                <button
-                  onclick={dismissAIStale}
-                  class="text-[10px] text-dim hover:text-error"
-                  title="Drop verdicts without applying"
-                >discard</button>
-              </div>
-              <ul class="space-y-2">
-                {#each aiStaleVerdicts as v (v.taskId)}
-                  {@const t = tasks.find((x) => x.id === v.taskId)}
-                  {#if t}
-                    <!-- Static class lookup so Tailwind's purge keeps them.
-                         Dynamic `text-{x}` would survive in dev but get
-                         tree-shaken in prod. -->
-                    {@const verdictClass = v.verdict === 'archive' ? 'text-error' : v.verdict === 'defer' ? 'text-warning' : 'text-success'}
-                    <li class="flex items-start gap-2 text-xs">
-                      <div class="flex-1 min-w-0">
-                        <div class="text-text">{t.text}</div>
-                        <div class="text-dim mt-0.5">
-                          <span class="font-mono uppercase tracking-wider {verdictClass}">{v.verdict}</span>
-                          {#if v.rationale}<span class="italic"> — {v.rationale}</span>{/if}
-                        </div>
-                      </div>
-                      <button
-                        onclick={() => void applyStaleVerdict(v)}
-                        disabled={aiStaleApplyingId === v.taskId}
-                        class="px-2 py-0.5 rounded flex-shrink-0
-                          {v.verdict === 'archive' ? 'bg-surface0 text-error hover:bg-surface1' :
-                           v.verdict === 'defer' ? 'bg-surface0 text-warning hover:bg-surface1' :
-                           'bg-surface0 text-success hover:bg-surface1'}
-                          disabled:opacity-50"
-                        title={v.verdict === 'archive'
-                          ? 'Drop the task — done=true, triage=dropped'
-                          : v.verdict === 'defer'
-                          ? 'Snooze 2 weeks'
-                          : 'Acknowledge — keep on the list'}
-                      >{aiStaleApplyingId === v.taskId ? '…' :
-                        v.verdict === 'archive' ? 'archive' :
-                        v.verdict === 'defer' ? 'defer 2w' : 'acknowledge'}</button>
-                      <button
-                        onclick={() => skipStaleVerdict(v.taskId)}
-                        disabled={!!aiStaleApplyingId}
-                        class="px-2 py-0.5 text-dim hover:text-text flex-shrink-0 disabled:opacity-50"
-                      >skip</button>
-                    </li>
-                  {/if}
-                {/each}
-              </ul>
-              <p class="text-[10px] text-dim italic mt-2 pt-2 border-t border-surface1">
-                Verdicts are advisory — every action requires your accept. Defer = snooze 14 days; archive = done + dropped.
-              </p>
-            </div>
-          {/if}
+          <AIStaleVerdicts
+            candidates={filtered.filter(isStale)}
+            allTasks={tasks}
+            onReload={load}
+          />
 
           <div class="space-y-2">
             {#each filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
