@@ -638,7 +638,10 @@ func (s *Server) handleSkipICSOccurrence(w http.ResponseWriter, r *http.Request)
 	var updated icsRecord
 	found := false
 	var notRecurring bool
-	err := s.rewriteICS(*src, func(records []icsRecord) ([]icsRecord, error) {
+	// Reuse the outer `err` from the parseClientTime call — `:=` here
+	// would be a redeclaration in the same block and the Go compiler
+	// rejects it ("no new variables on left side of :=").
+	err = s.rewriteICS(*src, func(records []icsRecord) ([]icsRecord, error) {
 		for i := range records {
 			if strings.TrimSpace(records[i].UID) != uid {
 				continue
