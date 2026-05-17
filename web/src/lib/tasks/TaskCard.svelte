@@ -567,6 +567,7 @@
               onclick={cyclePriority}
               disabled={busy}
               title="Cycle priority (P0 → P1 → P2 → P3)"
+              aria-label="Priority {badge.label}, click to cycle"
               class="text-[10px] font-mono px-1.5 rounded {badge.cls} flex-shrink-0 hover:brightness-110 disabled:opacity-50 cursor-pointer"
             >{badge.label}</button>
           {:else}
@@ -575,6 +576,7 @@
               onclick={cyclePriority}
               disabled={busy}
               title="Set priority (P0 → P1)"
+              aria-label="Set priority"
               class="text-[10px] font-mono px-1.5 rounded text-dim opacity-0 group-hover:opacity-100 hover:text-text hover:bg-surface1 border border-surface2 flex-shrink-0 disabled:opacity-50 cursor-pointer transition-opacity"
             >+ P</button>
           {/if}
