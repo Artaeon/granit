@@ -1,38 +1,32 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, todayISO, fmtDateISO, type Task, type HabitInfo, type PrayerIntention, type Deadline } from '$lib/api';
+  import { api, todayISO, fmtDateISO, type Task, type HabitInfo, type Deadline } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
 
-  // AtAGlanceWidget — compact daily overview row. Single span-2 widget
-  // designed to be the first thing the user reads on the dashboard:
-  // "what's the shape of today?" — answered in five tiles (tasks due,
-  // overdue, this-week deadlines, active prayer, habits remaining)
-  // with each tile linking to the source page when tapped.
+  // AtAGlanceWidget — single dense row that answers "what's the shape
+  // of today?" in four count tiles (due-today, overdue, deadlines-7d,
+  // habits-left). Each tile links to the source page on tap.
   //
-  // Defensive loading: every endpoint we hit can fail without taking
-  // the widget down (a disabled module, a 404, network blip) — each
-  // count falls back to '—' so the widget always renders the layout.
+  // Why four, not five: Prayer used to live here but it's a different
+  // altitude — work counts read as "today's pressure", prayer reads
+  // as "today's intention". Mixing them muddied the glance. Prayer
+  // has its own widget; this row stays focused on what's due.
 
   let openTasks = $state<Task[] | null>(null);
   let deadlines = $state<Deadline[] | null>(null);
-  let intentions = $state<PrayerIntention[] | null>(null);
   let habits = $state<HabitInfo[] | null>(null);
   let loaded = $state(false);
 
   const today = todayISO();
 
   async function load() {
-    // Promise.allSettled — we don't want one slow / failing endpoint
-    // to gate the others. Each .value is read defensively below.
-    const [t, d, p, h] = await Promise.allSettled([
+    const [t, d, h] = await Promise.allSettled([
       api.listTasks({ status: 'open' }),
       api.tryListDeadlines(),
-      api.listPrayer(),
       api.listHabits()
     ]);
     openTasks = t.status === 'fulfilled' ? t.value.tasks : [];
     deadlines = d.status === 'fulfilled' ? (d.value ?? []) : [];
-    intentions = p.status === 'fulfilled' ? p.value.intentions : [];
     habits = h.status === 'fulfilled' ? h.value.habits : [];
     loaded = true;
   }
@@ -42,7 +36,6 @@
     return onWsEvent((ev) => {
       if (ev.type === 'task.changed') load();
       if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') load();
-      if (ev.type === 'state.changed' && ev.path === '.granit/prayer/intentions.json') load();
       if (ev.type === 'state.changed' && ev.path?.startsWith('.granit/habits/')) load();
       if (ev.type === 'note.changed') load();
     });
@@ -80,54 +73,37 @@
     ).length;
   });
 
-  let activePrayer = $derived.by(() => {
-    if (!intentions) return null;
-    return intentions.filter((p) => p.status === 'praying').length;
-  });
-
   let habitsRemaining = $derived.by(() => {
     if (!habits) return null;
     return habits.filter((h) => !h.doneToday).length;
   });
 
-  // Tile defaults: a count of 0 should still render the tile (so the
-  // user sees "nothing on fire" as a positive signal), but we tint it
-  // dim so a critical-state count visually wins.
-  type Tile = { label: string; value: number | null; href: string; icon: string; tone: string };
+  // Tone math: a 0 stays dim (nothing on fire = good); a positive
+  // count picks a critical-tone so the eye lands on what's pressing.
+  type Tile = { label: string; value: number | null; href: string; tone: string };
   let tiles = $derived<Tile[]>([
     {
-      label: 'Due today',
+      label: 'Due',
       value: dueToday,
       href: '/tasks?group=due',
-      icon: '✔',
       tone: dueToday && dueToday > 0 ? 'primary' : 'dim'
     },
     {
       label: 'Overdue',
       value: overdue,
       href: '/tasks?group=due',
-      icon: '!',
       tone: overdue && overdue > 0 ? 'error' : 'dim'
     },
     {
       label: 'Deadlines · 7d',
       value: weekDeadlines,
       href: '/deadlines',
-      icon: '⏰',
       tone: weekDeadlines && weekDeadlines > 0 ? 'warning' : 'dim'
-    },
-    {
-      label: 'Praying',
-      value: activePrayer,
-      href: '/prayer',
-      icon: '🙏',
-      tone: activePrayer && activePrayer > 0 ? 'secondary' : 'dim'
     },
     {
       label: 'Habits left',
       value: habitsRemaining,
       href: '/habits',
-      icon: '◇',
       tone: habitsRemaining && habitsRemaining > 0 ? 'info' : 'success'
     }
   ]);
@@ -138,26 +114,19 @@
   }
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4">
-  <div class="flex items-baseline justify-between mb-3">
-    <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Today at a glance</h2>
-    {#if !loaded}
-      <span class="text-[11px] text-dim italic">loading…</span>
-    {/if}
-  </div>
-  <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+<section class="bg-surface0 border border-surface1 rounded-lg px-3 py-2">
+  <div class="grid grid-cols-4 gap-1.5">
     {#each tiles as t}
       <a
         href={t.href}
-        class="block px-2.5 py-2 rounded bg-mantle hover:bg-black/60 border-l-2 transition-colors"
+        class="block px-2 py-1.5 rounded bg-mantle hover:bg-black/60 border-l-2 transition-colors"
         style="border-left-color: var(--color-{t.tone});"
         title={t.label}
       >
         <div class="flex items-baseline gap-1.5">
-          <span class="text-base flex-shrink-0" style="color: var(--color-{t.tone});">{t.icon}</span>
-          <span class="text-2xl font-semibold text-text tabular-nums leading-none">{display(t.value)}</span>
+          <span class="text-xl font-semibold text-text tabular-nums leading-none">{display(t.value)}</span>
+          <span class="text-[10px] uppercase tracking-wider text-dim truncate">{t.label}</span>
         </div>
-        <div class="text-[11px] text-dim mt-1 truncate">{t.label}</div>
       </a>
     {/each}
   </div>
