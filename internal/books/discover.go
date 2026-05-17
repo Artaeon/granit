@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/artaeon/granit/internal/textutil"
 )
 
 // Discover surfaces — search proxies for legal e-book sources so
@@ -364,10 +366,11 @@ var tagStripRe = regexp.MustCompile(`<[^>]+>`)
 func stripTags(s string) string {
 	clean := tagStripRe.ReplaceAllString(s, "")
 	clean = strings.Join(strings.Fields(clean), " ")
-	if len(clean) > 280 {
-		clean = clean[:277] + "…"
-	}
-	return clean
+	// Book summaries arrive in every UTF-8 alphabet under the sun —
+	// Project Gutenberg has Greek, Latin, German, French, CJK, etc.
+	// Rune-aware truncation prevents `clean[:277]` from chopping a
+	// multibyte char in half.
+	return textutil.TruncateRunes(clean, 277)
 }
 
 // absURL turns "/foo/bar" into "https://host/foo/bar". Used for

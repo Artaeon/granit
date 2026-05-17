@@ -36,6 +36,7 @@ import (
 	"github.com/artaeon/granit/internal/goals"
 	"github.com/artaeon/granit/internal/granitmeta"
 	"github.com/artaeon/granit/internal/tasks"
+	"github.com/artaeon/granit/internal/textutil"
 	"github.com/artaeon/granit/internal/vault"
 )
 
@@ -289,10 +290,7 @@ func (b *Builder) recentNotes(limit int) []NoteSummary {
 		if n == nil {
 			continue
 		}
-		excerpt := strings.TrimSpace(stripFrontmatter(n.Content))
-		if len(excerpt) > 200 {
-			excerpt = excerpt[:200] + "…"
-		}
+		excerpt := textutil.TruncateRunes(strings.TrimSpace(stripFrontmatter(n.Content)), 200)
 		out = append(out, NoteSummary{
 			Path:    n.RelPath,
 			Title:   n.Title,

@@ -20,6 +20,7 @@ import (
 	"github.com/artaeon/granit/internal/atomicio"
 	"github.com/artaeon/granit/internal/history"
 	"github.com/artaeon/granit/internal/sabbath"
+	"github.com/artaeon/granit/internal/textutil"
 	"github.com/artaeon/granit/internal/vault"
 	"github.com/artaeon/granit/internal/wshub"
 )
@@ -180,7 +181,7 @@ func (s *Server) handleMaintenanceWeeklyDigest(w http.ResponseWriter, r *http.Re
 			continue
 		}
 		s.cfg.Vault.EnsureLoaded(n.RelPath)
-		excerpt := truncateRunes(strings.TrimSpace(stripFrontmatterBody(n.Content)), 280)
+		excerpt := textutil.TruncateRunes(strings.TrimSpace(stripFrontmatterBody(n.Content)), 280)
 		pool = append(pool, digestEntry{
 			Path:    n.RelPath,
 			Title:   n.Title,
@@ -456,7 +457,7 @@ func (s *Server) suggestOrphanBacklinks(ctx context.Context, orphanPath string) 
 	// empty excerpt to the model and burns a token round trip for
 	// nothing.
 	s.cfg.Vault.EnsureLoaded(orphanPath)
-	excerpt := truncateRunes(strings.TrimSpace(stripFrontmatterBody(orphan.Content)), 800)
+	excerpt := textutil.TruncateRunes(strings.TrimSpace(stripFrontmatterBody(orphan.Content)), 800)
 
 	// Candidate pool: top 40 notes by mod time, excluding the
 	// orphan itself + notes that already link to it (defensive —
@@ -489,7 +490,7 @@ func (s *Server) suggestOrphanBacklinks(ctx context.Context, orphanPath string) 
 	pool := make([]cand, 0, len(all))
 	for _, rec := range all {
 		s.cfg.Vault.EnsureLoaded(rec.n.RelPath)
-		ex := truncateRunes(strings.TrimSpace(stripFrontmatterBody(rec.n.Content)), 220)
+		ex := textutil.TruncateRunes(strings.TrimSpace(stripFrontmatterBody(rec.n.Content)), 220)
 		pool = append(pool, cand{Path: rec.n.RelPath, Title: rec.n.Title, Excerpt: ex})
 	}
 	if len(pool) == 0 {
@@ -944,24 +945,3 @@ func normaliseTag(t string) string {
 	return out
 }
 
-// truncateRunes caps a string by codepoint count rather than byte
-// length, then appends an ellipsis when truncation actually
-// happened. Byte-slicing UTF-8 (the agent-generated code did
-// `excerpt[:N]`) can land mid-codepoint and produce invalid UTF-8
-// that json.Marshal then replaces with U+FFFD — the AI receives
-// garbled chars and any latin-extended / CJK / Greek note text
-// suffers. Codepoint-aware truncation costs one O(n) scan and
-// keeps the wire payload clean.
-func truncateRunes(s string, maxRunes int) string {
-	if maxRunes <= 0 {
-		return ""
-	}
-	count := 0
-	for i := range s {
-		if count == maxRunes {
-			return s[:i] + "…"
-		}
-		count++
-	}
-	return s
-}

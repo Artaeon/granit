@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/artaeon/granit/internal/textutil"
 )
 
 type searchHit struct {
@@ -60,10 +62,13 @@ func trimMatchLine(line, q string) string {
 	}
 	idx := strings.Index(strings.ToLower(line), strings.ToLower(strings.Fields(q)[0]))
 	if idx < 0 {
-		if len(line) > 160 {
-			return line[:160] + "…"
-		}
-		return line
+		// No hit — return the lead. Rune-aware so a German /
+		// Greek / CJK note doesn't lose its trailing char to a
+		// mid-codepoint cut. The windowed branch below still
+		// byte-slices around the match index — that's a deeper
+		// fix (would need to walk by rune from a byte offset)
+		// and reaches a smaller share of return paths.
+		return textutil.TruncateRunes(line, 160)
 	}
 	start := idx - 40
 	if start < 0 {

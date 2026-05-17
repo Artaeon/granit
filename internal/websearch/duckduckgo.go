@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"golang.org/x/net/html"
+
+	"github.com/artaeon/granit/internal/textutil"
 )
 
 // DuckDuckGo is the default provider: no API key needed (the user
@@ -377,8 +379,9 @@ func firstSentence(s string) string {
 	if ix := strings.Index(s, ". "); ix > 0 && ix < 120 {
 		return s[:ix]
 	}
-	if len(s) > 80 {
-		return s[:80] + "…"
-	}
-	return s
+	// Web snippets are arbitrary text from arbitrary pages —
+	// expect every alphabet. Rune-aware truncation avoids splitting
+	// a multibyte char at the 80-byte boundary and emitting invalid
+	// UTF-8 into the chat surface.
+	return textutil.TruncateRunes(s, 80)
 }

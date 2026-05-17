@@ -11,6 +11,7 @@ import (
 	"github.com/artaeon/granit/internal/aiprefs"
 	"github.com/artaeon/granit/internal/goals"
 	"github.com/artaeon/granit/internal/granitmeta"
+	"github.com/artaeon/granit/internal/textutil"
 	"github.com/artaeon/granit/internal/ventures"
 )
 
@@ -183,10 +184,7 @@ func (s *Server) buildLinkCandidates(currentPath string) []linkCandidate {
 			if n == nil {
 				continue
 			}
-			ex := strings.TrimSpace(stripFrontmatterBody(n.Content))
-			if len(ex) > 120 {
-				ex = ex[:120] + "…"
-			}
+			ex := textutil.TruncateRunes(strings.TrimSpace(stripFrontmatterBody(n.Content)), 120)
 			out = append(out, linkCandidate{
 				Type:    "note",
 				Ref:     n.RelPath,
