@@ -581,6 +581,63 @@
         'specific concepts, claims, or examples that connect them. For each connection: name ' +
         'the linked note in [[wikilink]] form, then one sentence on what connects. If no ' +
         'linked notes were provided, say so plainly. Markdown bullet list, no preamble.'
+    },
+    {
+      // Flashcards — Q/A pairs in a deliberately simple two-line
+      // format so the user can read them top-to-bottom AND a future
+      // scheduler can parse them. Same shape every time:
+      //   Q: question?
+      //   A: answer.
+      // Blank line between cards. quiz-me asks "do you understand?"
+      // and gives 5 questions with `> ` answers; this asks "what
+      // should you drill?" and gives more cards with crisper Q/A —
+      // suited to spaced-repetition review rather than one-shot
+      // self-quizzing.
+      id: 'flashcards',
+      label: 'Generate flashcards',
+      hint: 'Q/A pairs for spaced review',
+      category: 'learning',
+      cursor: true,
+      selection: true,
+      wholeNote: true,
+      systemForCursor:
+        'Read the following note and write flashcards for the concepts a learner would want ' +
+        'to drill. Produce 6-10 cards. For each card use EXACTLY this two-line shape with a ' +
+        'blank line separating cards:\n\nQ: <single specific question, one sentence>\nA: <single ' +
+        'concise answer, one sentence; longer only when essential>\n\nFocus on durable concepts ' +
+        '(definitions, mechanisms, "why X causes Y"), not surface trivia. Skip cards that ' +
+        'paraphrase what a sibling card already covers. Plain markdown, no preamble, no numbering, ' +
+        'no headers.',
+      systemForSelection:
+        'Read the following passage and write flashcards for it. Produce 3-6 cards. For each card ' +
+        'use EXACTLY this two-line shape with a blank line separating cards:\n\nQ: <single specific ' +
+        'question>\nA: <single concise answer>\n\nFocus on durable concepts, not surface trivia. ' +
+        'Plain markdown, no preamble, no numbering, no headers.'
+    },
+    {
+      // Extract references — scans the body for every external
+      // reference (URLs, bible refs, book titles in quotes, "author
+      // (year)" citation style, etc.) and emits a deduped References
+      // section. Whole-note only because the value is in pulling
+      // scattered refs from throughout the document into one place.
+      // Lives under research because the user reaches for it during
+      // sourcing / fact-checking work, not while writing first drafts.
+      id: 'extract-references',
+      label: 'Extract references',
+      hint: 'build a References section',
+      category: 'research',
+      cursor: true,
+      selection: false,
+      wholeNote: true,
+      systemForCursor:
+        'Scan the following note for EVERY external reference: URLs, bible passages (e.g. ' +
+        'John 3:16, Rom. 8:28-30), book or paper titles (italicised, in quotes, or otherwise ' +
+        'flagged), author-year citations (Smith 2019, "Smith et al."), and other named sources. ' +
+        'Produce ONE markdown section starting with `## References` followed by a deduplicated ' +
+        'bullet list. For each entry: render the canonical form (e.g. "Romans 8:28-30", not ' +
+        '"rom 8:28-30") and, when an author or context can be inferred, add a brief ' +
+        'parenthetical hint. Group by kind only when there are ≥3 of that kind (Scripture, Books, ' +
+        'Web, Other). Return ONLY the `## References` section — nothing before or after.'
     }
   ];
 
