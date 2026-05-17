@@ -18,7 +18,14 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
-  import { daysUntilTarget, targetChip, targetBorderColor } from '$lib/goals/util';
+  import {
+    daysUntilTarget,
+    targetChip,
+    targetBorderColor,
+    statusColor,
+    fmtTargetDate,
+    goalTargetTone
+  } from '$lib/goals/util';
   import GoalKanbanCard from '$lib/goals/GoalKanbanCard.svelte';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
@@ -242,47 +249,11 @@
     return { open, done, project };
   }
 
-  // Status-pill colors. Spec: active=primary, paused=subtext, completed=success, archived=dim.
-  function statusColor(s?: string): { bg: string; text: string } {
-    switch (s) {
-      case 'active':
-        return { bg: 'bg-primary/15', text: 'text-primary' };
-      case 'paused':
-        return { bg: 'bg-surface1', text: 'text-subtext' };
-      case 'completed':
-        return { bg: 'bg-surface0', text: 'text-success' };
-      case 'archived':
-        return { bg: 'bg-surface1', text: 'text-dim' };
-      default:
-        return { bg: 'bg-surface1', text: 'text-subtext' };
-    }
-  }
-
-  function fmtDate(s: string | undefined): string {
-    if (!s) return '';
-    const d = new Date(s);
-    if (!isNaN(d.getTime())) {
-      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-    return s;
-  }
-
-  // Status-aware urgency tone for the goal card's left border.
-  // Completed + archived goals stay neutral so a past-target completed
-  // goal doesn't shout — its target_date is now historical context,
-  // not a call to action. Only `active` and `paused` goals get the
-  // urgency treatment so the user's eye lands on living work.
-  // The proximity → tone mapping itself lives in $lib/goals/util so
-  // /goals and the dashboard widget can't drift.
-  function targetTone(g: Goal): string | null {
-    if (g.status === 'completed' || g.status === 'archived') return null;
-    const days = daysUntilTarget(g.target_date);
-    if (days === null) return null;
-    if (days < 0) return 'error';
-    if (days <= 30) return 'warning';
-    if (days <= 90) return 'info';
-    return null;
-  }
+  // Status-pill colors, friendly date formatting, and urgency-tone
+  // routing all live in $lib/goals/util now — single source of truth
+  // for every goal surface (kanban, cards, list, dashboard widgets).
+  // The local copies that used to live here are gone; call sites
+  // route through the imports above.
 
   let counts = $derived({
     all: goals.length,
@@ -1264,7 +1235,7 @@
               {/if}
             </div>
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-dim">
-              <span class="font-mono tabular-nums text-subtext">{fmtDate(h.target_date)}</span>
+              <span class="font-mono tabular-nums text-subtext">{fmtTargetDate(h.target_date)}</span>
               {#if h.venture}
                 <span class="text-secondary">🏢 {h.venture}</span>
               {/if}
@@ -1495,7 +1466,7 @@
         {#each visibleGoals as g (g.id)}
           {@const p = progress(g)}
           {@const sc = statusColor(g.status)}
-          {@const tone = targetTone(g)}
+          {@const tone = goalTargetTone(g.status, g.target_date)}
           {@const chip = targetChip(g.target_date)}
           {@const roll = rollupFor(g)}
           {@const aiOpen = aiGoalId === g.id}
@@ -1530,7 +1501,7 @@
               <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-dim">
                 {#if g.target_date}
                   <span class="inline-flex items-baseline gap-1.5">
-                    <span>🎯 {fmtDate(g.target_date)}</span>
+                    <span>🎯 {fmtTargetDate(g.target_date)}</span>
                     {#if chip && (g.status === 'active' || g.status === 'paused')}
                       <span
                         class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium tabular-nums whitespace-nowrap"
@@ -1667,7 +1638,7 @@
         {#each visibleGoals as g (g.id)}
           {@const p = progress(g)}
           {@const sc = statusColor(g.status)}
-          {@const tone = targetTone(g)}
+          {@const tone = goalTargetTone(g.status, g.target_date)}
           {@const chip = targetChip(g.target_date)}
           {@const roll = rollupFor(g)}
           <button
@@ -1685,7 +1656,7 @@
               </div>
               <div class="flex items-center gap-x-3 gap-y-0.5 text-[11px] text-dim flex-wrap">
                 {#if g.target_date}
-                  <span class="font-mono tabular-nums">{fmtDate(g.target_date)}</span>
+                  <span class="font-mono tabular-nums">{fmtTargetDate(g.target_date)}</span>
                 {/if}
                 {#if chip && (g.status === 'active' || g.status === 'paused')}
                   <span
