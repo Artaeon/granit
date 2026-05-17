@@ -302,40 +302,44 @@
   };
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-5">
-  <!-- Header. Day + date on the left, "N left" pill on the right.
-       Reads like a sentence; no decorative chrome. -->
-  <header class="flex items-baseline gap-3 mb-3">
-    <h2 class="text-base sm:text-lg font-semibold text-text">
+<section class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4">
+  <!-- Header. Day + date on the left, "now-event" inline + "N left"
+       pill on the right. One line, no decorative chrome. -->
+  <header class="flex items-baseline gap-3 mb-2">
+    <h2 class="text-base font-semibold text-text">
       {fmtTodayHeader(now)}
     </h2>
+    {#if nowEvent}
+      <span class="hidden sm:inline-flex items-baseline gap-1.5 text-xs">
+        <span class="text-success">●</span>
+        <a href="/calendar" class="text-success hover:underline truncate max-w-[260px]" title="happening now">
+          {nowEvent.title}
+        </a>
+        <span class="text-dim font-mono tabular-nums">{nowEvent.start!.slice(11, 16)}–{nowEvent.end!.slice(11, 16)}</span>
+      </span>
+    {/if}
     <span class="flex-1"></span>
     {#if loaded && stream.length > 0}
-      <span class="text-xs text-dim">
-        {leftToday} left
+      <span class="text-[11px] text-dim font-mono tabular-nums">
+        {leftToday}/{stream.length}
       </span>
     {/if}
   </header>
 
-  <!-- Now line: current event if any, otherwise current time. -->
+  <!-- Mobile-only "now" row — desktop folds it into the header. -->
   {#if nowEvent}
-    <div class="flex items-baseline gap-2 mb-3 px-3 py-2 rounded bg-surface0 border border-success">
-      <span class="text-success text-sm">●</span>
-      <span class="text-xs uppercase tracking-wider text-success font-semibold">Now</span>
-      <a href="/calendar" class="text-sm text-text font-medium truncate flex-1 hover:underline">
-        {nowEvent.title}
-      </a>
-      <span class="text-[11px] text-dim font-mono tabular-nums">
-        {nowEvent.start!.slice(11, 16)}–{nowEvent.end!.slice(11, 16)}
-      </span>
-    </div>
+    <a href="/calendar" class="sm:hidden flex items-baseline gap-2 mb-2 text-xs border-l-2 border-success pl-2">
+      <span class="text-success">● now</span>
+      <span class="text-text truncate flex-1">{nowEvent.title}</span>
+      <span class="text-dim font-mono">{nowEvent.start!.slice(11, 16)}</span>
+    </a>
   {/if}
 
   {#if !loaded}
-    <ul class="space-y-1.5">
+    <ul class="space-y-1">
       {#each [0, 1, 2] as i (i)}
-        <li class="flex items-baseline gap-3 py-1">
-          <span class="w-12 h-3 bg-surface1 rounded animate-pulse"></span>
+        <li class="flex items-baseline gap-3 py-0.5">
+          <span class="w-10 h-3 bg-surface1 rounded animate-pulse"></span>
           <span class="flex-1 h-3 bg-surface1 rounded animate-pulse"></span>
         </li>
       {/each}
@@ -345,21 +349,21 @@
       Nothing scheduled today. Wide open.
     </p>
   {:else}
-    <ul class="space-y-1">
+    <ul class="divide-y divide-surface1/40">
       {#each stream as r (r.id)}
         <li>
           <a
             href={r.href}
-            class="flex items-baseline gap-3 py-1 px-2 -mx-2 rounded hover:bg-surface1 transition-colors {r.past ? 'opacity-45' : ''}"
+            class="flex items-baseline gap-2.5 py-1 px-1.5 -mx-1.5 rounded hover:bg-surface1 transition-colors {r.past ? 'opacity-40' : ''}"
           >
-            <span class="w-12 flex-shrink-0 text-xs font-mono tabular-nums text-dim">
+            <span class="w-10 flex-shrink-0 text-[11px] font-mono tabular-nums text-dim">
               {r.time || '—'}
             </span>
             <span class="text-xs flex-shrink-0 {KIND_TONE[r.kind]}" aria-hidden="true">
               {KIND_ICON[r.kind]}
             </span>
-            <span class="flex-1 text-sm text-text truncate {r.past ? 'line-through decoration-dim/40' : ''}">
-              {#if r.typeGlyph}<span class="font-mono text-[10px] text-dim mr-1.5">{r.typeGlyph}</span>{/if}{r.label}
+            <span class="flex-1 text-sm text-text truncate">
+              {#if r.typeGlyph}<span class="font-mono text-[10px] text-dim mr-1">{r.typeGlyph}</span>{/if}{r.label}
             </span>
             {#if r.meta}
               <span class="text-[11px] text-dim flex-shrink-0 hidden sm:inline">{r.meta}</span>
@@ -370,33 +374,32 @@
     </ul>
   {/if}
 
-  <!-- Tomorrow + day-after compact preview. Single-line summary
-       per day with count + first event. Hidden when both days
-       are empty so the widget stays tight. -->
+  <!-- Tomorrow + day-after preview — single-line per day so the
+       footer reads "thu: 09:00 dentist · +2 events" rather than
+       eating a paragraph. Hidden when both days are empty. -->
   {#if loaded && upcoming.some((u) => u.eventCount > 0 || u.taskCount > 0)}
-    <div class="mt-4 pt-3 border-t border-surface1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+    <div class="mt-3 pt-2 border-t border-surface1 space-y-0.5">
       {#each upcoming as u (u.iso)}
+        {@const empty = u.eventCount === 0 && u.taskCount === 0}
         <a
           href="/calendar"
-          class="flex flex-col gap-0.5 px-3 py-2 rounded bg-surface1 hover:bg-surface2 transition-colors {u.eventCount === 0 && u.taskCount === 0 ? 'opacity-60' : ''}"
+          class="flex items-baseline gap-2 px-1.5 py-1 -mx-1.5 rounded hover:bg-surface1 transition-colors {empty ? 'opacity-50' : ''}"
         >
-          <span class="text-[10px] uppercase tracking-wider text-dim">
+          <span class="w-16 flex-shrink-0 text-[10px] uppercase tracking-wider text-dim">
             {fmtDayLabel(u.date)}
           </span>
-          <span class="text-sm text-subtext">
+          <span class="flex-1 text-xs text-subtext truncate">
             {#if u.firstEvent}
-              <span class="text-text font-medium truncate">{u.firstEvent}</span>
-            {:else if u.eventCount > 0 || u.taskCount > 0}
+              <span class="text-text">{u.firstEvent}</span>
+              {#if u.eventCount > 1 || u.taskCount > 0}
+                <span class="text-dim"> · +{u.eventCount - 1} ev{#if u.taskCount > 0}, {u.taskCount} task{u.taskCount === 1 ? '' : 's'}{/if}</span>
+              {/if}
+            {:else if !empty}
               {u.eventCount} event{u.eventCount === 1 ? '' : 's'} · {u.taskCount} task{u.taskCount === 1 ? '' : 's'}
             {:else}
-              — open day —
+              — open —
             {/if}
           </span>
-          {#if u.firstEvent && (u.eventCount > 1 || u.taskCount > 0)}
-            <span class="text-[11px] text-dim">
-              + {u.eventCount - 1} event{u.eventCount - 1 === 1 ? '' : 's'} · {u.taskCount} task{u.taskCount === 1 ? '' : 's'}
-            </span>
-          {/if}
         </a>
       {/each}
     </div>
