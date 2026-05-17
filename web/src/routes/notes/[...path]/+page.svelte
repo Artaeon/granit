@@ -17,6 +17,7 @@
   import NoteDeadlinesStrip from '$lib/deadlines/NoteDeadlinesStrip.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
   import { toast } from '$lib/components/toast';
+  import { scheduleFlashcards } from '$lib/util/scheduleFlashcards';
   import { errorMessage } from '$lib/util/errorMessage';
   import { getDraft, setDraft, clearDraft, draftDivergesFromServer } from '$lib/notes/drafts';
   import {
@@ -130,6 +131,35 @@
   // Inline AI menu — populated by the inline-ai-trigger extension when
   // the user hits Cmd-K or types "/ai". Cleared when the menu closes.
   let aiTriggerEvent = $state<InlineAITriggerEvent | null>(null);
+
+  // Schedule flashcard reviews on the calendar. Parses Q:/A: pairs
+  // out of the current body (the format the InlineAIMenu
+  // "flashcards" preset emits) and creates a 5-step spaced-rep
+  // series per card at 1/3/7/14/30 day offsets — same cadence as
+  // the scripture memory-verse drill. Busy flag keeps the overflow
+  // menu from queueing duplicate runs.
+  let schedulingFlashcards = $state(false);
+  async function runScheduleFlashcards() {
+    if (schedulingFlashcards) return;
+    schedulingFlashcards = true;
+    overflowOpen = false;
+    try {
+      const r = await scheduleFlashcards(body);
+      if (r.cards === 0) {
+        toast.info('No Q:/A: flashcards found in this note.');
+        return;
+      }
+      if (r.failed === 0) {
+        toast.success(`Scheduled ${r.cards} card${r.cards === 1 ? '' : 's'} × 5 reviews (1/3/7/14/30 days).`);
+      } else {
+        toast.info(`Scheduled ${r.scheduled} of ${r.cards * 5} reviews — ${r.failed} failed.`);
+      }
+    } catch (e) {
+      toast.error('Schedule failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      schedulingFlashcards = false;
+    }
+  }
 
   // Inline AI ghost state — observed by inlineAIObserver, drives the
   // floating <AIActionBar> that surfaces Keep / Try again / Discard /
@@ -2424,6 +2454,24 @@
       <span>{focusMode ? 'Exit focus mode' : 'Focus mode'}</span>
     </button>
     <div class="border-t border-surface1 my-1"></div>
+    <!-- Schedule flashcards — parses Q:/A: pairs in the body and
+         drops a 1/3/7/14/30-day review series on the calendar per
+         card. Same shape as the scripture memory-verse drill so
+         the calendar treats both surfaces identically. -->
+    <button
+      type="button"
+      role="menuitem"
+      onclick={runScheduleFlashcards}
+      disabled={schedulingFlashcards}
+      class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem] disabled:opacity-60"
+    >
+      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="6" width="14" height="10" rx="1.5"/>
+        <rect x="6" y="4" width="14" height="10" rx="1.5"/>
+        <path d="M10 10h4"/>
+      </svg>
+      <span>{schedulingFlashcards ? 'Scheduling…' : 'Schedule flashcard reviews'}</span>
+    </button>
     <button
       type="button"
       role="menuitem"
