@@ -8,6 +8,7 @@ import (
 
 	"github.com/artaeon/granit/internal/config"
 	"github.com/artaeon/granit/internal/deadlines"
+	"github.com/artaeon/granit/internal/goals"
 	"github.com/artaeon/granit/internal/granitmeta"
 )
 
@@ -568,6 +569,39 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 			Title:      d.Title,
 			EventID:    d.ID,
 			Importance: deadlines.NormalizeImportance(d.Importance),
+		})
+	}
+
+	// Goal target dates (.granit/goals.json). Each active/paused goal
+	// with a parseable YYYY-MM-DD target_date emits an all-day
+	// goal_target row. Quarterly-shaped targets ("Q4 2026") fall through
+	// — there's nothing to anchor; those still surface on /goals.
+	// Why on the calendar: a goal's target_date is the same conceptual
+	// shape as a deadline (single-day, by-when pressure). Putting them
+	// on the grid means the user reads "what does the next month look
+	// like commitment-wise" in one surface rather than reaching for
+	// /goals separately. Completed / archived goals are filtered out —
+	// past-due active ones (overdue) are kept so the calendar truth-
+	// fully shows missed targets the same way deadlines do.
+	for _, g := range goals.LoadAll(s.cfg.Vault.Root) {
+		if g.Status == goals.StatusCompleted || g.Status == goals.StatusArchived {
+			continue
+		}
+		if g.TargetDate == "" {
+			continue
+		}
+		dt, err := time.Parse("2006-01-02", g.TargetDate)
+		if err != nil {
+			continue
+		}
+		if dt.Before(from) || dt.After(to) {
+			continue
+		}
+		events = append(events, calendarEvent{
+			Type:    "goal_target",
+			Date:    g.TargetDate,
+			Title:   g.Title,
+			EventID: g.ID,
 		})
 	}
 

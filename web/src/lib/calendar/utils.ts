@@ -221,6 +221,11 @@ export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; bor
       return ev.done ? tone('success') : tone('warning');
     case 'daily':
       return tone('secondary');
+    case 'goal_target':
+      // Mauve mirrors GoalsProgressWidget's primary tint — same
+      // visual identity for "this is a goal" across dashboard and
+      // calendar.
+      return hex('#af52de');
     default:
       return tone('subtext');
   }

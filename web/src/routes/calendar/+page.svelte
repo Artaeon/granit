@@ -150,7 +150,7 @@
 
   // Event-type filter: each toggle hides events of that type. Persisted so
   // the user's preference (e.g. "always hide ICS") sticks across sessions.
-  type EventFilterKey = 'daily' | 'task_due' | 'task_scheduled' | 'event' | 'ics_event' | 'deadline';
+  type EventFilterKey = 'daily' | 'task_due' | 'task_scheduled' | 'event' | 'ics_event' | 'deadline' | 'goal_target';
   const FILTER_KEY = 'granit.calendar.filters';
   let hidden = $state<Set<EventFilterKey>>(
     new Set(loadStored<EventFilterKey[]>(FILTER_KEY, []))
@@ -612,7 +612,19 @@
     if (dx > 0) prev(); else next();
   }
 
-  function clickEvent(ev: CalendarEvent) { selected = ev; detailOpen = true; }
+  function clickEvent(ev: CalendarEvent) {
+    // Goal targets are anchors back to /goals — opening the calendar
+    // EventDetail for them would imply edit/reschedule semantics the
+    // backend doesn't support (a goal's target_date is a property of
+    // the goal, not a standalone event). Jump straight to the goal so
+    // the user can adjust it from the source of truth.
+    if (ev.type === 'goal_target' && ev.eventId) {
+      goto(`/goals?focus=${encodeURIComponent(ev.eventId)}`);
+      return;
+    }
+    selected = ev;
+    detailOpen = true;
+  }
   function clickSlot(date: Date, hour: number, minute: number) {
     createDate = date;
     createHour = hour;
@@ -1211,7 +1223,8 @@
         { key: 'task_due', label: 'Task due', tone: 'warning' },
         { key: 'event', label: 'Event', tone: 'info' },
         { key: 'ics_event', label: 'ICS calendars', tone: 'info' },
-        { key: 'deadline', label: 'Deadlines', tone: 'error' }
+        { key: 'deadline', label: 'Deadlines', tone: 'error' },
+        { key: 'goal_target', label: 'Goal targets', tone: 'mauve' }
       ] as f}
         {@const isHidden = hidden.has(f.key as EventFilterKey)}
         <button
