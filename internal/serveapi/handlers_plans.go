@@ -4,13 +4,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/artaeon/granit/internal/aiprefs"
+	"github.com/artaeon/granit/internal/atomicio"
 	"github.com/artaeon/granit/internal/goals"
 	"github.com/artaeon/granit/internal/granitmeta"
+	"github.com/artaeon/granit/internal/history"
+	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/ventures"
 )
 
@@ -366,4 +371,261 @@ func isoWeekRange(at time.Time) (time.Time, time.Time) {
 	}
 	monday := time.Date(at.Year(), at.Month(), at.Day()-(wd-1), 0, 0, 0, 0, at.Location())
 	return monday, monday.AddDate(0, 0, 7)
+}
+
+// ─── Weekly Plan Commit ─────────────────────────────────────────
+//
+// Takes the user-approved subset of an extraction proposal and turns
+// it into real vault state: real tasks (inserted into the plan note
+// under "### <Venture>" sections so the plan note itself is the
+// canonical commitment record) and real milestones (appended to
+// existing goals).
+//
+// Why tasks live IN the plan note rather than in their venture's
+// project file:
+//   1. The plan note becomes the canonical "this week's commitments"
+//      artifact — open it on Sunday, see the whole week.
+//   2. The /morning view can read "tasks whose NotePath matches the
+//      current week's plan" to know what to surface today.
+//   3. The TaskStore reconciliation handles the markdown↔sidecar
+//      sync automatically, so editing the plan note by hand keeps
+//      tasks in sync.
+//
+// The plan note also gets frontmatter on commit: type, week,
+// generated_at, generated_task_ids — so future tooling can find all
+// week-N plans and the tasks they spawned without re-parsing the
+// body.
+
+type planCommitItem struct {
+	Kind        string `json:"kind"`
+	Label       string `json:"label"`
+	VentureName string `json:"venture_name,omitempty"`
+	ProjectName string `json:"project_name,omitempty"`
+	GoalID      string `json:"goal_id,omitempty"`
+	DueDate     string `json:"due_date,omitempty"`
+	SourceLine  string `json:"source_line,omitempty"`
+}
+
+type planCommitRequest struct {
+	PlanText string           `json:"plan_text"`
+	WeekISO  string           `json:"week_iso,omitempty"`
+	Items    []planCommitItem `json:"items"`
+}
+
+type planCommitSkip struct {
+	Label  string `json:"label"`
+	Reason string `json:"reason"`
+}
+
+type planCommitResponse struct {
+	PlanPath               string           `json:"plan_path"`
+	CreatedTaskIDs         []string         `json:"created_task_ids"`
+	CreatedMilestonesCount int              `json:"created_milestones_count"`
+	Skipped                []planCommitSkip `json:"skipped,omitempty"`
+}
+
+func (s *Server) handlePlanCommit(w http.ResponseWriter, r *http.Request) {
+	var req planCommitRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if s.cfg.TaskStore == nil {
+		writeError(w, http.StatusInternalServerError, "task store not configured")
+		return
+	}
+	if len(req.Items) == 0 {
+		writeError(w, http.StatusBadRequest, "items is empty — nothing to commit")
+		return
+	}
+	now := time.Now()
+	weekISO := req.WeekISO
+	if weekISO == "" {
+		y, w := now.ISOWeek()
+		weekISO = fmt.Sprintf("%d-W%02d", y, w)
+	}
+	planPath := "Plans/" + weekISO + ".md"
+
+	// Ensure the plan note exists with the freeform body + per-venture
+	// commitment section headings before we ask TaskStore to insert
+	// task lines under those headings. The headings have to be present
+	// at write-time or TaskStore.Create will fall back to appending at
+	// the end of the file, which would scatter tasks instead of
+	// grouping them under their venture.
+	ventureBuckets := groupItemsByVenture(req.Items)
+	if err := s.writePlanScaffold(planPath, req.PlanText, weekISO, ventureBuckets, now); err != nil {
+		writeError(w, http.StatusInternalServerError, "writing plan note: "+err.Error())
+		return
+	}
+	// Reload the vault + task store so the new note is visible to
+	// the TaskStore before we ask it to insert lines.
+	s.rescanMu.Lock()
+	_ = s.cfg.Vault.ScanFast()
+	_ = s.cfg.TaskStore.Reload()
+	s.rescanMu.Unlock()
+
+	resp := planCommitResponse{PlanPath: planPath, CreatedTaskIDs: []string{}}
+	for _, item := range req.Items {
+		switch item.Kind {
+		case "task":
+			section := planSectionFor(item.VentureName)
+			textLine := buildTaskTextLine(item.Label, 0, item.DueDate, nil)
+			// ProjectID on CreateOpts is the sidecar project-link
+			// field (granitmeta uses Name as the project identifier,
+			// so the model's matched name is the right value). Goal
+			// links go via the existing `goal:` text marker.
+			opts := tasks.CreateOpts{
+				File:      planPath,
+				Section:   section,
+				Origin:    tasks.OriginAICapture,
+				ProjectID: item.ProjectName,
+			}
+			t, err := s.cfg.TaskStore.Create(textLine, opts)
+			if err != nil {
+				resp.Skipped = append(resp.Skipped, planCommitSkip{
+					Label: item.Label, Reason: "create task: " + err.Error(),
+				})
+				continue
+			}
+			resp.CreatedTaskIDs = append(resp.CreatedTaskIDs, t.ID)
+		case "milestone":
+			if item.GoalID == "" {
+				resp.Skipped = append(resp.Skipped, planCommitSkip{
+					Label: item.Label, Reason: "milestone needs goal_id",
+				})
+				continue
+			}
+			if err := goals.AddMilestone(s.cfg.Vault.Root, item.GoalID, item.Label, item.DueDate); err != nil {
+				resp.Skipped = append(resp.Skipped, planCommitSkip{
+					Label: item.Label, Reason: "add milestone: " + err.Error(),
+				})
+				continue
+			}
+			resp.CreatedMilestonesCount++
+		default:
+			resp.Skipped = append(resp.Skipped, planCommitSkip{
+				Label: item.Label, Reason: "unknown kind " + item.Kind,
+			})
+		}
+	}
+
+	// Stamp final frontmatter with the IDs the TaskStore minted so
+	// future tooling (e.g. /morning's "this week's commitments")
+	// can resolve plan→tasks without re-parsing the body.
+	if err := s.stampPlanFrontmatter(planPath, weekISO, resp.CreatedTaskIDs, ventureBuckets, now); err != nil {
+		// Non-fatal: tasks are already created. Surface the issue
+		// but return success so the user sees their commitments
+		// land. Future runs can rewrite the frontmatter cleanly.
+		resp.Skipped = append(resp.Skipped, planCommitSkip{
+			Label: "(frontmatter)", Reason: err.Error(),
+		})
+	}
+	s.rescanMu.Lock()
+	_ = s.cfg.Vault.ScanFast()
+	_ = s.cfg.TaskStore.Reload()
+	s.rescanMu.Unlock()
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// groupItemsByVenture buckets accepted items by venture name. Personal
+// items (no venture) land under the empty-string key, which the
+// scaffold writer renders under a "Personal" subsection.
+func groupItemsByVenture(items []planCommitItem) map[string][]planCommitItem {
+	out := make(map[string][]planCommitItem)
+	for _, it := range items {
+		if it.Kind != "task" {
+			continue
+		}
+		out[it.VentureName] = append(out[it.VentureName], it)
+	}
+	return out
+}
+
+// planSectionFor returns the "### <Venture>" heading TaskStore should
+// insert under. Personal items get "### Personal" so the plan note's
+// structure is uniform — every item lives under some heading.
+func planSectionFor(venture string) string {
+	if strings.TrimSpace(venture) == "" {
+		return "### Personal"
+	}
+	return "### " + venture
+}
+
+// writePlanScaffold writes (or overwrites) the plan note with:
+//   - frontmatter naming it as a weekly plan
+//   - the user's freeform body under "## Plan"
+//   - a "## Commitments" section with "### <Venture>" subsections
+//     (empty at first — TaskStore.Create inserts the actual checkbox
+//     lines after we reload)
+//
+// Overwrites are safe: file history snapshots the prior version
+// before we write, same path as handlePutNote.
+func (s *Server) writePlanScaffold(planPath, planText, weekISO string, buckets map[string][]planCommitItem, now time.Time) error {
+	abs := filepath.Join(s.cfg.Vault.Root, filepath.FromSlash(planPath))
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return err
+	}
+	// Snapshot prior content if any — keeps a recoverable history of
+	// plan revisions, same as the regular note write path.
+	if prior, rerr := os.ReadFile(abs); rerr == nil {
+		_, _ = history.Snap(s.cfg.Vault.Root, planPath, prior)
+	}
+	// Build the body. Headings are in stable alphabetical order so a
+	// re-commit doesn't reshuffle sections.
+	var ventures []string
+	for v := range buckets {
+		ventures = append(ventures, v)
+	}
+	sort.Strings(ventures)
+	var sb strings.Builder
+	sb.WriteString("## Plan\n\n")
+	sb.WriteString(strings.TrimSpace(planText))
+	sb.WriteString("\n\n## Commitments\n\n")
+	for _, v := range ventures {
+		sb.WriteString(planSectionFor(v))
+		sb.WriteString("\n\n")
+	}
+	fm := map[string]interface{}{
+		"type":         "weekly_plan",
+		"week":         weekISO,
+		"generated_at": now.UTC().Format(time.RFC3339),
+	}
+	content, err := serializeNote(fm, sb.String())
+	if err != nil {
+		return err
+	}
+	return atomicio.WriteNote(abs, content)
+}
+
+// stampPlanFrontmatter rewrites the plan note's frontmatter with the
+// final list of created task IDs and the per-venture commitment
+// labels. Called AFTER TaskStore.Create has inserted the lines so the
+// frontmatter is the canonical "what got committed" record. Body is
+// preserved verbatim.
+func (s *Server) stampPlanFrontmatter(planPath, weekISO string, taskIDs []string, buckets map[string][]planCommitItem, now time.Time) error {
+	abs := filepath.Join(s.cfg.Vault.Root, filepath.FromSlash(planPath))
+	raw, err := os.ReadFile(abs)
+	if err != nil {
+		return err
+	}
+	body := stripFrontmatterBody(string(raw))
+	commitmentsByVenture := make(map[string][]string, len(buckets))
+	for v, items := range buckets {
+		labels := make([]string, 0, len(items))
+		for _, it := range items {
+			labels = append(labels, it.Label)
+		}
+		commitmentsByVenture[v] = labels
+	}
+	fm := map[string]interface{}{
+		"type":                    "weekly_plan",
+		"week":                    weekISO,
+		"generated_at":            now.UTC().Format(time.RFC3339),
+		"generated_task_ids":      taskIDs,
+		"commitments_by_venture":  commitmentsByVenture,
+	}
+	content, err := serializeNote(fm, body)
+	if err != nil {
+		return err
+	}
+	return atomicio.WriteNote(abs, content)
 }

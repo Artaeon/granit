@@ -396,9 +396,11 @@ func (s *Server) Handler() http.Handler {
 		// Weekly plans — freeform note → AI-extracted structured
 		// proposal of tasks/milestones to create. /extract is the
 		// read-only proposal step (snapshot in, proposals out);
-		// /commit (next handler over) is what actually creates the
-		// tasks. Split is intentional: AI never silently writes.
+		// /commit is what actually creates the tasks + writes the
+		// canonical plan note. Split is intentional: AI never
+		// silently writes.
 		r.Post("/api/v1/plans/extract", s.handlePlanExtract)
+		r.Post("/api/v1/plans/commit", s.handlePlanCommit)
 
 		// Prayer intentions — active prayer list with status lifecycle
 		// (praying → answered → archived). State at .granit/prayer/.
