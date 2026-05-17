@@ -20,6 +20,7 @@
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { findMode, currentModeId } from '$lib/ai/agents';
   import { sidebarPins, togglePin } from '$lib/stores/sidebar-pins';
+  import { sidebarRecent, recordVisit, MAX_RECENT } from '$lib/stores/sidebar-recent';
   import { lastOpenNote, trayEnabled } from '$lib/stores/open-note';
   import { get } from 'svelte/store';
 
@@ -275,6 +276,41 @@
         }
         return true;
       });
+  });
+
+  // Recent items — last MAX_RECENT visited routes, resolved against
+  // the flat nav (same way pinnedItems resolves). Filtered to exclude
+  // anything already pinned (no double rendering across the two rails)
+  // plus module/sabbath gating mirroring the pinned/section filters
+  // above. Order is most-recent-first, capped by the store.
+  let recentItems = $derived.by(() => {
+    void $modulesStore;
+    void $sabbath;
+    if ($sidebarRecent.length === 0) return [] as NavItem[];
+    const pinned = new Set($sidebarPins);
+    const byHref = new Map(nav.map((n) => [n.href, n]));
+    return $sidebarRecent
+      .map((h) => byHref.get(h))
+      .filter((it): it is NavItem => {
+        if (!it) return false;
+        if (pinned.has(it.href)) return false;
+        if (it.href === '/') return false; // Today is rendered separately
+        if (it.moduleId) {
+          if (!modulesStore.isEnabled(it.moduleId)) return false;
+          if ($sabbath && SABBATH_HIDE_MODULES.includes(it.moduleId)) return false;
+        }
+        return true;
+      })
+      .slice(0, MAX_RECENT);
+  });
+
+  // Record the current route into the recent-visits store whenever
+  // navigation lands somewhere. Pulled out of $effect into untrack
+  // because the store update would otherwise re-trigger the effect
+  // via its own subscription if anything in the effect read it.
+  $effect(() => {
+    const path = $page.url.pathname;
+    untrack(() => recordVisit(path));
   });
 
   // Per-section visible items (after module filter + sabbath overlay).
@@ -663,6 +699,41 @@
             </div>
             <div class="space-y-0.5">
               {#each pinnedItems as item (item.href)}
+                {@render navItem(item, false)}
+              {/each}
+            </div>
+          </div>
+        {/if}
+      {/if}
+
+      <!-- Recent items — surfaces what the user just touched so a
+           re-entry into the app lands them back on the rhythm they
+           had. Sits between Pinned (curated) and Today (home) so the
+           top-of-rail mental model is: things I anchored, things I
+           was just on, then home. Hidden when empty so first-time
+           users don't see a phantom group. In compact mode renders
+           without its header (parity with Pinned). -->
+      {#if recentItems.length > 0}
+        {#if isCompact}
+          {#each recentItems as item (item.href)}
+            {@render navItem(item, true)}
+          {/each}
+          <div class="my-1.5 flex items-center justify-center gap-1" aria-hidden="true">
+            <span class="h-px w-2 bg-surface1"></span>
+            <span class="w-1 h-1 rounded-full bg-surface1"></span>
+            <span class="h-px w-2 bg-surface1"></span>
+          </div>
+        {:else}
+          <div class="pb-1 mb-1 border-b border-surface1">
+            <div class="px-3 pb-0.5 pt-0.5 text-[10px] uppercase tracking-wider text-dim flex items-center gap-1">
+              <svg viewBox="0 0 16 16" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <circle cx="8" cy="8" r="6.5"/>
+                <polyline points="8 4 8 8 10.5 9.5"/>
+              </svg>
+              <span>Recent</span>
+            </div>
+            <div class="space-y-0.5">
+              {#each recentItems as item (item.href)}
                 {@render navItem(item, false)}
               {/each}
             </div>
