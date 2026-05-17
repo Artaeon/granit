@@ -333,19 +333,214 @@
   // Distinct from "AI reflection" (which spawns a full devotional note
   // via the agent preset): commentary is a 3-paragraph contextual
   // explainer rendered right under the verse so the user can ask a
-  // quick question without leaving the read view. Three flavours:
-  //   - context:     historical / literary background
+  // quick question without leaving the read view. Five flavours:
+  //   - context:     narrative / literary background (who/what/where in the text)
+  //   - historical:  material + cultural background (customs, geography, audience)
   //   - cross-ref:   thematic parallels elsewhere in scripture
   //   - application: how this might land for the reader today
+  //   - genre:       genre-aware reading prompts keyed off the verse's book
   // Each is a one-shot chatStream call; results land in commentaryText
   // as tokens arrive. Audit-gated through /chat/stream like every
   // other AI surface in granit.
-  type CommentaryMode = 'context' | 'cross-ref' | 'application';
+  type CommentaryMode = 'context' | 'historical' | 'cross-ref' | 'application' | 'genre';
   let commentaryText = $state('');
   let commentaryMode = $state<CommentaryMode | null>(null);
   let commentaryStreaming = $state(false);
   let commentaryError = $state('');
   let commentaryAbort: AbortController | null = $state(null);
+
+  // Bible-book genre buckets — used by the `genre` commentary mode to
+  // pick a tailored prompt and by the chip strip to colour-code refs.
+  // Bucketing follows the conventional Protestant divisions; Acts is
+  // pulled out separately because narrative-of-the-church reads
+  // differently from gospels-narrative or torah-narrative.
+  type Genre = 'Torah' | 'History' | 'Wisdom' | 'Prophets' | 'Gospels' | 'Acts' | 'Epistles' | 'Apocalyptic' | 'Unknown';
+
+  // Display-name → USFM code. Includes full names plus common
+  // abbreviations encountered in AI prose. Keys are normalized via
+  // normalizeRefKey() at lookup time so casing / spacing / trailing
+  // dots ("Rom.") all collapse to the same entry.
+  const BOOK_TO_USFM: Record<string, string> = {
+    // OT
+    genesis: 'GEN', gen: 'GEN', gn: 'GEN',
+    exodus: 'EXO', exo: 'EXO', ex: 'EXO',
+    leviticus: 'LEV', lev: 'LEV', lv: 'LEV',
+    numbers: 'NUM', num: 'NUM', nm: 'NUM',
+    deuteronomy: 'DEU', deut: 'DEU', dt: 'DEU',
+    joshua: 'JOS', josh: 'JOS', jos: 'JOS',
+    judges: 'JDG', judg: 'JDG', jdg: 'JDG',
+    ruth: 'RUT', ru: 'RUT',
+    '1samuel': '1SA', '1sam': '1SA', '1sa': '1SA',
+    '2samuel': '2SA', '2sam': '2SA', '2sa': '2SA',
+    '1kings': '1KI', '1kgs': '1KI', '1ki': '1KI',
+    '2kings': '2KI', '2kgs': '2KI', '2ki': '2KI',
+    '1chronicles': '1CH', '1chron': '1CH', '1chr': '1CH', '1ch': '1CH',
+    '2chronicles': '2CH', '2chron': '2CH', '2chr': '2CH', '2ch': '2CH',
+    ezra: 'EZR', ezr: 'EZR',
+    nehemiah: 'NEH', neh: 'NEH',
+    esther: 'EST', est: 'EST', esth: 'EST',
+    job: 'JOB',
+    psalms: 'PSA', psalm: 'PSA', ps: 'PSA', psa: 'PSA',
+    proverbs: 'PRO', prov: 'PRO', pr: 'PRO', pro: 'PRO',
+    ecclesiastes: 'ECC', eccl: 'ECC', ecc: 'ECC', qoh: 'ECC',
+    songofsolomon: 'SNG', songofsongs: 'SNG', song: 'SNG', sng: 'SNG', canticles: 'SNG',
+    isaiah: 'ISA', isa: 'ISA', is: 'ISA',
+    jeremiah: 'JER', jer: 'JER',
+    lamentations: 'LAM', lam: 'LAM',
+    ezekiel: 'EZK', ezek: 'EZK', ezk: 'EZK',
+    daniel: 'DAN', dan: 'DAN', dn: 'DAN',
+    hosea: 'HOS', hos: 'HOS',
+    joel: 'JOL', jl: 'JOL', jol: 'JOL',
+    amos: 'AMO', am: 'AMO',
+    obadiah: 'OBA', obad: 'OBA', oba: 'OBA', ob: 'OBA',
+    jonah: 'JON', jon: 'JON',
+    micah: 'MIC', mic: 'MIC',
+    nahum: 'NAM', nah: 'NAM', nam: 'NAM',
+    habakkuk: 'HAB', hab: 'HAB',
+    zephaniah: 'ZEP', zeph: 'ZEP', zep: 'ZEP',
+    haggai: 'HAG', hag: 'HAG',
+    zechariah: 'ZEC', zech: 'ZEC', zec: 'ZEC',
+    malachi: 'MAL', mal: 'MAL',
+    // NT
+    matthew: 'MAT', matt: 'MAT', mat: 'MAT', mt: 'MAT',
+    mark: 'MRK', mrk: 'MRK', mk: 'MRK',
+    luke: 'LUK', luk: 'LUK', lk: 'LUK',
+    john: 'JHN', jhn: 'JHN', jn: 'JHN',
+    acts: 'ACT', act: 'ACT',
+    romans: 'ROM', rom: 'ROM', rm: 'ROM',
+    '1corinthians': '1CO', '1cor': '1CO', '1co': '1CO',
+    '2corinthians': '2CO', '2cor': '2CO', '2co': '2CO',
+    galatians: 'GAL', gal: 'GAL',
+    ephesians: 'EPH', eph: 'EPH',
+    philippians: 'PHP', phil: 'PHP', php: 'PHP', phlp: 'PHP',
+    colossians: 'COL', col: 'COL',
+    '1thessalonians': '1TH', '1thess': '1TH', '1thes': '1TH', '1th': '1TH',
+    '2thessalonians': '2TH', '2thess': '2TH', '2thes': '2TH', '2th': '2TH',
+    '1timothy': '1TI', '1tim': '1TI', '1ti': '1TI',
+    '2timothy': '2TI', '2tim': '2TI', '2ti': '2TI',
+    titus: 'TIT', tit: 'TIT',
+    philemon: 'PHM', philem: 'PHM', phm: 'PHM', phlm: 'PHM',
+    hebrews: 'HEB', heb: 'HEB',
+    james: 'JAS', jas: 'JAS', jm: 'JAS',
+    '1peter': '1PE', '1pet': '1PE', '1pe': '1PE', '1pt': '1PE',
+    '2peter': '2PE', '2pet': '2PE', '2pe': '2PE', '2pt': '2PE',
+    '1john': '1JN', '1jn': '1JN', '1jhn': '1JN',
+    '2john': '2JN', '2jn': '2JN', '2jhn': '2JN',
+    '3john': '3JN', '3jn': '3JN', '3jhn': '3JN',
+    jude: 'JUD', jud: 'JUD',
+    revelation: 'REV', rev: 'REV', revelations: 'REV', apocalypse: 'REV'
+  };
+
+  function normalizeRefKey(s: string): string {
+    let out = '';
+    for (const ch of s.toLowerCase()) {
+      if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) out += ch;
+    }
+    return out;
+  }
+
+  // USFM code → genre. Kept as a flat lookup so adding/correcting a
+  // single book is a one-line change.
+  const USFM_TO_GENRE: Record<string, Genre> = {
+    GEN: 'Torah', EXO: 'Torah', LEV: 'Torah', NUM: 'Torah', DEU: 'Torah',
+    JOS: 'History', JDG: 'History', RUT: 'History',
+    '1SA': 'History', '2SA': 'History', '1KI': 'History', '2KI': 'History',
+    '1CH': 'History', '2CH': 'History', EZR: 'History', NEH: 'History', EST: 'History',
+    JOB: 'Wisdom', PSA: 'Wisdom', PRO: 'Wisdom', ECC: 'Wisdom', SNG: 'Wisdom',
+    ISA: 'Prophets', JER: 'Prophets', LAM: 'Prophets', EZK: 'Prophets',
+    HOS: 'Prophets', JOL: 'Prophets', AMO: 'Prophets', OBA: 'Prophets',
+    JON: 'Prophets', MIC: 'Prophets', NAM: 'Prophets', HAB: 'Prophets',
+    ZEP: 'Prophets', HAG: 'Prophets', ZEC: 'Prophets', MAL: 'Prophets',
+    DAN: 'Apocalyptic',
+    MAT: 'Gospels', MRK: 'Gospels', LUK: 'Gospels', JHN: 'Gospels',
+    ACT: 'Acts',
+    ROM: 'Epistles', '1CO': 'Epistles', '2CO': 'Epistles', GAL: 'Epistles',
+    EPH: 'Epistles', PHP: 'Epistles', COL: 'Epistles',
+    '1TH': 'Epistles', '2TH': 'Epistles', '1TI': 'Epistles', '2TI': 'Epistles',
+    TIT: 'Epistles', PHM: 'Epistles', HEB: 'Epistles', JAS: 'Epistles',
+    '1PE': 'Epistles', '2PE': 'Epistles',
+    '1JN': 'Epistles', '2JN': 'Epistles', '3JN': 'Epistles', JUD: 'Epistles',
+    REV: 'Apocalyptic'
+  };
+
+  // Pauline corpus is a strict subset of Epistles — needed because the
+  // genre prompt for Paul (command + indicative + audience) differs from
+  // the Catholic / Johannine epistles. Heuristic only; Hebrews is left
+  // out (authorship contested) but slots into the general Epistles
+  // bucket which is fine for this surface.
+  const PAULINE: ReadonlySet<string> = new Set([
+    'ROM', '1CO', '2CO', 'GAL', 'EPH', 'PHP', 'COL',
+    '1TH', '2TH', '1TI', '2TI', 'TIT', 'PHM'
+  ]);
+
+  // Pull the leading book token out of "Romans 8:28" / "1 Cor. 13:4" /
+  // "Psalms 23:1". Returns the USFM code or null. The verse parsing
+  // proper is in parseRefs() — this is the front-half lookup, factored
+  // out so bookGenre() can reuse it.
+  function sourceToUSFM(source: string): string | null {
+    if (!source) return null;
+    // Match: optional leading numeral (1/2/3), then alphabetic book
+    // tokens (possibly multiple, e.g. "Song of Solomon"). We accept
+    // letters + spaces + dots, then stop at the first digit (chapter).
+    const m = source.match(/^\s*((?:[123]\s*)?[A-Za-z][A-Za-z.\s]*?)\s+\d/);
+    if (!m) return null;
+    const key = normalizeRefKey(m[1]);
+    return BOOK_TO_USFM[key] ?? null;
+  }
+
+  function bookGenre(source: string): Genre {
+    const code = sourceToUSFM(source);
+    if (!code) return 'Unknown';
+    return USFM_TO_GENRE[code] ?? 'Unknown';
+  }
+
+  // Per-genre prompt body. The verse line is appended by the caller.
+  const GENRE_PROMPTS: Record<Genre, string> = {
+    Wisdom:
+      `This is wisdom / Psalm-style literature. In two short paragraphs: ` +
+      `What emotion is named or evoked? What posture toward God does this passage ` +
+      `model — petition, lament, praise, trust, perplexity? How might a reader ` +
+      `borrow that posture in their own circumstances?`,
+    Torah:
+      `This is Torah / narrative. In two short paragraphs: ` +
+      `What does this scene reveal about God's character or the human condition? ` +
+      `What's the turning point — the moment things shift? Stick to what the text ` +
+      `actually shows; resist allegorizing.`,
+    History:
+      `This is Old Testament historical narrative. In two short paragraphs: ` +
+      `What does this scene reveal about God's character or the human condition? ` +
+      `What's the turning point? How does the narrator's framing (what's named, ` +
+      `what's omitted) shape the meaning?`,
+    Gospels:
+      `This is gospel narrative. In two short paragraphs: ` +
+      `What does this scene reveal about Jesus' character or the human condition ` +
+      `he addresses? What's the turning point — the question, healing, saying, ` +
+      `or rebuke that changes the scene's center of gravity?`,
+    Acts:
+      `This is narrative of the early church. In two short paragraphs: ` +
+      `What does this scene reveal about how the Spirit is moving and how the ` +
+      `church is responding (or failing to)? What's the turning point? What ` +
+      `pattern of mission or community emerges?`,
+    Prophets:
+      `This is prophetic literature. In two short paragraphs: ` +
+      `What is God indicting or promising? To whom — which audience, under what ` +
+      `covenant frame? What does the prophet expect that audience to do, feel, ` +
+      `or hope for in response?`,
+    Apocalyptic:
+      `This is apocalyptic literature — symbol-heavy and addressed to readers ` +
+      `under pressure. In two short paragraphs: What symbol stands for what here? ` +
+      `What hope is being offered to suffering readers, and what posture of ` +
+      `endurance does the passage call for?`,
+    Epistles:
+      `This is an epistle. In two short paragraphs: ` +
+      `What command or exhortation is given? What indicative truth (about God, ` +
+      `Christ, or the gospel) grounds that command? Who is the original audience ` +
+      `and what situation are they being addressed in?`,
+    Unknown:
+      `Read this passage closely. In two short paragraphs: ` +
+      `What is the central claim or movement? How does its place in the broader ` +
+      `biblical narrative shape its meaning?`
+  };
 
   function commentaryPrompt(verse: Scripture, kind: CommentaryMode): string {
     const ref = verse.source ? `${verse.source}: ` : '';
@@ -357,6 +552,16 @@
           `Two short paragraphs: who wrote it, who it was originally addressed to, ` +
           `what was happening, and how the surrounding chapter shapes its meaning. ` +
           `Stick to scholarly consensus; mark anything contested as such.\n\n${verseLine}`
+        );
+      case 'historical':
+        return (
+          `Describe the ancient cultural and material world behind this passage. ` +
+          `Two short paragraphs: relevant customs, geography, social structures, ` +
+          `who said what to whom and why that mattered in their setting, and any ` +
+          `material details (clothing, money, agriculture, ritual) a modern reader ` +
+          `would otherwise miss. Focus on what's distinctive to the ancient ` +
+          `context — not narrative/literary moves (that's a separate lens).` +
+          `\n\n${verseLine}`
         );
       case 'cross-ref':
         return (
@@ -371,6 +576,112 @@
           `about the kinds of situations where this verse might land. End with ` +
           `one open-ended question for reflection.\n\n${verseLine}`
         );
+      case 'genre': {
+        const g = bookGenre(verse.source ?? '');
+        // Pauline gets a Paul-specific override (command + indicative +
+        // audience); everything else uses the genre default.
+        const code = sourceToUSFM(verse.source ?? '');
+        const body =
+          code && PAULINE.has(code)
+            ? `This is a Pauline epistle. In two short paragraphs: ` +
+              `What command or exhortation does Paul give? What indicative truth ` +
+              `(about God, Christ, or the gospel) grounds that command? Who is ` +
+              `the original audience and what situation are they being addressed in?`
+            : GENRE_PROMPTS[g];
+        return `${body}\n\n${verseLine}`;
+      }
+    }
+  }
+
+  // Parse canonical bible refs out of free-form prose. Matches:
+  //   - "John 3:16", "John 3:16-17"
+  //   - "1 Corinthians 13:4", "1 Cor. 13:4-7"
+  //   - "Ps. 23:1", "Rom. 8:28"
+  // Returns deduped refs in order of first appearance. Verse is
+  // optional (some refs are chapter-only — "Romans 8"); we capture it
+  // when present so the click handler can scroll to the right anchor.
+  //
+  // Strategy: we anchor on the chapter+verse "N:N" / "N" digit-tail and
+  // walk *backwards* to identify the book token. This avoids the
+  // greedy-cap-word trap (a leading "See John 3:16" would otherwise
+  // swallow "See" as part of a two-word book name and skip past the
+  // real "John" match). Books are matched against BOOK_TO_USFM directly,
+  // so anything not in the dictionary simply isn't a ref.
+  type ParsedRef = { label: string; bookCode: string; chapter: number; verse?: number };
+  function parseRefs(text: string): ParsedRef[] {
+    if (!text) return [];
+    // Anchor: capture the digit-tail. The book token sits before the
+    // gap of whitespace. We accept up to 3 capitalised words before
+    // the digits — that covers "Song of Solomon" and "1 Corinthians".
+    // The optional leading numeral is folded into the same backtrack.
+    const re = /\b((?:[123]\s+)?[A-Z][A-Za-z]+(?:\.?\s+(?:of\s+)?[A-Z]?[A-Za-z]+)?)\.?\s+(\d{1,3})(?::(\d{1,3})(?:-(\d{1,3}))?)?\b/g;
+    const out: ParsedRef[] = [];
+    const seen = new Set<string>();
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const bookRaw = m[1];
+      const chapter = parseInt(m[2], 10);
+      const verseStr = m[3];
+      const verseEndStr = m[4];
+      const verse = verseStr ? parseInt(verseStr, 10) : undefined;
+      if (!Number.isFinite(chapter) || chapter < 1) continue;
+      // Try the full captured book token first; if that misses (e.g.
+      // "See John" or "John from" — extra adjoining word), peel one
+      // word off either end and retry. This lets us recover from
+      // mid-sentence captures without rewriting the regex engine. We
+      // only try one-word peels because two-word real book names
+      // ("Song of Solomon", "1 John") need to keep both tokens.
+      let code = BOOK_TO_USFM[normalizeRefKey(bookRaw)];
+      let usedBook = bookRaw;
+      if (!code) {
+        const parts = bookRaw.split(/\s+/);
+        if (parts.length >= 2) {
+          // Try dropping the leading word — handles "See John 3:16".
+          const tail = parts.slice(1).join(' ');
+          code = BOOK_TO_USFM[normalizeRefKey(tail)];
+          if (code) usedBook = tail;
+          else {
+            // Try dropping the trailing word — handles "John from 3:16".
+            const head = parts.slice(0, -1).join(' ');
+            code = BOOK_TO_USFM[normalizeRefKey(head)];
+            if (code) usedBook = head;
+          }
+        }
+      }
+      if (!code) continue;
+      // Build a chip label that mirrors the surface form (sans trailing
+      // dot) so the chip visually matches the prose.
+      let label = `${usedBook.replace(/\.$/, '')} ${chapter}`;
+      if (verse) label += `:${verse}${verseEndStr ? `-${verseEndStr}` : ''}`;
+      const dedupKey = `${code}|${chapter}|${verse ?? ''}`;
+      if (seen.has(dedupKey)) continue;
+      seen.add(dedupKey);
+      out.push({ label, bookCode: code, chapter, verse });
+    }
+    return out;
+  }
+
+  // Derive chips from the streamed commentary text. Only meaningful in
+  // cross-ref mode, but the derivation is cheap and re-runs on every
+  // token while streaming so the strip "builds up" alongside the prose.
+  let crossRefChips = $derived.by(() => {
+    if (commentaryMode !== 'cross-ref') return [];
+    return parseRefs(commentaryText);
+  });
+
+  // Click handler for a cross-ref chip — jump into the Bible reader,
+  // open the chapter, scroll to the verse anchor if we have one.
+  // Mirrors the existing openBookmark() / openHit() pattern (setTimeout
+  // 100 to give the chapter DOM time to render after the async load).
+  async function gotoRef(r: ParsedRef) {
+    mode = 'bible';
+    await ensureBibleIndex();
+    await loadBibleChapter(r.bookCode, r.chapter);
+    if (r.verse) {
+      setTimeout(() => {
+        const el = document.getElementById(`bible-v-${r.verse}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
     }
   }
 
@@ -918,10 +1229,12 @@
           >{aiLoading ? '…' : 'AI reflection ✨'}</button>
         </div>
 
-        <!-- AI commentary — three quick lenses, streamed in-page. The
+        <!-- AI commentary — five quick lenses, streamed in-page. The
              gloss is intentionally short and ephemeral; the user can
              always fall through to "Reflect on this" or "AI reflection"
-             when they want a saved devotional note. -->
+             when they want a saved devotional note. Cross-references
+             additionally render a chip strip below the prose for
+             one-click jumps into the bible reader. -->
         <div class="bg-surface0 border border-surface1 rounded-lg p-3 mt-4">
           <div class="flex items-baseline gap-2 flex-wrap">
             <span class="text-xs uppercase tracking-wider text-dim font-medium">Ask AI</span>
@@ -930,8 +1243,15 @@
               onclick={() => runCommentary('context')}
               disabled={commentaryStreaming}
               class="text-xs px-2.5 py-1 rounded border transition-colors disabled:opacity-50 {commentaryMode === 'context' ? 'bg-primary text-on-primary border-primary' : 'bg-mantle border-surface1 text-subtext hover:border-primary hover:text-text'}"
-              title="Historical and literary background"
+              title="Narrative and literary background"
             >Context</button>
+            <button
+              type="button"
+              onclick={() => runCommentary('historical')}
+              disabled={commentaryStreaming}
+              class="text-xs px-2.5 py-1 rounded border transition-colors disabled:opacity-50 {commentaryMode === 'historical' ? 'bg-primary text-on-primary border-primary' : 'bg-mantle border-surface1 text-subtext hover:border-primary hover:text-text'}"
+              title="Ancient customs, geography, audience, material culture"
+            >Historical</button>
             <button
               type="button"
               onclick={() => runCommentary('cross-ref')}
@@ -946,6 +1266,13 @@
               class="text-xs px-2.5 py-1 rounded border transition-colors disabled:opacity-50 {commentaryMode === 'application' ? 'bg-primary text-on-primary border-primary' : 'bg-mantle border-surface1 text-subtext hover:border-primary hover:text-text'}"
               title="How this might land for you today"
             >Application</button>
+            <button
+              type="button"
+              onclick={() => runCommentary('genre')}
+              disabled={commentaryStreaming}
+              class="text-xs px-2.5 py-1 rounded border transition-colors disabled:opacity-50 {commentaryMode === 'genre' ? 'bg-primary text-on-primary border-primary' : 'bg-mantle border-surface1 text-subtext hover:border-primary hover:text-text'}"
+              title="Genre-aware reading prompts ({current?.source ? bookGenre(current.source) : 'auto-detected from book'})"
+            >Genre {#if current?.source}<span class="opacity-70">· {bookGenre(current.source)}</span>{/if}</button>
             <span class="flex-1"></span>
             {#if commentaryStreaming}
               <button
@@ -967,6 +1294,24 @@
                 <p class="text-xs text-error">{commentaryError}</p>
               {:else}
                 <p class="text-sm text-text leading-relaxed whitespace-pre-wrap">{commentaryText}{#if commentaryStreaming}<span class="inline-block w-2 h-3.5 align-middle bg-primary/70 ml-0.5 animate-pulse"></span>{/if}</p>
+                {#if commentaryMode === 'cross-ref' && crossRefChips.length > 0}
+                  <!-- Chip strip beneath cross-ref prose. One-click jump
+                       into the bible reader at the cited chapter (and
+                       verse, when one was parsed). Built incrementally
+                       from the streamed text — chips appear as the AI
+                       names refs. -->
+                  <div class="mt-3 flex flex-wrap items-baseline gap-1.5">
+                    <span class="text-[11px] uppercase tracking-wider text-dim font-medium">Jump to:</span>
+                    {#each crossRefChips as r (r.bookCode + '|' + r.chapter + '|' + (r.verse ?? ''))}
+                      <button
+                        type="button"
+                        onclick={() => gotoRef(r)}
+                        class="text-[11px] px-2 py-0.5 rounded bg-mantle border border-surface1 text-subtext hover:border-primary hover:text-text font-mono"
+                        title="Open {r.label} in the Bible reader"
+                      >{r.label}</button>
+                    {/each}
+                  </div>
+                {/if}
               {/if}
             </div>
           {/if}
