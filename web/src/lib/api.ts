@@ -1961,6 +1961,18 @@ export const api = {
   },
   scriptureTopics: () =>
     req<{ topics: ScriptureTopic[]; total: number }>('/scripture/topics'),
+  // Semantic verse search — accepts a free-text query like "verses
+  // about waiting on God" and returns the catalogue verses for the
+  // 1-3 topics the AI thinks match. Closed-set under the hood: the
+  // model picks from existing topic ids only, so verse refs never
+  // hallucinate. Empty arrays come back when the catalogue carries
+  // no topic metadata (user-edited scriptures.md replaced the
+  // defaults) — callers can show a fall-back hint in that case.
+  scriptureSemanticSearch: (body: { query: string; limit?: number }) =>
+    req<{ topics: string[]; scriptures: Scripture[]; query: string }>(
+      '/scripture/semantic-search',
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
   todayScripture: () => req<Scripture>('/scripture/today'),
   randomScripture: () => req<Scripture>('/scripture/random'),
   createDevotional: (body: { verse: string; source?: string; reflection?: string }) =>

@@ -688,6 +688,23 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/scripture/today", s.handleDailyScripture)
 		r.Get("/api/v1/scripture/random", s.handleRandomScripture)
 		r.Get("/api/v1/scripture/topics", s.handleScriptureTopics)
+		// Semantic verse search — AI maps a free-text query to 1-3
+		// catalogue topics, then we resolve verses locally. Closed-
+		// set output keeps verse refs grounded to what's actually
+		// bundled (no hallucinated citations). See
+		// handlers_scripture_semantic.go for the prompt + parsing.
+		r.Post("/api/v1/scripture/semantic-search", s.handleScriptureSemanticSearch)
+		// Lectionary — bundled reading plans (M'Cheyne / chrono NT /
+		// 90-day NT). Specific routes (/plans/active) come BEFORE the
+		// wildcard /plans/{id} so chi doesn't route "active" into
+		// the {id} slot. See handlers_lectionary.go.
+		r.Get("/api/v1/scripture/plans", s.handleListLectionaryPlans)
+		r.Get("/api/v1/scripture/plans/active", s.handleListActiveLectionary)
+		r.Get("/api/v1/scripture/plans/{id}", s.handleGetLectionaryPlan)
+		r.Get("/api/v1/scripture/plans/{id}/day/{n}", s.handleGetLectionaryDay)
+		r.Post("/api/v1/scripture/plans/{id}/start", s.handleStartLectionary)
+		r.Delete("/api/v1/scripture/plans/{id}/start", s.handleStopLectionary)
+		r.Post("/api/v1/scripture/plans/{id}/schedule-today", s.handleScheduleLectionaryToday)
 		r.Post("/api/v1/devotionals", s.handleCreateDevotional)
 
 		// Bible — full embedded WEB (World English Bible, public domain)

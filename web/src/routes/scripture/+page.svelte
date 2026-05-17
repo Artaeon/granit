@@ -123,6 +123,44 @@
     }
   }
 
+  // Semantic search in browse mode. The existing `q` filter is a
+  // local substring match; this is the AI sibling — "verses about
+  // waiting on God" pattern. The button next to the filter input
+  // fires this with `q` as the query. Results render in a separate
+  // AI-matches block above the catalogue list so the user can
+  // compare both.
+  let aiSearching = $state(false);
+  let aiSearchResults = $state<Scripture[]>([]);
+  let aiSearchTopics = $state<string[]>([]);
+  let aiSearchQuery = $state(''); // echoed back so we can show "AI matches for <query>"
+
+  async function runSemanticSearch() {
+    const query = q.trim();
+    if (!query || aiSearching) return;
+    aiSearching = true;
+    try {
+      const r = await api.scriptureSemanticSearch({ query });
+      aiSearchResults = r.scriptures;
+      aiSearchTopics = r.topics;
+      aiSearchQuery = r.query;
+      if (r.scriptures.length === 0 && r.topics.length === 0) {
+        toast.info(topics.length === 0
+          ? 'Topical search needs the bundled catalogue — add topics to your scriptures.md or revert to defaults.'
+          : 'No matching topics — try a different query.');
+      }
+    } catch (e) {
+      toast.error('AI search failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      aiSearching = false;
+    }
+  }
+
+  function clearSemanticSearch() {
+    aiSearchResults = [];
+    aiSearchTopics = [];
+    aiSearchQuery = '';
+  }
+
   // Bookmarks — saved bible passages, .granit/bible-bookmarks.json.
   // Loaded lazily on first visit to the bookmarks tab; live-updates
   // via WS state.changed (TUI bookmark UI lands later, same file).
@@ -1482,11 +1520,69 @@
         </div>
       </div>
     {:else if mode === 'browse'}
-      <input
-        bind:value={q}
-        placeholder="filter…"
-        class="w-full px-3 py-2 mb-3 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
-      />
+      <!-- Filter input + Ask AI sibling. The input drives the existing
+           local substring filter; Ask AI takes the same string and
+           hands it to the semantic-search endpoint, which picks 1-3
+           catalogue topics and returns their verses. Both surfaces
+           share the input so a user who types a sentence-shaped query
+           and gets no substring matches can pivot in one click. -->
+      <div class="flex items-center gap-2 mb-3">
+        <input
+          bind:value={q}
+          onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runSemanticSearch(); } }}
+          placeholder="filter substring, or describe what you want and click Ask AI…"
+          class="flex-1 px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
+        />
+        <button
+          type="button"
+          onclick={runSemanticSearch}
+          disabled={!q.trim() || aiSearching}
+          class="px-3 py-2 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-text disabled:opacity-50 flex-shrink-0"
+          title="Find verses by meaning (Cmd-Enter) — AI maps your query to catalogue topics"
+        >{aiSearching ? 'asking…' : 'Ask AI'}</button>
+      </div>
+
+      {#if aiSearchResults.length > 0 || aiSearchTopics.length > 0}
+        <!-- AI matches block sits above the substring-filtered
+             catalogue list so the user sees both. Topics chip strip
+             surfaces what the model picked, so the user can refine
+             into a single-topic view by clicking. -->
+        <div class="mb-4 bg-surface0 border border-primary/40 rounded-lg p-3">
+          <div class="flex items-baseline justify-between mb-2 gap-2">
+            <h3 class="text-xs uppercase tracking-wider text-primary font-medium">AI matches for "{aiSearchQuery}"</h3>
+            <button
+              type="button"
+              onclick={clearSemanticSearch}
+              class="text-[11px] text-dim hover:text-text flex-shrink-0"
+            >clear</button>
+          </div>
+          {#if aiSearchTopics.length > 0}
+            <div class="flex flex-wrap gap-1 mb-2">
+              {#each aiSearchTopics as t (t)}
+                <button
+                  type="button"
+                  onclick={() => { clearSemanticSearch(); selectTopic(t); }}
+                  class="text-[11px] px-2 py-0.5 rounded-full border border-primary/40 bg-mantle text-subtext hover:border-primary hover:text-text"
+                  title="Focus catalogue list on this topic"
+                >{t}</button>
+              {/each}
+            </div>
+          {/if}
+          {#if aiSearchResults.length > 0}
+            <ul class="space-y-2">
+              {#each aiSearchResults as v}
+                <li>
+                  <p class="text-sm text-text font-serif italic leading-relaxed">"{v.text}"</p>
+                  {#if v.source}
+                    <p class="text-xs text-subtext mt-0.5">— {v.source}</p>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+      {/if}
+
       {#if topics.length > 0}
         <!-- Topical chip strip — click a theme to scope the list to
              verses tagged with it. "All" clears the filter. Counts show
