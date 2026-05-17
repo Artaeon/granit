@@ -381,6 +381,51 @@
     refreshCrossRecentInlinePrompts();
   });
 
+  // ── Save-to-library state ───────────────────────────────────────
+  // The "+" button next to a user message opens an inline form for
+  // a short label. On submit we GET the current library, append a
+  // new entry with this message's content as the prompt, PUT the
+  // whole thing back. Per-message rather than per-thread because the
+  // user might want to save several specific prompts from one chat.
+  let savingLibraryIdx = $state<number | null>(null);
+  let savingLibraryLabel = $state('');
+  let savingLibraryBusy = $state(false);
+  function openSaveLibrary(idx: number, content: string) {
+    savingLibraryIdx = idx;
+    // Seed label with first few words so the user has something to
+    // edit rather than starting from blank — most labels are a quick
+    // tweak of the first phrase.
+    savingLibraryLabel = content.trim().split(/\s+/).slice(0, 4).join(' ').slice(0, 32);
+  }
+  function cancelSaveLibrary() {
+    savingLibraryIdx = null;
+    savingLibraryLabel = '';
+  }
+  async function confirmSaveLibrary(promptContent: string) {
+    const label = savingLibraryLabel.trim();
+    if (!label || savingLibraryBusy) return;
+    savingLibraryBusy = true;
+    try {
+      const cur = await api.getAIPrompts();
+      // 'either' as the default scope — the user can edit scope later
+      // if they want to constrain when the entry surfaces. Most chat
+      // prompts apply equally to selection + cursor surfaces.
+      const next = {
+        entries: [
+          ...(cur.entries ?? []),
+          { label, prompt: promptContent.trim(), scope: 'either' as const }
+        ]
+      };
+      await api.putAIPrompts(next);
+      toast.success(`Saved "${label}" to library`);
+      cancelSaveLibrary();
+    } catch (err) {
+      toast.error('save failed: ' + errorMessage(err));
+    } finally {
+      savingLibraryBusy = false;
+    }
+  }
+
   // ── Long-term thread history (localStorage, LRU 30) ──────────────
   // sessionStorage above is the in-flight buffer (cleared on tab
   // close); this layer survives tab close + browser restart. Threads
@@ -2583,6 +2628,20 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
             <li>
               <div class="text-[10px] uppercase tracking-wider {m.role === 'user' ? 'text-secondary' : 'text-primary'} mb-0.5 flex items-center gap-2">
                 <span>{m.role === 'user' ? 'you' : 'assistant'}</span>
+                {#if m.role === 'user' && m.content && !busy && savingLibraryIdx !== i}
+                  <!-- Save this user prompt to the library so it
+                       becomes a one-click entry in the inline AI menu
+                       too. Opens an inline label input below; saves
+                       through api.putAIPrompts which is a full
+                       upsert so we GET, append, PUT. -->
+                  <button
+                    type="button"
+                    onclick={() => openSaveLibrary(i, m.content)}
+                    class="tap-target inline-flex items-center justify-center w-6 h-6 rounded text-dim hover:text-secondary hover:bg-surface0 leading-none transition-colors text-[10px]"
+                    aria-label="Save this prompt to your library"
+                    title="Save this prompt to your AI library — one click to reuse from any surface"
+                  >+</button>
+                {/if}
                 {#if m.role === 'assistant' && m.content && !busy}
                   <span class="ml-auto inline-flex items-center gap-1">
                     <!-- Regenerate — re-run the same user prompt to
@@ -2681,6 +2740,29 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                   </span>
                 {/if}
               </div>
+              {#if m.role === 'user' && savingLibraryIdx === i}
+                <!-- Inline save-to-library form: small input for a label,
+                     submit pushes the prompt into the user's library
+                     so it surfaces in the inline AI menu's Library
+                     section. The prompt body is the message content
+                     verbatim. Esc closes without saving. -->
+                <form
+                  onsubmit={(e) => { e.preventDefault(); confirmSaveLibrary(m.content); }}
+                  class="mt-1 flex items-center gap-1.5"
+                >
+                  <input
+                    type="text"
+                    bind:value={savingLibraryLabel}
+                    placeholder="short name (e.g. 'tighten', 'my voice')"
+                    onkeydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); cancelSaveLibrary(); } }}
+                    class="flex-1 px-2 py-1 text-xs bg-surface0 border border-surface1 rounded text-text focus:outline-none focus:border-secondary"
+                    use:focusOnMount
+                    disabled={savingLibraryBusy}
+                  />
+                  <button type="submit" disabled={savingLibraryBusy || !savingLibraryLabel.trim()} class="text-xs px-2 py-1 bg-secondary text-on-primary rounded font-medium hover:opacity-90 disabled:opacity-50">save</button>
+                  <button type="button" onclick={cancelSaveLibrary} class="text-xs text-dim hover:text-text px-1">cancel</button>
+                </form>
+              {/if}
               {#if m.role === 'user'}
                 {#if editingUserIdx === i}
                   <!-- Inline-edit a user message. Save truncates

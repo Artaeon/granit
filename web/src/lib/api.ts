@@ -819,6 +819,31 @@ export interface Roots {
   ring_labels: Record<number, string>;
 }
 
+// User-curated AI prompts. Different from auto-recents
+// (RecentPrompt in lib/ai/recentPrompts.ts) which capture what the
+// user typed without intent, and different from built-in presets
+// which ship with the app: library entries are deliberately saved
+// for reuse.
+//
+// scope filters where each entry surfaces in the inline AI menu:
+//   selection → only with text selected (rewrite-shaped prompts)
+//   cursor    → only at an empty cursor (generate-shaped prompts)
+//   either    → both
+export type AIPromptScope = 'selection' | 'cursor' | 'either';
+
+export interface AIPromptEntry {
+  id: string;
+  label: string;
+  prompt: string;
+  scope: AIPromptScope;
+  created_at: string;
+}
+
+export interface AIPromptLibrary {
+  entries: AIPromptEntry[];
+  updated_at?: string;
+}
+
 // Weekly plan extraction — what the AI returns from /plans/extract.
 // match_type categorises how the AI resolved this item's parent:
 //   "exact"    — venture/project name matched a vault entity verbatim
@@ -1960,6 +1985,13 @@ export const api = {
     req<PlanCommitResponse>('/plans/commit', {
       method: 'POST', body: JSON.stringify(body)
     }),
+
+  // AI prompt library — user-curated saved prompts, surfaced as a
+  // "Library" category in the inline AI menu + a "save prompt" entry
+  // on user chat messages. Single record per vault.
+  getAIPrompts: () => req<AIPromptLibrary>('/ai/prompts'),
+  putAIPrompts: (lib: { entries: Partial<AIPromptEntry>[] }) =>
+    req<AIPromptLibrary>('/ai/prompts', { method: 'PUT', body: JSON.stringify(lib) }),
 
   getRoots: () => req<Roots>('/roots'),
   putRoots: (r: { center?: string; anchor?: string; nodes?: Partial<RootsNode>[] }) =>

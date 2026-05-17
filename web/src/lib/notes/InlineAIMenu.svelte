@@ -26,7 +26,7 @@
 -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { api, type ChatMessage } from '$lib/api';
+  import { api, type ChatMessage, type AIPromptEntry } from '$lib/api';
   import { streamInlineAI } from '$lib/editor/inline-ai';
   import type { InlineAITriggerEvent } from '$lib/editor/inline-ai-trigger';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
@@ -75,6 +75,45 @@
     crossRecents = listSharedPrompts({ source: 'chat', limit: 6 })
       .filter((r) => !seen.has(r.prompt.toLowerCase()))
       .slice(0, 2);
+  }
+
+  // ── Prompt library — user-curated saved prompts ─────────────────
+  // Fetched once on mount; filtered to entries that match the current
+  // cursor state (selection vs empty) so the user only sees library
+  // items that make sense to fire right now. Rendered as a separate
+  // "Library" group after the curated categories — kept distinct so
+  // the user can tell "this is mine" from "this ships with granit."
+  let libraryAll = $state<AIPromptEntry[]>([]);
+  let libraryFiltered = $derived.by(() => {
+    const q = promptInput.trim().toLowerCase();
+    return libraryAll.filter((e) => {
+      // Scope filter — strict per cursor state, but 'either' shows in both.
+      if (hasSelection && e.scope === 'cursor') return false;
+      if (!hasSelection && e.scope === 'selection') return false;
+      // Text filter — same fuzzy substring as the preset list.
+      if (q && !e.label.toLowerCase().includes(q) && !e.prompt.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  });
+
+  async function loadLibrary() {
+    try {
+      const lib = await api.getAIPrompts();
+      libraryAll = lib.entries ?? [];
+    } catch {
+      libraryAll = [];
+    }
+  }
+
+  // Run a library entry. Library entries are user-authored prompts —
+  // they don't carry preset-style system/cursor prompt pairs, just a
+  // single prompt string. Route them through the same custom-prompt
+  // path as a free-form typed prompt, prefilling the input so the
+  // user sees what's about to fire (and could edit before submit
+  // if they wanted, though most clicks should commit immediately).
+  function runLibraryEntry(entry: AIPromptEntry) {
+    promptInput = entry.prompt;
+    runCustomPrompt();
   }
 
   function loadHistory(): string[] {
@@ -941,6 +980,7 @@
   onMount(() => {
     promptEl?.focus();
     refreshCrossRecents();
+    void loadLibrary();
     // Wait one tick for the menu to lay out so we measure its real
     // size before clamping.
     tick().then(clampToViewport);
@@ -1052,10 +1092,33 @@
         </button>
       </li>
     {/each}
-    {#if visiblePresets.length === 0}
+    {#if visiblePresets.length === 0 && libraryFiltered.length === 0}
       <li class="px-2 py-2 text-[11px] text-dim italic">
         No preset matches. Hit Enter to send your prompt as is.
       </li>
+    {/if}
+    <!-- Library — user-saved prompts. Separate section after curated
+         categories so the user can distinguish their own prompts from
+         the built-in presets at a glance. Hidden when empty so the
+         menu doesn't show a useless heading on a fresh vault. -->
+    {#if libraryFiltered.length > 0}
+      <li role="presentation" class="px-2 pt-2 pb-0.5 text-[9px] uppercase tracking-[0.18em] text-secondary/70 font-mono select-none">
+        Library
+      </li>
+      {#each libraryFiltered as e (e.id)}
+        <li role="option">
+          <button
+            type="button"
+            onclick={() => runLibraryEntry(e)}
+            class="w-full flex items-baseline justify-between gap-2 px-2 py-1.5 text-left hover:bg-surface1"
+            disabled={busy}
+            title={e.prompt}
+          >
+            <span class="text-[13px] text-text truncate">{e.label}</span>
+            <span class="text-[10px] text-dim font-mono shrink-0">{e.scope === 'either' ? '' : e.scope}</span>
+          </button>
+        </li>
+      {/each}
     {/if}
   </ul>
 
