@@ -19,6 +19,7 @@
   import EisenhowerView from '$lib/tasks/EisenhowerView.svelte';
   import TaskAgent from '$lib/tasks/TaskAgent.svelte';
   import AIStaleVerdicts from '$lib/tasks/AIStaleVerdicts.svelte';
+  import AskTasks from '$lib/tasks/AskTasks.svelte';
   import { isTypingTarget } from '$lib/util/isTypingTarget';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { rafThrottle } from '$lib/util/streamThrottle';
@@ -247,91 +248,19 @@
   }
 
   // ── Ask Tasks ────────────────────────────────────────────────────
-  // Free-form Q&A against the currently-loaded task set. Parity with
-  // the jots Ask feature: a question, the model gets the loaded
-  // tasks as JSON context, streams a markdown answer. Useful for
-  // questions like "which tasks block the launch?", "what's stuck?",
-  // "summarize today's commitments". Doesn't mutate anything — pure
-  // analysis surface.
+  // Free-form Q&A against the currently-loaded task set lives in
+  // $lib/tasks/AskTasks.svelte — that component owns the question /
+  // answer state, the streaming, the dismiss path. The parent only
+  // owns the open flag (so its trigger button can flip it) and the
+  // "no tasks in current view" guard (filtered is the parent's
+  // derivation).
   let askTasksOpen = $state(false);
-  let askQuestion = $state('');
-  let askAnswer = $state('');
-  let askBusy = $state(false);
-  let askError = $state('');
-  let askAbort: AbortController | null = null;
-  let askInputEl = $state<HTMLInputElement | undefined>();
-
-  function buildTaskSeed(): string {
-    // Cap at 80 most recent tasks to keep the prompt under model
-    // limits. We include the fields the model needs to answer most
-    // questions: text, priority, due, done state, scheduled time,
-    // estimate, tags, project, goal, deadline.
-    const slice = filtered.slice(0, 80).map((t) => ({
-      text: t.text,
-      priority: t.priority || undefined,
-      due: t.dueDate || undefined,
-      done: t.done || undefined,
-      scheduled: t.scheduledStart || undefined,
-      est: t.estimatedMinutes || undefined,
-      tags: t.tags && t.tags.length > 0 ? t.tags : undefined,
-      project: t.projectId || undefined,
-      goal: t.goalId || undefined,
-      deadline: t.deadlineId || undefined,
-      note: t.notePath
-    }));
-    return JSON.stringify(slice, null, 2);
-  }
-
   function startAskTasks() {
     if (filtered.length === 0) {
       toast.info('No tasks in the current view.');
       return;
     }
     askTasksOpen = true;
-    queueMicrotask(() => askInputEl?.focus());
-  }
-  async function submitAskTasks() {
-    const q = askQuestion.trim();
-    if (!q || askBusy) return;
-    askAbort?.abort();
-    askAbort = new AbortController();
-    askBusy = true;
-    askError = '';
-    askAnswer = '';
-    const seed = buildTaskSeed();
-    const system =
-      "You answer the user's questions about their own task list. Be specific — quote " +
-      'task text, mention priorities/due dates, count what needs counting. If the answer ' +
-      "isn't supported by the loaded tasks, say so rather than guess. Return markdown " +
-      'with concise paragraphs and bullets where helpful. No preamble.';
-    const user =
-      'Currently visible tasks (JSON, capped at 80):\n```json\n' + seed + '\n```\n\n' +
-      'Question: ' + q;
-    try {
-      const t = rafThrottle((full: string) => { askAnswer = full; });
-      await api.chatStream(
-        [{ role: 'system', content: system }, { role: 'user', content: user }],
-        undefined,
-        {
-          onChunk: t.onChunk,
-          onDone: () => { t.flush(); },
-          onError: (err) => { t.flush(); askError = err.message; }
-        },
-        askAbort.signal
-      );
-    } finally {
-      askBusy = false;
-      askAbort = null;
-    }
-  }
-  function dismissAskTasks() {
-    askAbort?.abort();
-    askAbort = null;
-    askBusy = false;
-    askTasksOpen = false;
-    askQuestion = '';
-    askAnswer = '';
-    askError = '';
   }
   let loading = $state(false);
   // URL sync: hydrate filter state from ?status=…&priority=…&… on
@@ -2277,39 +2206,10 @@
 
       <!-- Ask Tasks — chat-style Q&A across the currently-visible
            task set. Streams a markdown answer the user can read,
-           copy, or dismiss. No mutations; pure analysis. -->
-      {#if askTasksOpen}
-        <div class="px-3 py-2 border-b border-surface1 flex-shrink-0 bg-surface0">
-          <div class="flex items-baseline gap-2 mb-1.5">
-            <h3 class="text-[10px] uppercase tracking-wider text-text font-medium">ask tasks</h3>
-            <span class="text-[10px] text-dim font-mono">over {filtered.length} task{filtered.length === 1 ? '' : 's'}</span>
-            <span class="flex-1"></span>
-            {#if askBusy}
-              <span class="text-[10px] text-dim italic font-mono">streaming…</span>
-              <button onclick={() => askAbort?.abort()} class="text-[10px] text-dim hover:text-text font-mono">stop</button>
-            {:else if askAnswer.length > 0}
-              <button onclick={() => void submitAskTasks()} class="text-[10px] text-text hover:underline font-mono">re-ask</button>
-            {/if}
-            <button onclick={dismissAskTasks} class="text-[10px] text-dim hover:text-text font-mono">dismiss</button>
-          </div>
-          <input
-            bind:this={askInputEl}
-            bind:value={askQuestion}
-            onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void submitAskTasks(); } }}
-            placeholder="e.g. what's blocking the launch? which P1 has no due date?"
-            disabled={askBusy}
-            class="w-full bg-mantle border border-surface1 rounded px-2 py-1 text-[13px] text-text placeholder-dim focus:outline-none focus:border-primary mb-1.5 disabled:opacity-50"
-          />
-          {#if askError}
-            <p class="text-[11px] text-error mb-1">{askError}</p>
-          {/if}
-          {#if askAnswer.trim()}
-            <div class="bg-mantle border border-surface1 rounded p-2 max-h-[24rem] overflow-y-auto">
-              <MarkdownRenderer body={askAnswer} />
-            </div>
-          {/if}
-        </div>
-      {/if}
+           copy, or dismiss. No mutations; pure analysis. The trigger
+           sits in the quick-add bar below; this component handles
+           everything once `open` flips true. -->
+      <AskTasks bind:open={askTasksOpen} filtered={filtered} />
 
       <!-- Quick-add bar. Type a single-line task in granit's
            parser-friendly syntax; Enter creates it in today's daily
