@@ -70,10 +70,10 @@
   // Tone for the target date — error if overdue, warning ≤14 days,
   // dim otherwise. Drives the date chip's color.
   function dateTone(days: number | null): string {
-    if (days === null) return 'text-dim';
-    if (days < 0) return 'text-error';
-    if (days <= 14) return 'text-warning';
-    return 'text-dim';
+    if (days === null) return 'dim';
+    if (days < 0) return 'error';
+    if (days <= 14) return 'warning';
+    return 'dim';
   }
 
   function fmtDays(days: number | null): string {
@@ -93,7 +93,7 @@
     <a href="/goals" class="text-xs text-secondary hover:underline">all →</a>
   </div>
   {#if loading && goals.length === 0}
-    <ul class="space-y-3">
+    <ul class="space-y-2.5">
       {#each [0, 1, 2] as i (i)}
         <li>
           <div class="h-3 bg-surface1 rounded animate-pulse {i === 1 ? 'w-3/4' : ''}"></div>
@@ -106,33 +106,41 @@
       No active goals — <a href="/goals" class="text-secondary hover:underline">set one →</a>
     </p>
   {:else}
-    <ul class="space-y-3">
+    <ul class="space-y-2.5">
       {#each goals as g (g.id)}
         {@const p = progress(g)}
         {@const days = daysToTarget(g)}
         {@const overdue = days !== null && days < 0}
-        <li>
+        {@const tone = dateTone(days)}
+        <li class="border-l-2 pl-2.5 py-0.5" style="border-left-color: var(--color-{tone === 'dim' ? 'surface2' : tone});">
           <a href="/goals?focus={encodeURIComponent(g.id)}" class="block hover:opacity-90 group">
             <div class="flex items-baseline gap-2">
               <span class="text-sm text-text truncate flex-1 group-hover:text-primary transition-colors">{@html inlineMd(g.title)}</span>
               {#if g.target_date}
-                <span class="text-[10px] tabular-nums {dateTone(days)} flex-shrink-0">
+                <span class="text-[10px] tabular-nums flex-shrink-0" style="color: var(--color-{tone});">
                   {days !== null ? fmtDays(days) : g.target_date}
                 </span>
               {/if}
             </div>
+            <div class="flex items-baseline gap-2 mt-0.5">
+              {#if g.venture}
+                <span class="text-[10px] text-secondary truncate">🏢 {g.venture}</span>
+              {:else if g.project}
+                <span class="text-[10px] text-secondary truncate">📁 {g.project}</span>
+              {/if}
+              {#if g.milestones && g.milestones.length > 0}
+                <span class="text-[10px] text-dim tabular-nums ml-auto flex-shrink-0">
+                  {p}% · {g.milestones.filter((m) => m.done).length}/{g.milestones.length}
+                </span>
+              {/if}
+            </div>
             {#if g.milestones && g.milestones.length > 0}
-              <div class="h-1.5 bg-mantle rounded-full overflow-hidden mt-1.5">
+              <div class="h-1 bg-mantle rounded-full overflow-hidden mt-1">
                 <div
-                  class="h-full transition-all duration-300 {p === 100 ? 'bg-success' : overdue ? 'bg-surface0' : 'bg-primary'}"
+                  class="h-full transition-all duration-300 {p === 100 ? 'bg-success' : overdue ? 'bg-surface2' : 'bg-primary'}"
                   style="width: {p}%"
                 ></div>
               </div>
-              <div class="text-[10px] text-dim mt-0.5 tabular-nums">
-                {p}% · {g.milestones.filter((m) => m.done).length}/{g.milestones.length} milestones
-              </div>
-            {:else if !g.target_date}
-              <div class="text-[10px] text-dim italic mt-0.5">no milestones yet</div>
             {/if}
           </a>
         </li>

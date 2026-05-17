@@ -27,13 +27,15 @@
     { id: 'w-one-thing', type: 'one-thing', afterId: 'w-vision', enabled: true },
     { id: 'w-today-focus', type: 'today-focus', afterId: 'w-one-thing', enabled: true },
     { id: 'w-top-deadlines', type: 'top-deadlines', afterId: 'w-now', enabled: true },
-    // Pairs naturally with top-deadlines so the two by-when widgets
-    // sit side-by-side on the wide dashboard grid.
-    { id: 'w-top-goals', type: 'top-goals', afterId: 'w-top-deadlines', enabled: true },
+    // top-goals used to inject here as a parallel "by-when" tile,
+    // but GoalsProgressWidget now carries the same urgency chip +
+    // venture/project line — so injecting both meant two near-
+    // identical goal lists side-by-side. Existing users keep their
+    // top-goals tile; new dashboards just get goals-progress.
     // Quick links — hub favorites surfaced next to the by-when
     // widgets so the morning view answers both "when" and "where"
     // at a glance.
-    { id: 'w-quick-links', type: 'quick-links', afterId: 'w-top-goals', enabled: true }
+    { id: 'w-quick-links', type: 'quick-links', afterId: 'w-top-deadlines', enabled: true }
   ];
 
   // Auth state machine on the landing page:
