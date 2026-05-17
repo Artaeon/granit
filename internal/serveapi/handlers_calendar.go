@@ -453,6 +453,17 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 	rangeEnd := to.Add(24 * time.Hour)
 	for _, base := range icsScan(s.cfg.Vault.Root, gcfg.DisabledCalendars) {
 		for _, ev := range expandRRULE(base, from, rangeEnd) {
+			// expandRRULE clears RRule on each emitted instance — that
+			// strip is intentional for the native-event path (handler
+			// re-reads the series RRule from the outer scope below).
+			// For the ICS path, we don't have that outer copy in the
+			// loop body, so without re-attaching here every occurrence
+			// would ship with rrule="" and the frontend's "delete this
+			// instance vs entire series" picker would silently fall
+			// through to the nuclear path on the catch-all branch in
+			// EventDetail.svelte. Take it off the source `base` so the
+			// frontend can detect recurring occurrences.
+			seriesRRule := base.RRule
 			if ev.AllDay {
 				// Multi-day all-day events: ICS DTEND is exclusive
 				// (DTSTART=Aug1 DTEND=Aug11 → 10 days, Aug 1 through 10).
@@ -477,7 +488,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 						Color:    "cyan",
 						Source:   ev.Source,
 						Date:     dayISO,
-						RRule:    ev.RRule,
+						RRule:    seriesRRule,
 						Editable: &editable,
 						Kind:     ev.Kind,
 					})
@@ -502,7 +513,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				EventID:  ev.UID,
 				Color:    "cyan",
 				Source:   ev.Source,
-				RRule:    ev.RRule,
+				RRule:    seriesRRule,
 				Editable: &editable,
 				Kind:     ev.Kind,
 			}
