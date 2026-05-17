@@ -26,7 +26,14 @@
   interface DupPair { a: Task; b: Task; similarity: number }
 
   let pairs = $state<DupPair[]>([]);
-  let loaded = $state(false);
+  // `attempted` flips true after the FIRST run regardless of
+  // success/failure. Previously this was `attempted` which only
+  // tracked success — pairing it with the auto-run effect meant
+  // a persistent fetch error (attempted stays false, finally flips
+  // loading false) re-triggered the effect → infinite re-run loop.
+  // `attempted` decouples "have we tried" from "did it succeed",
+  // so the auto-run is a single shot whatever the outcome.
+  let attempted = $state(false);
   let loading = $state(false);
   let error = $state('');
   let scanned = $state(0);
@@ -38,7 +45,7 @@
   // fresh fetch on revisit is acceptable and the data needs to be
   // fresh anyway.
   $effect(() => {
-    if (!loaded && !loading) {
+    if (!attempted && !loading) {
       void run();
     }
   });
@@ -50,11 +57,11 @@
       const r = await api.taskDuplicates();
       pairs = r.pairs;
       scanned = r.scanned;
-      loaded = true;
     } catch (e) {
       error = errorMessage(e);
     } finally {
       loading = false;
+      attempted = true;
     }
   }
 
@@ -92,7 +99,7 @@
   </p>
   {#if loading}
     <span class="text-[11px] text-dim italic flex-shrink-0">scanning…</span>
-  {:else if loaded}
+  {:else if attempted}
     <span class="text-[11px] text-dim font-mono tabular-nums flex-shrink-0">
       {pairs.length} pair{pairs.length === 1 ? '' : 's'} · scanned {scanned}
     </span>
@@ -110,7 +117,7 @@
   </div>
 {/if}
 
-{#if loaded && pairs.length === 0 && !error}
+{#if attempted && pairs.length === 0 && !error}
   <div class="p-6 bg-surface0 border border-surface1 rounded text-center text-sm text-dim">
     No duplicate pairs found. Nice list.
   </div>
