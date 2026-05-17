@@ -819,6 +819,59 @@ export interface Roots {
   ring_labels: Record<number, string>;
 }
 
+// Weekly plan extraction — what the AI returns from /plans/extract.
+// match_type categorises how the AI resolved this item's parent:
+//   "exact"    — venture/project name matched a vault entity verbatim
+//   "fuzzy"    — close but not exact (see match_confidence 0-100)
+//   "new"      — proposes a task with no existing parent (review carefully)
+//   "personal" — non-venture/personal item (sermon prep, etc.)
+export interface PlanExtractedItem {
+  kind: 'task' | 'milestone';
+  label: string;
+  venture_name?: string;
+  project_name?: string;
+  goal_id?: string;
+  due_date?: string;
+  source_line?: string;
+  match_type?: 'exact' | 'fuzzy' | 'new' | 'personal';
+  match_confidence?: number;
+  rationale?: string;
+}
+
+export interface PlanExtractionResponse {
+  items: PlanExtractedItem[];
+  unmatched?: string[];
+  warning?: string;
+  raw?: string;
+}
+
+// What the client sends back to /plans/commit after the user has
+// reviewed and accepted (possibly edited) the proposal. Same shape
+// as PlanExtractedItem minus the AI-only fields (match_type,
+// match_confidence, rationale) since the user has already
+// committed to the routing by accepting.
+export interface PlanCommitItem {
+  kind: 'task' | 'milestone';
+  label: string;
+  venture_name?: string;
+  project_name?: string;
+  goal_id?: string;
+  due_date?: string;
+  source_line?: string;
+}
+
+export interface PlanCommitSkip {
+  label: string;
+  reason: string;
+}
+
+export interface PlanCommitResponse {
+  plan_path: string;
+  created_task_ids: string[];
+  created_milestones_count: number;
+  skipped?: PlanCommitSkip[];
+}
+
 // Prayer intentions — active prayer list with status lifecycle.
 export type PrayerStatus = 'praying' | 'answered' | 'archived';
 export interface PrayerIntention {
@@ -1895,6 +1948,19 @@ export const api = {
   // a patch-merge: the form is a flat five-field shape and a full
   // body is the least-surprising contract.
   getVision: () => req<Vision>('/vision'),
+  // Weekly plan — freeform brain-dump → AI-extracted proposal of
+  // tasks/milestones → user accepts subset → commit creates the
+  // canonical plan note at Plans/<weekISO>.md with tasks under
+  // "### <Venture>" sections.
+  extractPlan: (body: { plan_text: string; week_iso?: string }) =>
+    req<PlanExtractionResponse>('/plans/extract', {
+      method: 'POST', body: JSON.stringify(body)
+    }),
+  commitPlan: (body: { plan_text: string; week_iso?: string; items: PlanCommitItem[] }) =>
+    req<PlanCommitResponse>('/plans/commit', {
+      method: 'POST', body: JSON.stringify(body)
+    }),
+
   getRoots: () => req<Roots>('/roots'),
   putRoots: (r: { center?: string; anchor?: string; nodes?: Partial<RootsNode>[] }) =>
     req<Roots>('/roots', { method: 'PUT', body: JSON.stringify(r) }),
