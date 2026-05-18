@@ -16,6 +16,7 @@
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { onWsEvent } from '$lib/ws';
+  import { createCoalescedReload } from '$lib/util/coalesce';
   import Drawer from '$lib/components/Drawer.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
@@ -138,14 +139,21 @@
     }
   }
 
+  // Coalesced reload — load() runs four parallel API calls
+  // (deadlines, tasks, projects, goals) and rebuilds the derived
+  // scoping/grouping views. A triage burst that fires many
+  // task.changed events in a row used to kick off a full refetch
+  // per event; one trailing-edge reload per window suffices.
+  const reload = createCoalescedReload(() => load(), 600);
+
   onMount(() => {
     load();
     return onWsEvent((ev) => {
       // Refetch on the server's deadlines.json signal AND on note/task
       // changes — the latter two refresh the linked task chips when the
       // underlying task gets renamed or completed.
-      if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') load();
-      if (ev.type === 'task.changed' || ev.type === 'note.changed') load();
+      if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') reload.trigger();
+      if (ev.type === 'task.changed' || ev.type === 'note.changed') reload.trigger();
     });
   });
 
