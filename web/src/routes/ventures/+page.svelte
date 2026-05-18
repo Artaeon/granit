@@ -7,6 +7,7 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import { focusOnMount } from '$lib/util/focusOnMount';
 
@@ -233,6 +234,8 @@
 
 <div class="h-full overflow-y-auto">
   <div class="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <VisionContextStrip />
+
     <header class="mb-4 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
       <div>
         <h1 class="text-2xl sm:text-3xl font-semibold text-text">Ventures</h1>
