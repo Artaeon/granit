@@ -44,25 +44,28 @@
   async function loadAll() {
     if (!$auth) return;
     loading = true;
-    try {
-      // Parallel — small responses, single round-trip wall time.
-      const [iRes, pRes, vRes, gRes, sRes] = await Promise.all([
-        api.listPrayer(),
-        api.listProjects().catch(() => ({ projects: [] as Project[], total: 0 })),
-        api.listVentures().catch(() => ({ ventures: [] as Venture[], total: 0 })),
-        api.listGoals().catch(() => ({ goals: [] as Goal[], total: 0 })),
-        api.todayScripture().catch(() => null)
-      ]);
-      intentions = iRes.intentions;
-      projects = pRes.projects;
-      ventures = vRes.ventures;
-      goals = gRes.goals;
-      verseToday = sRes;
-    } catch (e) {
-      toast.error('failed to load prayer page: ' + (errorMessage(e)));
-    } finally {
-      loading = false;
+    // Settled so a single 500 (e.g. listPrayer transient failure)
+    // doesn't blank the verse-of-the-day or the venture/project/goal
+    // selects. The four secondary calls keep their soft-fallback
+    // behavior — empty arrays render an empty picker, which is
+    // honest for a fresh user too.
+    const [iRes, pRes, vRes, gRes, sRes] = await Promise.allSettled([
+      api.listPrayer(),
+      api.listProjects(),
+      api.listVentures(),
+      api.listGoals(),
+      api.todayScripture()
+    ]);
+    if (iRes.status === 'fulfilled') {
+      intentions = iRes.value.intentions;
+    } else {
+      toast.error('failed to load prayer intentions: ' + errorMessage(iRes.reason));
     }
+    projects = pRes.status === 'fulfilled' ? pRes.value.projects : [];
+    ventures = vRes.status === 'fulfilled' ? vRes.value.ventures : [];
+    goals = gRes.status === 'fulfilled' ? gRes.value.goals : [];
+    verseToday = sRes.status === 'fulfilled' ? sRes.value : null;
+    loading = false;
   }
 
   onMount(() => {
