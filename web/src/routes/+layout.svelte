@@ -32,6 +32,7 @@
     type NavItem,
     type AIQuick
   } from '$lib/nav/config';
+  import { activeNav } from '$lib/nav/active';
 
   function runQuickAction(q: AIQuick) {
     openAIOverlay({ modeId: q.modeId, text: q.text, send: q.send });
@@ -300,24 +301,9 @@
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  let activeNav = $derived.by(() => {
-    // Longest-href wins so a sub-route (e.g. /notes/graph) doesn't
-    // resolve to its parent (/notes) just because the array order
-    // puts the parent first. Without this, the mobile header label
-    // and the active-pill highlight would both stick on the parent
-    // when the user is actually on the child route.
-    const pathname = $page.url.pathname;
-    let best: NavItem | undefined;
-    for (const n of nav) {
-      if (n.href === pathname || (n.href !== '/' && pathname.startsWith(n.href + '/'))) {
-        if (!best || n.href.length > best.href.length) best = n;
-      }
-    }
-    return best;
-  });
-  let title = $derived(activeNav?.label ?? 'everything');
+  let title = $derived($activeNav?.label ?? 'everything');
   let showBackToSection = $derived(
-    !!activeNav && activeNav.href !== '/' && $page.url.pathname !== activeNav.href
+    !!$activeNav && $activeNav.href !== '/' && $page.url.pathname !== $activeNav.href
   );
 
   // Browser tab title. Empty home stays as just 'Granit'; deep
@@ -326,8 +312,8 @@
   // that drives the mobile header) means new routes pick this up
   // automatically when added to the nav array.
   let tabTitle = $derived.by(() => {
-    if (!activeNav || activeNav.href === '/') return 'Granit';
-    return `Granit · ${activeNav.label}`;
+    if (!$activeNav || $activeNav.href === '/') return 'Granit';
+    return `Granit · ${$activeNav.label}`;
   });
 
   function NavLinks() {}
@@ -338,7 +324,7 @@
 </svelte:head>
 
 {#snippet navItem(item: NavItem, isCompact: boolean, opts: { showPinAction?: boolean } = {})}
-  {@const active = activeNav?.href === item.href}
+  {@const active = $activeNav?.href === item.href}
   {@const badge = item.href === '/tasks' && $overdueTaskCount > 0
     ? { count: $overdueTaskCount, tone: 'error' as const, label: `${$overdueTaskCount} overdue` }
     : item.href === '/calendar' && $todayEventCount > 0
@@ -784,10 +770,10 @@
          drawer now, so the redundancy is gone. The bottom nav is the
          primary nav surface; this top bar is just contextual. -->
     <header class="md:hidden flex items-center gap-1 px-3 h-12 border-b border-surface1 bg-mantle sticky top-0 z-30 flex-shrink-0">
-      {#if showBackToSection && activeNav}
+      {#if showBackToSection && $activeNav}
         <a
-          href={activeNav.href}
-          aria-label="back to {activeNav.label}"
+          href={$activeNav.href}
+          aria-label="back to {$activeNav.label}"
           class="w-10 h-10 -ml-2 flex items-center justify-center text-subtext hover:text-primary rounded"
         >
           <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
