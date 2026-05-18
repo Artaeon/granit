@@ -13,6 +13,7 @@
   import RunningTimer from '$lib/components/RunningTimer.svelte';
   import NavIcon from '$lib/components/NavIcon.svelte';
   import Logo from '$lib/components/Logo.svelte';
+  import NavItem from '$lib/nav/NavItem.svelte';
   import QuickCaptureFab from '$lib/components/QuickCaptureFab.svelte';
   import PomodoroPill from '$lib/components/PomodoroPill.svelte';
   import AIOverlay from '$lib/components/AIOverlay.svelte';
@@ -29,7 +30,7 @@
     today,
     settingsItem,
     aiQuickActions,
-    type NavItem,
+    type NavItem as NavLink,
     type AIQuick
   } from '$lib/nav/config';
   import { activeNav } from '$lib/nav/active';
@@ -109,11 +110,11 @@
   let pinnedItems = $derived.by(() => {
     void $modulesStore;
     void $sabbath;
-    if ($sidebarPins.length === 0) return [] as NavItem[];
+    if ($sidebarPins.length === 0) return [] as NavLink[];
     const byHref = new Map(nav.map((n) => [n.href, n]));
     return $sidebarPins
       .map((h) => byHref.get(h))
-      .filter((it): it is NavItem => {
+      .filter((it): it is NavLink => {
         if (!it) return false;
         if (it.moduleId) {
           if (!modulesStore.isEnabled(it.moduleId)) return false;
@@ -131,12 +132,12 @@
   let recentItems = $derived.by(() => {
     void $modulesStore;
     void $sabbath;
-    if ($sidebarRecent.length === 0) return [] as NavItem[];
+    if ($sidebarRecent.length === 0) return [] as NavLink[];
     const pinned = new Set($sidebarPins);
     const byHref = new Map(nav.map((n) => [n.href, n]));
     return $sidebarRecent
       .map((h) => byHref.get(h))
-      .filter((it): it is NavItem => {
+      .filter((it): it is NavLink => {
         if (!it) return false;
         if (pinned.has(it.href)) return false;
         if (it.href === '/') return false; // Today is rendered separately
@@ -323,85 +324,13 @@
   <title>{tabTitle}</title>
 </svelte:head>
 
-{#snippet navItem(item: NavItem, isCompact: boolean, opts: { showPinAction?: boolean } = {})}
-  {@const active = $activeNav?.href === item.href}
-  {@const badge = item.href === '/tasks' && $overdueTaskCount > 0
-    ? { count: $overdueTaskCount, tone: 'error' as const, label: `${$overdueTaskCount} overdue` }
-    : item.href === '/calendar' && $todayEventCount > 0
-      ? { count: $todayEventCount, tone: 'subtle' as const, label: `${$todayEventCount} today` }
-      : null}
-  {@const pinned = $sidebarPins.includes(item.href)}
-  {@const canPin = opts.showPinAction !== false && item.href !== '/' && item.href !== '/settings' && !isCompact}
-  <a
-    href={item.href}
-    onclick={() => (drawerOpen = false)}
-    title={isCompact ? (badge ? `${item.label} — ${badge.label}` : item.label) : undefined}
-    aria-label={badge ? `${item.label}, ${badge.label}` : item.label}
-    class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-1.5'} rounded text-sm transition-colors
-      {active
-        ? 'text-primary bg-surface1 font-medium'
-        : 'text-subtext hover:bg-surface0 hover:text-text focus-visible:bg-surface0 focus-visible:text-text focus-visible:outline-none'}"
-  >
-    <!-- Active rail: a 3px accent strip on the left edge replaces
-         the heavier full-row fill, so scanning down the sidebar
-         lands on the active item without the eye getting pulled.
-         3px reads cleanly on every density / DPR — 2px disappeared
-         under blur on some displays. -->
-    {#if active}
-      <span class="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-primary" aria-hidden="true"></span>
-    {/if}
-    <span class="relative flex-shrink-0">
-      <NavIcon name={item.icon} class="w-5 h-5 flex-shrink-0" />
-      {#if isCompact && badge}
-        <!-- Compact-mode badge sits as a corner overlay on the icon
-             so the rail can still surface alerts without labels. The
-             error tone shows the digit; the subtle tone collapses to
-             a dot since the count is informational, not urgent. -->
-        {#if badge.tone === 'error'}
-          <span
-            class="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-error text-on-primary text-[9px] font-bold leading-4 text-center"
-            aria-hidden="true"
-          >{badge.count > 9 ? '9+' : badge.count}</span>
-        {:else}
-          <span class="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-primary" aria-hidden="true"></span>
-        {/if}
-      {/if}
-    </span>
-    {#if !isCompact}
-      <span class="truncate flex-1">{item.label}</span>
-      {#if badge}
-        {#if badge.tone === 'error'}
-          <span
-            class="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-error text-on-primary text-[10px] font-semibold leading-none"
-            aria-hidden="true"
-          >{badge.count > 99 ? '99+' : badge.count}</span>
-        {:else}
-          <span
-            class="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-surface1 text-subtext text-[10px] font-medium leading-none"
-            aria-hidden="true"
-          >{badge.count > 99 ? '99+' : badge.count}</span>
-        {/if}
-      {/if}
-      {#if canPin}
-        <!-- Pin toggle. Always visible when pinned (so the user can
-             unpin without hovering); revealed on hover otherwise. The
-             button uses stopPropagation so clicking the star doesn't
-             also navigate. Reads as a star to match the universal pin
-             metaphor. -->
-        <button
-          type="button"
-          onclick={(e) => { e.preventDefault(); e.stopPropagation(); togglePin(item.href); }}
-          title={pinned ? 'unpin from sidebar top' : 'pin to sidebar top'}
-          aria-label={pinned ? `Unpin ${item.label}` : `Pin ${item.label}`}
-          class="ml-1 p-0.5 rounded transition-opacity {pinned ? 'text-warning opacity-100' : 'text-dim opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:text-warning'}"
-        >
-          <svg viewBox="0 0 16 16" class="w-3.5 h-3.5" fill={pinned ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">
-            <path d="M8 1.5l1.85 4.05L14 6.2l-3.1 2.85L11.7 13 8 10.85 4.3 13l.8-3.95L2 6.2l4.15-.65z"/>
-          </svg>
-        </button>
-      {/if}
-    {/if}
-  </a>
+{#snippet navItem(item: NavLink, isCompact: boolean, opts: { showPinAction?: boolean } = {})}
+  <NavItem
+    {item}
+    {isCompact}
+    showPinAction={opts.showPinAction !== false}
+    onNavigate={() => (drawerOpen = false)}
+  />
 {/snippet}
 
 {#snippet navContent(isCompact: boolean)}
