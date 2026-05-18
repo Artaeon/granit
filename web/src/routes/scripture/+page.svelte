@@ -91,17 +91,27 @@
 
   async function load() {
     loading = true;
-    try {
-      const [t, list] = await Promise.all([api.todayScripture(), api.listScriptures()]);
-      today = t;
-      current = t;
-      all = list.scriptures;
-      topics = list.topics ?? [];
-    } catch (e) {
-      toast.error('failed to load scriptures: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      loading = false;
+    // Settled rather than Promise.all so a 500 on listScriptures
+    // doesn't kill the verse-of-the-day surface (or vice versa) —
+    // the two endpoints are independent reads and should degrade
+    // independently.
+    const [tRes, listRes] = await Promise.allSettled([
+      api.todayScripture(),
+      api.listScriptures()
+    ]);
+    if (tRes.status === 'fulfilled') {
+      today = tRes.value;
+      current = tRes.value;
+    } else {
+      toast.error('failed to load verse of the day: ' + (tRes.reason instanceof Error ? tRes.reason.message : String(tRes.reason)));
     }
+    if (listRes.status === 'fulfilled') {
+      all = listRes.value.scriptures;
+      topics = listRes.value.topics ?? [];
+    } else {
+      toast.error('failed to load scriptures: ' + (listRes.reason instanceof Error ? listRes.reason.message : String(listRes.reason)));
+    }
+    loading = false;
   }
 
   // Switch the active topic filter. '' clears it. Topic state is held
