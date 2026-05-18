@@ -8,6 +8,7 @@
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { onWsEvent } from '$lib/ws';
+  import { createCoalescedReload } from '$lib/util/coalesce';
   import TaskCard from '$lib/tasks/TaskCard.svelte';
   import Kanban from '$lib/tasks/Kanban.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
@@ -854,25 +855,37 @@
     aiDeadlineProposals = loadProposals(DEADLINE_KEY);
   });
 
+  // Coalesced reload — bulk operations (multi-select triage, plan
+  // apply, drag-drop kanban moves) can fire dozens of task.changed
+  // events in a row. Each one used to refetch the entire list,
+  // which froze the page during a 50-item triage. One trailing-edge
+  // reload per window suffices; the visibility-change handler still
+  // bypasses the coalesce so a returning tab feels instantly fresh.
+  const reload = createCoalescedReload(() => load(), 600);
+
   onMount(() => {
     const unsub = onWsEvent((ev) => {
       // task.changed fires after every patchTask, including drag-drops
       // from the kanban — without it, moves would only show up on a
       // manual refresh (or the next note write coincidentally). Match
       // the same set the calendar/inbox widgets honor.
-      if (ev.type === 'note.changed' || ev.type === 'note.removed' || ev.type === 'task.changed') load();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed' || ev.type === 'task.changed') {
+        reload.trigger();
+      }
     });
     // Visibility-aware refresh: a backgrounded tab won't get WS events,
     // so a task ticked off on the phone while the desktop tab was
     // hidden would otherwise stay open here until reload. Catches the
-    // cross-device case at zero recurring cost.
+    // cross-device case at zero recurring cost. Bypass the coalesce
+    // so the user sees fresh data immediately on tab return.
     const onVisible = () => {
-      if (document.visibilityState === 'visible') load();
+      if (document.visibilityState === 'visible') reload.flush();
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
     return () => {
       unsub();
+      reload.cancel();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
     };
