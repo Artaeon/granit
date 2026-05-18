@@ -14,6 +14,7 @@
   import RunningTimer from '$lib/components/RunningTimer.svelte';
   import NavSidebar from '$lib/nav/NavSidebar.svelte';
   import MobileTopBar from '$lib/nav/MobileTopBar.svelte';
+  import SabbathRibbon from '$lib/components/SabbathRibbon.svelte';
   import QuickCaptureFab from '$lib/components/QuickCaptureFab.svelte';
   import PomodoroPill from '$lib/components/PomodoroPill.svelte';
   import AIOverlay from '$lib/components/AIOverlay.svelte';
@@ -232,19 +233,8 @@
     class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col pb-bottomnav md:pb-0 main-with-tray"
     style="padding-right: var(--ai-pinned-w, 0px);"
   >
-    <!-- Sabbath ribbon. Visible from every authed page so the state
-         is unmissable; the mode auto-clears at midnight. Click to
-         exit. Z-index sits below the running-timer pill so they
-         don't clash. -->
-    {#if $auth && $sabbath}
-      <button
-        type="button"
-        onclick={() => sabbath.disable()}
-        class="flex-shrink-0 px-4 py-1.5 bg-success text-on-primary text-xs text-center hover:opacity-90 transition-colors"
-        title="Tap to exit sabbath mode"
-      >
-        Sabbath mode is on — work modules hidden until midnight. Tap to exit.
-      </button>
+    {#if $auth}
+      <SabbathRibbon />
     {/if}
     <div class="flex-1 min-h-0 overflow-hidden">
       {@render children()}
