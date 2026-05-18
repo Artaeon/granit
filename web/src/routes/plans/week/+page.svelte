@@ -36,6 +36,7 @@
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { isoWeekString, planNotePath } from '$lib/util/isoWeek';
+  import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
 
   const weekISO = isoWeekString();
   const planPath = planNotePath();
@@ -244,6 +245,8 @@
 
 <div class="h-full overflow-y-auto bg-mantle">
   <div class="max-w-7xl mx-auto px-4 py-6">
+    <VisionContextStrip />
+
     <header class="mb-6 flex items-baseline gap-3 flex-wrap">
       <h1 class="text-2xl font-semibold text-text">Weekly plan</h1>
       <span class="text-sm text-dim font-mono">{weekISO}</span>
