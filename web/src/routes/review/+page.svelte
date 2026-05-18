@@ -10,6 +10,7 @@
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
+  import WeeklyRollupHeader from '$lib/review/WeeklyRollupHeader.svelte';
   import { isoWeekParts, isoWeekString } from '$lib/util/isoWeek';
 
   // /review is the weekly examination ritual — five questions, saved
@@ -397,6 +398,12 @@
          /plans/week and /ventures render, so the planning loop stays
          visually consistent end to end. -->
     <VisionContextStrip />
+
+    <!-- Weekly rollup. Tasks done / overdue / goals moved for the
+         cursor's ISO week. Closes the gap between Plans (commit
+         work) and Review (look back at it): the rollup IS the
+         "what happened this week" the journal sits on top of. -->
+    <WeeklyRollupHeader {cursor} />
 
     {#if busy && !isExisting}
       <p class="text-sm text-dim">loading…</p>
