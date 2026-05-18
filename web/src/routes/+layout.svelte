@@ -41,10 +41,11 @@
     openAIOverlay({ modeId: q.modeId, text: q.text, send: q.send });
     drawerOpen = false;
   }
-  import { connect, disconnect, wsConnected, onWsEvent } from '$lib/ws';
+  import { connect, disconnect, wsConnected } from '$lib/ws';
   import { theme, nextTheme, themeLabel } from '$lib/stores/theme';
   import { modulesStore } from '$lib/stores/modules';
   import { sabbath, SABBATH_HIDE_MODULES } from '$lib/stores/sabbath';
+  import { overdueTaskCount, todayEventCount, startNavBadges } from '$lib/stores/nav-badges';
   import { goto } from '$app/navigation';
   import { toast } from '$lib/components/toast';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
@@ -97,81 +98,10 @@
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);
   });
 
-  // ── Sidebar live counts ────────────────────────────────────────────
-  // overdueTasks: open tasks with a dueDate strictly before today (YYYY-MM-DD).
-  // todayEvents: calendar feed entries (events.json + ICS subscriptions +
-  // scheduled tasks) whose date / start lands on today. Both refresh
-  // on mount, on auth gain, and on relevant WS events so the badges
-  // stay in sync after a TUI edit or a tab returning from background
-  // without manual reload. Errors swallow silently — a stale or
-  // missing badge is fine; an alert spam isn't.
-  let overdueTaskCount = $state<number>(0);
-  let todayEventCount = $state<number>(0);
-
-  function todayISO(): string {
-    const d = new Date();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${d.getFullYear()}-${m}-${day}`;
-  }
-
-  async function refreshOverdueTasks() {
-    try {
-      const today = todayISO();
-      const res = await api.listTasks({ status: 'open', due_before: today });
-      overdueTaskCount = res.tasks.filter((t) => !t.done && !!t.dueDate && t.dueDate < today).length;
-    } catch {
-      // leave previous count in place
-    }
-  }
-
-  async function refreshTodayEvents() {
-    try {
-      const today = todayISO();
-      const feed = await api.calendar(today, today);
-      const isToday = (ev: { date?: string; start?: string }) => {
-        if (ev.date) return ev.date === today;
-        if (ev.start) return ev.start.slice(0, 10) === today;
-        return false;
-      };
-      todayEventCount = feed.events.filter(isToday).length;
-    } catch {
-      // leave previous count in place
-    }
-  }
-
-  // Trigger fetches once auth is known. Re-runs when $auth flips
-  // false→true so a fresh login populates badges immediately.
-  $effect(() => {
-    if (!$auth) {
-      overdueTaskCount = 0;
-      todayEventCount = 0;
-      return;
-    }
-    refreshOverdueTasks();
-    refreshTodayEvents();
-  });
-
-  // Listen to WS task/event mutations to keep badges live without
-  // polling. We debounce lightly via microtask so a burst (e.g. plan
-  // apply that flips many tasks) collapses into one refetch.
-  onMount(() => {
-    let pendingTasks = false;
-    let pendingEvents = false;
-    const off = onWsEvent((ev) => {
-      if (ev.type === 'task.changed' || ev.type === 'vault.rescanned') {
-        if (pendingTasks) return;
-        pendingTasks = true;
-        queueMicrotask(() => { pendingTasks = false; refreshOverdueTasks(); });
-      }
-      if (ev.type === 'event.changed' || ev.type === 'event.removed' || ev.type === 'task.changed' || ev.type === 'vault.rescanned') {
-        if (pendingEvents) return;
-        pendingEvents = true;
-        queueMicrotask(() => { pendingEvents = false; refreshTodayEvents(); });
-      }
-    });
-    return off;
-  });
+  // Sidebar live badges (overdue tasks, today's events) are driven by
+  // $lib/stores/nav-badges. startNavBadges() wires the auth + WS
+  // lifecycle once and returns a cleanup for onMount tear-down.
+  onMount(() => startNavBadges());
 
   // moduleId gates the entry against the modules store. Entries without
   // a moduleId stay visible unconditionally.
@@ -498,10 +428,10 @@
 
 {#snippet navItem(item: NavItem, isCompact: boolean, opts: { showPinAction?: boolean } = {})}
   {@const active = activeNav?.href === item.href}
-  {@const badge = item.href === '/tasks' && overdueTaskCount > 0
-    ? { count: overdueTaskCount, tone: 'error' as const, label: `${overdueTaskCount} overdue` }
-    : item.href === '/calendar' && todayEventCount > 0
-      ? { count: todayEventCount, tone: 'subtle' as const, label: `${todayEventCount} today` }
+  {@const badge = item.href === '/tasks' && $overdueTaskCount > 0
+    ? { count: $overdueTaskCount, tone: 'error' as const, label: `${$overdueTaskCount} overdue` }
+    : item.href === '/calendar' && $todayEventCount > 0
+      ? { count: $todayEventCount, tone: 'subtle' as const, label: `${$todayEventCount} today` }
       : null}
   {@const pinned = $sidebarPins.includes(item.href)}
   {@const canPin = opts.showPinAction !== false && item.href !== '/' && item.href !== '/settings' && !isCompact}
