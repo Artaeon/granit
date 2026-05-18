@@ -9,6 +9,7 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
+  import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
 
   // /review is the weekly examination ritual — five questions, saved
   // to a markdown note in Reviews/YYYY-Www.md. The page deliberately
@@ -401,16 +402,11 @@
     {/if}
 
     <!-- Vision context strip — shows the user's current season focus
-         so the vision-check question doesn't require alt-tabbing. -->
-    {#if vision?.season_focus}
-      <div class="mb-5 px-3 py-2 bg-surface0 border border-surface1 rounded text-xs text-subtext">
-        <span class="text-dim uppercase tracking-wider">Your season focus:</span>
-        <span class="text-text font-medium ml-1">{vision.season_focus}</span>
-        {#if vision.season_day && vision.season_total}
-          <span class="text-dim ml-2">· day {vision.season_day} of {vision.season_total}</span>
-        {/if}
-      </div>
-    {/if}
+         so the vision-check question doesn't require alt-tabbing.
+         The shared component is the same strip /goals, /projects,
+         /plans/week and /ventures render, so the planning loop stays
+         visually consistent end to end. -->
+    <VisionContextStrip />
 
     {#if busy && !isExisting}
       <p class="text-sm text-dim">loading…</p>
