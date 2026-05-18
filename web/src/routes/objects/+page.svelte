@@ -7,6 +7,7 @@
   import { toast } from '$lib/components/toast';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
+  import EditModal from '$lib/components/EditModal.svelte';
 
   let types = $state<ObjectType[]>([]);
   let untyped = $state(0);
@@ -275,52 +276,38 @@
 
 <!-- Create-new modal. Single title field; the server fills the rest
      from the type's defaults. Slug-encodes the title for the path. -->
-{#if createOpen && activeType}
-  <div
-    class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-    onclick={() => (createOpen = false)}
-    role="dialog"
-    tabindex="-1"
-    onkeydown={(e) => { if (e.key === 'Escape') createOpen = false; }}
+{#if activeType}
+  <EditModal
+    open={createOpen}
+    maxWidth="sm"
+    title={`New ${activeType.icon ?? '◇'} ${activeType.name}`}
+    onClose={() => (createOpen = false)}
   >
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}
-      class="w-full max-w-sm bg-mantle border border-surface1 rounded-lg shadow-xl"
-      role="document"
-    >
-      <header class="px-3 py-2 border-b border-surface1">
-        <h2 class="text-base font-semibold text-text">
-          New {activeType.icon ?? '◇'} {activeType.name}
-        </h2>
-      </header>
-      <form onsubmit={(e) => { e.preventDefault(); submitCreate(); }} class="p-4 space-y-3">
-        <label class="block">
-          <span class="text-xs text-dim">Title</span>
-          <input
-            bind:value={createTitle}
-            placeholder={`${activeType.name} title…`}
-            disabled={createBusy}
-            class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary"
-          />
-        </label>
-        <p class="text-[11px] text-dim">
-          Saved to <code>{activeType.folder ?? '(vault root)'}/</code> with frontmatter <code>type: {activeType.id}</code>.
-        </p>
-        <div class="flex gap-2 justify-end pt-1">
-          <button
-            type="button"
-            onclick={() => (createOpen = false)}
-            class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1"
-          >Cancel</button>
-          <button
-            type="submit"
-            disabled={createBusy || !createTitle.trim()}
-            class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-50"
-          >{createBusy ? '…' : 'Create'}</button>
-        </div>
-      </form>
-    </div>
-  </div>
+    <form onsubmit={(e) => { e.preventDefault(); submitCreate(); }} class="p-4 space-y-3">
+      <label class="block">
+        <span class="text-xs text-dim">Title</span>
+        <input
+          bind:value={createTitle}
+          placeholder={`${activeType.name} title…`}
+          disabled={createBusy}
+          class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary"
+        />
+      </label>
+      <p class="text-[11px] text-dim">
+        Saved to <code>{activeType.folder ?? '(vault root)'}/</code> with frontmatter <code>type: {activeType.id}</code>.
+      </p>
+      <div class="flex gap-2 justify-end pt-1">
+        <button
+          type="button"
+          onclick={() => (createOpen = false)}
+          class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1"
+        >Cancel</button>
+        <button
+          type="submit"
+          disabled={createBusy || !createTitle.trim()}
+          class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-50"
+        >{createBusy ? '…' : 'Create'}</button>
+      </div>
+    </form>
+  </EditModal>
 {/if}

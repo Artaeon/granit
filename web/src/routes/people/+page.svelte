@@ -6,6 +6,7 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import EditModal from '$lib/components/EditModal.svelte';
 
   // /people is a lightweight relationship tracker. The schema is
   // intentionally small: name, optional contact info, last-contacted
@@ -490,40 +491,40 @@
 </div>
 
 <!-- ── Create / edit modal ──────────────────────────────────────────── -->
-{#if modalOpen}
-  <div class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onclick={() => (modalOpen = false)} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') modalOpen = false; }}>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <form onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} onsubmit={(e) => { e.preventDefault(); submitForm(); }} class="w-full max-w-md bg-mantle border border-surface1 rounded-lg shadow-xl p-4 space-y-3">
-      <h2 class="text-base font-semibold text-text">{editingId ? 'Edit person' : 'New person'}</h2>
-      <input bind:value={form.name} required placeholder="Name" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      <div class="grid grid-cols-2 gap-2">
-        <input bind:value={form.email} placeholder="Email" class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-        <input bind:value={form.phone} placeholder="Phone" class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      </div>
-      <div class="grid grid-cols-2 gap-2">
-        <input bind:value={form.relationship} placeholder="Relationship (friend, family…)" list="rel-list" class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-        <input type="date" bind:value={form.birthday} placeholder="Birthday" class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      </div>
-      <datalist id="rel-list">
-        {#each relationships as r}<option value={r}></option>{/each}
-      </datalist>
-      <input bind:value={form.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      <div class="grid grid-cols-2 gap-2">
-        <label class="block">
-          <span class="text-[11px] text-dim">Last contacted</span>
-          <input type="date" bind:value={form.last_contacted_at} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-        </label>
-        <label class="block">
-          <span class="text-[11px] text-dim">Cadence (days, 0 = no reminder)</span>
-          <input type="number" min="0" bind:value={form.cadence_days} placeholder="30" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text font-mono text-right focus:outline-none focus:border-primary" />
-        </label>
-      </div>
-      <input bind:value={form.note_path} placeholder="Linked note path (optional, e.g. People/Sebastian.md)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      <textarea bind:value={form.notes} rows="3" placeholder="Notes (recent conversations, things to remember…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text resize-y focus:outline-none focus:border-primary"></textarea>
-      <div class="flex justify-end gap-2 pt-2">
-        <button type="button" onclick={() => (modalOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-        <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">{editingId ? 'Save' : 'Add'}</button>
-      </div>
-    </form>
-  </div>
-{/if}
+<EditModal
+  open={modalOpen}
+  title={editingId ? 'Edit person' : 'New person'}
+  onClose={() => (modalOpen = false)}
+>
+  <form onsubmit={(e) => { e.preventDefault(); submitForm(); }} class="p-4 space-y-3">
+    <input bind:value={form.name} required placeholder="Name" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+    <div class="grid grid-cols-2 gap-2">
+      <input bind:value={form.email} placeholder="Email" class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+      <input bind:value={form.phone} placeholder="Phone" class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    </div>
+    <div class="grid grid-cols-2 gap-2">
+      <input bind:value={form.relationship} placeholder="Relationship (friend, family…)" list="rel-list" class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+      <input type="date" bind:value={form.birthday} placeholder="Birthday" class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    </div>
+    <datalist id="rel-list">
+      {#each relationships as r}<option value={r}></option>{/each}
+    </datalist>
+    <input bind:value={form.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    <div class="grid grid-cols-2 gap-2">
+      <label class="block">
+        <span class="text-[11px] text-dim">Last contacted</span>
+        <input type="date" bind:value={form.last_contacted_at} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+      </label>
+      <label class="block">
+        <span class="text-[11px] text-dim">Cadence (days, 0 = no reminder)</span>
+        <input type="number" min="0" bind:value={form.cadence_days} placeholder="30" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text font-mono text-right focus:outline-none focus:border-primary" />
+      </label>
+    </div>
+    <input bind:value={form.note_path} placeholder="Linked note path (optional, e.g. People/Sebastian.md)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    <textarea bind:value={form.notes} rows="3" placeholder="Notes (recent conversations, things to remember…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text resize-y focus:outline-none focus:border-primary"></textarea>
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" onclick={() => (modalOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
+      <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">{editingId ? 'Save' : 'Add'}</button>
+    </div>
+  </form>
+</EditModal>
