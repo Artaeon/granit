@@ -31,6 +31,7 @@
   import { startNavBadges } from '$lib/stores/nav-badges';
   import { expandSectionTransient, sidebarCompact } from '$lib/stores/sidebar-ui';
   import { toast } from '$lib/components/toast';
+  import { findBinding, matchesKey } from '$lib/keybindings/registry';
 
   let palette: { show: () => void } | undefined = $state();
 
@@ -120,28 +121,27 @@
     drawerOpen = false;
   });
 
-  // Mod-Shift-O — jump to whatever the open-note tray remembers.
+  // tray-jump — Mod+Shift+O reopens whatever the note tray remembers.
   // Mirrors the user's "ein system tray" framing: one keystroke
   // returns you to the last note from anywhere in the app. The
   // shortcut intentionally fires even when the user is typing into
-  // an input/textarea, mirroring Mod+J (Ask AI) and Mod+K (palette):
-  // these are global app-shell shortcuts, not text editing ones.
+  // an input/textarea: it's an app-shell move, not a text edit.
   // Skips when the tray is disabled (settings opt-out), when there's
   // nothing remembered, or when the user is already on that note.
   //
-  // get() is intentional: we don't want this $effect to re-subscribe
-  // (and re-register the listener) every time the tray store ticks.
-  // The listener is registered once and reads fresh values at
-  // keypress time.
+  // The chord is read from $lib/keybindings so a future remap UI
+  // touches one file. get() reads each store fresh at keypress time,
+  // so the $effect doesn't re-register the listener on every tray
+  // tick.
   onMount(() => {
+    const binding = findBinding('tray-jump');
+    if (!binding) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return;
-      if (e.key.toLowerCase() !== 'o') return;
+      if (!matchesKey(e, binding.keys)) return;
       if (!get(trayEnabled)) return;
       const entry = get(lastOpenNote);
       if (!entry) return;
       const targetPath = '/notes/' + encodeURIComponent(entry.path);
-      // Already there → suppress (the chip would be hidden anyway).
       const here = get(page).url.pathname;
       if (here === targetPath) return;
       e.preventDefault();
