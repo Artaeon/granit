@@ -29,19 +29,26 @@
 
   async function load() {
     loading = true;
-    try {
-      const [p, r] = await Promise.all([
-        api.listAgentPresets(showPrompts),
-        api.listAgentRuns(200)
-      ]);
-      presets = p.presets;
-      runs = r.runs;
-      stats = r.stats;
-    } catch (e) {
-      toast.error('failed to load agents: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      loading = false;
+    // Settled rather than Promise.all — a 500 on listAgentRuns used
+    // to blank the presets tab too, even though presets had loaded
+    // cleanly. Each surface now degrades independently and the
+    // toast names whichever half failed.
+    const [pRes, rRes] = await Promise.allSettled([
+      api.listAgentPresets(showPrompts),
+      api.listAgentRuns(200)
+    ]);
+    if (pRes.status === 'fulfilled') {
+      presets = pRes.value.presets;
+    } else {
+      toast.error('failed to load presets: ' + (pRes.reason instanceof Error ? pRes.reason.message : String(pRes.reason)));
     }
+    if (rRes.status === 'fulfilled') {
+      runs = rRes.value.runs;
+      stats = rRes.value.stats;
+    } else {
+      toast.error('failed to load agent runs: ' + (rRes.reason instanceof Error ? rRes.reason.message : String(rRes.reason)));
+    }
+    loading = false;
   }
 
   onMount(() => {
