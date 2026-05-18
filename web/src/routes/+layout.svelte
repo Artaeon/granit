@@ -44,9 +44,15 @@
   import { modulesStore } from '$lib/stores/modules';
   import { sabbath, SABBATH_HIDE_MODULES } from '$lib/stores/sabbath';
   import { overdueTaskCount, todayEventCount, startNavBadges } from '$lib/stores/nav-badges';
+  import {
+    collapsedSections,
+    toggleSection,
+    expandSectionTransient,
+    sidebarCompact,
+    toggleSidebarCompact
+  } from '$lib/stores/sidebar-ui';
   import { goto } from '$app/navigation';
   import { toast } from '$lib/components/toast';
-  import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
 
   let palette: { show: () => void } | undefined = $state();
 
@@ -179,64 +185,21 @@
       .filter((s) => s.items.length > 0);
   });
 
-  // ── Sidebar UX state ──────────────────────────────────────────────
-  // Collapsed sections + compact mode are both per-device localStorage.
-  // collapsedSections is a record of section.id → true to keep the
-  // wire format tiny (only collapsed sections are stored).
-  const COLLAPSED_KEY = 'granit.sidebar.collapsed';
-  const COMPACT_KEY = 'granit.sidebar.compact';
-  // Default-collapse everything except Daily. The original default
-  // was "all expanded", which surfaced 25+ items at once and made
-  // the sidebar feel like a phonebook. Daily stays expanded because
-  // it's the morning/tasks/calendar cluster every user lives in. The
-  // others get expanded as needed and the choice persists. Existing
-  // users keep whatever they had.
-  const DEFAULT_COLLAPSED: Record<string, boolean> = {
-    plan: true,
-    life: true,
-    knowledge: true,
-    ai: true
-  };
-  function loadCollapsed(): Record<string, boolean> {
-    return loadStored<Record<string, boolean>>(COLLAPSED_KEY, { ...DEFAULT_COLLAPSED });
-  }
-  let collapsedSections = $state<Record<string, boolean>>(loadCollapsed());
-  function toggleSection(id: string) {
-    const next = { ...collapsedSections };
-    if (next[id]) delete next[id];
-    else next[id] = true;
-    collapsedSections = next;
-    saveStored(COLLAPSED_KEY, next);
-  }
   // Auto-expand the section containing the active route. Without
   // this the user can land on /goals (collapsed-by-default Plan
   // section) and the sidebar misleads them about where they are.
-  // We mutate collapsedSections without persisting so closing it
-  // again — and going elsewhere — restores the user's preference.
-  //
-  // The collapsedSections read MUST be in untrack — otherwise the
-  // user can never collapse a section containing the active route,
-  // because the toggleSection write retriggers this effect, which
-  // re-expands it immediately. Same Svelte 5 untrack re-seed pattern
-  // we hit in the email-signatures editor.
+  // The expand is transient — closing the section again and going
+  // elsewhere restores the user's persisted preference.
   $effect(() => {
     const path = $page.url.pathname;
     if (path === '/') return;
     untrack(() => {
       for (const s of sections) {
         const inSection = s.items.some((it) => path === it.href || path.startsWith(it.href + '/'));
-        if (inSection && collapsedSections[s.id]) {
-          collapsedSections = { ...collapsedSections, [s.id]: false };
-        }
+        if (inSection) expandSectionTransient(s.id);
       }
     });
   });
-
-  let compact = $state<boolean>(loadStoredString(COMPACT_KEY, '0') === '1');
-  function toggleCompact() {
-    compact = !compact;
-    saveStoredString(COMPACT_KEY, compact ? '1' : '0');
-  }
 
   // Route guard: if the user lands on a path whose module is disabled
   // (deep link, bookmark, stale tab), bounce to home. We use a tiny
@@ -519,7 +482,7 @@
            thin separator line so the visual rhythm of grouping is
            preserved without the labels. -->
       {#each visibleSections as section}
-        {@const isCollapsed = !!collapsedSections[section.id] && !isCompact}
+        {@const isCollapsed = !!$collapsedSections[section.id] && !isCompact}
         {#if isCompact}
           <!-- Compact section divider: a short centered rule + a tiny
                pip so the visual rhythm of grouping survives icon-only
@@ -645,7 +608,7 @@
            drawer is already an icon-poor experience and a compact
            toggle in a temporary panel doesn't save anything. -->
       <button
-        onclick={toggleCompact}
+        onclick={toggleSidebarCompact}
         title={isCompact ? 'Expand sidebar' : 'Collapse to icons'}
         class="hidden md:flex w-full items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm text-dim hover:bg-surface0 hover:text-text transition-colors"
       >
@@ -726,9 +689,9 @@
          compact toggle in the footer rail. Both states animate via
          the transition class so the resize feels intentional. -->
     <aside
-      class="hidden md:flex bg-mantle border-r border-surface1 flex-shrink-0 transition-[width] duration-150 {compact ? 'md:w-14' : 'md:w-56 lg:w-60'}"
+      class="hidden md:flex bg-mantle border-r border-surface1 flex-shrink-0 transition-[width] duration-150 {$sidebarCompact ? 'md:w-14' : 'md:w-56 lg:w-60'}"
     >
-      {@render navContent(compact)}
+      {@render navContent($sidebarCompact)}
     </aside>
 
     <!-- Mobile "More" drawer always renders the full (non-compact)
