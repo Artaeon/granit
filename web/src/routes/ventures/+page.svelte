@@ -10,6 +10,7 @@
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import { focusOnMount } from '$lib/util/focusOnMount';
+  import { colorVar, statusTone, statusIcon } from '$lib/util/colors';
 
   // /ventures is the umbrella view above projects + goals. Project.venture
   // and Goal.venture stay free-text strings — a venture record adds
@@ -47,30 +48,6 @@
 
   const colorOptions = ['blue', 'green', 'mauve', 'peach', 'red', 'yellow', 'pink', 'lavender', 'teal', 'sapphire'];
 
-  function colorVar(c?: string): string {
-    const map: Record<string, string> = {
-      red: 'error', yellow: 'warning', orange: 'accent', green: 'success',
-      blue: 'secondary', purple: 'primary', cyan: 'info', mauve: 'primary',
-      peach: 'accent', teal: 'info', sapphire: 'secondary', pink: 'accent',
-      lavender: 'primary', flamingo: 'error'
-    };
-    return `var(--color-${map[c ?? ''] ?? 'secondary'})`;
-  }
-
-  function statusTone(status?: string): string {
-    if (status === 'active') return 'success';
-    if (status === 'paused') return 'warning';
-    if (status === 'archived') return 'subtext';
-    return 'subtext';
-  }
-
-  // Status icon — purely decorative but adds scanability in dense views.
-  function statusIcon(status?: string): string {
-    if (status === 'active') return '●';
-    if (status === 'paused') return '◐';
-    if (status === 'archived') return '◯';
-    return '●';
-  }
 
   async function load() {
     if (!$auth) return;

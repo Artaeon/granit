@@ -5,6 +5,7 @@
   import { api, type Project, type Task , todayISO } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
+  import { colorVar, statusTone } from '$lib/util/colors';
   import ProjectDetail from '$lib/projects/ProjectDetail.svelte';
   import ProjectCreate from '$lib/projects/ProjectCreate.svelte';
   import ProjectTimeline from '$lib/projects/ProjectTimeline.svelte';
@@ -568,23 +569,6 @@
     return unassigned ? [...named, unassigned] : named;
   });
 
-  function colorVar(c?: string): string {
-    const map: Record<string, string> = {
-      red: 'error', yellow: 'warning', orange: 'accent', green: 'success',
-      blue: 'secondary', purple: 'primary', cyan: 'info', mauve: 'primary',
-      peach: 'accent', teal: 'info', sapphire: 'secondary', pink: 'accent',
-      lavender: 'primary', flamingo: 'error'
-    };
-    return `var(--color-${map[c ?? ''] ?? 'secondary'})`;
-  }
-
-  function statusTone(status: string): string {
-    if (status === 'active') return 'success';
-    if (status === 'paused') return 'warning';
-    if (status === 'completed') return 'info';
-    if (status === 'archived') return 'subtext';
-    return 'subtext';
-  }
 
   async function created(p: Project) {
     createOpen = false;
