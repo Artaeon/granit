@@ -15,6 +15,7 @@
   import NavSidebar from '$lib/nav/NavSidebar.svelte';
   import MobileTopBar from '$lib/nav/MobileTopBar.svelte';
   import SabbathRibbon from '$lib/components/SabbathRibbon.svelte';
+  import UpdateAvailableBanner from '$lib/components/UpdateAvailableBanner.svelte';
   import QuickCaptureFab from '$lib/components/QuickCaptureFab.svelte';
   import PomodoroPill from '$lib/components/PomodoroPill.svelte';
   import AIOverlay from '$lib/components/AIOverlay.svelte';
@@ -41,42 +42,19 @@
     else disconnect();
   });
 
-  // Auto-reload when the service worker activates a new build. The SW
-  // posts {type:'sw-updated'} after clients.claim(). Previously we
-  // waited for the next tab-hide so a mid-edit refresh wouldn't drop
-  // unsaved work — but mobile users often keep one tab open all day,
-  // and silently waiting meant the user thought we'd shipped nothing
-  // (cache-stuck on yesterday's bundle for hours after a deploy).
-  // New behaviour: hidden tab → reload immediately; visible tab →
-  // surface a toast with a "Reload" action so the user gets agency
-  // without being yanked mid-keystroke. The note drafts module
-  // already preserves every keystroke to localStorage so even a
-  // reload-during-edit can't lose data.
-  let updateAvailable = $state(false);
+  // Pre-hydration splash hide. Setting data-app-ready on <html>
+  // triggers the `[data-app-ready] #app-splash { display: none }`
+  // rule in app.html. Done in the root onMount so EVERY child page
+  // benefits — even ones that have their own loading states only
+  // start showing them after this fires. Wrapped in a defensive
+  // try so an SSR or test environment without document doesn't
+  // crash.
   onMount(() => {
-    // Pre-hydration splash hide. Setting data-app-ready on <html>
-    // triggers the `[data-app-ready] #app-splash { display: none }`
-    // rule in app.html. Done in the root onMount so EVERY child page
-    // benefits — even ones that have their own loading states only
-    // start showing them after this fires. Wrapped in a defensive
-    // try so an SSR or test environment without document doesn't
-    // crash.
     try {
       document.documentElement.setAttribute('data-app-ready', '1');
     } catch (_) {
       // No document — ignore.
     }
-    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
-    const onMessage = (event: MessageEvent) => {
-      if (event?.data?.type !== 'sw-updated') return;
-      if (document.visibilityState === 'hidden') {
-        location.reload();
-      } else {
-        updateAvailable = true;
-      }
-    };
-    navigator.serviceWorker.addEventListener('message', onMessage);
-    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
   });
 
   // Sidebar live badges (overdue tasks, today's events) are driven by
@@ -310,29 +288,4 @@
   <NoteTray />
 {/if}
 <Toaster />
-
-<!-- "New version available" banner. Sits ABOVE the bottom nav (z-40 vs
-     bottom-nav's z-30) and uses sm:bottom-3 on desktop so it doesn't
-     collide with the nav rail edge. Kept dismissable because the user
-     might want to finish a thought before we yank them — but the action
-     button reloads on tap so they don't have to hunt for "clear cache". -->
-{#if updateAvailable}
-  <div
-    role="status"
-    class="fixed inset-x-3 z-40 bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px)+0.75rem)] md:bottom-3 md:left-auto md:right-3 md:max-w-sm bg-mantle border border-primary rounded-lg shadow-2xl p-3 flex items-center gap-3"
-  >
-    <div class="flex-1 min-w-0">
-      <div class="text-sm font-medium text-text">Update available</div>
-      <div class="text-xs text-dim mt-0.5">Reload to pick up the latest build.</div>
-    </div>
-    <button
-      onclick={() => location.reload()}
-      class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90 flex-shrink-0"
-    >Reload</button>
-    <button
-      onclick={() => (updateAvailable = false)}
-      aria-label="dismiss"
-      class="text-dim hover:text-text flex-shrink-0 px-1"
-    >×</button>
-  </div>
-{/if}
+<UpdateAvailableBanner />
