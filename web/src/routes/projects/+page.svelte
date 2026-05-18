@@ -6,6 +6,8 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import { colorVar, statusTone } from '$lib/util/colors';
+  import { isoWeekString, startOfIsoWeek } from '$lib/util/isoWeek';
+  import { fmtDateISO as ymd } from '$lib/util/date';
   import ProjectDetail from '$lib/projects/ProjectDetail.svelte';
   import ProjectCreate from '$lib/projects/ProjectCreate.svelte';
   import ProjectTimeline from '$lib/projects/ProjectTimeline.svelte';
@@ -37,24 +39,7 @@
   // detail panel; surfacing it on the cards costs zero extra wire
   // calls and answers "which projects are alive" at a glance.
   const SPARK_WEEKS = 4;
-  function isoWeekKey(d: Date): string {
-    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    const day = (t.getUTCDay() + 6) % 7;
-    t.setUTCDate(t.getUTCDate() - day + 3);
-    const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
-    const week = 1 + Math.round((t.getTime() - firstThu.getTime()) / (7 * 24 * 60 * 60 * 1000));
-    return `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
-  }
-  function startOfIsoWeek(d: Date): Date {
-    const t = new Date(d);
-    const day = (t.getDay() + 6) % 7;
-    t.setDate(t.getDate() - day);
-    t.setHours(0, 0, 0, 0);
-    return t;
-  }
-  function ymd(d: Date): string {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
+  const isoWeekKey = isoWeekString;
   // Pre-compute the order of week keys for the sparkline so each
   // card doesn't redo this work.
   const sparkWeekOrder = $derived.by(() => {

@@ -10,6 +10,7 @@
   import AgentRunPanel from '$lib/agents/AgentRunPanel.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
+  import { isoWeekParts, isoWeekString } from '$lib/util/isoWeek';
 
   // /review is the weekly examination ritual — five questions, saved
   // to a markdown note in Reviews/YYYY-Www.md. The page deliberately
@@ -55,21 +56,10 @@
   // ── Week ID + folder ──────────────────────────────────────────────
   // ISO week numbering: weeks start Monday, week containing Jan 4 is
   // week 1. Mirrors the Go time package (which uses ISO 8601 weeks)
-  // so a future TUI surface that uses time.Time.ISOWeek() agrees on
-  // file paths.
-  function isoWeek(d: Date): { year: number; week: number } {
-    // Copy + set to Thursday of that week (ISO definition).
-    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    const day = t.getUTCDay() || 7;
-    t.setUTCDate(t.getUTCDate() + 4 - day);
-    const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-    const week = Math.ceil(((t.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-    return { year: t.getUTCFullYear(), week };
-  }
-  function weekId(d: Date): string {
-    const { year, week } = isoWeek(d);
-    return `${year}-W${String(week).padStart(2, '0')}`;
-  }
+  // via $lib/util/isoWeek so the frontend and backend agree on file
+  // paths.
+  const isoWeek = isoWeekParts;
+  const weekId = isoWeekString;
   function reviewPath(d: Date): string {
     return `Reviews/${weekId(d)}.md`;
   }
