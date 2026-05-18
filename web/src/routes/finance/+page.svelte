@@ -15,6 +15,7 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import EditModal from '$lib/components/EditModal.svelte';
   import { rafThrottle } from '$lib/util/streamThrottle';
   import { classifyAiError } from '$lib/util/aiErrors';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -1211,11 +1212,12 @@
 </div>
 
 <!-- ── New / edit income modal ──────────────────────────────────────── -->
-{#if incomeOpen}
-  <div class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onclick={() => (incomeOpen = false)} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') incomeOpen = false; }}>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <form onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} onsubmit={(e) => { e.preventDefault(); submitIncome(); }} class="w-full max-w-md bg-mantle border border-surface1 rounded-lg shadow-xl p-4 space-y-3">
-      <h2 class="text-base font-semibold text-text">{editingIncomeId ? 'Edit income source' : 'New income source'}</h2>
+<EditModal
+  open={incomeOpen}
+  title={editingIncomeId ? 'Edit income source' : 'New income source'}
+  onClose={() => (incomeOpen = false)}
+>
+  <form onsubmit={(e) => { e.preventDefault(); submitIncome(); }} class="p-4 space-y-3">
       <input bind:value={incomeForm.name} required placeholder="Name (Day job, Side SaaS, Dividends…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       <div class="grid grid-cols-2 gap-2">
         <label class="block">
@@ -1299,20 +1301,21 @@
       <input bind:value={incomeForm.tags} placeholder="Tags (comma-separated, e.g. primary, w2)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
       <input bind:value={incomeForm.url} placeholder="URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
       <textarea bind:value={incomeForm.notes} rows="2" placeholder="Notes (idea details, next steps…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text resize-y focus:outline-none focus:border-primary"></textarea>
-      <div class="flex justify-end gap-2 pt-2">
-        <button type="button" onclick={() => (incomeOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-        <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">{editingIncomeId ? 'Save' : 'Add'}</button>
-      </div>
-    </form>
-  </div>
-{/if}
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" onclick={() => (incomeOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
+      <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">{editingIncomeId ? 'Save' : 'Add'}</button>
+    </div>
+  </form>
+</EditModal>
 
 <!-- ── New-account modal ────────────────────────────────────────────── -->
-{#if accOpen}
-  <div class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onclick={() => (accOpen = false)} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') accOpen = false; }}>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <form onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} onsubmit={(e) => { e.preventDefault(); submitAcc(); }} class="w-full max-w-sm bg-mantle border border-surface1 rounded-lg shadow-xl p-4 space-y-3">
-      <h2 class="text-base font-semibold text-text">New account</h2>
+<EditModal
+  open={accOpen}
+  maxWidth="sm"
+  title="New account"
+  onClose={() => (accOpen = false)}
+>
+  <form onsubmit={(e) => { e.preventDefault(); submitAcc(); }} class="p-4 space-y-3">
       <input bind:value={accForm.name} required placeholder="Name" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       <select bind:value={accForm.kind} class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
         <option value="checking">Checking</option>
@@ -1336,22 +1339,23 @@
           <button type="button" onclick={() => (accForm.color = c)} class="w-5 h-5 rounded-full {accForm.color === c ? 'ring-2 ring-primary' : ''}" style="background: {accColor(c)}" aria-label={c}></button>
         {/each}
       </div>
-      <input bind:value={accForm.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      <input bind:value={accForm.notes} placeholder="Notes (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      <div class="flex justify-end gap-2 pt-2">
-        <button type="button" onclick={() => (accOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-        <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Create</button>
-      </div>
-    </form>
-  </div>
-{/if}
+    <input bind:value={accForm.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    <input bind:value={accForm.notes} placeholder="Notes (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" onclick={() => (accOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
+      <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Create</button>
+    </div>
+  </form>
+</EditModal>
 
 <!-- ── New-subscription modal ───────────────────────────────────────── -->
-{#if subOpen}
-  <div class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onclick={() => (subOpen = false)} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') subOpen = false; }}>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <form onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} onsubmit={(e) => { e.preventDefault(); submitSub(); }} class="w-full max-w-sm bg-mantle border border-surface1 rounded-lg shadow-xl p-4 space-y-3">
-      <h2 class="text-base font-semibold text-text">New subscription</h2>
+<EditModal
+  open={subOpen}
+  maxWidth="sm"
+  title="New subscription"
+  onClose={() => (subOpen = false)}
+>
+  <form onsubmit={(e) => { e.preventDefault(); submitSub(); }} class="p-4 space-y-3">
       <input bind:value={subForm.name} required placeholder="Name (Netflix, Spotify…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       <div class="flex gap-2">
         <input type="number" step="0.01" bind:value={subForm.amount} required placeholder="9.99" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
@@ -1378,23 +1382,24 @@
           {#each projects as p}<option value={p.name}>{p.name}</option>{/each}
         </select>
       </div>
-      <input bind:value={subForm.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      <input bind:value={subForm.category} placeholder="Category (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      <input bind:value={subForm.url} placeholder="Manage URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      <div class="flex justify-end gap-2 pt-2">
-        <button type="button" onclick={() => (subOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-        <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Add</button>
-      </div>
-    </form>
-  </div>
-{/if}
+    <input bind:value={subForm.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    <input bind:value={subForm.category} placeholder="Category (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    <input bind:value={subForm.url} placeholder="Manage URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" onclick={() => (subOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
+      <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Add</button>
+    </div>
+  </form>
+</EditModal>
 
 <!-- ── New-goal modal ───────────────────────────────────────────────── -->
-{#if goalOpen}
-  <div class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onclick={() => (goalOpen = false)} role="dialog" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape') goalOpen = false; }}>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <form onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} onsubmit={(e) => { e.preventDefault(); submitGoal(); }} class="w-full max-w-sm bg-mantle border border-surface1 rounded-lg shadow-xl p-4 space-y-3">
-      <h2 class="text-base font-semibold text-text">New financial goal</h2>
+<EditModal
+  open={goalOpen}
+  maxWidth="sm"
+  title="New financial goal"
+  onClose={() => (goalOpen = false)}
+>
+  <form onsubmit={(e) => { e.preventDefault(); submitGoal(); }} class="p-4 space-y-3">
       <input bind:value={goalForm.name} required placeholder="Name (Emergency fund, Pay off card…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       <select bind:value={goalForm.kind} class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
         <option value="savings">Savings (build up to target)</option>
@@ -1409,10 +1414,9 @@
       <label class="block text-xs text-dim">Target date (optional)
         <input type="date" bind:value={goalForm.target_date} class="block mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       </label>
-      <div class="flex justify-end gap-2 pt-2">
-        <button type="button" onclick={() => (goalOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-        <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Add</button>
-      </div>
-    </form>
-  </div>
-{/if}
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" onclick={() => (goalOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
+      <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Add</button>
+    </div>
+  </form>
+</EditModal>
