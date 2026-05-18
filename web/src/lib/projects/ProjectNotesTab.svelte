@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, todayISO, type Note, type Project } from '$lib/api';
   import { slugifyTitle } from '$lib/util/slug';
+  import { fmtDateISO as ymd } from '$lib/util/date';
   import { toast } from '$lib/components/toast';
   import NoteLinkDialog from './NoteLinkDialog.svelte';
 
@@ -24,10 +25,6 @@
 
   type MatchReason = 'frontmatter' | 'wikilink' | 'path';
   type MatchedNote = Note & { reason: MatchReason };
-
-  function ymd(d: Date): string {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
 
   function noteTitle(n: Note): string {
     if (n.title && n.title.trim() !== '') return n.title;

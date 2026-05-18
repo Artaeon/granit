@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { Project, Task } from '$lib/api';
+  import { startOfIsoWeek } from '$lib/util/isoWeek';
+  import { fmtDateISO as ymd } from '$lib/util/date';
 
   // Tiny stacked horizontal bar showing this project's task breakdown
   // by status: open + scheduled-this-week + done. The list cards
@@ -14,17 +16,6 @@
     project: Project;
     tasks: Task[];
   } = $props();
-
-  function ymd(d: Date): string {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
-  function startOfIsoWeek(d: Date): Date {
-    const t = new Date(d);
-    const day = (t.getDay() + 6) % 7;
-    t.setDate(t.getDate() - day);
-    t.setHours(0, 0, 0, 0);
-    return t;
-  }
 
   // Filter tasks to this project using the same matching rule the
   // rest of the page uses. Memoised via $derived so list-page renders

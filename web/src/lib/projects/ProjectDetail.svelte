@@ -9,6 +9,8 @@
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { rafThrottle } from '$lib/util/streamThrottle';
+  import { isoWeekString, startOfIsoWeek } from '$lib/util/isoWeek';
+  import { fmtDateISO as ymd } from '$lib/util/date';
   import { focusOnMount } from '$lib/util/focusOnMount';
 
   let { project, onClose, onUpdated, onDeleted, onOpenDashboard }: {
@@ -197,18 +199,8 @@
   // clickable links into the calendar at that day, so a user
   // can hop straight from "this project has 3 tasks Wednesday"
   // to the day view.
-  function startOfThisWeekMonday(): Date {
-    const d = new Date();
-    const dow = (d.getDay() + 6) % 7; // 0 = Monday
-    d.setDate(d.getDate() - dow);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-  function ymd(d: Date): string {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
   const weekSchedule = $derived.by(() => {
-    const start = startOfThisWeekMonday();
+    const start = startOfIsoWeek(new Date());
     const today = ymd(new Date());
     const days: { date: string; label: string; count: number; isToday: boolean }[] = [];
     const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -255,21 +247,7 @@
   // matches what the dashboard shows. Scoped to projectTasks so
   // each project's chart only counts its own work.
   const BURNUP_WEEKS = 8;
-  function weekKey(d: Date): string {
-    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    const day = (t.getUTCDay() + 6) % 7;
-    t.setUTCDate(t.getUTCDate() - day + 3);
-    const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
-    const week = 1 + Math.round((t.getTime() - firstThu.getTime()) / (7 * 24 * 60 * 60 * 1000));
-    return `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
-  }
-  function startOfIsoWeek(d: Date): Date {
-    const t = new Date(d);
-    const day = (t.getDay() + 6) % 7;
-    t.setDate(t.getDate() - day);
-    t.setHours(0, 0, 0, 0);
-    return t;
-  }
+  const weekKey = isoWeekString;
   const burnup = $derived.by(() => {
     const now = new Date();
     const weekStart = startOfIsoWeek(now);
