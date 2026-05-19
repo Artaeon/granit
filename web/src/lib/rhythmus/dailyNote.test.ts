@@ -111,10 +111,26 @@ describe('serializeDayFrontmatter', () => {
         work:    { done: false },
         body:    { done: false },
         evening: { done: false }
-      }
+      },
+      shutdown: { achieved: 'fed myself', tomorrow: 'breathe', letGo: 'inbox', phoneAway: true }
     };
     const fm = serializeDayFrontmatter(state);
     const back = parseDayFrontmatter(fm, '2026-05-19');
     expect(back).toEqual(state);
+  });
+
+  it('omits shutdown when every field is empty', () => {
+    const out = serializeDayFrontmatter(emptyDayState('2026-05-19'));
+    expect(out.rhythmus_shutdown).toBeUndefined();
+  });
+
+  it('reads back a shutdown block when present', () => {
+    const out = parseDayFrontmatter(
+      { rhythmus_shutdown: { achieved: 'hero copy', phoneAway: true } },
+      '2026-05-19'
+    );
+    expect(out.shutdown.achieved).toBe('hero copy');
+    expect(out.shutdown.phoneAway).toBe(true);
+    expect(out.shutdown.tomorrow).toBe('');
   });
 });

@@ -25,6 +25,16 @@ export type PillarState = {
   note?: string;
 };
 
+/** Four-line shutdown bookmark. Persisted alongside the rest of
+ *  the day state so the next morning's check-in (and the weekly
+ *  review) can see what the user committed to last night. */
+export type ShutdownState = {
+  achieved: string;
+  tomorrow: string;
+  letGo: string;
+  phoneAway: boolean;
+};
+
 export type DayState = {
   /** YYYY-MM-DD (local). The folder convention is Daily/<date>.md. */
   date: string;
@@ -40,7 +50,12 @@ export type DayState = {
    *  it to a real task, the work-pillar handler does that. */
   mit: string;
   pillars: Record<PillarKey, PillarState>;
+  shutdown: ShutdownState;
 };
+
+export function emptyShutdown(): ShutdownState {
+  return { achieved: '', tomorrow: '', letGo: '', phoneAway: false };
+}
 
 export function emptyPillars(): Record<PillarKey, PillarState> {
   return {
@@ -59,6 +74,7 @@ export function emptyDayState(date: string): DayState {
     fatigue: 3,
     eaten: false,
     mit: '',
-    pillars: emptyPillars()
+    pillars: emptyPillars(),
+    shutdown: emptyShutdown()
   };
 }

@@ -36,9 +36,11 @@ import { PILLAR_ORDER, type PillarKey } from './pillars';
 import {
   emptyDayState,
   emptyPillars,
+  emptyShutdown,
   type DayMode,
   type DayState,
-  type PillarState
+  type PillarState,
+  type ShutdownState
 } from './dayState';
 
 /** Vault-relative path for the daily note of `at`. Mirrors what
@@ -71,6 +73,18 @@ function parsePillars(v: unknown): Record<PillarKey, PillarState> {
   return out;
 }
 
+function parseShutdown(v: unknown): ShutdownState {
+  const out = emptyShutdown();
+  if (!v || typeof v !== 'object') return out;
+  const o = v as Record<string, unknown>;
+  return {
+    achieved: typeof o.achieved === 'string' ? o.achieved : '',
+    tomorrow: typeof o.tomorrow === 'string' ? o.tomorrow : '',
+    letGo:    typeof o.letGo    === 'string' ? o.letGo    : '',
+    phoneAway: !!o.phoneAway
+  };
+}
+
 /** Pull a DayState out of whatever frontmatter the note happens to
  *  have. Missing fields fall back to the empty-day defaults, so a
  *  fresh note (or one that never touched the rhythmus shape) reads
@@ -89,7 +103,8 @@ export function parseDayFrontmatter(
   const eaten = !!fm.rhythmus_eaten;
   const mit = typeof fm.rhythmus_mit === 'string' ? fm.rhythmus_mit : '';
   const pillars = parsePillars(fm.rhythmus_pillars);
-  return { date, mode, fatigue, eaten, mit, pillars };
+  const shutdown = parseShutdown(fm.rhythmus_shutdown);
+  return { date, mode, fatigue, eaten, mit, pillars, shutdown };
 }
 
 /** Merge a DayState back into the note's existing frontmatter so
@@ -115,5 +130,16 @@ export function serializeDayFrontmatter(
   if (state.mit.trim()) out.rhythmus_mit = state.mit.trim();
   else delete out.rhythmus_mit;
   out.rhythmus_pillars = pillars;
+  const sd = state.shutdown;
+  if (sd.achieved || sd.tomorrow || sd.letGo || sd.phoneAway) {
+    out.rhythmus_shutdown = {
+      achieved: sd.achieved,
+      tomorrow: sd.tomorrow,
+      letGo: sd.letGo,
+      phoneAway: sd.phoneAway
+    };
+  } else {
+    delete out.rhythmus_shutdown;
+  }
   return out;
 }
