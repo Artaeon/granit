@@ -139,6 +139,13 @@ describe('nextAction — body fatigue branch', () => {
     const out = nextAction(fresh({ mode: 'emergency', eaten: true }), { now: at('15:00') });
     expect(out.pillar).not.toBe('body');
   });
+
+  it('relaxes the bar after 18:00 — no gym pressure regardless of fatigue', () => {
+    const out = nextAction(fresh({ eaten: true, fatigue: 2 }), { now: at('18:30') });
+    expect(out.pillar).toBe('body');
+    expect(out.reason).toMatch(/Sp[äa]t/);
+    expect(out.label).toMatch(/10 Minuten reichen/);
+  });
 });
 
 describe('nextAction — spirit + rest', () => {

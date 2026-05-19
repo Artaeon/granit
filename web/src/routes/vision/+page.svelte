@@ -220,6 +220,18 @@
     const s = v.identities?.[key];
     return typeof s === 'string' && s.trim() ? s : undefined;
   }
+
+  // Per-pillar placeholder examples — lifted from the brainstorm so
+  // a first-time user has something concrete to model on instead of
+  // a generic "Ich …". Aim: identity ("wer ich bin"), not outcome
+  // ("was ich erreichen will").
+  const IDENTITY_PLACEHOLDERS: Record<PillarKey, string> = {
+    spirit:  'Ich suche Gott täglich, auch kurz',
+    food:    'Ich esse regelmäßig — Essen ist kein Notfall',
+    work:    'Ich arbeite fokussiert, aber bete Arbeit nicht an',
+    body:    'Ich bewege meinen Körper jeden Tag',
+    evening: 'Ich schütze meinen Abend'
+  };
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -274,7 +286,7 @@
             <input
               id="id-{key}"
               bind:value={form.identities[key]}
-              placeholder="Ich …"
+              placeholder={IDENTITY_PLACEHOLDERS[key]}
               class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-base text-text placeholder-dim focus:outline-none focus:border-primary font-serif"
             />
           </section>

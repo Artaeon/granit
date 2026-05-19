@@ -119,9 +119,20 @@ export function nextAction(
   }
 
   // 4) Body — only when fatigue allows. High fatigue collapses to a
-  //    walk; low fatigue suggests real movement. Emergency skips
-  //    body entirely.
+  //    walk; low fatigue suggests real movement. After 18:00, the
+  //    brainstorm explicitly relaxes the bar — "kein Gym nötig, 10
+  //    Minuten Bewegung reichen heute" — so the late-day branch
+  //    drops the implicit gym framing regardless of fatigue.
+  //    Emergency skips body entirely.
   if (mode !== 'emergency' && !pillars.body.done) {
+    const lateInDay = now.getHours() >= 18;
+    if (lateInDay) {
+      return {
+        label: '10 Minuten reichen heute.',
+        pillar: 'body',
+        reason: 'Spät genug — kein Gym mehr nötig.'
+      };
+    }
     if (fatigue <= 3) {
       return {
         label: '10 Minuten Bewegung.',
