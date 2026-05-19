@@ -99,6 +99,15 @@ type Task struct {
 	// 30-second tick).
 	LastReminderFired string `json:"last_reminder_fired,omitempty"`
 
+	// Energy classifies the kind of attention a task asks for —
+	// "deep", "admin", "communication", "recovery", "spiritual",
+	// or "body". Added with the 2026-05-19 Rhythmus-OS pivot so
+	// the next-action engine + chaotic-day filtering can match
+	// tasks to the user's current state ("müde → kein Deep Work,
+	// 10 Min Admin reicht"). Free-form string by design — the UI
+	// constrains to the six labels but new types stay parseable.
+	Energy string `json:"energy,omitempty"`
+
 	// Archived flags a soft-deleted task. The markdown line is NOT
 	// removed (so a `git pull` or external editor can restore it
 	// trivially), but the task is hidden from default list views.

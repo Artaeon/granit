@@ -336,6 +336,11 @@ type patchTaskBody struct {
 	// false unarchives. Decoupled from Done so a task can be done AND
 	// archived independently. The store stamps ArchivedAt on archive.
 	Archived *bool `json:"archived,omitempty"`
+
+	// Energy classifies the kind of attention the task asks for.
+	// Sidecar-only; the markdown line stays untouched. Pointer-typed
+	// for explicit clear semantics ("" wipes, absent leaves alone).
+	Energy *string `json:"energy,omitempty"`
 }
 
 func (s *Server) handlePatchTask(w http.ResponseWriter, r *http.Request) {
@@ -477,6 +482,15 @@ func (s *Server) handlePatchTask(w http.ResponseWriter, r *http.Request) {
 		// purely in the metadata file. UpdateMeta gives us the atomicity
 		// the rest of the metadata writes use.
 		if err := store.UpdateMeta(id, func(t *tasks.Task) { t.Notes = *b.Notes }); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	if b.Energy != nil {
+		// Energy is sidecar-only (no markdown marker). Free-form on
+		// disk; the web UI constrains to six labels. Empty string
+		// clears the classification.
+		if err := store.UpdateMeta(id, func(t *tasks.Task) { t.Energy = *b.Energy }); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
