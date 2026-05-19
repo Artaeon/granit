@@ -316,8 +316,10 @@
     {#if evening}
       <EveningShutdown
         shutdown={day.shutdown ?? emptyShutdown()}
+        foodDone={day.pillars.food.done}
         eveningDone={day.pillars.evening.done}
         onShutdownChange={setShutdown}
+        onFoodToggle={(d) => togglePillar('food', d)}
         onCloseDay={closeDay}
       />
     {:else}

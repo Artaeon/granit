@@ -81,7 +81,10 @@ function parseShutdown(v: unknown): ShutdownState {
     achieved: typeof o.achieved === 'string' ? o.achieved : '',
     tomorrow: typeof o.tomorrow === 'string' ? o.tomorrow : '',
     letGo:    typeof o.letGo    === 'string' ? o.letGo    : '',
-    phoneAway: !!o.phoneAway
+    phoneAway: !!o.phoneAway,
+    routineShowered:  typeof o.routineShowered  === 'boolean' ? o.routineShowered  : undefined,
+    routineScripture: typeof o.routineScripture === 'boolean' ? o.routineScripture : undefined,
+    routinePrayer:    typeof o.routinePrayer    === 'boolean' ? o.routinePrayer    : undefined
   };
 }
 
@@ -131,13 +134,25 @@ export function serializeDayFrontmatter(
   else delete out.rhythmus_mit;
   out.rhythmus_pillars = pillars;
   const sd = state.shutdown;
-  if (sd.achieved || sd.tomorrow || sd.letGo || sd.phoneAway) {
-    out.rhythmus_shutdown = {
+  const anyShutdown =
+    sd.achieved ||
+    sd.tomorrow ||
+    sd.letGo ||
+    sd.phoneAway ||
+    sd.routineShowered ||
+    sd.routineScripture ||
+    sd.routinePrayer;
+  if (anyShutdown) {
+    const block: Record<string, unknown> = {
       achieved: sd.achieved,
       tomorrow: sd.tomorrow,
       letGo: sd.letGo,
       phoneAway: sd.phoneAway
     };
+    if (sd.routineShowered)  block.routineShowered  = true;
+    if (sd.routineScripture) block.routineScripture = true;
+    if (sd.routinePrayer)    block.routinePrayer    = true;
+    out.rhythmus_shutdown = block;
   } else {
     delete out.rhythmus_shutdown;
   }

@@ -25,14 +25,29 @@ export type PillarState = {
   note?: string;
 };
 
-/** Four-line shutdown bookmark. Persisted alongside the rest of
- *  the day state so the next morning's check-in (and the weekly
- *  review) can see what the user committed to last night. */
+/** Evening shutdown bookmark. Two phases per the brainstorm:
+ *
+ *   Phase 1 — "Arbeit schließen": four short retrospective lines
+ *     (achieved / tomorrow / letGo) the user writes once they hit
+ *     the close-day button.
+ *
+ *   Phase 2 — "Abendroutine": a five-step checklist that appears
+ *     after the day is closed. Three booleans live here
+ *     (routineShowered / routineScripture / routinePrayer); the
+ *     other two routine items map to existing state (`day.pillars.food.done`
+ *     for "Essen erledigt?" and `shutdown.phoneAway` for the
+ *     bookend "Handy weg?").
+ *
+ *  Optional booleans — missing / undefined reads as not-done so
+ *  older daily notes don't suddenly look complete after upgrade. */
 export type ShutdownState = {
   achieved: string;
   tomorrow: string;
   letGo: string;
   phoneAway: boolean;
+  routineShowered?: boolean;
+  routineScripture?: boolean;
+  routinePrayer?: boolean;
 };
 
 export type DayState = {

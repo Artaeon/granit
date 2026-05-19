@@ -133,4 +133,18 @@ describe('serializeDayFrontmatter', () => {
     expect(out.shutdown.phoneAway).toBe(true);
     expect(out.shutdown.tomorrow).toBe('');
   });
+
+  it('round-trips the routine checklist flags when set', () => {
+    const state = emptyDayState('2026-05-19');
+    state.shutdown.routineShowered = true;
+    state.shutdown.routineScripture = false;
+    state.shutdown.routinePrayer = true;
+    const fm = serializeDayFrontmatter(state);
+    const back = parseDayFrontmatter(fm, '2026-05-19');
+    expect(back.shutdown.routineShowered).toBe(true);
+    expect(back.shutdown.routinePrayer).toBe(true);
+    // false / unset stays undefined on parse so older notes that
+    // never saw the field don't suddenly look completed.
+    expect(back.shutdown.routineScripture).toBeUndefined();
+  });
 });

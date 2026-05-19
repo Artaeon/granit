@@ -1,52 +1,88 @@
 <script lang="ts">
-  // The evening shutdown card. Replaces the pillar list on the
-  // Heute-Karte once local time crosses the configured evening
-  // threshold (default 20:30). Other modules in the app stay
-  // reachable — this is *soft* gating, not Sabbath-level hiding.
+  // The evening shutdown card. Two phases per the brainstorm:
   //
-  // The four questions are taken from the user's brainstorm and
-  // map to four short textareas. Saving each writes back into the
-  // daily note frontmatter (rhythmus_shutdown.*) so a future Review
-  // surface or the next morning's check-in can read what the user
-  // committed to.
+  //   Phase 1 — "Arbeit schließen": four textareas + the close-day
+  //     button. Active until the user marks the day closed.
   //
-  // Why the four questions:
-  //   1. "Was heute geschafft?" — names the win so the brain can
-  //      let go of the open loops.
-  //   2. "Was ist morgen wichtig?" — pre-commits tomorrow's MIT so
-  //      the morning check-in lands on a real anchor instead of a
-  //      blank field.
-  //   3. "Was lasse ich bewusst liegen?" — permission to drop, not
-  //      just defer. Reduces the next-day cognitive load.
-  //   4. "Handy weg?" — a single yes/no that closes the loop. No
-  //      streak; just the bookmark on today.
+  //   Phase 2 — "Abendroutine": a five-step checklist that appears
+  //     once the day is closed. Mirrors the brainstorm exactly:
+  //     Essen / Duschen / Bibel / Gebet / Handy. The first item
+  //     reuses the food pillar (single source of truth for "did you
+  //     eat enough today"); the last reuses shutdown.phoneAway; the
+  //     middle three live in shutdown's optional routine flags.
   //
-  // The `evening` pillar's `done` flag is what marks the day
-  // complete; that flips when the user hits "Tag schließen".
+  // Other modules in the app stay reachable during evening mode —
+  // this is *soft* gating, not Sabbath-level hiding. The goal is a
+  // calm wind-down surface, not a hard lockout.
 
-  type Shutdown = {
-    achieved: string;
-    tomorrow: string;
-    letGo: string;
-    phoneAway: boolean;
-  };
+  import type { ShutdownState } from './dayState';
 
   type Props = {
-    shutdown: Shutdown;
+    shutdown: ShutdownState;
+    /** Today's food pillar state. Drives the "Essen erledigt?"
+     *  routine row — clicking that row toggles via onFoodToggle so
+     *  the food state stays the single source of truth across the
+     *  morning pillar list and the evening routine. */
+    foodDone: boolean;
     eveningDone: boolean;
-    onShutdownChange: (next: Shutdown) => void;
+    onShutdownChange: (next: ShutdownState) => void;
+    onFoodToggle: (done: boolean) => void;
     onCloseDay: () => void;
   };
 
-  let { shutdown, eveningDone, onShutdownChange, onCloseDay }: Props = $props();
+  let { shutdown, foodDone, eveningDone, onShutdownChange, onFoodToggle, onCloseDay }: Props = $props();
 
-  let local = $state<Shutdown>({ achieved: '', tomorrow: '', letGo: '', phoneAway: false });
+  let local = $state<ShutdownState>({
+    achieved: '',
+    tomorrow: '',
+    letGo: '',
+    phoneAway: false
+  });
   $effect(() => {
     local = { ...shutdown };
   });
 
-  function patch(field: keyof Shutdown, value: string | boolean) {
-    local = { ...local, [field]: value } as Shutdown;
+  function patch<K extends keyof ShutdownState>(field: K, value: ShutdownState[K]) {
+    local = { ...local, [field]: value } as ShutdownState;
+    // Booleans commit eagerly (no blur event on a checkbox). Text
+    // fields commit on blur so they don't fire a save per keystroke.
+    if (typeof value === 'boolean') onShutdownChange({ ...local, [field]: value });
+  }
+
+  // Phase 2 row helpers: render a checkbox + label + duration hint.
+  // The duration is purely informational — comes from the brainstorm
+  // ("Duschen / Ordnung — 10 Min") and helps the user calibrate
+  // without imposing a timer.
+  type RoutineRow = {
+    key: 'food' | 'showered' | 'scripture' | 'prayer' | 'phoneAway';
+    label: string;
+    duration: string;
+  };
+  const ROUTINE_ROWS: RoutineRow[] = [
+    { key: 'food',       label: 'Essen erledigt?',    duration: 'Ja / Nein' },
+    { key: 'showered',   label: 'Duschen / Ordnung',  duration: '10 Min' },
+    { key: 'scripture',  label: 'Bibel / Lesen',      duration: '10–20 Min' },
+    { key: 'prayer',     label: 'Gebet',              duration: '2 Min' },
+    { key: 'phoneAway',  label: 'Handy weg',          duration: 'Ja / Nein' }
+  ];
+
+  function routineChecked(key: RoutineRow['key']): boolean {
+    if (key === 'food') return foodDone;
+    if (key === 'phoneAway') return !!local.phoneAway;
+    if (key === 'showered')  return !!local.routineShowered;
+    if (key === 'scripture') return !!local.routineScripture;
+    return !!local.routinePrayer;
+  }
+
+  function toggleRoutine(key: RoutineRow['key']) {
+    if (key === 'food') {
+      onFoodToggle(!foodDone);
+      return;
+    }
+    if (key === 'phoneAway')  return patch('phoneAway',        !local.phoneAway);
+    if (key === 'showered')   return patch('routineShowered',  !local.routineShowered);
+    if (key === 'scripture')  return patch('routineScripture', !local.routineScripture);
+    if (key === 'prayer')     return patch('routinePrayer',    !local.routinePrayer);
   }
 </script>
 
@@ -100,20 +136,7 @@
     ></textarea>
   </div>
 
-  <div class="flex items-center justify-between pt-2 border-t border-surface1">
-    <label class="flex items-center gap-2 text-sm text-subtext cursor-pointer">
-      <input
-        type="checkbox"
-        checked={local.phoneAway}
-        onchange={(e) => {
-          const next = (e.target as HTMLInputElement).checked;
-          patch('phoneAway', next);
-          onShutdownChange({ ...local, phoneAway: next });
-        }}
-        class="accent-primary"
-      />
-      Handy weg?
-    </label>
+  <div class="flex items-center justify-end pt-2 border-t border-surface1">
     <button
       type="button"
       onclick={onCloseDay}
@@ -126,4 +149,45 @@
       {eveningDone ? 'Tag geschlossen' : 'Tag schließen'}
     </button>
   </div>
+
+  {#if eveningDone}
+    <!-- Phase 2: the evening routine. Appears only after the day
+         is marked closed — matches the brainstorm's sequencing
+         where work-shutdown precedes the body wind-down. Five
+         binary checkpoints, duration hints next to each so the
+         user can calibrate without a timer. -->
+    <section class="pt-4 mt-4 border-t border-mauve/40 space-y-2">
+      <header class="space-y-1">
+        <h3 class="text-sm font-semibold text-text">Abendroutine</h3>
+        <p class="text-xs text-dim">Fünf Schritte — Ziel ist Schlaf, nicht Vollständigkeit.</p>
+      </header>
+      <ul class="space-y-1">
+        {#each ROUTINE_ROWS as row (row.key)}
+          {@const checked = routineChecked(row.key)}
+          <li>
+            <button
+              type="button"
+              onclick={() => toggleRoutine(row.key)}
+              aria-pressed={checked}
+              class="w-full flex items-center gap-3 px-2 py-1.5 rounded text-sm hover:bg-surface0 transition-colors"
+            >
+              <span
+                class="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0
+                  {checked ? 'bg-success border-success' : 'border-surface2'}"
+                aria-hidden="true"
+              >
+                {#if checked}
+                  <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle">
+                    <path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z" />
+                  </svg>
+                {/if}
+              </span>
+              <span class="flex-1 text-left text-text">{row.label}</span>
+              <span class="text-[11px] text-dim font-mono flex-shrink-0">{row.duration}</span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
 </section>
