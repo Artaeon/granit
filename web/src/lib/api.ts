@@ -881,11 +881,26 @@ export interface FinOverview {
   goals_active_count: number;
 }
 
-// Vision — life mission + core values + 90-day season focus.
+// Vision — the user's "above goals" anchor.
+//
+// As of the 2026-05-19 Rhythmus-OS pivot, the load-bearing field is
+// `identities`: one statement per daily pillar (spirit / food / work
+// / body / evening). The legacy fields (mission / values /
+// season_focus / season_started_at / season_day / season_total)
+// remain on the wire so old data keeps parsing and the web can
+// offer a one-click migration into the new shape — new writes go
+// through `identities`.
+//
 // Single record per vault. The server decorates the on-disk shape
-// with derived season_day / season_total ("day 12 of 90") so the
-// UI doesn't redo the date math on every render.
+// with derived season_day / season_total ("day 12 of 90") for any
+// reader still consuming the legacy season concept; new clients
+// ignore that pair.
 export interface Vision {
+  /** Identity statement per pillar key ("spirit", "food", ...).
+   *  Keys mirror the web's PillarKey enum; unknown keys are
+   *  preserved by the server but the UI only renders the five. */
+  identities?: Record<string, string>;
+
   mission?: string;
   values?: string[];
   season_focus?: string;
