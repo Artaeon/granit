@@ -1,4 +1,20 @@
 <script lang="ts">
+  // /vision — the user's "above goals" anchor in the Rhythmus-OS
+  // shape. Five identity statements (one per daily pillar) replace
+  // the older mission / values / season_focus trio. The page reads
+  // like a poster you re-read every morning, not a dashboard.
+  //
+  // Migration: a legacy vision.json (mission + values + season_focus)
+  // still parses; the page detects that and offers a one-click
+  // "Vorschlag aus alten Daten" button that pre-fills the identity
+  // form from those fields. The legacy values stay on disk until
+  // the user actually saves the new shape — that way they can roll
+  // back by editing vision.json manually.
+  //
+  // The five pillars (spirit / food / work / body / evening) are
+  // hard-coded — the discipline of the rhythm is that there are
+  // five. Labels can be renamed in /rhythmus; the keys are stable.
+
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, type Vision } from '$lib/api';
@@ -6,27 +22,27 @@
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
-
-  // /vision is the user's "above goals" layer — life mission, core
-  // values, current season focus. The page is intentionally calm:
-  // big serif typography for the read view, single-column edit form,
-  // no chrome. The point is for the user to come here and re-read,
-  // not poke at controls.
+  import { DEFAULT_PILLARS, PILLAR_ORDER, type PillarKey } from '$lib/rhythmus/pillars';
+  import { rhythmusConfig, pillarLabel } from '$lib/rhythmus/minima';
 
   let vision = $state<Vision | null>(null);
   let loading = $state(false);
-
-  // Edit-mode state. The page renders read view by default and
-  // flips to a form when the user clicks "edit" — staying in
-  // read mode by default keeps the page feeling like a poster
-  // rather than a dashboard.
   let editing = $state(false);
-  let form = $state({
-    mission: '',
-    valuesText: '', // newline- or comma-separated, parsed on submit
-    season_focus: '',
+
+  // Edit-form state mirrors the on-disk shape: one identity per
+  // pillar plus the free-text notes block. Initialised on edit so
+  // a cancel doesn't drop the user's mid-flow edits visibly
+  // (they're still discarded — just not on the screen).
+  type IdentitiesForm = Record<PillarKey, string>;
+  function emptyIdentitiesForm(): IdentitiesForm {
+    return { spirit: '', food: '', work: '', body: '', evening: '' };
+  }
+  let form = $state<{ identities: IdentitiesForm; notes: string }>({
+    identities: emptyIdentitiesForm(),
     notes: ''
   });
+
+  let cfg = $derived($rhythmusConfig);
 
   async function load() {
     if (!$auth) return;
@@ -48,37 +64,40 @@
   });
 
   function startEdit() {
-    if (!vision) return;
-    form = {
-      mission: vision.mission ?? '',
-      // Show one value per line — easier to scan + reorder than a
-      // single comma-separated input.
-      valuesText: (vision.values ?? []).join('\n'),
-      season_focus: vision.season_focus ?? '',
-      notes: vision.notes ?? ''
-    };
+    if (!vision) {
+      form = { identities: emptyIdentitiesForm(), notes: '' };
+      editing = true;
+      return;
+    }
+    const next = emptyIdentitiesForm();
+    if (vision.identities) {
+      for (const key of PILLAR_ORDER) {
+        const v = vision.identities[key];
+        if (typeof v === 'string') next[key] = v;
+      }
+    }
+    form = { identities: next, notes: vision.notes ?? '' };
     editing = true;
   }
+
   function cancelEdit() {
     editing = false;
   }
+
   async function saveEdit() {
-    // Parse values: split on newline OR comma, trim, drop empties.
-    // Both are common ways users write a short list and we don't
-    // need to be strict.
-    const values = form.valuesText
-      .split(/[\n,]+/)
-      .map((v) => v.trim())
-      .filter(Boolean);
+    // Build identities map. Empty strings are fine — the server
+    // round-trips them; the read view simply doesn't render an
+    // empty identity row, so a half-filled vision still looks
+    // intentional.
+    const identities: Record<string, string> = {};
+    for (const key of PILLAR_ORDER) {
+      const trimmed = form.identities[key].trim();
+      if (trimmed) identities[key] = trimmed;
+    }
     try {
       const next = await api.putVision({
-        mission: form.mission.trim(),
-        values,
-        season_focus: form.season_focus.trim(),
-        notes: form.notes.trim(),
-        // Don't supply season_started_at — server stamps it when
-        // the focus changes from prev. Sending an empty string
-        // would force-clear it, which is the wrong default.
+        identities,
+        notes: form.notes.trim()
       });
       vision = next;
       editing = false;
@@ -88,30 +107,48 @@
     }
   }
 
-  // Helper: renders the season-day pill text. Returns empty when
-  // the season hasn't started — the pill simply doesn't render.
-  function seasonPill(v: Vision): string {
-    if (!v.season_day || !v.season_total) return '';
-    const remaining = v.season_total - v.season_day;
-    if (remaining === 0) return `Day ${v.season_day} of ${v.season_total} — last day`;
-    return `Day ${v.season_day} of ${v.season_total} · ${remaining} days left`;
+  // Migration helper. Reads the legacy fields (mission / values /
+  // season_focus) and pre-fills identity slots from them — the
+  // user reviews + commits or discards. Heuristic: mission → work
+  // pillar (people most often phrase missions in vocational terms);
+  // first three values fan out to the remaining pillars in pillar
+  // order; season_focus folds into work too if mission was empty.
+  // Deliberately rough — the point is to give the user a starting
+  // shape, not a finished translation.
+  function suggestFromLegacy() {
+    if (!vision) return;
+    const next = { ...form.identities };
+    const remaining: PillarKey[] = ['spirit', 'body', 'evening', 'food'];
+    if (vision.mission && !next.work) next.work = vision.mission;
+    else if (vision.season_focus && !next.work) next.work = vision.season_focus;
+    const values = vision.values ?? [];
+    for (let i = 0; i < remaining.length && i < values.length; i++) {
+      const k = remaining[i];
+      if (!next[k]) next[k] = values[i];
+    }
+    form = { ...form, identities: next };
   }
 
-  let isEmpty = $derived(
-    !vision ||
-      ((!vision.mission || vision.mission === '') &&
-        !vision.season_focus &&
-        (!vision.values || vision.values.length === 0))
+  let hasLegacyData = $derived(
+    !!vision &&
+      ((vision.mission && vision.mission.trim()) ||
+        (vision.values && vision.values.length > 0) ||
+        (vision.season_focus && vision.season_focus.trim()))
   );
 
+  let hasNewData = $derived(
+    !!vision &&
+      vision.identities &&
+      Object.values(vision.identities).some((s) => typeof s === 'string' && s.trim())
+  );
+
+  let isEmpty = $derived(!hasNewData && !hasLegacyData);
+
   // ── AI: harden the vision ────────────────────────────────────────
-  // The vision is the page the user re-reads every morning, but
-  // most first drafts are too vague to actually steer behaviour
-  // ("Live a meaningful life" — what does that even mean on a
-  // Tuesday at 3pm?). The Harden button fires /chat with the
-  // current state and asks for a critique + sharpened
-  // alternatives. Goes through the audit-gated chat path so it
-  // shows in the settings AI usage rollup like every other call.
+  // Same shape as the previous /vision: stream a critique + sharper
+  // alternatives. The context block now leads with identities, but
+  // legacy mission/values come along when present so the AI sees the
+  // user's whole stated picture, not the half it's been migrated to.
   let aiBusy = $state(false);
   let aiResponse = $state('');
   let aiError = $state('');
@@ -123,19 +160,27 @@
     aiError = '';
     aiResponse = '';
     aiAbort = new AbortController();
-    const ctx = [
-      vision.mission ? `Mission: ${vision.mission}` : 'Mission: (not set)',
-      vision.values && vision.values.length > 0
-        ? `Values: ${vision.values.join(', ')}`
-        : 'Values: (none set)',
-      vision.season_focus ? `Season focus: ${vision.season_focus}` : 'Season focus: (not set)',
-      vision.notes ? `Notes: ${vision.notes}` : ''
-    ].filter(Boolean).join('\n');
+    const lines: string[] = [];
+    if (vision.identities) {
+      lines.push('Identities (one per pillar):');
+      for (const key of PILLAR_ORDER) {
+        const label = pillarLabel(cfg, key);
+        const v = vision.identities[key];
+        if (v) lines.push(`  ${label}: ${v}`);
+      }
+    }
+    if (vision.mission) lines.push(`Legacy mission: ${vision.mission}`);
+    if (vision.values && vision.values.length > 0) {
+      lines.push(`Legacy values: ${vision.values.join(', ')}`);
+    }
+    if (vision.season_focus) lines.push(`Legacy season focus: ${vision.season_focus}`);
+    if (vision.notes) lines.push(`Notes: ${vision.notes}`);
+    const ctx = lines.join('\n');
     const userMessage =
-      "Critique and sharpen this user's life vision. " +
+      "Critique and sharpen this user's identity-based life vision. " +
       'They re-read this every morning before drilling into tasks, so the language has to be concrete enough to actually steer behaviour. ' +
       'Format your reply with three sections:\n\n' +
-      '## Where it\'s vague\n' +
+      "## Where it's vague\n" +
       'Point out lines that could mean anything. Be specific — quote the phrase.\n\n' +
       '## Sharpened versions\n' +
       'Rewrite the weakest 1-2 lines into versions a stranger could act on without further interpretation. ' +
@@ -159,73 +204,70 @@
     }
   }
   function cancelAI() { aiAbort?.abort(); }
+
+  function identityFor(v: Vision, key: PillarKey): string | undefined {
+    const s = v.identities?.[key];
+    return typeof s === 'string' && s.trim() ? s : undefined;
+  }
 </script>
 
 <div class="h-full overflow-y-auto">
   <div class="max-w-2xl mx-auto p-6 sm:p-10 lg:p-14">
-    <PageHeader title="Vision" subtitle="Life mission, core values, season focus — the layer above goals" />
+    <PageHeader
+      title="Vision"
+      subtitle="Five identity statements — one per daily pillar"
+    />
 
     {#if loading && !vision}
       <p class="text-sm text-dim">loading…</p>
     {:else if isEmpty && !editing}
-      <!-- First-time / empty state. Single CTA. The copy is the
-           page's invitation to actually do the exercise — most
-           users won't have done this before, and a pile of empty
-           form fields is the wrong invite. -->
       <div class="bg-surface0 border border-surface1 rounded-lg p-8 text-center">
-        <p class="text-base text-text">No vision set yet.</p>
+        <p class="text-base text-text">Keine Identity-Statements gesetzt.</p>
         <p class="text-sm text-dim mt-2 max-w-md mx-auto">
-          One sentence about why you're here. Three to five words for what you stand for. One phrase for what this season is about.
-          You'll re-read it every morning before drilling into tasks.
+          Eine Zeile pro Säule: <em>wer du bist</em> in diesem Bereich, nicht <em>was du erreichen willst</em>.
+          „Ich suche Gott täglich" statt „10 kg Muskeln". Du liest das jeden Morgen.
         </p>
         <button
           onclick={startEdit}
           class="mt-5 px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
-        >Set your vision →</button>
+        >Identity setzen →</button>
       </div>
     {:else if editing}
-      <!-- Edit form. Generous spacing, big inputs — discourages
-           treating this like a quick form-fill. -->
-      <form onsubmit={(e) => { e.preventDefault(); saveEdit(); }} class="space-y-4">
-        <section>
-          <label for="mission" class="block text-xs uppercase tracking-wider text-dim mb-2">Life mission</label>
-          <textarea
-            id="mission"
-            bind:value={form.mission}
-            rows="2"
-            placeholder="One sentence about why you're here."
-            class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-base text-text placeholder-dim focus:outline-none focus:border-primary resize-y font-serif"
-          ></textarea>
-        </section>
+      <form onsubmit={(e) => { e.preventDefault(); saveEdit(); }} class="space-y-5">
+        {#if hasLegacyData}
+          <!-- Migration helper. Visible only when legacy data exists
+               AND the user hasn't yet filled identities — saving
+               clears the banner because hasLegacyData stays true
+               (legacy stays on disk) but the user has already
+               handled it. -->
+          <div class="bg-surface0 border border-surface1 rounded p-3 flex items-baseline gap-3 flex-wrap">
+            <div class="flex-1 min-w-0 text-xs text-subtext">
+              Du hast Mission / Values / Season-Focus von früher. Vorschlag aus den alten Daten als Startpunkt füllen?
+            </div>
+            <button
+              type="button"
+              onclick={suggestFromLegacy}
+              class="text-[11px] px-2 py-1 rounded bg-surface1 border border-surface2 text-primary hover:border-primary"
+            >Vorschlag einfüllen</button>
+          </div>
+        {/if}
 
-        <section>
-          <label for="values" class="block text-xs uppercase tracking-wider text-dim mb-2">Core values</label>
-          <textarea
-            id="values"
-            bind:value={form.valuesText}
-            rows="5"
-            placeholder="One per line, e.g.&#10;Faith&#10;Family&#10;Craft&#10;Honesty"
-            class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y font-mono"
-          ></textarea>
-          <p class="text-[11px] text-dim mt-1">3-5 words or short phrases. Newlines or commas — both work.</p>
-        </section>
-
-        <section>
-          <label for="season" class="block text-xs uppercase tracking-wider text-dim mb-2">Season focus</label>
-          <input
-            id="season"
-            bind:value={form.season_focus}
-            placeholder="One phrase for the next 90 days."
-            class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-base text-text placeholder-dim focus:outline-none focus:border-primary"
-          />
-          <p class="text-[11px] text-dim mt-1">
-            {#if vision?.season_started_at && vision.season_focus === form.season_focus}
-              Started {vision.season_started_at} · changing this resets the day counter.
-            {:else}
-              Changing this stamps today as day 1 of the new 90-day season.
-            {/if}
-          </p>
-        </section>
+        {#each PILLAR_ORDER as key (key)}
+          {@const label = pillarLabel(cfg, key)}
+          {@const icon = DEFAULT_PILLARS[key].icon}
+          <section>
+            <label for="id-{key}" class="block text-xs uppercase tracking-wider text-dim mb-2">
+              <span class="mr-1" aria-hidden="true">{icon}</span>
+              {label}
+            </label>
+            <input
+              id="id-{key}"
+              bind:value={form.identities[key]}
+              placeholder="Ich …"
+              class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-base text-text placeholder-dim focus:outline-none focus:border-primary font-serif"
+            />
+          </section>
+        {/each}
 
         <section>
           <label for="notes" class="block text-xs uppercase tracking-wider text-dim mb-2">Notes</label>
@@ -233,57 +275,70 @@
             id="notes"
             bind:value={form.notes}
             rows="3"
-            placeholder="Optional context — why these values, why this season, what triggered the change…"
+            placeholder="Optionaler Kontext — warum diese Identities, was sich geändert hat …"
             class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y"
           ></textarea>
         </section>
 
         <div class="flex gap-2 justify-end pt-2">
-          <button type="button" onclick={cancelEdit} class="text-sm px-4 py-2 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-          <button type="submit" class="text-sm px-4 py-2 rounded bg-primary text-on-primary font-medium hover:opacity-90">Save vision</button>
+          <button
+            type="button"
+            onclick={cancelEdit}
+            class="text-sm px-4 py-2 rounded bg-surface0 text-subtext hover:bg-surface1"
+          >Cancel</button>
+          <button
+            type="submit"
+            class="text-sm px-4 py-2 rounded bg-primary text-on-primary font-medium hover:opacity-90"
+          >Save vision</button>
         </div>
       </form>
     {:else if vision}
-      <!-- Read view. Big serif typography, generous spacing — meant
-           to be re-read, not skimmed past. -->
-      <article class="space-y-10">
-        {#if vision.mission}
-          <section>
-            <p class="text-xs uppercase tracking-wider text-dim mb-2">Mission</p>
-            <p class="text-xl sm:text-2xl text-text leading-relaxed font-serif italic">
-              {vision.mission}
-            </p>
-          </section>
-        {/if}
+      <!-- Read view. One identity row per pillar that has content;
+           empty pillars hide so a partial vision looks intentional
+           rather than half-filled. -->
+      <article class="space-y-8">
+        {#each PILLAR_ORDER as key (key)}
+          {@const text = identityFor(vision, key)}
+          {#if text}
+            {@const label = pillarLabel(cfg, key)}
+            {@const icon = DEFAULT_PILLARS[key].icon}
+            <section>
+              <p class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-2">
+                <span aria-hidden="true">{icon}</span>
+                {label}
+              </p>
+              <p class="text-xl sm:text-2xl text-text leading-relaxed font-serif italic">
+                {text}
+              </p>
+            </section>
+          {/if}
+        {/each}
 
-        {#if vision.values && vision.values.length > 0}
-          <section>
-            <p class="text-xs uppercase tracking-wider text-dim mb-3">Values</p>
-            <ul class="flex flex-wrap gap-2">
-              {#each vision.values as v}
-                <li class="px-3 py-1.5 bg-surface0 border border-surface1 rounded-full text-sm text-text font-medium">{v}</li>
-              {/each}
-            </ul>
-          </section>
-        {/if}
-
-        {#if vision.season_focus}
-          <section>
-            <p class="text-xs uppercase tracking-wider text-dim mb-2">This season</p>
-            <p class="text-lg sm:text-xl text-text leading-relaxed font-serif">
-              {vision.season_focus}
-            </p>
-            {#if seasonPill(vision)}
-              <p class="text-[11px] text-dim mt-2">{seasonPill(vision)}</p>
-              <!-- Visual progress bar mirroring the day-counter so
-                   the season's runway feels concrete. -->
-              {#if vision.season_total}
-                {@const pct = Math.min(100, Math.round(((vision.season_day ?? 0) / vision.season_total) * 100))}
-                <div class="h-1 mt-1.5 bg-mantle rounded-full overflow-hidden max-w-md">
-                  <div class="h-full bg-primary transition-all" style="width: {pct}%"></div>
-                </div>
-              {/if}
+        {#if hasLegacyData && !hasNewData}
+          <!-- Legacy display fallback: the user hasn't migrated yet.
+               Show the old data read-only with a hint so the page
+               isn't blank for a long-time user who lands here for
+               the first time after the pivot. -->
+          <section class="bg-surface0 border border-surface1 rounded p-4 space-y-3">
+            <p class="text-[11px] uppercase tracking-wider text-dim">Aus früherer Version</p>
+            {#if vision.mission}
+              <p class="text-base text-text font-serif italic">{vision.mission}</p>
             {/if}
+            {#if vision.values && vision.values.length > 0}
+              <ul class="flex flex-wrap gap-1.5">
+                {#each vision.values as v}
+                  <li class="px-2 py-0.5 bg-mantle border border-surface1 rounded-full text-xs text-subtext">{v}</li>
+                {/each}
+              </ul>
+            {/if}
+            {#if vision.season_focus}
+              <p class="text-sm text-subtext">{vision.season_focus}</p>
+            {/if}
+            <button
+              type="button"
+              onclick={startEdit}
+              class="text-xs text-primary hover:underline"
+            >→ Identity-Statements daraus ableiten</button>
           </section>
         {/if}
 
@@ -294,12 +349,6 @@
           </section>
         {/if}
 
-        <!-- AI: Harden the vision. The button fires /chat with a
-             structured prompt asking for a critique + sharpened
-             alternatives. Streaming so tokens arrive progressively
-             on slow local LLMs; cancel button while busy. The
-             response stays in the page until cleared so the user
-             can edit alongside it without re-running. -->
         <section class="pt-4 border-t border-surface1">
           <div class="flex items-baseline gap-2 mb-2">
             <h2 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">AI · Harden this vision</h2>
@@ -312,7 +361,7 @@
               onclick={() => void hardenVision()}
               disabled={aiBusy || isEmpty}
               class="text-[11px] px-2 py-1 rounded bg-surface1 border border-surface2 text-primary hover:border-primary disabled:opacity-50"
-              title="Ask the AI to critique your vision and suggest sharper alternatives"
+              title="Ask the AI to critique your identities and suggest sharper alternatives"
             >{aiBusy ? '✨ thinking…' : aiResponse ? '✨ regenerate' : '✨ Harden'}</button>
           </div>
           {#if aiError}
