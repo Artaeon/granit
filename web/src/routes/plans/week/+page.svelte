@@ -37,6 +37,12 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import { isoWeekString, planNotePath } from '$lib/util/isoWeek';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
+  import {
+    buildCommitItems,
+    buildInitialEdits,
+    groupByVenture,
+    type ItemEdit
+  } from '$lib/plans/extractHelpers';
 
   const weekISO = isoWeekString();
   const planPath = planNotePath();
@@ -98,14 +104,6 @@
   //   accepted: boolean
   //   editLabel: string  (live-edit; only used if accepted)
   //   editVenture / editProject / editDue: optional override
-  type ItemEdit = {
-    accepted: boolean;
-    label: string;
-    venture: string;
-    project: string;
-    goalId: string;
-    dueDate: string;
-  };
   let edits = $state<Record<number, ItemEdit>>({});
 
   async function runExtract() {
@@ -119,23 +117,10 @@
     edits = {};
     try {
       proposal = await api.extractPlan({ plan_text: planText, week_iso: weekISO });
-      // Default-accept items the AI was confident about (exact match
-      // or fuzzy ≥80). The user can flip them off; the default just
-      // saves clicks on the common case where most items are right.
-      for (let i = 0; i < proposal.items.length; i++) {
-        const it = proposal.items[i];
-        const conf = it.match_confidence ?? 0;
-        const defaultAccept =
-          it.match_type === 'exact' || (it.match_type === 'fuzzy' && conf >= 80);
-        edits[i] = {
-          accepted: defaultAccept,
-          label: it.label,
-          venture: it.venture_name ?? '',
-          project: it.project_name ?? '',
-          goalId: it.goal_id ?? '',
-          dueDate: it.due_date ?? ''
-        };
-      }
+      // Default-accept rule + initial edits map live in
+      // $lib/plans/extractHelpers so the threshold + the shape of
+      // ItemEdit can change in one place.
+      edits = buildInitialEdits(proposal.items);
     } catch (e) {
       extractError = errorMessage(e);
     } finally {
@@ -146,24 +131,7 @@
   // Group by venture for the review UI. Personal items (no venture)
   // go under the empty string and render as "Personal" so the heading
   // structure is uniform.
-  type Bucket = { venture: string; idxs: number[] };
-  let buckets = $derived.by(() => {
-    if (!proposal) return [] as Bucket[];
-    const map = new Map<string, number[]>();
-    for (let i = 0; i < proposal.items.length; i++) {
-      const v = proposal.items[i].venture_name ?? '';
-      if (!map.has(v)) map.set(v, []);
-      map.get(v)!.push(i);
-    }
-    return [...map.entries()]
-      .map(([venture, idxs]) => ({ venture, idxs }))
-      .sort((a, b) => {
-        // Personal bucket last; other ventures alphabetical.
-        if (a.venture === '' && b.venture !== '') return 1;
-        if (b.venture === '' && a.venture !== '') return -1;
-        return a.venture.localeCompare(b.venture);
-      });
-  });
+  let buckets = $derived(proposal ? groupByVenture(proposal.items) : []);
 
   function bucketLabel(venture: string): string {
     return venture === '' ? 'Personal' : venture;
@@ -201,21 +169,7 @@
 
   async function runCommit() {
     if (!proposal) return;
-    const items: PlanCommitItem[] = [];
-    for (let i = 0; i < proposal.items.length; i++) {
-      const e = edits[i];
-      if (!e?.accepted) continue;
-      const orig = proposal.items[i];
-      items.push({
-        kind: orig.kind,
-        label: e.label.trim() || orig.label,
-        venture_name: e.venture || undefined,
-        project_name: e.project || undefined,
-        goal_id: e.goalId || undefined,
-        due_date: e.dueDate || undefined,
-        source_line: orig.source_line
-      });
-    }
+    const items = buildCommitItems(proposal.items, edits);
     if (items.length === 0) {
       commitError = 'Nothing accepted — tick the items you want to commit first.';
       return;
