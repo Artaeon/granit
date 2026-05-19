@@ -28,7 +28,8 @@
   import {
     rhythmusConfig,
     DEFAULT_CONFIG,
-    type RhythmusConfig
+    type RhythmusConfig,
+    type Reminder
   } from '$lib/rhythmus/minima';
   import type { DayMode } from '$lib/rhythmus/dayState';
 
@@ -97,6 +98,46 @@
     toast.success('Rhythmus auf Defaults zurückgesetzt');
   }
 
+  // Reminder helpers. Each edit replaces the whole reminders array
+  // (immutable update keeps Svelte's reactivity tracking happy and
+  // avoids mid-tick mutation when the ticker reads $rhythmusConfig).
+  function updateReminder(id: string, patch: Partial<Reminder>): void {
+    cfg = {
+      ...cfg,
+      reminders: cfg.reminders.map((r) => (r.id === id ? { ...r, ...patch } : r))
+    };
+    persist();
+  }
+
+  function setReminderTime(id: string, value: string): void {
+    if (!/^\d{1,2}:\d{2}$/.test(value)) return;
+    updateReminder(id, { time: value });
+  }
+
+  // Notification-permission UI. Browsers expose a tri-state
+  // ('granted' | 'denied' | 'default'); we only ever ASK from
+  // 'default' — a denied permission means the user has already
+  // declined and asking again would just be ignored.
+  let notifPermission = $state<NotificationPermission>('default');
+  $effect(() => {
+    if (typeof Notification === 'undefined') return;
+    notifPermission = Notification.permission;
+  });
+  async function requestNotificationPermission() {
+    if (typeof Notification === 'undefined') {
+      toast.info('Dein Browser unterstützt keine Notifications.');
+      return;
+    }
+    try {
+      const next = await Notification.requestPermission();
+      notifPermission = next;
+      if (next === 'granted') toast.success('Notifications aktiviert');
+      else if (next === 'denied') toast.info('Notifications abgelehnt — bleibt bei In-App-Toasts.');
+    } catch {
+      toast.error('Permission-Request fehlgeschlagen');
+    }
+  }
+
   const MODE_LABELS: Record<DayMode, string> = {
     normal:    'Normal',
     chaotic:   'Chaotisch',
@@ -151,6 +192,58 @@
           </p>
         </label>
       </div>
+    </section>
+
+    <!-- Reminders. Five (default) time-of-day pings; each fires a
+         toast plus a browser notification when permission is granted.
+         Dedup is per-day per-id so a reload doesn't re-fire. -->
+    <section class="bg-mantle border border-surface1 rounded-lg p-5 space-y-4">
+      <header class="flex items-baseline gap-3 flex-wrap">
+        <h2 class="text-sm font-medium text-text flex-1">Reminder</h2>
+        {#if notifPermission === 'granted'}
+          <span class="text-[11px] text-success">Browser-Notifications aktiv</span>
+        {:else if notifPermission === 'denied'}
+          <span class="text-[11px] text-dim">Browser-Notifications abgelehnt — nur In-App-Toasts</span>
+        {:else}
+          <button
+            type="button"
+            onclick={requestNotificationPermission}
+            class="text-[11px] px-2 py-1 rounded bg-surface1 border border-surface2 text-primary hover:border-primary"
+          >Browser-Notifications erlauben</button>
+        {/if}
+      </header>
+      <p class="text-[11px] text-dim">
+        Fenster: ab der Zeit + 30 Min Gnadenfrist. Wer das Fenster verpasst, sieht den Reminder erst wieder am nächsten Tag.
+      </p>
+      <ul class="space-y-2">
+        {#each cfg.reminders as r (r.id)}
+          <li class="grid grid-cols-[auto_5rem_1fr] items-center gap-3">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={r.enabled}
+                onchange={(e) => updateReminder(r.id, { enabled: (e.target as HTMLInputElement).checked })}
+                class="accent-primary"
+                aria-label="Reminder aktiv"
+              />
+            </label>
+            <input
+              type="time"
+              value={r.time}
+              oninput={(e) => setReminderTime(r.id, (e.target as HTMLInputElement).value)}
+              disabled={!r.enabled}
+              class="px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm text-text font-mono focus:outline-none focus:border-primary disabled:opacity-50"
+            />
+            <input
+              type="text"
+              value={r.label}
+              oninput={(e) => updateReminder(r.id, { label: (e.target as HTMLInputElement).value })}
+              disabled={!r.enabled}
+              class="px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary disabled:opacity-50"
+            />
+          </li>
+        {/each}
+      </ul>
     </section>
 
     <!-- One section per pillar. Inside: label override + 3 minima

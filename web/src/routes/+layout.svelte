@@ -21,6 +21,7 @@
   import PomodoroPill from '$lib/components/PomodoroPill.svelte';
   import AIOverlay from '$lib/components/AIOverlay.svelte';
   import NoteTray from '$lib/components/NoteTray.svelte';
+  import RhythmReminders from '$lib/rhythmus/RhythmReminders.svelte';
   import { recordVisit } from '$lib/stores/sidebar-recent';
   import { lastOpenNote, trayEnabled } from '$lib/stores/open-note';
   import { nav, sections } from '$lib/nav/config';
@@ -271,6 +272,13 @@
        active note, hidden when nothing stored). Auth-gated since
        a pre-login user has no vault to remember from. -->
   <NoteTray />
+
+  <!-- Invisible ticker — fires the configured time-of-day
+       reminders (10:00 eat, 13:30 meal, 18:30 wind-down,
+       20:30 shutdown, 21:30 phone-away by default). Mounted
+       once at the auth-gated layer so a route change doesn't
+       reset the per-day "already fired" bookmarks. -->
+  <RhythmReminders />
 {/if}
 <Toaster />
 <UpdateAvailableBanner />

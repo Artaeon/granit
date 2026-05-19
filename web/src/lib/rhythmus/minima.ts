@@ -30,6 +30,18 @@ export type PillarMinima = {
   hideInEmergency?: boolean;
 };
 
+export type Reminder = {
+  /** Stable id — kept identical across edits so a "last fired"
+   *  bookmark in localStorage survives a label change. */
+  id: string;
+  /** HH:MM local. The ticker fires once per day inside a 30-minute
+   *  window starting at this time. */
+  time: string;
+  /** Text the toast + (when permitted) browser notification show. */
+  label: string;
+  enabled: boolean;
+};
+
 export type RhythmusConfig = {
   /** User-facing label per pillar. Falls back to DEFAULT_PILLARS
    *  when missing. The pillar's key (PillarKey) is never edited. */
@@ -42,6 +54,10 @@ export type RhythmusConfig = {
   /** Time after which the "have you eaten yet?" rule fires. Lets
    *  early risers skip a 06:00 breakfast prompt. */
   eatNagAfter: string;
+  /** Local-time reminder schedule. The defaults map straight to the
+   *  brainstorm's cadence (10:00 / 13:30 / 18:30 / 20:30 / 21:30).
+   *  Order does not matter — the ticker iterates the list. */
+  reminders: Reminder[];
 };
 
 export const DEFAULT_CONFIG: RhythmusConfig = {
@@ -75,7 +91,14 @@ export const DEFAULT_CONFIG: RhythmusConfig = {
     }
   },
   eveningStartsAt: '20:30',
-  eatNagAfter: '10:00'
+  eatNagAfter: '10:00',
+  reminders: [
+    { id: 'eat-morning', time: '10:00', label: 'Hast du schon gegessen? Wenn nein: jetzt minimal essen.', enabled: true },
+    { id: 'eat-midday',  time: '13:30', label: 'Erste echte Mahlzeit oder Post-Work-Meal.',               enabled: true },
+    { id: 'wind-down',   time: '18:30', label: 'Was ist noch wirklich nötig — und was kann morgen warten?', enabled: true },
+    { id: 'shutdown',    time: '20:30', label: 'Shutdown. Arbeit schließen. Morgen notieren.',            enabled: true },
+    { id: 'phone-away',  time: '21:30', label: 'Handy weg. Schlaf ist jetzt Training.',                   enabled: true }
+  ]
 };
 
 const KEY = 'granit.rhythmus.config';
@@ -109,11 +132,30 @@ function validate(raw: unknown): RhythmusConfig {
       if (typeof v === 'string' && v.trim()) labels[key] = v;
     }
   }
+  // Reminders: keep the user's list when valid, fall back to
+  // defaults when missing. Each entry has to look like a Reminder;
+  // unknown extras inside an entry are dropped silently so a hand-
+  // edited JSON with stray keys parses without poisoning the store.
+  const reminders: Reminder[] = [];
+  if (Array.isArray(r.reminders)) {
+    for (const item of r.reminders) {
+      if (!item || typeof item !== 'object') continue;
+      const o = item as Partial<Reminder>;
+      if (typeof o.id !== 'string' || typeof o.time !== 'string') continue;
+      reminders.push({
+        id: o.id,
+        time: o.time,
+        label: typeof o.label === 'string' ? o.label : '',
+        enabled: typeof o.enabled === 'boolean' ? o.enabled : true
+      });
+    }
+  }
   return {
     labels,
     minima,
     eveningStartsAt: typeof r.eveningStartsAt === 'string' ? r.eveningStartsAt : DEFAULT_CONFIG.eveningStartsAt,
-    eatNagAfter:     typeof r.eatNagAfter     === 'string' ? r.eatNagAfter     : DEFAULT_CONFIG.eatNagAfter
+    eatNagAfter:     typeof r.eatNagAfter     === 'string' ? r.eatNagAfter     : DEFAULT_CONFIG.eatNagAfter,
+    reminders: reminders.length > 0 ? reminders : DEFAULT_CONFIG.reminders.map((r) => ({ ...r }))
   };
 }
 
