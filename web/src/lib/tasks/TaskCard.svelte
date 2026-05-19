@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { api, type Task , todayISO } from '$lib/api';
+  import { api, type Task , todayISO, TASK_ENERGIES } from '$lib/api';
   import { inlineMd } from '$lib/util/inlineMd';
   import { cleanTaskText } from '$lib/util/taskParse';
   import { priorityBorderClass, priorityTone } from '$lib/util/priority';
@@ -51,6 +51,7 @@
   let editing = $state(false);
   let editText = $state(task.text);
   let editPriority = $state(task.priority);
+  let editEnergy = $state<string>('');
   let editDue = $state(task.dueDate ?? '');
   let busy = $state(false);
   let editInputEl: HTMLInputElement | undefined = $state();
@@ -230,6 +231,7 @@
     editing = true;
     editText = task.text;
     editPriority = task.priority;
+    editEnergy = task.energy ?? '';
     editDue = task.dueDate ?? '';
     tick().then(() => editInputEl?.focus());
   }
@@ -306,6 +308,7 @@
       const patch: Parameters<typeof api.patchTask>[1] = {};
       if (editText !== task.text) patch.text = editText.trim();
       if (editPriority !== task.priority) patch.priority = editPriority;
+      if (editEnergy !== (task.energy ?? '')) patch.energy = editEnergy;
       if (editDue !== (task.dueDate ?? '')) patch.dueDate = editDue;
       if (Object.keys(patch).length > 0) {
         const updated = await api.patchTask(task.id, patch);
@@ -717,6 +720,12 @@
             {#if task.tags && task.tags.length > 0}
               <span class="text-dim">{task.tags.map((t) => '#' + t).join(' ')}</span>
             {/if}
+            {#if task.energy}
+              <span
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] text-secondary bg-surface1"
+                title="energy: {task.energy}"
+              >{task.energy}</span>
+            {/if}
             {#if task.projectId}
               <span
                 class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-secondary bg-surface1"
@@ -833,6 +842,16 @@
           <option value={1}>P1</option>
           <option value={2}>P2</option>
           <option value={3}>P3</option>
+        </select>
+        <select
+          bind:value={editEnergy}
+          class="bg-mantle border border-surface1 rounded px-2 py-1 text-text text-sm"
+          title="Energy — what kind of attention this task asks for"
+        >
+          <option value="">no energy</option>
+          {#each TASK_ENERGIES as e (e.id)}
+            <option value={e.id}>{e.label}</option>
+          {/each}
         </select>
         <input type="date" bind:value={editDue} class="bg-mantle border border-surface1 rounded px-2 py-1 text-text text-sm" />
         <span class="flex-1 min-w-0"></span>

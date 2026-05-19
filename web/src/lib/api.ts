@@ -172,7 +172,25 @@ export interface Task {
   // markdown line intact). Set/cleared via PATCH /tasks/:id { archived: bool }.
   archived?: boolean;
   archivedAt?: string;
+  /** Energy classification — what kind of attention the task asks
+   *  for. The brainstorm's six categories: deep / admin /
+   *  communication / recovery / spiritual / body. Free-form so a
+   *  new type can land without a server migration. Drives the
+   *  müde→admin / wach→deep matching in the next-action engine. */
+  energy?: 'deep' | 'admin' | 'communication' | 'recovery' | 'spiritual' | 'body' | string;
 }
+
+/** Canonical labels for the six task-energy classes, in the order
+ *  the brainstorm enumerated them. Exported so the UI dropdown
+ *  doesn't drift from the engine. */
+export const TASK_ENERGIES: { id: NonNullable<Task['energy']>; label: string }[] = [
+  { id: 'deep',          label: 'Deep work' },
+  { id: 'admin',         label: 'Admin' },
+  { id: 'communication', label: 'Communication' },
+  { id: 'recovery',      label: 'Recovery' },
+  { id: 'spiritual',     label: 'Spiritual' },
+  { id: 'body',          label: 'Body' }
+];
 
 export interface TaskList {
   tasks: Task[];
@@ -1548,7 +1566,7 @@ export const api = {
   },
   patchTask: (
     id: string,
-    patch: Partial<Pick<Task, 'done' | 'priority' | 'dueDate' | 'text' | 'scheduledStart' | 'durationMinutes' | 'projectId' | 'snoozedUntil' | 'recurrence' | 'notes' | 'goalId' | 'deadlineId'>> & {
+    patch: Partial<Pick<Task, 'done' | 'priority' | 'dueDate' | 'text' | 'scheduledStart' | 'durationMinutes' | 'projectId' | 'snoozedUntil' | 'recurrence' | 'notes' | 'goalId' | 'deadlineId' | 'energy'>> & {
       triage?: 'inbox' | 'triaged' | 'scheduled' | 'done' | 'dropped' | 'snoozed';
       clearSchedule?: boolean;
       archived?: boolean;
