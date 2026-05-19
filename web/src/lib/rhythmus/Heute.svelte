@@ -119,6 +119,23 @@
     };
   });
 
+  // Midnight rollover. When `now` ticks past local midnight, the
+  // derived `dayPath` changes from Daily/<yesterday>.md to
+  // Daily/<today>.md — but without a reload, the screen would keep
+  // showing yesterday's pillar state. Watch the day-string and
+  // reload when it flips. Using a date string (not the Date object)
+  // so we only fire on actual day changes, not every 30s tick.
+  let loadedDate = $state<string>('');
+  $effect(() => {
+    const cur = fmtDateISO(now);
+    if (loaded && loadedDate && cur !== loadedDate) {
+      loadedDate = cur;
+      void load();
+    } else if (loaded && !loadedDate) {
+      loadedDate = cur;
+    }
+  });
+
   async function load() {
     try {
       const n = await api.getNote(dailyNotePath(now));
