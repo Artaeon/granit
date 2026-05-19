@@ -139,25 +139,39 @@
     }
   });
 
+  // Generation counter — guards against the midnight-rollover race
+  // (load() at 23:59:55 returns yesterday's data after 24:00:00,
+  // overwriting a newer load() that fetched today's) and against
+  // bursts of WS events firing concurrent loads in random order.
+  // Each load() captures its generation at start; only the latest
+  // generation gets to apply its result.
+  let loadGen = 0;
+
   async function load() {
+    const myGen = ++loadGen;
+    const expectedDate = fmtDateISO(now);
     try {
       const n = await api.getNote(dailyNotePath(now));
+      if (myGen !== loadGen) return;
       bodyOnDisk = n.body ?? '';
       fmOnDisk = (n.frontmatter ?? {}) as Record<string, unknown>;
-      day = parseDayFrontmatter(fmOnDisk, fmtDateISO(now));
+      day = parseDayFrontmatter(fmOnDisk, expectedDate);
       noteExists = true;
       loadError = '';
     } catch (e) {
+      if (myGen !== loadGen) return;
       if (e instanceof ApiError && e.status === 404) {
         bodyOnDisk = '';
         fmOnDisk = {};
-        day = emptyDayState(fmtDateISO(now));
+        day = emptyDayState(expectedDate);
         noteExists = false;
         loadError = '';
       } else {
         loadError = e instanceof Error ? e.message : String(e);
       }
     } finally {
+      // Always mark loaded, even on stale generations — the surface
+      // has to render something while a fresh load is in flight.
       loaded = true;
     }
   }
@@ -180,19 +194,31 @@
     pendingSave = false;
     saveError = '';
     const fm = serializeDayFrontmatter(day, fmOnDisk);
+    const path = dailyNotePath(now);
     try {
       if (noteExists) {
-        await api.putNote(dailyNotePath(now), { frontmatter: fm, body: bodyOnDisk });
+        await api.putNote(path, { frontmatter: fm, body: bodyOnDisk });
       } else {
-        await api.createNote({
-          path: dailyNotePath(now),
-          frontmatter: fm,
-          body: bodyOnDisk
-        });
+        await api.createNote({ path, frontmatter: fm, body: bodyOnDisk });
         noteExists = true;
       }
       fmOnDisk = fm;
     } catch (e) {
+      // 404 on PUT means the note was deleted externally (another
+      // device, manual rm from the vault) between our load and this
+      // save. Recreate it rather than failing — the user's intent
+      // ("save this day") shouldn't be blocked by housekeeping.
+      if (noteExists && e instanceof ApiError && e.status === 404) {
+        try {
+          await api.createNote({ path, frontmatter: fm, body: bodyOnDisk });
+          noteExists = true;
+          fmOnDisk = fm;
+          return;
+        } catch (createErr) {
+          saveError = createErr instanceof Error ? createErr.message : String(createErr);
+          return;
+        }
+      }
       saveError = e instanceof Error ? e.message : String(e);
     }
   }
