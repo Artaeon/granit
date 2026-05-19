@@ -13,6 +13,7 @@
 // what the consumers need; the scoring is the implementation detail.
 
 import { api } from '$lib/api';
+import { onWsEvent } from '$lib/ws';
 
 export type RagHit = {
   path: string;
@@ -39,9 +40,10 @@ export const STOPWORDS = new Set([
 ]);
 
 // Per-tab cached vault index. The first call populates it; subsequent
-// calls are cheap. Caller is responsible for invalidating on note
-// create/delete events; for now this matches the prior in-component
-// behaviour (load once per session, accept slightly stale titles).
+// calls are cheap. WS-driven invalidation flips ragIndexLoaded back
+// to false so the next retrieveForRag() call refreshes the index
+// before scoring — previously a renamed or deleted note could keep
+// surfacing as a stale title for the rest of the session.
 let ragIndex: RagIndexEntry[] = [];
 let ragIndexLoaded = false;
 
@@ -51,6 +53,12 @@ export function getRagIndex(): RagIndexEntry[] {
 
 export function isRagIndexLoaded(): boolean {
   return ragIndexLoaded;
+}
+
+/** Mark the cached index as stale so the next retrieveForRag triggers
+ *  a fresh listNotes round-trip. Cheap — just flips a flag. */
+export function invalidateRagIndex(): void {
+  ragIndexLoaded = false;
 }
 
 export async function loadRagIndex(): Promise<void> {
@@ -65,6 +73,19 @@ export async function loadRagIndex(): Promise<void> {
   } finally {
     ragIndexLoaded = true;
   }
+}
+
+// Wire vault-mutation events to invalidate the cache once the module
+// loads in a browser. SSR / test imports skip this so the unit tests
+// don't pick up a hanging WS subscription. The actual refetch waits
+// until the next retrieveForRag call — cheap on note-write bursts,
+// fresh by the time it matters (a user mid-RAG query).
+if (typeof window !== 'undefined') {
+  onWsEvent((ev) => {
+    if (ev.type === 'note.changed' || ev.type === 'note.removed' || ev.type === 'vault.rescanned') {
+      invalidateRagIndex();
+    }
+  });
 }
 
 // Retrieve top-K notes for the user's query. Two-stage:
