@@ -255,11 +255,20 @@
     });
   }
 
-  // The check-in collapses out once a mode is picked. The state
-  // (fatigue, MIT) stays editable from the pillar list / mode picker
-  // afterwards in future iterations; for v1 the morning check-in is
-  // the one shot.
+  // The check-in collapses out once a mode is picked. Mode stays
+  // editable via the ModePicker in the header; MIT stays editable
+  // via the small inline input below the pillar list (fatigue /
+  // eaten are morning signals — the food pillar tick covers eaten,
+  // and fatigue would only confuse the rule engine if re-rated mid
+  // afternoon).
   let needsCheckIn = $derived(loaded && day.mode === null);
+
+  // Local buffer for the inline MIT input so a user mid-typing
+  // doesn't see their text reset when the parent state echoes back.
+  let mitDraft = $state('');
+  $effect(() => {
+    mitDraft = day.mit;
+  });
 </script>
 
 <section aria-label="Heute" class="space-y-4">
@@ -310,12 +319,21 @@
       />
     {:else}
       <PillarList mode={day.mode} pillars={day.pillars} onToggle={togglePillar} />
-    {/if}
 
-    {#if day.mit && !day.pillars.work.done}
-      <div class="text-xs text-dim">
-        Wichtigste Aufgabe heute: <span class="text-text font-medium">{day.mit}</span>
-      </div>
+      <!-- Always-present MIT editor. The morning check-in seeded
+           it; this lets the user refine it mid-day without having
+           to clear and re-pick a mode. Blurs save through the
+           same debounced path as everything else. -->
+      <label class="flex items-center gap-2 text-xs">
+        <span class="text-dim uppercase tracking-wider shrink-0">MIT</span>
+        <input
+          type="text"
+          bind:value={mitDraft}
+          onblur={() => { if (mitDraft !== day.mit) setMit(mitDraft); }}
+          placeholder="Wichtigste Aufgabe heute"
+          class="flex-1 px-2 py-1 bg-surface0 border border-surface1 rounded text-text placeholder-dim focus:outline-none focus:border-primary"
+        />
+      </label>
     {/if}
   {/if}
 
