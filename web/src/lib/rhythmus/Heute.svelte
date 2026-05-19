@@ -29,6 +29,7 @@
   import { fmtDateISO } from '$lib/util/date';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { sabbath } from '$lib/stores/sabbath';
+  import { buildBriefingUserPrompt, BRIEFING_SYSTEM_PROMPT } from '$lib/morning/briefingPrompt';
   import { rhythmusConfig } from './minima';
   import {
     dailyNotePath,
@@ -246,16 +247,59 @@
     scheduleSave();
   }
 
-  // Open the AI overlay pre-filled with a short morning-briefing
-  // prompt. Hidden during Sabbath — the overlay would also gate
-  // server-side, but skipping the visible button avoids tempting
-  // the user with a "Briefing" affordance the rule says is closed.
-  function runBriefing() {
-    openAIOverlay({
-      text:
-        'Give me a short morning briefing — top three things I should focus on today and one thing I might be forgetting.',
-      send: true
-    });
+  // AI Briefing — three short paragraphs answering "what shape is
+  // today?" with the user's actual data. Pulls today's events, open
+  // tasks, active goals, and upcoming deadlines (≤7 days), then
+  // hands the structured context to the model. The system prompt
+  // from $lib/morning/briefingPrompt asks for STRICT 60-110 words
+  // across three paragraphs — the same shape the old /morning
+  // ritual produced before the pivot, just delivered through the
+  // AI overlay so the user stays on the Heute-Karte.
+  //
+  // Promise.allSettled tolerates partial-failure: a 500 on goals
+  // shouldn't kill the briefing if calendar + tasks loaded fine.
+  let briefingBusy = $state(false);
+  async function runBriefing() {
+    if (briefingBusy) return;
+    briefingBusy = true;
+    const today = fmtDateISO(now);
+    try {
+      const [eventsRes, tasksRes, goalsRes, dlRes] = await Promise.allSettled([
+        api.calendar(today, today),
+        api.listTasks({ status: 'open' }),
+        api.listGoals().catch(() => ({ goals: [], total: 0 })),
+        api.tryListDeadlines()
+      ]);
+      const events = eventsRes.status === 'fulfilled'
+        ? eventsRes.value.events.filter((e) =>
+            e.date === today || (e.start ?? '').slice(0, 10) === today
+          )
+        : [];
+      const tasks = tasksRes.status === 'fulfilled' ? tasksRes.value.tasks.slice(0, 8) : [];
+      const goals = goalsRes.status === 'fulfilled'
+        ? goalsRes.value.goals.filter((g) => g.status === 'active' || !g.status).slice(0, 3)
+        : [];
+      const deadlines: { d: import('$lib/api').Deadline; days: number }[] = [];
+      if (dlRes.status === 'fulfilled' && dlRes.value) {
+        const todayDate = new Date(today + 'T00:00:00').getTime();
+        for (const d of dlRes.value) {
+          if (!d.date) continue;
+          const ms = new Date(d.date + 'T00:00:00').getTime() - todayDate;
+          const days = Math.round(ms / 86_400_000);
+          if (days >= 0 && days <= 7) deadlines.push({ d, days });
+        }
+        deadlines.sort((a, b) => a.days - b.days);
+      }
+      const context = buildBriefingUserPrompt({ todayISO: today, events, tasks, goals, deadlines });
+      // Prefix with the system prompt's instructions so the briefing
+      // still lands well even when the overlay's active mode isn't
+      // the dedicated briefing mode. Compact — keeps the user prompt
+      // self-contained.
+      const text = `${BRIEFING_SYSTEM_PROMPT}\n\n---\n\n${context}`;
+      openAIOverlay({ text, send: true });
+    } finally {
+      briefingBusy = false;
+    }
   }
 
   // The check-in collapses out once a mode is picked. Mode stays
@@ -298,11 +342,12 @@
           <button
             type="button"
             onclick={runBriefing}
-            class="text-xs px-2.5 py-1 rounded inline-flex items-center gap-1.5 bg-surface0 border border-surface1 text-subtext hover:border-primary hover:text-text transition-colors"
-            title="Kurzes KI-Briefing für heute"
+            disabled={briefingBusy}
+            class="text-xs px-2.5 py-1 rounded inline-flex items-center gap-1.5 bg-surface0 border border-surface1 text-subtext hover:border-primary hover:text-text disabled:opacity-50 transition-colors"
+            title="KI-Briefing mit heutigen Events + Tasks + Goals + Deadlines"
           >
             <span aria-hidden="true">☀</span>
-            KI-Briefing
+            {briefingBusy ? 'lädt…' : 'KI-Briefing'}
           </button>
         {/if}
         <ModePicker value={day.mode} onChange={setMode} />
