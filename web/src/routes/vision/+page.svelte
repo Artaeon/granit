@@ -245,12 +245,12 @@
       </div>
     {:else if editing}
       <form onsubmit={(e) => { e.preventDefault(); saveEdit(); }} class="space-y-5">
-        {#if hasLegacyData}
-          <!-- Migration helper. Visible only when legacy data exists
-               AND the user hasn't yet filled identities — saving
-               clears the banner because hasLegacyData stays true
-               (legacy stays on disk) but the user has already
-               handled it. -->
+        {#if hasLegacyData && !hasNewData}
+          <!-- Migration helper. Hides once the user has any identity
+               set so it stops nagging after they've moved on — the
+               legacy fields stay on disk (recoverable via
+               .granit/vision.json) but the banner is the user's
+               cue, not a permanent fixture. -->
           <div class="bg-surface0 border border-surface1 rounded p-3 flex items-baseline gap-3 flex-wrap">
             <div class="flex-1 min-w-0 text-xs text-subtext">
               Du hast Mission / Values / Season-Focus von früher. Vorschlag aus den alten Daten als Startpunkt füllen?
