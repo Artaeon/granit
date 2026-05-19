@@ -22,17 +22,32 @@ export type NavSection = {
 };
 
 // Today sits above all groups (no header) because it's the always-on
-// home — sections start where organisation begins to help.
-export const today: NavItem = { href: '/', label: 'Today', icon: 'today' };
+// home — sections start where organisation begins to help. As of the
+// 2026-05-19 Rhythmus-OS pivot, "Today" IS the Heute-Karte.
+export const today: NavItem = { href: '/', label: 'Heute', icon: 'today' };
 
 export const sections: NavSection[] = [
+  {
+    // Primary tabs from the Rhythmus-OS direction — the four
+    // surfaces that sit alongside the Heute-Karte for daily use.
+    // Everything below is still reachable but tucked under
+    // collapsable section headers + the command palette.
+    id: 'primary',
+    label: 'Rhythm',
+    items: [
+      { href: '/projects', label: 'Projekte', icon: 'projects', moduleId: 'projects' },
+      { href: '/calendar', label: 'Kalender', icon: 'calendar' },
+      { href: '/rhythmus', label: 'Rhythmus', icon: 'rhythmus' },
+      { href: '/review', label: 'Review', icon: 'review', moduleId: 'weekly_review' }
+    ]
+  },
   {
     id: 'daily',
     label: 'Daily',
     items: [
-      { href: '/morning', label: 'Morning', icon: 'morning', moduleId: 'morning' },
+      // Morning folded into Heute-Karte on 2026-05-19; /morning
+      // redirects to / so muscle-memory still lands somewhere.
       { href: '/tasks', label: 'Tasks', icon: 'tasks' },
-      { href: '/calendar', label: 'Calendar', icon: 'calendar' },
       { href: '/jots', label: 'Jots', icon: 'jots', moduleId: 'jots' },
       { href: '/habits', label: 'Habits', icon: 'habits', moduleId: 'habit_tracker' },
       { href: '/examen', label: 'Examen', icon: 'examen', moduleId: 'examen' }
@@ -44,11 +59,9 @@ export const sections: NavSection[] = [
     items: [
       { href: '/vision', label: 'Vision', icon: 'vision', moduleId: 'vision' },
       { href: '/plans/week', label: 'Weekly plan', icon: 'review' },
-      { href: '/review', label: 'Review', icon: 'review', moduleId: 'weekly_review' },
       { href: '/review/maintenance', label: 'Maintenance', icon: 'wrench' },
       { href: '/goals', label: 'Goals', icon: 'goals', moduleId: 'goals' },
       { href: '/deadlines', label: 'Deadlines', icon: 'deadline', moduleId: 'deadlines' },
-      { href: '/projects', label: 'Projects', icon: 'projects', moduleId: 'projects' },
       { href: '/ventures', label: 'Ventures', icon: 'ventures', moduleId: 'ventures' }
     ]
   },

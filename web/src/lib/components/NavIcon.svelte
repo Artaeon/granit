@@ -170,6 +170,16 @@
     <polygon points="12 5 14 12 12 19 10 12" fill="currentColor" stroke="none"/>
     <polygon points="5 12 12 10 19 12 12 14" fill="currentColor" stroke="none" opacity="0.5"/>
   </svg>
+{:else if name === 'rhythmus'}
+  <!-- Five horizontal pillars — one per Heute-Karte pillar (Gott
+       / Essen / Arbeit / Körper / Abend). The shape is the icon. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class={cls}>
+    <line x1="4" y1="6" x2="20" y2="6"/>
+    <line x1="4" y1="10" x2="20" y2="10"/>
+    <line x1="4" y1="14" x2="20" y2="14"/>
+    <line x1="4" y1="18" x2="20" y2="18"/>
+    <line x1="4" y1="22" x2="20" y2="22" stroke-opacity="0.6"/>
+  </svg>
 {:else if name === 'review'}
   <!-- Looped arrow forming a circle — review is the recurring loop
        that closes the gap between intention and execution. -->
