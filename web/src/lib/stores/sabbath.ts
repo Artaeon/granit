@@ -151,7 +151,11 @@ function persistScheduleLocal(sched: SabbathSchedule) {
 // the most-recently-started occurrence of (DayOfWeek, StartHour,
 // StartMinute) at or before `at`, returns its [start, end) window.
 // Returns null when schedule is disabled or no occurrence fits.
-function scheduleWindow(s: SabbathSchedule, at: Date): { start: Date; end: Date } | null {
+//
+// Exported so the midnight-rollover + sundown-to-sundown invariants
+// can be unit-tested; consumers outside this module should still
+// prefer the `sabbath` store for "is sabbath active right now".
+export function scheduleWindow(s: SabbathSchedule, at: Date): { start: Date; end: Date } | null {
   if (!s.enabled || s.durationMinutes <= 0) return null;
   // Walk back up to 8 days so today + every preceding day are covered.
   for (let daysBack = 0; daysBack < 8; daysBack++) {
@@ -165,7 +169,7 @@ function scheduleWindow(s: SabbathSchedule, at: Date): { start: Date; end: Date 
   return null;
 }
 
-function scheduleSaysNow(s: SabbathSchedule, at: Date): boolean {
+export function scheduleSaysNow(s: SabbathSchedule, at: Date): boolean {
   const w = scheduleWindow(s, at);
   if (!w) return false;
   return at.getTime() >= w.start.getTime() && at.getTime() < w.end.getTime();
