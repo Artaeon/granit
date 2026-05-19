@@ -164,9 +164,15 @@
 
   async function load() {
     const myGen = ++loadGen;
+    // Snapshot the date + path at start. Both derive from `now`,
+    // which ticks every 30s; doing the read twice (once for the
+    // request, once for parseDayFrontmatter) risks crossing a
+    // midnight boundary between them and storing today's frontmatter
+    // under yesterday's date string.
     const expectedDate = fmtDateISO(now);
+    const expectedPath = `Daily/${expectedDate}.md`;
     try {
-      const n = await api.getNote(dailyNotePath(now));
+      const n = await api.getNote(expectedPath);
       if (myGen !== loadGen) return;
       bodyOnDisk = n.body ?? '';
       fmOnDisk = (n.frontmatter ?? {}) as Record<string, unknown>;
