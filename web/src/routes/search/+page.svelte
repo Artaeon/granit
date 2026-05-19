@@ -45,7 +45,14 @@
     } catch {}
   }
   function persistSaved() {
-    try { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); } catch {}
+    try {
+      localStorage.setItem(SAVED_KEY, JSON.stringify(saved));
+    } catch (err) {
+      // Quota exceeded / private-mode storage — leave a trace so the
+      // user's "I starred this and it didn't stick" reports have a
+      // breadcrumb to chase.
+      console.warn('[granit] saved-search persistence failed:', err instanceof Error ? err.message : err);
+    }
   }
   function toggleSaved() {
     const t = q.trim();
@@ -81,7 +88,11 @@
     if (!trimmed) return;
     const next = [trimmed, ...recent.filter((r) => r !== trimmed)].slice(0, RECENT_MAX);
     recent = next;
-    try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)); } catch {}
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    } catch (err) {
+      console.warn('[granit] recent-search persistence failed:', err instanceof Error ? err.message : err);
+    }
   }
 
   // Debounce so every keystroke doesn't fire a request. 150ms is
