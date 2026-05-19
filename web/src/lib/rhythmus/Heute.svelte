@@ -80,6 +80,7 @@
    *  hand-written keys ("weather: sunny", a custom win sentence)
    *  survive every rhythmus write. */
   let fmOnDisk = $state<Record<string, unknown>>({});
+  let loadError = $state('');
   let saveError = $state('');
 
   let dayPath = $derived(dailyNotePath(now));
@@ -143,14 +144,16 @@
       fmOnDisk = (n.frontmatter ?? {}) as Record<string, unknown>;
       day = parseDayFrontmatter(fmOnDisk, fmtDateISO(now));
       noteExists = true;
+      loadError = '';
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
         bodyOnDisk = '';
         fmOnDisk = {};
         day = emptyDayState(fmtDateISO(now));
         noteExists = false;
+        loadError = '';
       } else {
-        saveError = e instanceof Error ? e.message : String(e);
+        loadError = e instanceof Error ? e.message : String(e);
       }
     } finally {
       loaded = true;
@@ -337,6 +340,9 @@
     {/if}
   {/if}
 
+  {#if loadError}
+    <p class="text-xs text-error">Laden fehlgeschlagen: {loadError}</p>
+  {/if}
   {#if saveError}
     <p class="text-xs text-error">Speichern fehlgeschlagen: {saveError}</p>
   {/if}
