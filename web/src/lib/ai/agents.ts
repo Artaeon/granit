@@ -276,7 +276,16 @@ export const AGENT_MODES: AgentMode[] = [
 ];
 
 export function findMode(id: string): AgentMode {
-  return AGENT_MODES.find((m) => m.id === id) ?? AGENT_MODES[0];
+  const match = AGENT_MODES.find((m) => m.id === id);
+  if (match) return match;
+  // Unknown ID — surface a one-line warning so a renamed-mode bug
+  // doesn't silently swap the user's posture without trace. Empty
+  // / default ids skip the warning so a freshly-initialised store
+  // doesn't spam the console on first render.
+  if (id) {
+    console.warn(`[granit] unknown AI mode id "${id}" — falling back to "${AGENT_MODES[0].id}"`);
+  }
+  return AGENT_MODES[0];
 }
 
 /** Generic modes — postures with broad applicability. */
