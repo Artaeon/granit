@@ -116,9 +116,24 @@
       if (ev.type === 'note.changed' && ev.path === dayPath) void load();
       if (ev.type === 'note.removed' && ev.path === dayPath) void load();
     });
+    // Tab-return refresh. Mobile browsers (and any backgrounded
+    // tab) suspend the WebSocket; a daily note edited on another
+    // device while the tab slept would otherwise stay stale until
+    // the user manually reloaded. visibilitychange + focus give
+    // belt-and-braces coverage across the inconsistent browser
+    // behaviour around when each event fires.
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      now = new Date();
+      void load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
     return () => {
       clearInterval(tick);
       offWs();
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
     };
   });
 
