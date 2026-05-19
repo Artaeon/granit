@@ -28,8 +28,7 @@
   import {
     rhythmusConfig,
     DEFAULT_CONFIG,
-    type RhythmusConfig,
-    type PillarMinima
+    type RhythmusConfig
   } from '$lib/rhythmus/minima';
   import type { DayMode } from '$lib/rhythmus/dayState';
 

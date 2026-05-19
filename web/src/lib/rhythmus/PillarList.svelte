@@ -14,7 +14,6 @@
   // satisfied or it isn't. That's the whole pivot from streaks-as-
   // performance.
 
-  import { get } from 'svelte/store';
   import type { DayMode, PillarState } from './dayState';
   import { DEFAULT_PILLARS, PILLAR_ORDER, type PillarKey } from './pillars';
   import {
@@ -35,9 +34,6 @@
   // Read the config reactively so a Rhythmus-tab edit reflects here
   // without a page reload. $rhythmusConfig is the store auto-subscribed.
   let cfg = $derived($rhythmusConfig);
-  // Suppress an unused-import warning from svelte-check on get; we
-  // reference it indirectly via the store auto-subscription.
-  void get;
 
   let visible = $derived(PILLAR_ORDER.filter((key) => pillarVisibleIn(cfg, key, mode)));
 </script>
