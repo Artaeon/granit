@@ -67,23 +67,34 @@ export function parseFollowups(content: string): string[] {
 
 /** parseActions extracts every well-formed granit-action JSON block.
  *  Malformed JSON, missing required fields, or unknown types drop
- *  silently — the assistant occasionally streams a half-token block
- *  before completing it, and we render conservatively rather than
- *  flashing error chips that disappear once the stream finishes. */
+ *  out of the returned array — the assistant occasionally streams a
+ *  half-token block before completing it, and we render conservatively
+ *  rather than flashing error chips that disappear once the stream
+ *  finishes. The fence regex already requires a CLOSING ``` though,
+ *  so anything that gets matched here is structurally complete; a
+ *  parse / validation failure at that point is a real model-output
+ *  spec violation and gets a one-line warning so the action drop is
+ *  traceable. */
 export function parseActions(content: string): ParsedAction[] {
 	const out: ParsedAction[] = [];
 	// New RegExp each call — global lastIndex isn't safe to share.
 	const re = new RegExp(ACTION_FENCE_RE.source, ACTION_FENCE_RE.flags);
 	let m: RegExpExecArray | null;
 	while ((m = re.exec(content)) !== null) {
+		const body = m[1].trim();
 		let obj: unknown;
 		try {
-			obj = JSON.parse(m[1].trim());
-		} catch {
+			obj = JSON.parse(body);
+		} catch (err) {
+			console.warn('[granit] dropped malformed granit-action JSON:', err instanceof Error ? err.message : err, '\n', body.slice(0, 240));
 			continue;
 		}
 		const action = validateAction(obj);
-		if (action) out.push(action);
+		if (action) {
+			out.push(action);
+		} else {
+			console.warn('[granit] dropped granit-action with unknown type or missing required fields:\n', body.slice(0, 240));
+		}
 	}
 	return out;
 }
