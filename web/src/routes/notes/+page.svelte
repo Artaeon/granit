@@ -238,17 +238,18 @@
       const sharedUrl = params.get('url') ?? '';
       const hasShared = sharedTitle || sharedText || sharedUrl;
       if (capture || hasShared) {
+        // openCapture() resets captureText to '', so pre-fill AFTER
+        // opening rather than before. Title goes on its own line so
+        // the AI's title-extraction has the cleanest hint; text +
+        // url follow. Empty fields silently drop out.
+        openCapture();
         if (hasShared) {
-          // Compose a sensible capture body. Title goes on its own
-          // line so the AI's title-extraction has the cleanest hint;
-          // text + url follow. Empty fields silently drop out.
           const lines: string[] = [];
           if (sharedTitle) lines.push(sharedTitle);
           if (sharedText) lines.push(sharedText);
           if (sharedUrl) lines.push(sharedUrl);
           captureText = lines.join('\n\n');
         }
-        openCapture();
         const u = new URL(window.location.href);
         u.searchParams.delete('capture');
         u.searchParams.delete('title');
