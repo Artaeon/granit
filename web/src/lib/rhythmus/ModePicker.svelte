@@ -36,7 +36,7 @@
       type="button"
       onclick={() => onChange(opt.key)}
       aria-pressed={value === opt.key}
-      class="px-2.5 py-1 rounded border transition-colors {activeClass(opt.key, opt.tone)}"
+      class="px-3 py-1.5 min-h-9 rounded border transition-colors {activeClass(opt.key, opt.tone)}"
     >
       {opt.label}
     </button>

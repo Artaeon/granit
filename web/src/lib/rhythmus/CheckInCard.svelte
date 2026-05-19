@@ -67,7 +67,7 @@
       step="1"
       value={fatigue}
       oninput={(e) => onFatigueChange(parseInt((e.target as HTMLInputElement).value, 10))}
-      class="w-full accent-primary"
+      class="w-full accent-primary h-9"
       aria-label="Müdigkeit 1 bis 5"
     />
     <div class="flex justify-between text-[10px] text-dim mt-0.5">
@@ -83,13 +83,13 @@
         type="button"
         onclick={() => onEatenChange(true)}
         aria-pressed={eaten}
-        class="px-3 py-1 rounded border text-xs transition-colors {eaten ? 'bg-success/15 border-success text-success font-medium' : 'bg-surface0 border-surface1 text-subtext hover:border-primary'}"
+        class="px-4 py-2 min-h-9 rounded border text-sm transition-colors {eaten ? 'bg-success/15 border-success text-success font-medium' : 'bg-surface0 border-surface1 text-subtext hover:border-primary'}"
       >Ja</button>
       <button
         type="button"
         onclick={() => onEatenChange(false)}
         aria-pressed={!eaten}
-        class="px-3 py-1 rounded border text-xs transition-colors {!eaten ? 'bg-warning/15 border-warning text-warning font-medium' : 'bg-surface0 border-surface1 text-subtext hover:border-primary'}"
+        class="px-4 py-2 min-h-9 rounded border text-sm transition-colors {!eaten ? 'bg-warning/15 border-warning text-warning font-medium' : 'bg-surface0 border-surface1 text-subtext hover:border-primary'}"
       >Noch nicht</button>
     </div>
   </div>

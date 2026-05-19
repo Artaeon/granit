@@ -53,26 +53,35 @@
     {@const label = pillarLabel(cfg, key)}
     {@const icon = DEFAULT_PILLARS[key].icon}
     {@const minimum = pillarMinimumFor(cfg, key, mode)}
-    <div class="flex items-center gap-3 px-4 py-3 border-b border-surface1 last:border-b-0">
+    <!-- Whole row is the tap target. The 24×24 checkbox alone is
+         too small for thumb-driven mobile use (Apple HIG + Material
+         both want 44×44 minimum); making the entire row a button
+         widens the hit area without enlarging the visible chrome.
+         Power-user keyboard parity stays via the button's tab focus
+         and aria-pressed. -->
+    <button
+      type="button"
+      onclick={() => onToggle(key, !state.done)}
+      aria-pressed={state.done}
+      aria-label="{label} — {state.done ? 'erledigt, klick zum Zurücksetzen' : 'als erledigt markieren'}"
+      class="w-full flex items-center gap-3 px-4 py-3 text-left border-b border-surface1 last:border-b-0 hover:bg-surface0 transition-colors"
+    >
       <span class="w-8 text-center text-lg" aria-hidden="true">{icon}</span>
       <div class="flex-1 min-w-0">
         <div class="text-sm text-text font-medium leading-tight">{label}</div>
         <div class="text-xs text-dim leading-snug">{minimum}</div>
       </div>
-      <button
-        type="button"
-        onclick={() => onToggle(key, !state.done)}
-        aria-pressed={state.done}
-        aria-label="{label} — {state.done ? 'erledigt, klick zum Zurücksetzen' : 'als erledigt markieren'}"
+      <span
         class="w-6 h-6 rounded border flex items-center justify-center flex-shrink-0 transition-colors
-          {state.done ? 'bg-success border-success' : 'border-surface2 hover:border-primary'}"
+          {state.done ? 'bg-success border-success' : 'border-surface2'}"
+        aria-hidden="true"
       >
         {#if state.done}
-          <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle" aria-hidden="true">
+          <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle">
             <path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z" />
           </svg>
         {/if}
-      </button>
-    </div>
+      </span>
+    </button>
   {/each}
 </section>
