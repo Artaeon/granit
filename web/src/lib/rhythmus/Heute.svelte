@@ -27,6 +27,8 @@
   import { ApiError, api } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { fmtDateISO } from '$lib/util/date';
+  import { openAIOverlay } from '$lib/stores/ai-overlay';
+  import { sabbath } from '$lib/stores/sabbath';
   import { rhythmusConfig } from './minima';
   import {
     dailyNotePath,
@@ -224,6 +226,18 @@
     scheduleSave();
   }
 
+  // Open the AI overlay pre-filled with a short morning-briefing
+  // prompt. Hidden during Sabbath — the overlay would also gate
+  // server-side, but skipping the visible button avoids tempting
+  // the user with a "Briefing" affordance the rule says is closed.
+  function runBriefing() {
+    openAIOverlay({
+      text:
+        'Give me a short morning briefing — top three things I should focus on today and one thing I might be forgetting.',
+      send: true
+    });
+  }
+
   // The check-in collapses out once a mode is picked. The state
   // (fatigue, MIT) stays editable from the pillar list / mode picker
   // afterwards in future iterations; for v1 the morning check-in is
@@ -250,7 +264,20 @@
       <h1 class="text-2xl font-semibold text-text">
         Heute, {now.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
       </h1>
-      <ModePicker value={day.mode} onChange={setMode} />
+      <div class="flex items-center gap-2 flex-wrap">
+        {#if !$sabbath}
+          <button
+            type="button"
+            onclick={runBriefing}
+            class="text-xs px-2.5 py-1 rounded inline-flex items-center gap-1.5 bg-surface0 border border-surface1 text-subtext hover:border-primary hover:text-text transition-colors"
+            title="Kurzes KI-Briefing für heute"
+          >
+            <span aria-hidden="true">☀</span>
+            KI-Briefing
+          </button>
+        {/if}
+        <ModePicker value={day.mode} onChange={setMode} />
+      </div>
     </div>
 
     {#if action}
