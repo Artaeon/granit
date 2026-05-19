@@ -23,22 +23,25 @@ import (
 	"github.com/artaeon/granit/internal/atomicio"
 )
 
-// Vision is the user's "what am I doing with my life" statement,
-// expressed in three layers:
+// Vision is the user's "what am I doing with my life" statement.
 //
-//   - Mission: one sentence the user could say to a stranger about
-//     why they're here. Long-lived; rarely changes.
-//   - Values: 3-5 words/short phrases — the user's compass when a
-//     decision isn't covered by tactics. "Faith. Family. Honesty.
-//     Craft. Generosity." — that kind of thing.
-//   - SeasonFocus: a single phrase for the next ~90 days. Changes
-//     with seasons. The narrowing point that converts mission into
-//     "what am I actually doing right now."
+// The 2026-05-19 Rhythmus-OS pivot added Identities — one statement
+// per daily pillar ("I seek God daily, even briefly"; "My evening
+// doesn't belong to work") replacing the old mission/values pair as
+// the load-bearing field. Mission/Values/SeasonFocus stay in the
+// struct so legacy vision.json files keep parsing and the web can
+// offer a one-click migration; new writes go through Identities.
 //
-// SeasonStartedAt is recorded when SeasonFocus is first set or
-// changed so the UI can show "day N of 90" — a visible runway makes
-// season focus feel concrete instead of indefinite.
+// Identity keys mirror the web's PillarKey enum: spirit / food /
+// work / body / evening. Anything else is preserved untouched but
+// the UI only renders the five pillars.
 type Vision struct {
+	Identities map[string]string `json:"identities,omitempty"`
+
+	// Legacy fields — written before the 2026-05-19 pivot, kept on
+	// disk so the user can run the migration helper and so old
+	// clients (a TUI build that hasn't shipped Identities yet) can
+	// still read what they wrote.
 	Mission         string    `json:"mission,omitempty"`
 	Values          []string  `json:"values,omitempty"`
 	SeasonFocus     string    `json:"season_focus,omitempty"`
@@ -95,7 +98,16 @@ func Save(vaultRoot string, v Vision) error {
 // decide between rendering the read view or the "set your mission"
 // CTA. Notes alone don't count as set: the value of vision lies in
 // the structured fields, not stray notes.
+//
+// Any non-empty identity counts as set so a freshly-pivoted user
+// who's filled identities (but left legacy fields blank) doesn't
+// see the empty-state placeholder.
 func (v Vision) IsEmpty() bool {
+	for _, s := range v.Identities {
+		if s != "" {
+			return false
+		}
+	}
 	return v.Mission == "" && v.SeasonFocus == "" && len(v.Values) == 0
 }
 
