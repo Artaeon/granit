@@ -104,7 +104,7 @@
       bind:value={local.achieved}
       onblur={() => onShutdownChange(local)}
       placeholder="das hier zählt heute."
-      class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y"
+      class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y"
     ></textarea>
   </div>
 
@@ -118,7 +118,7 @@
       bind:value={local.tomorrow}
       onblur={() => onShutdownChange(local)}
       placeholder="eine konkrete Aufgabe, kein Stichwort."
-      class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y"
+      class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y"
     ></textarea>
   </div>
 
@@ -132,7 +132,7 @@
       bind:value={local.letGo}
       onblur={() => onShutdownChange(local)}
       placeholder={'nicht „auf morgen verschieben". Loslassen.'}
-      class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y"
+      class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y"
     ></textarea>
   </div>
 

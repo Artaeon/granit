@@ -299,7 +299,7 @@
             bind:value={form.notes}
             rows="3"
             placeholder="Optionaler Kontext — warum diese Identities, was sich geändert hat …"
-            class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y"
+            class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y"
           ></textarea>
         </section>
 

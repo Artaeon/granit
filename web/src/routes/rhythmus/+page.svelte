@@ -173,7 +173,7 @@
             type="time"
             value={cfg.eveningStartsAt}
             oninput={(e) => setTime('eveningStartsAt', (e.target as HTMLInputElement).value)}
-            class="mt-1 px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text font-mono w-32 focus:outline-none focus:border-primary"
+            class="mt-1 px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text font-mono w-32 focus:outline-none focus:border-primary"
           />
           <p class="text-[11px] text-dim mt-1">
             Heute-Karte wechselt ab dieser Zeit zum Shutdown-Flow.
@@ -185,7 +185,7 @@
             type="time"
             value={cfg.eatNagAfter}
             oninput={(e) => setTime('eatNagAfter', (e.target as HTMLInputElement).value)}
-            class="mt-1 px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text font-mono w-32 focus:outline-none focus:border-primary"
+            class="mt-1 px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text font-mono w-32 focus:outline-none focus:border-primary"
           />
           <p class="text-[11px] text-dim mt-1">
             Vor dieser Zeit fragt die App nicht — frühe Aufsteher sehen die Brot-Frage erst, wenn der Morgen meaningfully losgegangen ist.
@@ -232,14 +232,14 @@
               value={r.time}
               oninput={(e) => setReminderTime(r.id, (e.target as HTMLInputElement).value)}
               disabled={!r.enabled}
-              class="px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm text-text font-mono focus:outline-none focus:border-primary disabled:opacity-50"
+              class="px-2 py-1.5 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text font-mono focus:outline-none focus:border-primary disabled:opacity-50"
             />
             <input
               type="text"
               value={r.label}
               oninput={(e) => updateReminder(r.id, { label: (e.target as HTMLInputElement).value })}
               disabled={!r.enabled}
-              class="px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary disabled:opacity-50"
+              class="px-2 py-1.5 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text focus:outline-none focus:border-primary disabled:opacity-50"
             />
           </li>
         {/each}
@@ -270,7 +270,7 @@
             value={labelValue}
             oninput={(e) => setLabel(key, (e.target as HTMLInputElement).value)}
             placeholder={def.label}
-            class="mt-1 w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+            class="mt-1 w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text focus:outline-none focus:border-primary"
           />
           <p class="text-[11px] text-dim mt-1">
             Leer lassen für Default („{def.label}").
@@ -290,7 +290,7 @@
                 type="text"
                 value={minima[dm]}
                 oninput={(e) => setMinimum(key, dm, (e.target as HTMLInputElement).value)}
-                class="mt-1 w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+                class="mt-1 w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text focus:outline-none focus:border-primary"
               />
             </label>
           {/each}

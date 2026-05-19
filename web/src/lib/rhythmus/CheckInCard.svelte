@@ -104,7 +104,7 @@
       bind:value={mitLocal}
       onblur={() => onMitChange(mitLocal)}
       placeholder="z. B. Kundenprojekt fertigstellen"
-      class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
+      class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
     />
     <p class="text-[11px] text-dim mt-1">
       Nur eine. Alles andere wird heute eine Option, kein Druck.

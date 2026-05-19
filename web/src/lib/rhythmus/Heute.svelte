@@ -409,7 +409,7 @@
             bind:value={mitDraft}
             onblur={() => { if (mitDraft !== day.mit) setMit(mitDraft); }}
             placeholder="Wichtigste Aufgabe heute"
-            class="flex-1 px-2 py-1 bg-surface0 border border-surface1 rounded text-text placeholder-dim focus:outline-none focus:border-primary"
+            class="flex-1 px-2 py-1.5 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
           />
         </label>
       {/if}
