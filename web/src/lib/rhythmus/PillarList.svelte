@@ -22,6 +22,7 @@
     pillarMinimumFor,
     pillarVisibleIn
   } from './minima';
+  import { sabbath } from '$lib/stores/sabbath';
 
   type Props = {
     mode: DayMode;
@@ -35,7 +36,15 @@
   // without a page reload. $rhythmusConfig is the store auto-subscribed.
   let cfg = $derived($rhythmusConfig);
 
-  let visible = $derived(PILLAR_ORDER.filter((key) => pillarVisibleIn(cfg, key, mode)));
+  // On Sabbath the work pillar disappears — the day's rule is "no
+  // work", not "less work" — but the other four stay because rest
+  // doesn't mean skipping food, prayer, movement, or sleep prep.
+  let visible = $derived(
+    PILLAR_ORDER.filter((key) => {
+      if ($sabbath && key === 'work') return false;
+      return pillarVisibleIn(cfg, key, mode);
+    })
+  );
 </script>
 
 <section aria-label="Die fünf Säulen heute" class="bg-mantle border border-surface1 rounded-lg overflow-hidden">

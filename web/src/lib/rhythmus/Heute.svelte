@@ -101,7 +101,8 @@
       : nextAction(day, {
           now,
           eveningStartsAt: cfg.eveningStartsAt,
-          eatNagAfter: cfg.eatNagAfter
+          eatNagAfter: cfg.eatNagAfter,
+          sabbath: $sabbath
         })
   );
 
@@ -370,20 +371,22 @@
     {:else}
       <PillarList mode={day.mode} pillars={day.pillars} onToggle={togglePillar} />
 
-      <!-- Always-present MIT editor. The morning check-in seeded
-           it; this lets the user refine it mid-day without having
-           to clear and re-pick a mode. Blurs save through the
-           same debounced path as everything else. -->
-      <label class="flex items-center gap-2 text-xs">
-        <span class="text-dim uppercase tracking-wider shrink-0">MIT</span>
-        <input
-          type="text"
-          bind:value={mitDraft}
-          onblur={() => { if (mitDraft !== day.mit) setMit(mitDraft); }}
-          placeholder="Wichtigste Aufgabe heute"
-          class="flex-1 px-2 py-1 bg-surface0 border border-surface1 rounded text-text placeholder-dim focus:outline-none focus:border-primary"
-        />
-      </label>
+      <!-- MIT editor stays present mid-day so the focus can shift
+           without having to clear and re-pick a mode. Hidden on
+           Sabbath — the day is the rule, not "what work I'd
+           commit to anyway". -->
+      {#if !$sabbath}
+        <label class="flex items-center gap-2 text-xs">
+          <span class="text-dim uppercase tracking-wider shrink-0">MIT</span>
+          <input
+            type="text"
+            bind:value={mitDraft}
+            onblur={() => { if (mitDraft !== day.mit) setMit(mitDraft); }}
+            placeholder="Wichtigste Aufgabe heute"
+            class="flex-1 px-2 py-1 bg-surface0 border border-surface1 rounded text-text placeholder-dim focus:outline-none focus:border-primary"
+          />
+        </label>
+      {/if}
     {/if}
   {/if}
 

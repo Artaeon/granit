@@ -55,11 +55,17 @@ export type NextActionContext = {
    *  the morning is meaningfully underway. Default 10:00 per the
    *  brainstorm's reminder cadence. */
   eatNagAfter: string;
+  /** When true, the work-focus rule (MIT pomodoro) is suppressed —
+   *  Sabbath days don't propose a work block. The other branches
+   *  (eat / body / spirit / evening) still apply because the
+   *  sabbath isn't about doing zero, it's about not doing work. */
+  sabbath?: boolean;
 };
 
 const DEFAULT_CONTEXT: Omit<NextActionContext, 'now'> = {
   eveningStartsAt: '20:30',
-  eatNagAfter: '10:00'
+  eatNagAfter: '10:00',
+  sabbath: false
 };
 
 // Parse "HH:MM" relative to `now`'s local day. Returns a Date on the
@@ -109,7 +115,8 @@ export function nextAction(
   // 3) Most-important task gets a focus block when set and work is
   //    still open. Phrasing differs by mode so the chaotic / emergency
   //    user doesn't get punched in the face with a full pomodoro.
-  if (mit.trim() && !pillars.work.done) {
+  //    Skipped entirely on Sabbath — the day is the rule.
+  if (!ctx.sabbath && mit.trim() && !pillars.work.done) {
     const minutes = mode === 'chaotic' || mode === 'emergency' ? 25 : 45;
     return {
       label: `${minutes} Minuten fokussiert: ${mit.trim()}`,

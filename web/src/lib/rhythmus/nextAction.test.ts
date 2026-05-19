@@ -120,6 +120,14 @@ describe('nextAction — MIT focus block', () => {
     const out = nextAction(fresh({ eaten: true, mit: '   ' }), { now: at('14:00') });
     expect(out.pillar).toBe('body');
   });
+
+  it('skips the work focus block entirely on Sabbath', () => {
+    const out = nextAction(
+      fresh({ eaten: true, mit: 'Kundenprojekt' }),
+      { now: at('14:00'), sabbath: true }
+    );
+    expect(out.pillar).not.toBe('work');
+  });
 });
 
 describe('nextAction — body fatigue branch', () => {
