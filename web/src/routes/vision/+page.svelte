@@ -95,10 +95,21 @@
       if (trimmed) identities[key] = trimmed;
     }
     try {
-      const next = await api.putVision({
+      // handlePutVision is a full upsert — anything we omit from
+      // the payload gets cleared on disk. Re-send the legacy
+      // mission/values/season fields verbatim so saving identities
+      // doesn't wipe the user's pre-pivot data (the migration
+      // helper still has something to suggest from, and the user
+      // keeps the recovery path until they explicitly clear).
+      const payload: Partial<typeof vision> = {
         identities,
         notes: form.notes.trim()
-      });
+      };
+      if (vision?.mission) payload.mission = vision.mission;
+      if (vision?.values) payload.values = vision.values;
+      if (vision?.season_focus) payload.season_focus = vision.season_focus;
+      if (vision?.season_started_at) payload.season_started_at = vision.season_started_at;
+      const next = await api.putVision(payload);
       vision = next;
       editing = false;
       toast.success('vision saved');
