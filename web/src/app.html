@@ -57,14 +57,22 @@
     <!-- Pre-hydration splash. Visible the instant the document parses
          until the SPA's root component mounts and sets
          data-app-ready on <html> (done in +layout.svelte's onMount).
-         Black-or-white background depending on the bootstrapped
-         theme so the splash never flashes the wrong palette on a
-         slow connection. No rounded corners, no gradients, no
-         shadows — flat power-UI grammar. The indeterminate bar gives
-         a single liveness cue without dominating the screen. -->
+         Mirrors the installed-app icon exactly: same 4-facet stone
+         with per-facet tonal fills + stroke outline, so what the user
+         sees on launch looks like the icon they tapped — not a
+         hollow outline. The indeterminate bar gives a single liveness
+         cue without dominating the screen. -->
     <div id="app-splash" aria-hidden="true">
       <div class="app-splash__center">
-        <svg viewBox="0 0 512 512" width="44" height="44" aria-hidden="true">
+        <svg viewBox="0 0 512 512" width="72" height="72" aria-hidden="true" class="app-splash__icon">
+          <!-- Per-facet fills — match icon.svg / icon-maskable.svg
+               so the splash never reads as just a wire-outline. The
+               tonal direction inverts via prefers-color-scheme (see
+               style block below). -->
+          <polygon class="app-splash__facet-cl" points="256,76 256,184 80,184" />
+          <polygon class="app-splash__facet-cr" points="256,76 432,184 256,184" />
+          <polygon class="app-splash__facet-bl" points="80,184 256,184 256,436 80,360" />
+          <polygon class="app-splash__facet-br" points="256,184 432,184 432,360 256,436" />
           <g fill="none" stroke="currentColor" stroke-width="32" stroke-linejoin="round" stroke-linecap="round">
             <path d="M 256 76 L 432 184 L 432 360 L 256 436 L 80 360 L 80 184 Z" />
             <path d="M 80 184 L 432 184" />
@@ -100,14 +108,25 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 0.875rem;
+        gap: 1.25rem;
       }
+      /* Per-facet fills, dark mode default. Mirror icon.svg's tonal
+         direction (light from upper-left) so the launch screen looks
+         like the same gemstone the user just tapped. */
+      .app-splash__facet-cl { fill: #2c2c34; }
+      .app-splash__facet-cr { fill: #1c1c22; }
+      .app-splash__facet-bl { fill: #14141a; }
+      .app-splash__facet-br { fill: #0d0d12; }
+      [data-theme='light'] .app-splash__facet-cl { fill: #d8d8e0; }
+      [data-theme='light'] .app-splash__facet-cr { fill: #e4e4ec; }
+      [data-theme='light'] .app-splash__facet-bl { fill: #eeeef4; }
+      [data-theme='light'] .app-splash__facet-br { fill: #f5f5f9; }
       .app-splash__title {
-        font-size: 0.75rem;
+        font-size: 0.875rem;
         letter-spacing: 0.32em;
         text-transform: uppercase;
         font-weight: 600;
-        opacity: 0.8;
+        opacity: 0.85;
       }
       .app-splash__bar {
         width: 120px;
