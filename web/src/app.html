@@ -6,7 +6,18 @@
     <link rel="icon" type="image/png" sizes="192x192" href="%sveltekit.assets%/icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="%sveltekit.assets%/icon-512.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#000000" />
+    <!-- Pair of theme-color meta tags — one per color scheme — so the
+         browser chrome (Android status bar, desktop title bar, PWA
+         splash) tints correctly in both modes. The bootstrap script
+         below overwrites the theme-color at runtime once it knows the
+         user's stored preference; these static defaults are what the
+         OS sees pre-paint (and what installed-PWA app-switchers cache). -->
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <!-- color-scheme tells the browser our UA defaults render well on
+         both. Drives the default scrollbar / form-control palette so
+         a light-mode user doesn't get a dark scrollbar on first paint. -->
+    <meta name="color-scheme" content="dark light" />
     <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
     <!-- iOS doesn't read manifest icons. apple-touch-icon must be PNG;
          180×180 is the universal size that scales cleanly to every iOS
