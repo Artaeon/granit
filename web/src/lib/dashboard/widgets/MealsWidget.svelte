@@ -137,9 +137,14 @@
         text: trimmed
       });
       // Drop the local draft so any subsequent server-driven reload
-      // (e.g. another tab editing the same slot) wins. Without this
-      // the stale buffer would shadow the canonical text forever.
-      delete drafts[key];
+      // (e.g. another tab editing the same slot) wins. But ONLY drop
+      // it if the user hasn't typed anything new since we started the
+      // save — otherwise the next debouncer tick has nothing to save
+      // and the user sees their fresh characters vanish from the
+      // input. (Found while stress-typing during a slow PATCH.)
+      if (drafts[key] === value) {
+        delete drafts[key];
+      }
     } catch (e) {
       toast.error(`couldn't save ${slot.name} text: ${errorMessage(e)}`);
     } finally {
@@ -238,7 +243,23 @@
             value={displayText(s)}
             oninput={(e) => onTextInput(s, (e.currentTarget as HTMLInputElement).value)}
             onblur={(e) => void saveText(s, (e.currentTarget as HTMLInputElement).value)}
-            class="flex-1 min-w-0 bg-transparent text-xs text-subtext placeholder-dim focus:outline-none focus:text-text"
+            onkeydown={(e) => {
+              if (e.key === 'Enter') {
+                // Save-and-blur on Enter — cancels the in-flight
+                // debouncer so the save fires immediately, and
+                // focus leaves so a Tab-after-Enter goes to the
+                // next row, not the same input.
+                const inp = e.currentTarget as HTMLInputElement;
+                if (saveTimers[key]) clearTimeout(saveTimers[key]);
+                inp.blur();
+              } else if (e.key === 'Escape') {
+                // Discard local edits, restore canonical text.
+                if (saveTimers[key]) clearTimeout(saveTimers[key]);
+                delete drafts[key];
+                (e.currentTarget as HTMLInputElement).blur();
+              }
+            }}
+            class="flex-1 min-w-0 bg-transparent text-base sm:text-xs text-subtext placeholder-dim focus:outline-none focus:text-text"
           />
         </li>
       {/each}
