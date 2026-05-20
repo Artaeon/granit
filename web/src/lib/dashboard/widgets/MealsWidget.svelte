@@ -204,11 +204,14 @@
   </div>
 
   {#if !loaded}
-    <ul class="space-y-2" aria-hidden="true">
+    <!-- Skeleton dimensions mirror the real row so the dashboard
+         doesn't reflow when data arrives. Same w-5/w-4 split as the
+         live checkbox below. -->
+    <ul class="space-y-1.5" aria-hidden="true">
       {#each Array(3) as _, i (i)}
         <li class="flex items-center gap-2">
-          <span class="w-4 h-4 rounded bg-surface1 animate-pulse"></span>
-          <span class="w-10 h-3 rounded bg-surface1 animate-pulse"></span>
+          <span class="w-5 h-5 sm:w-4 sm:h-4 rounded bg-surface1 animate-pulse flex-shrink-0"></span>
+          <span class="w-10 h-3 rounded bg-surface1 animate-pulse flex-shrink-0"></span>
           <span class="h-3 flex-1 rounded bg-surface1 animate-pulse"></span>
         </li>
       {/each}
