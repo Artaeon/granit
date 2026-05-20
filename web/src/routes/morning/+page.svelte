@@ -71,6 +71,10 @@
   // Pulls calendar events for today + upcoming deadlines + a slice
   // of urgent open tasks + active goals.
   let briefingText = $state('');
+  // Snapshot of the previous brief while a regenerate is in flight, so
+  // the panel keeps showing useful text (dimmed) instead of going
+  // blank during the round-trip. Cleared on done/error/cancel.
+  let briefingPrev = $state('');
   let briefingBusy = $state(false);
   let briefingError = $state('');
   let briefingAbort: AbortController | null = null;
@@ -346,6 +350,10 @@
   async function runBriefing() {
     if (briefingBusy) return;
     briefingError = '';
+    // Snapshot whatever's currently on screen — the UI will keep it
+    // visible (dimmed) until the first streamed token lands. This is
+    // the regenerate-keep-context affordance.
+    briefingPrev = briefingText;
     briefingText = '';
     briefingBusy = true;
     briefingAbort?.abort();
@@ -376,12 +384,19 @@
             t.flush();
             briefingBusy = false;
             briefingAbort = null;
+            briefingPrev = '';
             if (!briefingText.trim()) briefingError = 'AI returned an empty brief.';
           },
           onError: (err) => {
             t.flush();
             briefingBusy = false;
             briefingAbort = null;
+            // Restore the previous brief on failure so the user
+            // isn't left with an empty panel + just an error.
+            if (briefingPrev && !briefingText.trim()) {
+              briefingText = briefingPrev;
+            }
+            briefingPrev = '';
             const hint = classifyAiError(err.message);
             briefingError = hint.headline;
           }
@@ -391,6 +406,10 @@
     } catch (e) {
       briefingBusy = false;
       briefingAbort = null;
+      if (briefingPrev && !briefingText.trim()) {
+        briefingText = briefingPrev;
+      }
+      briefingPrev = '';
       briefingError = errorMessage(e);
     }
   }
@@ -398,6 +417,12 @@
     briefingAbort?.abort();
     briefingAbort = null;
     briefingBusy = false;
+    // Cancel restores the previous brief — the user usually cancels
+    // because they decided the old one was fine after all.
+    if (briefingPrev && !briefingText.trim()) {
+      briefingText = briefingPrev;
+    }
+    briefingPrev = '';
   }
   function dismissBriefing() {
     briefingDismissed = true;
@@ -658,6 +683,15 @@
                structure the prompt asks for reads correctly. -->
           <div class="text-sm text-text leading-relaxed space-y-2">
             {#each briefingText.trim().split(/\n{2,}/) as para}
+              {#if para.trim()}<p>{para.trim()}</p>{/if}
+            {/each}
+          </div>
+        {:else if briefingBusy && briefingPrev.trim()}
+          <!-- Regenerate in flight — keep the previous brief on screen
+               (dimmed) so the user has something to read until the new
+               one streams in. -->
+          <div class="text-sm text-dim leading-relaxed space-y-2 opacity-60">
+            {#each briefingPrev.trim().split(/\n{2,}/) as para}
               {#if para.trim()}<p>{para.trim()}</p>{/if}
             {/each}
           </div>
