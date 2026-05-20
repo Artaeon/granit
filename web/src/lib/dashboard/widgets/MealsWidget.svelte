@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, todayISO, type MealsResponse, type MealSlot } from '$lib/api';
+  import { api, type MealsResponse, type MealSlot } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -19,6 +19,7 @@
 
   let data = $state<MealsResponse | null>(null);
   let loaded = $state(false);
+  let loadError = $state('');
   let busyKey = $state<string | null>(null);
   // Debounced text-input state — local per-row buffer keyed by
   // (time|name) so a fast typist doesn't fire a PATCH per keystroke.
@@ -30,13 +31,18 @@
   }
 
   async function load() {
+    loadError = '';
     try {
       data = await api.listMeals();
     } catch (e) {
-      // Silent fall-through: the widget shows the empty/error
-      // state. Loud toast only fires on user-driven action below.
+      // Don't toast on background reload failure — the inline retry
+      // state below is enough signal without spamming a global toast
+      // (this widget reloads on every note.changed). User-driven
+      // actions DO toast, since the user just initiated something
+      // and deserves immediate feedback.
       console.warn('[meals] load failed:', e);
       data = null;
+      loadError = errorMessage(e);
     } finally {
       loaded = true;
     }
@@ -91,8 +97,14 @@
   }
 
   async function saveText(slot: MealSlot, value: string) {
+    const key = slotKey(slot);
     const trimmed = value.trim();
-    if (trimmed === (slot.text ?? '')) return;
+    if (trimmed === (slot.text ?? '')) {
+      // No-op but still clear the draft — keeps displayText reading
+      // from canonical slot.text after the user has finished typing.
+      delete drafts[key];
+      return;
+    }
     try {
       await api.patchMeal({
         time: slot.time,
@@ -100,6 +112,10 @@
         date: data?.date,
         text: trimmed
       });
+      // Drop the local draft so any subsequent server-driven reload
+      // (e.g. another tab editing the same slot) wins. Without this
+      // the stale buffer would shadow the canonical text forever.
+      delete drafts[key];
       await load();
     } catch (e) {
       toast.error(`couldn't save ${slot.name} text: ${errorMessage(e)}`);
@@ -111,8 +127,6 @@
     if (key in drafts) return drafts[key];
     return slot.text ?? '';
   }
-
-  let today = $derived(data?.date === todayISO());
 </script>
 
 <section class="bg-surface0 border border-surface1 rounded-lg p-3">
@@ -123,9 +137,6 @@
       <span class="text-[11px] text-dim font-mono tabular-nums">
         {data.done}/{data.total}
       </span>
-    {/if}
-    {#if data && !today}
-      <span class="text-[10px] text-warning ml-2">{data.date}</span>
     {/if}
   </div>
 
@@ -139,6 +150,18 @@
         </li>
       {/each}
     </ul>
+  {:else if loadError}
+    <!-- Distinct from empty-slots: the load failed, and we want the
+         user to know they can retry without the rest of the dashboard
+         shouting a toast on every background reload. -->
+    <div class="text-xs text-dim space-y-1.5">
+      <p>Couldn't load today's meals.</p>
+      <button
+        type="button"
+        onclick={load}
+        class="text-secondary hover:underline"
+      >Retry</button>
+    </div>
   {:else if !data || data.slots.length === 0}
     <div class="text-sm text-dim italic leading-relaxed">
       no meal slots configured.
@@ -156,15 +179,19 @@
       {#each data.slots as s (slotKey(s))}
         {@const key = slotKey(s)}
         <li class="flex items-center gap-2">
+          <!-- Touch target: 24px square on phones (above the 44 HIG
+               via the surrounding padding eaten by the row), 16px on
+               desktop where the cursor lands precisely. -->
           <button
             onclick={() => toggle(s)}
             disabled={busyKey === key}
-            class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors disabled:opacity-50
+            class="w-5 h-5 sm:w-4 sm:h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors disabled:opacity-50
               {s.done ? 'bg-success border-success' : 'border-surface2 hover:border-primary'}"
             aria-label="toggle {s.name}"
+            aria-pressed={s.done}
           >
             {#if s.done}
-              <svg viewBox="0 0 12 12" class="w-3 h-3 text-mantle"
+              <svg viewBox="0 0 12 12" class="w-3.5 h-3.5 sm:w-3 sm:h-3 text-mantle"
                 ><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z" /></svg
               >
             {/if}
