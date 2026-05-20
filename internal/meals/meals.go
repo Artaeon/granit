@@ -349,6 +349,14 @@ func WriteSection(body string, slots []Slot) string {
 		seen[key] = true
 		out = append(out, renderRow(s))
 	}
+	// Pop trailing blank lines inside the section before we append
+	// new slots — otherwise every concurrent PATCH that appends a
+	// row stacks another blank-line gap, and the section drifts
+	// into a multi-blank mess after a stress-write burst. Caught
+	// by the 5×concurrent PATCH smoke test.
+	for len(out) > headingIdx+1 && strings.TrimSpace(out[len(out)-1]) == "" {
+		out = out[:len(out)-1]
+	}
 	// Append any slots not seen in the original section. Preserves
 	// the sort order ApplyPatch already imposed.
 	appended := 0
@@ -361,16 +369,29 @@ func WriteSection(body string, slots []Slot) string {
 	}
 	// Tail content (next heading + everything after).
 	if endIdx < len(lines) {
-		// Keep one blank line between the appended rows and the next
-		// heading so the markdown stays readable. Only insert when
-		// we actually appended something AND there isn't a blank line
-		// already between us and the next heading.
-		if appended > 0 && (len(out) == 0 || strings.TrimSpace(out[len(out)-1]) != "") {
+		// Always ensure exactly one blank line between the last
+		// section line and the next heading. The earlier
+		// trailing-blank pop normalised the section to end on a
+		// non-blank line; without this re-insertion the section
+		// would collide with the next heading and look like
+		// "row\n## Notes" — visually fused.
+		if len(out) > headingIdx+1 && strings.TrimSpace(out[len(out)-1]) != "" {
 			out = append(out, "")
 		}
 		out = append(out, lines[endIdx:]...)
 	}
-	return strings.Join(out, "\n")
+	_ = appended
+	result := strings.Join(out, "\n")
+	// Preserve the original body's trailing-newline state. The
+	// trailing-blank pop above can strip the final "\n" when the
+	// Meals section is the LAST thing in the file (no next heading),
+	// leaving a file that ends mid-line. Markdown editors handle
+	// this but it's untidy and breaks "POSIX text file" assumptions
+	// some tools rely on.
+	if strings.HasSuffix(body, "\n") && !strings.HasSuffix(result, "\n") {
+		result += "\n"
+	}
+	return result
 }
 
 // renderRow is the single-line equivalent of RenderSection's per-slot

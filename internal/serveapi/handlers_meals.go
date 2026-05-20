@@ -144,6 +144,38 @@ func (s *Server) handlePatchMeals(w http.ResponseWriter, r *http.Request) {
 	}
 	raw := string(rawBytes)
 
+	// If the client omitted Name (calendar click sends time+date only
+	// because the rendered title contains "— text" suffix), resolve
+	// it from the parsed slot at that time, or fall back to the
+	// matching default. Without this, ApplyPatch's append-missing
+	// path would create a Slot with Name="" which renders as
+	// "- [x] 12:30  — sandwich" (note the double space) and Parse
+	// reads it back with garbage. Found via concurrent PATCH stress
+	// test.
+	if b.Name == "" {
+		for _, s := range meals.Parse(raw) {
+			if s.Time == b.Time {
+				b.Name = s.Name
+				break
+			}
+		}
+	}
+	if b.Name == "" {
+		for _, d := range meals.DefaultSlots() {
+			if d.Time == b.Time {
+				b.Name = d.Name
+				break
+			}
+		}
+	}
+	if b.Name == "" {
+		// Time isn't a default and isn't materialised — refuse
+		// rather than create an anonymous row. The client should
+		// pass a name for custom slots.
+		writeError(w, http.StatusBadRequest, "name required for non-default time")
+		return
+	}
+
 	// Patch against the *parsed* slots only (not merged-with-defaults).
 	// ApplyPatch's append-missing path materialises just the targeted
 	// slot, so a single tick writes one row instead of stamping all
@@ -210,17 +242,27 @@ func (s *Server) handlePatchMeals(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// dailyPathFor returns the absolute path of the daily note for a
+// given date. Matches daily.GetDailyPath's logic exactly: when
+// cfg.Folder is empty the note lives at the vault root (the granit
+// default), otherwise inside the configured subfolder. Hard-coding
+// "Daily" as a fallback was the bug that made PATCHes invisible to
+// subsequent GETs on default vaults — EnsureDaily wrote at the
+// root while GET tried to read from /Daily.
+func (s *Server) dailyPathFor(cfg daily.DailyConfig, dateISO string) string {
+	filename := dateISO + ".md"
+	folder := strings.TrimRight(cfg.Folder, "/")
+	if folder == "" {
+		return filepath.Join(s.cfg.Vault.Root, filename)
+	}
+	return filepath.Join(s.cfg.Vault.Root, folder, filename)
+}
+
 // readDailyBody reads the daily note for a given date and returns its
 // raw markdown body. Missing file = empty string — callers treat that
 // as "no meals yet" (defaults will fill in).
 func (s *Server) readDailyBody(dateISO string) string {
-	cfg := s.dailyConfigFor()
-	folder := strings.TrimRight(cfg.Folder, "/")
-	if folder == "" {
-		folder = "Daily"
-	}
-	rel := folder + "/" + dateISO + ".md"
-	abs := filepath.Join(s.cfg.Vault.Root, rel)
+	abs := s.dailyPathFor(s.dailyConfigFor(), dateISO)
 	data, err := os.ReadFile(abs)
 	if err != nil {
 		return ""
@@ -238,15 +280,12 @@ func (s *Server) resolveMealsDaily(cfg daily.DailyConfig, dateISO string) (strin
 		path, _, err := daily.EnsureDaily(s.cfg.Vault.Root, cfg)
 		return path, err
 	}
-	folder := strings.TrimRight(cfg.Folder, "/")
-	if folder == "" {
-		folder = "Daily"
-	}
-	rel := folder + "/" + dateISO + ".md"
-	abs := filepath.Join(s.cfg.Vault.Root, rel)
+	abs := s.dailyPathFor(cfg, dateISO)
 	if _, statErr := os.Stat(abs); statErr != nil {
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-			return "", err
+		if dir := filepath.Dir(abs); dir != s.cfg.Vault.Root {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return "", err
+			}
 		}
 		if err := os.WriteFile(abs, []byte{}, 0o644); err != nil {
 			return "", err

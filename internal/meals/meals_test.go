@@ -260,6 +260,36 @@ func TestWriteSection_AppendsNewSlotsBeforeNextHeading(t *testing.T) {
 	}
 }
 
+func TestWriteSection_KeepsOneBlankBeforeNextHeading(t *testing.T) {
+	// Section ends with rows, next heading follows. After rewriting,
+	// there must still be exactly one blank line between the last
+	// meal row and the next heading — otherwise the section visually
+	// fuses into its neighbour ("row\n## Notes").
+	body := "## Meals\n- [ ] 08:00 Breakfast\n\n## Notes\nstuff\n"
+	tr := true
+	updated, _ := ApplyPatch(Parse(body), "08:00", "", &tr, nil)
+	out := WriteSection(body, updated)
+	if !strings.Contains(out, "- [x] 08:00 Breakfast\n\n## Notes") {
+		t.Errorf("blank line between section and next heading was lost: %q", out)
+	}
+}
+
+func TestWriteSection_CollapsesAccumulatedBlanks(t *testing.T) {
+	// Simulate the state after several concurrent PATCHes: multiple
+	// trailing blanks have built up inside the section. A subsequent
+	// PATCH must normalise this to a clean trailing-newline shape.
+	body := "## Meals\n- [ ] 08:00 Breakfast\n\n\n\n## Notes\nx\n"
+	tr := true
+	updated, _ := ApplyPatch(Parse(body), "08:00", "", &tr, nil)
+	out := WriteSection(body, updated)
+	if strings.Contains(out, "\n\n\n") {
+		t.Errorf("expected blanks to collapse, still has triple-newline: %q", out)
+	}
+	if !strings.Contains(out, "- [x] 08:00 Breakfast\n\n## Notes") {
+		t.Errorf("expected single blank before next heading, got: %q", out)
+	}
+}
+
 func TestWriteSection_PreservesUnusualHeadingLevel(t *testing.T) {
 	body := "### Meals\n- [ ] 08:00 Breakfast\n"
 	tr := true
