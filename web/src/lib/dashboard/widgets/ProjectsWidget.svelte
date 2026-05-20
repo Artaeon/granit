@@ -4,6 +4,7 @@
   import { onWsEvent } from '$lib/ws';
 
   let projects = $state<Project[]>([]);
+  let loaded = $state(false);
 
   async function load() {
     try {
@@ -14,6 +15,8 @@
         .slice(0, 5);
     } catch {
       projects = [];
+    } finally {
+      loaded = true;
     }
   }
 
@@ -40,7 +43,24 @@
     <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Active projects</h2>
     <a href="/projects" class="text-xs text-secondary hover:underline">all →</a>
   </div>
-  {#if projects.length === 0}
+  {#if !loaded}
+    <!-- Skeleton — three rows mirroring the project shape (color dot
+         + name + progress bar) so the card holds its height while
+         the list arrives. Prevents the "no active projects" flash
+         that this widget used to show during the API roundtrip. -->
+    <ul class="space-y-3" aria-hidden="true">
+      {#each Array(3) as _, i (i)}
+        <li>
+          <div class="flex items-baseline gap-2 mb-1">
+            <span class="w-2 h-2 rounded-full bg-surface1 animate-pulse"></span>
+            <span class="h-3 flex-1 rounded bg-surface1 animate-pulse" style="max-width: {60 + i * 8}%"></span>
+            <span class="h-3 w-8 rounded bg-surface1 animate-pulse"></span>
+          </div>
+          <div class="ml-4 h-1 rounded-full bg-surface1 animate-pulse"></div>
+        </li>
+      {/each}
+    </ul>
+  {:else if projects.length === 0}
     <div class="text-sm text-dim italic">no active projects</div>
   {:else}
     <ul class="space-y-3">
