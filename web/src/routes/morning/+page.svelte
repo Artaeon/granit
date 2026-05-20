@@ -145,16 +145,36 @@
   async function load() {
     if (!$auth) return;
     try {
+      // Auxiliary feeds (goals, prayer, calendar) are graceful-degrade:
+      // morning page must keep working when one of them fails, but a
+      // silent fallback used to leave the user wondering why their
+      // calendar/goals went missing. We log + toast.warning the
+      // specific failure so the user can act, then continue with
+      // empty shapes. Tasks + habits + deadlines are load-bearing and
+      // still bubble up via the outer try/catch.
+      const warn = (label: string) => (e: unknown) => {
+        console.warn(`[morning] ${label} load failed:`, e);
+        toast.warning(`${label} unavailable — ${errorMessage(e)}`);
+      };
       const [t, h, g, d, p, cal] = await Promise.all([
         api.listTasks({ status: 'open' }),
         api.listHabits(),
-        api.listGoals().catch((): { goals: Goal[]; total: number } => ({ goals: [], total: 0 })),
+        api.listGoals().catch((e): { goals: Goal[]; total: number } => {
+          warn('goals')(e);
+          return { goals: [], total: 0 };
+        }),
         api.tryListDeadlines(),
-        api.listPrayer().catch(() => ({ intentions: [] as PrayerIntention[], total: 0 })),
+        api.listPrayer().catch((e) => {
+          warn('prayer')(e);
+          return { intentions: [] as PrayerIntention[], total: 0 };
+        }),
         // Today's events power the AI briefing's "shape of the day"
         // paragraph + the stat-row event count. Tolerate failure —
         // morning page is still useful without the calendar feed.
-        api.calendar(today, today).catch(() => ({ events: [] }))
+        api.calendar(today, today).catch((e) => {
+          warn('calendar')(e);
+          return { events: [] };
+        })
       ]);
       openTasks = t.tasks;
       knownHabits = h.habits;
