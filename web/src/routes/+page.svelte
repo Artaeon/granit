@@ -11,6 +11,16 @@
   // inject them into the user's saved config locally so they appear in
   // customize-mode and can render. Order matters — these are the slots
   // we want the new widgets to occupy by default.
+  // Widgets we inject into a user's saved config because the server
+  // default didn't ship them. Most go in DISABLED so the dashboard
+  // stays focused — the user opts in via Customize. Only widgets
+  // that materially change "what is today?" land enabled.
+  //
+  // Tightened during the "professional cleanup" pass: the previous
+  // default lit up 21 widgets on first launch (server's 15 + 6 new),
+  // which read as "a wall of tiles" rather than a workspace. Tier-1
+  // here: today-stream + today-focus, both of which directly answer
+  // the user's first morning question. Everything else is opt-in.
   const NEW_WIDGETS: { id: string; type: import('$lib/api').DashboardWidgetType; afterId: string; enabled: boolean }[] = [
     // Today stream sits at the very top after greeting — the
     // headline "what's happening now + what's next" panel. Merges
@@ -19,28 +29,22 @@
     // preview. Single source of truth for "shape of today" so the
     // user doesn't have to triangulate four separate today-* tiles.
     { id: 'w-today-stream', type: 'today-stream', afterId: 'w-greeting', enabled: true },
-    // Vision lands above the tactics — anchor for the morning re-read.
-    { id: 'w-vision', type: 'vision', afterId: 'w-today-stream', enabled: true },
-    // One-thing shows the commitment from the latest weekly review,
-    // sitting between vision and today's focus so the week's
-    // intention bridges the season's vision and the day's tactics.
-    { id: 'w-one-thing', type: 'one-thing', afterId: 'w-vision', enabled: true },
-    { id: 'w-today-focus', type: 'today-focus', afterId: 'w-one-thing', enabled: true },
-    { id: 'w-top-deadlines', type: 'top-deadlines', afterId: 'w-now', enabled: true },
-    // top-goals used to inject here as a parallel "by-when" tile,
-    // but GoalsProgressWidget now carries the same urgency chip +
-    // venture/project line — so injecting both meant two near-
-    // identical goal lists side-by-side. Existing users keep their
-    // top-goals tile; new dashboards just get goals-progress.
-    // Quick links — hub favorites surfaced next to the by-when
-    // widgets so the morning view answers both "when" and "where"
-    // at a glance.
-    { id: 'w-quick-links', type: 'quick-links', afterId: 'w-top-deadlines', enabled: true },
-    // Verse-for-mood sits next to Today's verse so the scripture
-    // column on the dashboard answers both "what's today's verse"
-    // and "what does scripture say about what I'm feeling right
-    // now". Disabled by default so the user opts in via customize-
-    // mode — not every dashboard wants a second scripture tile.
+    // Today focus — the AI-suggested #1 thing for the day. Anchors
+    // intention right under the stream.
+    { id: 'w-today-focus', type: 'today-focus', afterId: 'w-today-stream', enabled: true },
+    // Vision anchors the morning re-read but isn't critical for
+    // tactical day-of work — opt-in.
+    { id: 'w-vision', type: 'vision', afterId: 'w-today-focus', enabled: false },
+    // One-thing: weekly-plan commitment. Opt-in for users who do
+    // a Sunday planning ritual.
+    { id: 'w-one-thing', type: 'one-thing', afterId: 'w-vision', enabled: false },
+    // top-deadlines: deadline pressure tile. Opt-in — at-a-glance
+    // already shows a 7-day deadline count and that's enough for
+    // most days.
+    { id: 'w-top-deadlines', type: 'top-deadlines', afterId: 'w-now', enabled: false },
+    // Quick links — hub favorites. Opt-in.
+    { id: 'w-quick-links', type: 'quick-links', afterId: 'w-top-deadlines', enabled: false },
+    // Verse-for-mood — secondary scripture surface. Opt-in.
     { id: 'w-verse-for-mood', type: 'verse-for-mood', afterId: 'w-scripture', enabled: false }
   ];
 
