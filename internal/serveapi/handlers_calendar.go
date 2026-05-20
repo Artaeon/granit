@@ -1,6 +1,7 @@
 package serveapi
 
 import (
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/artaeon/granit/internal/deadlines"
 	"github.com/artaeon/granit/internal/goals"
 	"github.com/artaeon/granit/internal/granitmeta"
+	"github.com/artaeon/granit/internal/meals"
 )
 
 type calendarEvent struct {
@@ -603,6 +605,54 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 			Title:   g.Title,
 			EventID: g.ID,
 		})
+	}
+
+	// Meal slots — one event per slot in the user's daily-note `## Meals`
+	// section, plus the default slot list filled in for today + future
+	// (so the calendar shows planned meals even before the user ticks
+	// anything). Past days emit only what was actually logged — we don't
+	// pollute history with ghost defaults for days the user didn't fill
+	// in. Default duration is 30 minutes so the chip has visible extent
+	// without crowding adjacent events.
+	todayStr := time.Now().Format("2006-01-02")
+	for d := from; !d.After(to); d = d.AddDate(0, 0, 1) {
+		ds := d.Format("2006-01-02")
+		filename := ds + ".md"
+		rel := filename
+		if cfg.Folder != "" {
+			rel = filepath.ToSlash(filepath.Join(cfg.Folder, filename))
+		}
+		body := ""
+		if n := s.cfg.Vault.GetNote(rel); n != nil && s.cfg.Vault.EnsureLoaded(rel) {
+			body = n.Content
+		}
+		parsed := meals.Parse(body)
+		var slots []meals.Slot
+		if ds >= todayStr {
+			slots = meals.MergeWithDefaults(parsed, meals.DefaultSlots())
+		} else {
+			slots = parsed
+		}
+		for i, m := range slots {
+			t, err := time.Parse("15:04", m.Time)
+			if err != nil {
+				continue
+			}
+			start := time.Date(d.Year(), d.Month(), d.Day(), t.Hour(), t.Minute(), 0, 0, time.Local)
+			end := start.Add(30 * time.Minute)
+			startStr := start.Format(time.RFC3339)
+			endStr := end.Format(time.RFC3339)
+			events = append(events, calendarEvent{
+				Type:            "meal_slot",
+				Date:            ds,
+				Start:           &startStr,
+				End:             &endStr,
+				Title:           m.Name,
+				EventID:         fmt.Sprintf("meal:%s:%s:%d", ds, m.Time, i),
+				Done:            m.Done,
+				DurationMinutes: 30,
+			})
+		}
 	}
 
 	_ = strings.TrimSpace
