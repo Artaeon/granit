@@ -100,12 +100,13 @@ func parseNote(note NoteContent) []Task {
 	// indent level → LineNum of most recent task at that level (1-based).
 	parentStack := make(map[int]int)
 	var out []Task
-	// `## Habits` is owned by the habits subsystem (handlers_habits.go's
-	// parseHabitsSection). Without this skip, every habit checkbox in a
-	// daily note also surfaced on /tasks — the user reported habits
-	// "showing in tasks sometimes". Match any heading level (matches the
-	// habits parser's heading shape) and exit on the next heading.
-	inHabits := false
+	// `## Habits` and `## Meals` are owned by their own subsystems
+	// (handlers_habits.go's parseHabitsSection / internal/meals).
+	// Without this skip, every habit or meal checkbox in a daily note
+	// also surfaced on /tasks — the user reported habits "showing in
+	// tasks sometimes". Match any heading level and exit on the next
+	// heading.
+	inExcluded := false
 	// Heading detection has to ignore `#` lines that are actually code-
 	// fence content. Without this, a daily note containing
 	//
@@ -113,7 +114,7 @@ func parseNote(note NoteContent) []Task {
 	//   # Habits configuration
 	//   ```
 	//
-	// would falsely toggle inHabits=true and silently drop every task
+	// would falsely toggle inExcluded=true and silently drop every task
 	// after the fence. Track triple-backtick (```) and triple-tilde
 	// (~~~) fences; toggle on each fence line. Indented (4-space)
 	// code blocks aren't detected here because they're rare in daily
@@ -131,10 +132,10 @@ func parseNote(note NoteContent) []Task {
 		}
 		if strings.HasPrefix(trimmed, "#") {
 			text := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
-			inHabits = strings.EqualFold(text, "Habits")
+			inExcluded = strings.EqualFold(text, "Habits") || strings.EqualFold(text, "Meals")
 			continue
 		}
-		if inHabits {
+		if inExcluded {
 			continue
 		}
 		if !strings.HasPrefix(trimmed, "- [") {
