@@ -20,11 +20,25 @@
   let data = $state<MealsResponse | null>(null);
   let loaded = $state(false);
   let loadError = $state('');
-  let busyKey = $state<string | null>(null);
+  // Set of slot keys currently mid-PATCH. We use a set (not a single
+  // key) so the user can tick multiple slots in fast succession — the
+  // reconciling load() only fires when the last in-flight patch
+  // resolves, otherwise an early reload could snap a still-pending
+  // optimistic flip back to the pre-patch server state.
+  let busyKeys = $state(new Set<string>());
   // Debounced text-input state — local per-row buffer keyed by
   // (time|name) so a fast typist doesn't fire a PATCH per keystroke.
   let drafts = $state<Record<string, string>>({});
   let saveTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
+  function addBusy(key: string) {
+    busyKeys.add(key);
+    busyKeys = new Set(busyKeys);
+  }
+  function removeBusy(key: string) {
+    busyKeys.delete(key);
+    busyKeys = new Set(busyKeys);
+  }
 
   function slotKey(s: { time: string; name: string }): string {
     return `${s.time}|${s.name.toLowerCase()}`;
@@ -54,14 +68,20 @@
       // Today's daily note touched anywhere reloads us. Filter by
       // path prefix would require knowing the daily folder name —
       // for now any note.changed triggers reload; cheap enough.
-      if (ev.type === 'note.changed') load();
+      // But skip while a local patch is in flight: that patch's
+      // own reload will catch the server state without trampling
+      // pending optimistic flips for other slots the user is
+      // ticking in parallel.
+      if (ev.type !== 'note.changed') return;
+      if (busyKeys.size > 0) return;
+      load();
     });
   });
 
   async function toggle(slot: MealSlot) {
     const key = slotKey(slot);
-    if (busyKey === key) return;
-    busyKey = key;
+    if (busyKeys.has(key)) return;
+    addBusy(key);
     // Optimistic flip so the tick feels instant.
     if (data) {
       data.slots = data.slots.map((s) =>
@@ -76,13 +96,16 @@
         date: data?.date,
         done: !slot.done
       });
-      // Server returns canonical state — re-sync to clear any drift.
-      await load();
     } catch (e) {
       toast.error(`couldn't tick ${slot.name}: ${errorMessage(e)}`);
-      await load();
     } finally {
-      busyKey = null;
+      removeBusy(key);
+    }
+    // Reconcile only once the last in-flight patch resolves —
+    // otherwise an early load() during a multi-tick burst would
+    // overwrite still-pending optimistic flips for sibling slots.
+    if (busyKeys.size === 0) {
+      await load();
     }
   }
 
@@ -105,6 +128,7 @@
       delete drafts[key];
       return;
     }
+    addBusy(key);
     try {
       await api.patchMeal({
         time: slot.time,
@@ -116,9 +140,13 @@
       // (e.g. another tab editing the same slot) wins. Without this
       // the stale buffer would shadow the canonical text forever.
       delete drafts[key];
-      await load();
     } catch (e) {
       toast.error(`couldn't save ${slot.name} text: ${errorMessage(e)}`);
+    } finally {
+      removeBusy(key);
+    }
+    if (busyKeys.size === 0) {
+      await load();
     }
   }
 
@@ -184,7 +212,7 @@
                desktop where the cursor lands precisely. -->
           <button
             onclick={() => toggle(s)}
-            disabled={busyKey === key}
+            disabled={busyKeys.has(key)}
             class="w-5 h-5 sm:w-4 sm:h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors disabled:opacity-50
               {s.done ? 'bg-success border-success' : 'border-surface2 hover:border-primary'}"
             aria-label="toggle {s.name}"
