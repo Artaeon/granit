@@ -172,7 +172,7 @@
 
   // Event-type filter: each toggle hides events of that type. Persisted so
   // the user's preference (e.g. "always hide ICS") sticks across sessions.
-  type EventFilterKey = 'daily' | 'task_due' | 'task_scheduled' | 'event' | 'ics_event' | 'deadline' | 'goal_target';
+  type EventFilterKey = 'daily' | 'task_due' | 'task_scheduled' | 'event' | 'ics_event' | 'deadline' | 'goal_target' | 'meal_slot';
   const FILTER_KEY = 'granit.calendar.filters';
   let hidden = $state<Set<EventFilterKey>>(
     new Set(loadStored<EventFilterKey[]>(FILTER_KEY, []))
@@ -198,6 +198,7 @@
     { key: 'task_due',       label: 'Due',        tone: 'warning' },
     { key: 'deadline',       label: 'Deadlines',  tone: 'error' },
     { key: 'goal_target',    label: 'Goals',      tone: 'mauve' },
+    { key: 'meal_slot',      label: 'Meals',      tone: 'accent' },
     { key: 'daily',          label: 'Daily',      tone: 'secondary' }
   ];
 

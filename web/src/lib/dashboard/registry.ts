@@ -141,7 +141,12 @@ export const widgetRegistry: WidgetMeta[] = [
   // current ISO week's plan note, groups by venture (the "### Venture"
   // heading they sit under in the plan), shows done/total per group.
   // Bridge between the Sunday planning ritual and the daily view.
-  { type: 'weekly-plan', label: 'Weekly plan commitments', description: 'This week\'s committed tasks from /plans/week, grouped by venture', span: 1, load: lazy(() => import('./widgets/WeeklyPlanWidget.svelte')) }
+  { type: 'weekly-plan', label: 'Weekly plan commitments', description: 'This week\'s committed tasks from /plans/week, grouped by venture', span: 1, load: lazy(() => import('./widgets/WeeklyPlanWidget.svelte')) },
+  // Meals — three (or more) daily slots backed by the daily-note
+  // `## Meals` section. Goal is glanceable "did I eat enough today?"
+  // visibility, NOT calorie tracking. Syncs with the calendar's
+  // meal_slot strip.
+  { type: 'meals', label: 'Meals', description: 'Today\'s meal slots with checkbox + free-text capture; syncs to the calendar', span: 1, load: lazy(() => import('./widgets/MealsWidget.svelte')) }
 ];
 
 export function widgetMeta(type: string): WidgetMeta | undefined {

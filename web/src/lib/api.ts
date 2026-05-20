@@ -3216,7 +3216,8 @@ export type DashboardWidgetType =
   | 'recent-annotations'
   | 'sabbath'
   | 'roots'
-  | 'weekly-plan';
+  | 'weekly-plan'
+  | 'meals';
 
 export interface DashboardWidget {
   id: string;

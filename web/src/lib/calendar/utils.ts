@@ -376,6 +376,11 @@ export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; bor
       // visual identity for "this is a goal" across dashboard and
       // calendar.
       return hex('#af52de');
+    case 'meal_slot':
+      // Subtle accent so meal slots don't drown out real events but
+      // stay visible. Done meals get the success tone — pending get
+      // a softer subtext to read as "passive reminder, not urgent".
+      return ev.done ? tone('success') : tone('accent');
     default:
       return tone('subtext');
   }
