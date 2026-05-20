@@ -62,9 +62,28 @@
     }
   }
 
+  // Schedule a reload at next midnight so the widget rolls over to
+  // the new day without the user having to refresh. setTimeout is
+  // armed for the exact remaining ms until 00:00:05 local (the 5s
+  // pad absorbs clock-drift edge cases where the timer fires
+  // microseconds before midnight). After firing, re-arm for the
+  // following midnight.
+  let midnightTimer: ReturnType<typeof setTimeout> | null = null;
+  function armMidnight() {
+    if (midnightTimer) clearTimeout(midnightTimer);
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(24, 0, 5, 0);
+    midnightTimer = setTimeout(() => {
+      void load();
+      armMidnight();
+    }, next.getTime() - now.getTime());
+  }
+
   onMount(() => {
     load();
-    return onWsEvent((ev) => {
+    armMidnight();
+    const unsub = onWsEvent((ev) => {
       // Today's daily note touched anywhere reloads us. Filter by
       // path prefix would require knowing the daily folder name —
       // for now any note.changed triggers reload; cheap enough.
@@ -76,6 +95,17 @@
       if (busyKeys.size > 0) return;
       load();
     });
+    return () => {
+      unsub();
+      if (midnightTimer) clearTimeout(midnightTimer);
+      // Flush every pending debouncer so a navigate-away during the
+      // 600ms window doesn't leave dangling timers firing patchMeal
+      // on a torn-down component (would no-op but generates a
+      // console warning + a wasted network round-trip).
+      for (const k of Object.keys(saveTimers)) {
+        clearTimeout(saveTimers[k]);
+      }
+    };
   });
 
   async function toggle(slot: MealSlot) {
