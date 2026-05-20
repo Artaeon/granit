@@ -118,18 +118,24 @@ func (s *Server) handlePatchMeals(w http.ResponseWriter, r *http.Request) {
 	}
 	raw := string(rawBytes)
 
-	// Parse → merge with defaults so a PATCH against an unmaterialised
-	// default slot (the common case for a fresh day) lands on the
-	// right row instead of appending a duplicate at the bottom.
-	current := meals.MergeWithDefaults(meals.Parse(raw), meals.DefaultSlots())
-	updated, changed := meals.ApplyPatch(current, b.Time, b.Name, b.Done, b.Text)
+	// Patch against the *parsed* slots only (not merged-with-defaults).
+	// ApplyPatch's append-missing path materialises just the targeted
+	// slot, so a single tick writes one row instead of stamping all
+	// three defaults into the daily note. This matters most for past-
+	// day back-fills ("I had lunch yesterday") where stamping empty
+	// Breakfast/Dinner ghost rows would be surprising. For today the
+	// behaviour is identical from the user's POV — the GET response
+	// still merges in defaults, so the widget renders the full list.
+	parsed := meals.Parse(raw)
+	updated, changed := meals.ApplyPatch(parsed, b.Time, b.Name, b.Done, b.Text)
 	if !changed {
-		// Idempotent no-op — return the current state so the client
-		// can still reconcile against canonical data.
-		done, total := meals.Aggregate(current)
+		// Idempotent no-op — return the merged view so the client can
+		// reconcile against canonical data (defaults included).
+		merged := meals.MergeWithDefaults(parsed, meals.DefaultSlots())
+		done, total := meals.Aggregate(merged)
 		writeJSON(w, http.StatusOK, mealsGetResponse{
 			Date:  dateISO,
-			Slots: current,
+			Slots: merged,
 			Done:  done,
 			Total: total,
 		})
@@ -169,10 +175,14 @@ func (s *Server) handlePatchMeals(w http.ResponseWriter, r *http.Request) {
 	}
 	s.hub.Broadcast(wshub.Event{Type: "note.changed", Path: filepath.ToSlash(rel)})
 
-	done, total := meals.Aggregate(updated)
+	// Response mirrors the GET shape: merge the freshly-written slots
+	// with the user's defaults so the client redraws the full row
+	// list (not just the one we touched).
+	merged := meals.MergeWithDefaults(updated, meals.DefaultSlots())
+	done, total := meals.Aggregate(merged)
 	writeJSON(w, http.StatusOK, mealsGetResponse{
 		Date:  dateISO,
-		Slots: updated,
+		Slots: merged,
 		Done:  done,
 		Total: total,
 	})
