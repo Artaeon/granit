@@ -359,13 +359,11 @@ func WriteSection(body string, slots []Slot) string {
 	}
 	// Append any slots not seen in the original section. Preserves
 	// the sort order ApplyPatch already imposed.
-	appended := 0
 	for _, s := range slots {
 		if seen[slotKey(s)] {
 			continue
 		}
 		out = append(out, renderRow(s))
-		appended++
 	}
 	// Tail content (next heading + everything after).
 	if endIdx < len(lines) {
@@ -380,7 +378,6 @@ func WriteSection(body string, slots []Slot) string {
 		}
 		out = append(out, lines[endIdx:]...)
 	}
-	_ = appended
 	result := strings.Join(out, "\n")
 	// Preserve the original body's trailing-newline state. The
 	// trailing-blank pop above can strip the final "\n" when the
