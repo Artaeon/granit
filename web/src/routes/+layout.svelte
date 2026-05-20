@@ -103,7 +103,7 @@
       (n) => n.href !== '/' && (path === n.href || path.startsWith(n.href + '/'))
     );
     if (match?.moduleId && !modulesStore.isEnabled(match.moduleId)) {
-      toast.info(`${match.label} is disabled — enable it in Settings → Modules`);
+      toast.info(`${match.label} is disabled — enable it in Settings → Features`);
       goto('/', { replaceState: true });
       return;
     }
