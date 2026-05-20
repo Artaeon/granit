@@ -1,10 +1,10 @@
 <script lang="ts">
   // Granit logomark — faceted hexagonal stone.
   //
-  // Six-vertex outline + two internal facet lines (cap base + cap
-  // median) so the silhouette reads as a hewn gem / monolith
-  // rather than a flat hexagon. Picks up on the "granit" name
-  // without being literal about granite.
+  // Six-vertex outline + three internal facet lines (cap base, cap
+  // median, body median) so the silhouette reads as a four-facet cut
+  // gem rather than a flat hexagon with a hat. Picks up on the
+  // "granit" name without being literal about granite.
   //
   // Renders with currentColor so it themes-respond — the host
   // element's text color drives the stroke. Pair with a tinted
@@ -48,8 +48,12 @@
     <path d="M 256 76 L 432 184 L 432 360 L 256 436 L 80 360 L 80 184 Z" />
     <!-- Cap base — splits the top facet from the body. -->
     <path d="M 80 184 L 432 184" />
-    <!-- Cap median — divides the top into two triangular facets so
-         the silhouette reads as faceted stone, not a flat hexagon. -->
+    <!-- Cap median — divides the top into two triangular facets. -->
     <path d="M 256 76 L 256 184" />
+    <!-- Body median — mirrors the cap median through the body so the
+         silhouette reads as four facets total (two cap + two body)
+         instead of two-cap + flat-body. Subtle but turns it from
+         "hexagon with hat" into "cut gemstone". -->
+    <path d="M 256 184 L 256 436" />
   </g>
 </svg>

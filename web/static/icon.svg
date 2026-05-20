@@ -1,23 +1,47 @@
-<!-- Granit logo. Faceted hexagonal stone — six-vertex outline with two
-     internal facet lines that split the top into a triangular cap.
-     Reads as a hewn gem / monolith, picks up on the "granit" name
-     without being literal about granite. Monochrome white-on-black,
-     matching the app's two-theme system (dark default, light variant
-     swaps fg/bg). No purple — the brand is power-UI monochrome.
+<!-- Granit logo. Faceted hexagonal stone — six-vertex outline with a
+     top-cap split (horizontal) plus two internal medians (vertical),
+     dividing the silhouette into four facets: two cap triangles on
+     top, two body trapezoids below. Reads as a hewn gem / monolith,
+     picks up on the "granit" name without being literal about
+     granite.
 
-     Geometry uses absolute coordinates rather than relative so the
-     SVG diffs cleanly. Stroke width is tuned so a 32px favicon still
-     reads — the thin proportions blow up to a confident silhouette
-     at install-icon scale. -->
+     Color scheme is responsive via inline CSS: dark default, light
+     swap when the browser context prefers light. The PNG renderings
+     bake the dark variant (manifest icons are single-mode on iOS /
+     Android). Browser tabs + supported OS surfaces use the SVG and
+     therefore get the live theme swap.
+
+     Geometry uses absolute coordinates for clean diffs. Stroke width
+     tuned so the silhouette stays confident from 32px favicon up
+     through 512px install icon. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Granit">
-  <rect width="512" height="512" rx="96" fill="#000000"/>
-  <g fill="none" stroke="#ffffff" stroke-width="32" stroke-linejoin="round" stroke-linecap="round">
+  <style>
+    .bg { fill: #0a0a0a; }
+    .fg { stroke: #fafafa; }
+    .cap-fill { fill: #16161a; }
+    @media (prefers-color-scheme: light) {
+      .bg { fill: #fafafa; }
+      .fg { stroke: #0a0a0a; }
+      .cap-fill { fill: #ededf0; }
+    }
+  </style>
+  <rect class="bg" width="512" height="512" rx="96"/>
+  <!-- Subtle cap-fill polygon — same shape as the top facet, slightly
+       brighter (dark mode) or darker (light mode) than the bg. Reads
+       as a carved highlight; the outline strokes ride on top so the
+       silhouette stays crisp. -->
+  <polygon class="cap-fill" points="256,76 432,184 80,184"/>
+  <g class="fg" fill="none" stroke-width="32" stroke-linejoin="round" stroke-linecap="round">
     <!-- Outer stone outline. Top apex, top shoulders, bottom shoulders, bottom apex. -->
     <path d="M 256 76 L 432 184 L 432 360 L 256 436 L 80 360 L 80 184 Z"/>
     <!-- Cap base — splits the top facet from the body. -->
     <path d="M 80 184 L 432 184"/>
-    <!-- Cap median — divides the top into two triangular facets so
-         the silhouette reads as faceted stone, not a flat hexagon. -->
+    <!-- Cap median — divides the top into two triangular facets. -->
     <path d="M 256 76 L 256 184"/>
+    <!-- Body median — mirrors the cap median through the body so the
+         stone reads as four facets total instead of two-cap + flat-
+         body. Subtle but turns the silhouette from "hexagon with hat"
+         into "cut gemstone". -->
+    <path d="M 256 184 L 256 436"/>
   </g>
 </svg>

@@ -1,12 +1,26 @@
-<!-- Favicon: same faceted-stone mark as icon.svg, but tuned for tiny
-     sizes. The internal cap median is dropped (it disappears at 16px
-     anyway and just adds visual noise at 32px), and the outer stroke
-     is proportionally thicker so the silhouette stays confident at
-     browser-tab scale. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="6" fill="#000000"/>
-  <g fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
+<!-- Favicon: same faceted-stone mark as icon.svg, tuned for tiny
+     sizes. Drops the cap median (it disappears at 16px anyway and
+     just adds visual noise at 32px), keeps the body median so the
+     mark still reads as "cut stone" not just "hexagon hat". Stroke
+     thicker than the 512 variant so the silhouette stays confident
+     at browser-tab scale.
+
+     Color scheme matches the system: dark default, light swap via
+     prefers-color-scheme so the favicon doesn't look stranded on a
+     light browser chrome. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Granit">
+  <style>
+    .bg { fill: #0a0a0a; }
+    .fg { stroke: #fafafa; }
+    @media (prefers-color-scheme: light) {
+      .bg { fill: #fafafa; }
+      .fg { stroke: #0a0a0a; }
+    }
+  </style>
+  <rect class="bg" width="32" height="32" rx="6"/>
+  <g class="fg" fill="none" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
     <path d="M 16 5 L 27 11.5 L 27 22.5 L 16 27 L 5 22.5 L 5 11.5 Z"/>
     <path d="M 5 11.5 L 27 11.5"/>
+    <path d="M 16 11.5 L 16 27"/>
   </g>
 </svg>
