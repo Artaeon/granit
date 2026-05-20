@@ -66,10 +66,6 @@ export function buildBriefingUserPrompt(input: BriefingInputs): string {
           })
         : 'all-day';
       const loc = e.location ? ` @ ${e.location}` : '';
-      // `kind` is the optional user-set category (meeting / focus /
-      // personal / …). The server emits it on the wire even though
-      // the older TS type omitted it — we now declare it on the
-      // CalendarEvent shape so this reference type-checks.
       const kind = e.kind ? ` [${e.kind}]` : '';
       return `- ${t} · ${e.title}${kind}${loc}`;
     });

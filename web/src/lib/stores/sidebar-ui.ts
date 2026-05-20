@@ -11,13 +11,12 @@
 // nav sidebar component (which renders the rows) consume the same
 // source instead of passing state down and toggles back up.
 //
-// Default-collapse everything except the Primary section (Heute /
-// Projekte / Kalender / Rhythmus / Review — the Rhythmus-OS surface
-// from 2026-05-19). The four secondary sections start collapsed so
-// the sidebar reads as five primary tabs first, with the rest of
-// the 27 routes available behind a tap. Existing users keep their
-// stored preference because the persisted record overrides this
-// default on read.
+// Default-collapse everything except Daily. The original default
+// was "all expanded", which surfaced 25+ items at once and made
+// the sidebar feel like a phonebook. Daily stays expanded because
+// it's the morning/tasks/calendar cluster every user lives in. The
+// others get expanded as needed and the choice persists. Existing
+// users keep whatever they had.
 
 import { writable } from 'svelte/store';
 import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
@@ -26,7 +25,6 @@ const COLLAPSED_KEY = 'granit.sidebar.collapsed';
 const COMPACT_KEY = 'granit.sidebar.compact';
 
 const DEFAULT_COLLAPSED: Record<string, boolean> = {
-  daily: true,
   plan: true,
   life: true,
   knowledge: true,

@@ -57,9 +57,6 @@ func TestIsEmpty(t *testing.T) {
 		{"values set", Vision{Values: []string{"Faith"}}, false},
 		{"season set", Vision{SeasonFocus: "Q1"}, false},
 		{"empty values slice", Vision{Values: []string{}}, true},
-		{"identity set", Vision{Identities: map[string]string{"spirit": "Ich suche Gott täglich"}}, false},
-		{"identities map present but all empty", Vision{Identities: map[string]string{"spirit": "", "work": ""}}, true},
-		{"empty identities map", Vision{Identities: map[string]string{}}, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -67,31 +64,6 @@ func TestIsEmpty(t *testing.T) {
 				t.Errorf("IsEmpty = %v, want %v", got, c.want)
 			}
 		})
-	}
-}
-
-func TestIdentitiesRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	in := Vision{
-		Identities: map[string]string{
-			"spirit":  "Ich suche Gott täglich",
-			"work":    "Ich arbeite fokussiert, aber bete Arbeit nicht an",
-			"evening": "Mein Abend gehört nicht der Arbeit",
-		},
-		// Legacy fields stay present so the migration path keeps a
-		// recovery source on disk — exercise both shapes together.
-		Mission: "old mission",
-		Values:  []string{"Faith"},
-	}
-	if err := Save(dir, in); err != nil {
-		t.Fatalf("save: %v", err)
-	}
-	got := Load(dir)
-	if !reflect.DeepEqual(got.Identities, in.Identities) {
-		t.Errorf("identities lost on round-trip: got %+v, want %+v", got.Identities, in.Identities)
-	}
-	if got.Mission != in.Mission || !reflect.DeepEqual(got.Values, in.Values) {
-		t.Errorf("legacy fields lost when identities also present: got mission=%q values=%v", got.Mission, got.Values)
 	}
 }
 

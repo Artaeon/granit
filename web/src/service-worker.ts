@@ -135,21 +135,7 @@ function isNoCacheGet(url: URL): boolean {
   // (/api/v1/notes with no extra segments / with a query string only)
   // is fine to cache because the listing is mod-time-keyed and the
   // mutation invalidation below also clears it.
-  //
-  // Exception: Daily/<date>.md. The Heute-Karte is the user's
-  // primary surface and going offline would otherwise leave it
-  // unable to render the morning check-in. Daily notes are toggle-
-  // driven (booleans + short text), not free-text editing, so the
-  // stale-readback risk is much smaller than for the open editor;
-  // and the mutation invalidation below will purge the cached
-  // entry on the next PUT anyway.
-  if (/^\/api\/v1\/notes\/[^?]/.test(url.pathname)) {
-    // path after /api/v1/notes/ is URI-encoded; "Daily%2F" or
-    // "Daily/" both indicate the daily-note folder. Match either.
-    const after = url.pathname.slice('/api/v1/notes/'.length);
-    if (after.startsWith('Daily/') || after.startsWith('Daily%2F')) return false;
-    return true;
-  }
+  if (/^\/api\/v1\/notes\/[^?]/.test(url.pathname)) return true;
   return false;
 }
 

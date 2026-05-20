@@ -839,16 +839,6 @@
                   {#if p.description}
                     <p class="text-xs text-subtext line-clamp-2 mb-1.5">{p.description}</p>
                   {/if}
-                  {#if p.next_action && p.next_action.trim()}
-                    <!-- Each project may surface exactly one next concrete
-                         action — that's the planning anchor the Rhythmus-OS
-                         pivot rests on. Greener tint than description so a
-                         scan of the list answers "what now?" without
-                         opening the detail panel. -->
-                    <p class="text-xs text-secondary mb-1.5 truncate" title={p.next_action}>
-                      → {p.next_action}
-                    </p>
-                  {/if}
                   <div class="flex items-center gap-2 text-[10px]">
                     <div class="flex-1 h-1 rounded-full bg-surface0 overflow-hidden">
                       <div

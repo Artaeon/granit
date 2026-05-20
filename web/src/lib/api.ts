@@ -172,25 +172,7 @@ export interface Task {
   // markdown line intact). Set/cleared via PATCH /tasks/:id { archived: bool }.
   archived?: boolean;
   archivedAt?: string;
-  /** Energy classification — what kind of attention the task asks
-   *  for. The brainstorm's six categories: deep / admin /
-   *  communication / recovery / spiritual / body. Free-form so a
-   *  new type can land without a server migration. Drives the
-   *  müde→admin / wach→deep matching in the next-action engine. */
-  energy?: 'deep' | 'admin' | 'communication' | 'recovery' | 'spiritual' | 'body' | string;
 }
-
-/** Canonical labels for the six task-energy classes, in the order
- *  the brainstorm enumerated them. Exported so the UI dropdown
- *  doesn't drift from the engine. */
-export const TASK_ENERGIES: { id: NonNullable<Task['energy']>; label: string }[] = [
-  { id: 'deep',          label: 'Deep work' },
-  { id: 'admin',         label: 'Admin' },
-  { id: 'communication', label: 'Communication' },
-  { id: 'recovery',      label: 'Recovery' },
-  { id: 'spiritual',     label: 'Spiritual' },
-  { id: 'body',          label: 'Body' }
-];
 
 export interface TaskList {
   tasks: Task[];
@@ -899,26 +881,11 @@ export interface FinOverview {
   goals_active_count: number;
 }
 
-// Vision — the user's "above goals" anchor.
-//
-// As of the 2026-05-19 Rhythmus-OS pivot, the load-bearing field is
-// `identities`: one statement per daily pillar (spirit / food / work
-// / body / evening). The legacy fields (mission / values /
-// season_focus / season_started_at / season_day / season_total)
-// remain on the wire so old data keeps parsing and the web can
-// offer a one-click migration into the new shape — new writes go
-// through `identities`.
-//
+// Vision — life mission + core values + 90-day season focus.
 // Single record per vault. The server decorates the on-disk shape
-// with derived season_day / season_total ("day 12 of 90") for any
-// reader still consuming the legacy season concept; new clients
-// ignore that pair.
+// with derived season_day / season_total ("day 12 of 90") so the
+// UI doesn't redo the date math on every render.
 export interface Vision {
-  /** Identity statement per pillar key ("spirit", "food", ...).
-   *  Keys mirror the web's PillarKey enum; unknown keys are
-   *  preserved by the server but the UI only renders the five. */
-  identities?: Record<string, string>;
-
   mission?: string;
   values?: string[];
   season_focus?: string;
@@ -1566,7 +1533,7 @@ export const api = {
   },
   patchTask: (
     id: string,
-    patch: Partial<Pick<Task, 'done' | 'priority' | 'dueDate' | 'text' | 'scheduledStart' | 'durationMinutes' | 'projectId' | 'snoozedUntil' | 'recurrence' | 'notes' | 'goalId' | 'deadlineId' | 'energy'>> & {
+    patch: Partial<Pick<Task, 'done' | 'priority' | 'dueDate' | 'text' | 'scheduledStart' | 'durationMinutes' | 'projectId' | 'snoozedUntil' | 'recurrence' | 'notes' | 'goalId' | 'deadlineId'>> & {
       triage?: 'inbox' | 'triaged' | 'scheduled' | 'done' | 'dropped' | 'snoozed';
       clearSchedule?: boolean;
       archived?: boolean;

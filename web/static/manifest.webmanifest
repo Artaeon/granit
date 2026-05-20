@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Granit",
   "short_name": "Granit",
-  "description": "Rhythmus-OS für den Alltag — fünf ruhige Säulen (Gott · Essen · Arbeit · Körper · Abend) statt 37 Tasks. Dein Vault, überall.",
+  "description": "Your vault, anywhere. Web companion to Granit.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -10,8 +10,8 @@
   "orientation": "any",
   "background_color": "#000000",
   "theme_color": "#000000",
-  "categories": ["productivity", "lifestyle"],
-  "lang": "de",
+  "categories": ["productivity"],
+  "lang": "en",
   "dir": "ltr",
   "icons": [
     {
@@ -45,20 +45,11 @@
       "purpose": "any"
     }
   ],
-  "share_target": {
-    "action": "/notes",
-    "method": "GET",
-    "params": {
-      "title": "title",
-      "text": "text",
-      "url": "url"
-    }
-  },
   "shortcuts": [
     {
-      "name": "Heute",
-      "short_name": "Heute",
-      "description": "Heute-Karte — fünf Säulen, eine wichtigste Aufgabe",
+      "name": "Today",
+      "short_name": "Today",
+      "description": "Today's dashboard — tasks, calendar, deadlines at a glance",
       "url": "/",
       "icons": [
         { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
@@ -68,7 +59,7 @@
     {
       "name": "Quick capture",
       "short_name": "Capture",
-      "description": "Schnell-Notiz — AI titelt, taggt, verlinkt",
+      "description": "Drop a note straight into Inbox — AI titles, tags, and links it",
       "url": "/notes?capture=1",
       "icons": [
         { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
@@ -78,7 +69,7 @@
     {
       "name": "Tasks",
       "short_name": "Tasks",
-      "description": "Offene Tasks, Prioritäten, geplante Arbeit",
+      "description": "Open tasks, priorities, and scheduled work",
       "url": "/tasks",
       "icons": [
         { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
@@ -86,10 +77,20 @@
       ]
     },
     {
-      "name": "Kalender",
-      "short_name": "Kalender",
-      "description": "Tag / Woche / Monat — Termine + Tasks",
+      "name": "Calendar",
+      "short_name": "Calendar",
+      "description": "Day, week, and month views with tasks and events",
       "url": "/calendar",
+      "icons": [
+        { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+        { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+      ]
+    },
+    {
+      "name": "Notes",
+      "short_name": "Notes",
+      "description": "Stream view — recent thoughts, quick capture, smart collections",
+      "url": "/notes",
       "icons": [
         { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
         { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
@@ -98,8 +99,18 @@
     {
       "name": "Scripture",
       "short_name": "Scripture",
-      "description": "Verse of the day, Cloze-Drill, Bible-Reader",
+      "description": "Verse of the day, memorisation drill, bible reader",
       "url": "/scripture",
+      "icons": [
+        { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+        { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+      ]
+    },
+    {
+      "name": "Morning routine",
+      "short_name": "Morning",
+      "description": "Daily startup — focus, gratitude, today's plan",
+      "url": "/morning",
       "icons": [
         { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
         { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }

@@ -222,41 +222,15 @@
     };
     window.addEventListener('keydown', onKey);
     // Deep-link from the PWA shortcut: /notes?capture=1 auto-opens
-    // the quick-capture dialog. Same code path also handles the
-    // Android share_target (manifest.share_target points here with
-    // ?title=…&text=…&url=…). The quick-capture textarea gets pre-
-    // filled so a "share to Granit" gesture lands straight into the
-    // capture flow. We only honour these flags on first mount so a
-    // back-nav onto /notes doesn't re-pop the dialog at the user.
-    // The history.replaceState rinses the flags so a subsequent
-    // reload also stays clean.
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const capture = params.get('capture') === '1';
-      const sharedTitle = params.get('title') ?? '';
-      const sharedText = params.get('text') ?? '';
-      const sharedUrl = params.get('url') ?? '';
-      const hasShared = sharedTitle || sharedText || sharedUrl;
-      if (capture || hasShared) {
-        // openCapture() resets captureText to '', so pre-fill AFTER
-        // opening rather than before. Title goes on its own line so
-        // the AI's title-extraction has the cleanest hint; text +
-        // url follow. Empty fields silently drop out.
-        openCapture();
-        if (hasShared) {
-          const lines: string[] = [];
-          if (sharedTitle) lines.push(sharedTitle);
-          if (sharedText) lines.push(sharedText);
-          if (sharedUrl) lines.push(sharedUrl);
-          captureText = lines.join('\n\n');
-        }
-        const u = new URL(window.location.href);
-        u.searchParams.delete('capture');
-        u.searchParams.delete('title');
-        u.searchParams.delete('text');
-        u.searchParams.delete('url');
-        window.history.replaceState({}, '', u.pathname + (u.search || '') + (u.hash || ''));
-      }
+    // the quick-capture dialog. We only honour the flag on first
+    // mount so a back-nav onto /notes doesn't re-pop the dialog at
+    // the user. The history.replaceState rinses the flag so a
+    // subsequent reload also stays clean.
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('capture') === '1') {
+      openCapture();
+      const u = new URL(window.location.href);
+      u.searchParams.delete('capture');
+      window.history.replaceState({}, '', u.pathname + (u.search || '') + (u.hash || ''));
     }
     return () => {
       unsub();
