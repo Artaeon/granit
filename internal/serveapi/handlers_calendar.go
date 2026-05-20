@@ -639,7 +639,12 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			start := time.Date(d.Year(), d.Month(), d.Day(), t.Hour(), t.Minute(), 0, 0, time.Local)
-			end := start.Add(30 * time.Minute)
+			// 15-minute marker (was 30) — meals are a passive
+			// reminder, not a calendar block. Keeping the footprint
+			// short means real events (meetings, focus blocks)
+			// adjacent to a meal time still read as the primary thing
+			// on the grid.
+			end := start.Add(15 * time.Minute)
 			startStr := start.Format(time.RFC3339)
 			endStr := end.Format(time.RFC3339)
 			events = append(events, calendarEvent{
@@ -650,7 +655,7 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 				Title:           m.Name,
 				EventID:         fmt.Sprintf("meal:%s:%s:%d", ds, m.Time, i),
 				Done:            m.Done,
-				DurationMinutes: 30,
+				DurationMinutes: 15,
 			})
 		}
 	}

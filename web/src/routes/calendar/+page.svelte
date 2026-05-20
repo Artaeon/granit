@@ -198,7 +198,7 @@
     { key: 'task_due',       label: 'Due',        tone: 'warning' },
     { key: 'deadline',       label: 'Deadlines',  tone: 'error' },
     { key: 'goal_target',    label: 'Goals',      tone: 'mauve' },
-    { key: 'meal_slot',      label: 'Meals',      tone: 'accent' },
+    { key: 'meal_slot',      label: 'Meals',      tone: 'subtext' },
     { key: 'daily',          label: 'Daily',      tone: 'secondary' }
   ];
 

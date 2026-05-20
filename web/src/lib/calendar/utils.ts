@@ -377,10 +377,11 @@ export function eventTypeColor(ev: CalendarEvent): { bg: string; fg: string; bor
       // calendar.
       return hex('#af52de');
     case 'meal_slot':
-      // Subtle accent so meal slots don't drown out real events but
-      // stay visible. Done meals get the success tone — pending get
-      // a softer subtext to read as "passive reminder, not urgent".
-      return ev.done ? tone('success') : tone('accent');
+      // Subtle by design — 3 meals × 7 days = 21 chips per week, so
+      // these MUST recede behind real events. Pending = dim grey
+      // (reads as background marker), done = success green (positive
+      // confirmation without competing with task/event chips).
+      return ev.done ? tone('success') : tone('dim');
     default:
       return tone('subtext');
   }
