@@ -455,6 +455,13 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/pinned", s.handleListPinned)
 		r.Patch("/api/v1/pinned", s.handlePatchPinned)
 
+		// Meals — per-day eating plan. Source of truth is the daily
+		// note's `## Meals` section; the meals package owns parse /
+		// render. GET merges parsed rows with the user's defaults so
+		// the client always sees the full slot list.
+		r.Get("/api/v1/meals", s.handleListMeals)
+		r.Patch("/api/v1/meals", s.handlePatchMeals)
+
 		r.Get("/api/v1/habits", s.handleListHabits)
 		// Per-date habit toggle. Mark a habit done/undone for ANY day
 		// (not just today) — drives the click-on-past-day-dot
