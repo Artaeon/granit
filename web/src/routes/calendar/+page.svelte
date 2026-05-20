@@ -673,9 +673,12 @@
   }
 
   // toggleMealEvent flips the done state of a meal_slot event by
-  // patching the underlying daily-note row. The (time, name, date)
-  // tuple is the slot identity — extracted from the synthesized
-  // event's start ISO + title.
+  // patching the underlying daily-note row. The (time, date) tuple
+  // is enough to identify the slot — a day rarely has two meals at
+  // the same minute, and the API's ApplyPatch matches on time-alone
+  // when name is empty. We deliberately DON'T pass ev.title because
+  // it carries the rendered "Breakfast — Haferflocken" combined
+  // label which doesn't match the slot's bare Name field.
   async function toggleMealEvent(ev: CalendarEvent) {
     if (!ev.start) return;
     const start = new Date(ev.start);
@@ -686,7 +689,6 @@
     try {
       await api.patchMeal({
         time: `${hh}:${mm}`,
-        name: ev.title,
         date: dateISO,
         done: !ev.done
       });

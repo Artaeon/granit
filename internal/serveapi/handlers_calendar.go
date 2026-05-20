@@ -647,12 +647,19 @@ func (s *Server) handleCalendar(w http.ResponseWriter, r *http.Request) {
 			end := start.Add(15 * time.Minute)
 			startStr := start.Format(time.RFC3339)
 			endStr := end.Format(time.RFC3339)
+			// Surface the logged free-text in the calendar chip when
+			// present — a glance at the week reveals "what did I
+			// have for lunch on Tuesday" without opening anything.
+			title := m.Name
+			if txt := strings.TrimSpace(m.Text); txt != "" {
+				title = m.Name + " — " + txt
+			}
 			events = append(events, calendarEvent{
 				Type:            "meal_slot",
 				Date:            ds,
 				Start:           &startStr,
 				End:             &endStr,
-				Title:           m.Name,
+				Title:           title,
 				EventID:         fmt.Sprintf("meal:%s:%s:%d", ds, m.Time, i),
 				Done:            m.Done,
 				DurationMinutes: 15,
