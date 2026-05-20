@@ -545,7 +545,7 @@
              auto-fills empty space instead of leaving a phonebook-style
              waterfall. items-start keeps each widget at its natural
              height (no ugly empty padding inside short widgets). -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-3 items-start" style="grid-auto-flow: dense;">
+        <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 items-start" style="grid-auto-flow: dense;">
           {#each activeWidgets as { widget, meta } (widget.id)}
             <!-- Each widget chunk is loaded lazily via meta.load();
                  the registry's loader is memoised so re-renders await
