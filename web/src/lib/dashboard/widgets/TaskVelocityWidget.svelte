@@ -130,19 +130,21 @@
       <span class="text-2xl font-semibold text-text">{thisWeekCount}</span>
       <span class="text-xs text-dim">this week</span>
       {#if trend === 'up'}
-        <span class="text-success text-xs" title="3-week avg trending up">↗</span>
+        <span class="text-success text-xs" title="3-week avg trending up" role="img" aria-label="trending up">↗</span>
       {:else if trend === 'down'}
-        <span class="text-warning text-xs" title="3-week avg trending down">↘</span>
+        <span class="text-warning text-xs" title="3-week avg trending down" role="img" aria-label="trending down">↘</span>
       {:else if trend === 'flat'}
-        <span class="text-dim text-xs" title="3-week avg holding steady">→</span>
+        <span class="text-dim text-xs" title="3-week avg holding steady" role="img" aria-label="trend holding steady">→</span>
       {/if}
       <span class="flex-1"></span>
       <span class="text-[11px] text-dim font-mono">{total} total</span>
     </div>
     <!-- Bars. Min-height 2px so a zero week still has a visible
          baseline; the user reads a row of nubs instead of empty
-         space. Current week gets the primary color so it pops. -->
-    <div class="flex items-end gap-1 h-16">
+         space. Current week gets the primary color so it pops.
+         Responsive height: tighter on phones where the tile sits
+         next to others in a single column. -->
+    <div class="flex items-end gap-1 h-12 sm:h-16">
       {#each buckets as b (b.label)}
         {@const pct = max === 0 ? 0 : Math.max(2, Math.round((b.count / max) * 100))}
         <div class="flex-1 flex flex-col items-center justify-end gap-1" title="{b.label}: {b.count} task{b.count === 1 ? '' : 's'}">
