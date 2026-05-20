@@ -4,7 +4,7 @@
   import { api, ApiError, type DashboardConfig, type DashboardWidget, type VaultInfo } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { widgetRegistry, widgetMeta } from '$lib/dashboard/registry';
-  import { focusOnMount } from '$lib/util/focusOnMount';
+  import AuthScreen from '$lib/components/AuthScreen.svelte';
 
   // New widget types we ship in this build that the server's defaults
   // (internal/serveapi/handlers_dashboard.go) doesn't know about yet. We
@@ -44,50 +44,29 @@
     { id: 'w-verse-for-mood', type: 'verse-for-mood', afterId: 'w-scripture', enabled: false }
   ];
 
-  // Auth state machine on the landing page:
-  //   loading      → checking /auth/status
-  //   setup        → no password yet → set one
-  //   login        → password is set → enter it
-  //   advanced     → user wants to paste a CLI bearer token instead
-  type AuthScreen = 'loading' | 'setup' | 'login' | 'advanced';
-  let authScreen = $state<AuthScreen>('loading');
-  let setupAt = $state<string | null>(null);
-  let password = $state('');
-  let passwordConfirm = $state('');
-  let tokenInput = $state('');
-  let signingIn = $state(false);
-  let signInError = $state('');
+  // The auth surface (setup / login / token paste) lives in the
+  // AuthScreen component so this file stays focused on the dashboard
+  // grid. When !$auth, +page just renders <AuthScreen />; on success
+  // AuthScreen writes the token to the auth store and the dashboard
+  // branch below takes over.
 
   let vault = $state<VaultInfo | null>(null);
   let config = $state<DashboardConfig | null>(null);
   let editing = $state(false);
   let loadError = $state('');
 
-  // First paint: if we already have a token, try it. If it works, render
-  // dashboard. If not, fetch /auth/status and show setup or login.
+  // First paint: if we already have a token, verify it. If it works,
+  // the load() effect below pulls vault + config. If not, auth.clear()
+  // unsets $auth and the AuthScreen branch renders.
   onMount(async () => {
     if ($auth) {
       try {
         await api.vault();
-        return; // valid — load() runs via the $effect below
       } catch {
         auth.clear();
       }
     }
-    await refreshAuthScreen();
   });
-
-  async function refreshAuthScreen() {
-    try {
-      const r = await api.authStatus();
-      authScreen = r.hasPassword ? 'login' : 'setup';
-      setupAt = r.setupAt ?? null;
-    } catch {
-      // Server unreachable — fall back to advanced (token paste) so the
-      // user can at least diagnose. Better than a dead form.
-      authScreen = 'advanced';
-    }
-  }
 
   $effect(() => {
     if ($auth) load();
@@ -110,8 +89,10 @@
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
+        // 401 in the load path means our token went bad mid-session.
+        // Clearing it bounces us to <AuthScreen />, which runs its own
+        // /auth/status fetch on mount — no need to duplicate here.
         auth.clear();
-        await refreshAuthScreen();
       } else loadError = e instanceof Error ? e.message : String(e);
     }
   }
@@ -130,69 +111,6 @@
       else widgets = [...widgets.slice(0, anchor + 1), entry, ...widgets.slice(anchor + 1)];
     }
     return { ...c, widgets };
-  }
-
-  function deviceLabel(): string {
-    if (typeof navigator === 'undefined') return '';
-    // Compact UA hint — saved alongside the session so the user can
-    // identify it later when revoking. No fingerprinting beyond UA.
-    const ua = navigator.userAgent;
-    if (/iPhone|iPad/.test(ua)) return 'iOS';
-    if (/Android/.test(ua)) return 'Android';
-    if (/Mac OS X/.test(ua)) return 'macOS';
-    if (/Linux/.test(ua)) return 'Linux';
-    if (/Windows/.test(ua)) return 'Windows';
-    return 'Web';
-  }
-
-  async function setupPassword(e: Event) {
-    e.preventDefault();
-    if (password.length < 6) { signInError = 'password must be at least 6 characters'; return; }
-    if (password !== passwordConfirm) { signInError = 'passwords do not match'; return; }
-    signingIn = true;
-    signInError = '';
-    try {
-      const r = await api.authSetup(password, deviceLabel());
-      auth.setToken(r.token);
-      password = ''; passwordConfirm = '';
-    } catch (e) {
-      signInError = e instanceof Error ? e.message : String(e);
-    } finally {
-      signingIn = false;
-    }
-  }
-
-  async function login(e: Event) {
-    e.preventDefault();
-    if (!password) return;
-    signingIn = true;
-    signInError = '';
-    try {
-      const r = await api.authLogin(password, deviceLabel());
-      auth.setToken(r.token);
-      password = '';
-    } catch (e) {
-      signInError = e instanceof Error ? e.message : 'invalid password';
-    } finally {
-      signingIn = false;
-    }
-  }
-
-  async function signInWithToken(e: Event) {
-    e.preventDefault();
-    if (!tokenInput.trim()) return;
-    signingIn = true;
-    signInError = '';
-    auth.setToken(tokenInput.trim());
-    try {
-      await api.vault();
-      tokenInput = '';
-    } catch {
-      auth.clear();
-      signInError = 'invalid token';
-    } finally {
-      signingIn = false;
-    }
   }
 
   async function persist() {
@@ -408,99 +326,7 @@
 </script>
 
 {#if !$auth}
-  <div class="h-full overflow-y-auto flex items-center justify-center p-4 sm:p-8">
-    <div class="w-full max-w-sm bg-mantle border border-surface1 rounded-lg p-5 sm:p-6 space-y-4">
-      <div>
-        <h1 class="text-lg font-semibold text-text">everything</h1>
-        {#if authScreen === 'setup'}
-          <p class="text-sm text-dim mt-1">First launch — set a password to secure your vault.</p>
-        {:else if authScreen === 'login'}
-          <p class="text-sm text-dim mt-1">Sign in with your password</p>
-          {#if setupAt}<p class="text-[11px] text-dim/70 mt-0.5">Account created {new Date(setupAt).toLocaleDateString()}</p>{/if}
-        {:else if authScreen === 'advanced'}
-          <p class="text-sm text-dim mt-1">Paste your bearer token</p>
-        {:else}
-          <p class="text-sm text-dim mt-1">Checking…</p>
-        {/if}
-      </div>
-
-      {#if authScreen === 'setup'}
-        <form onsubmit={setupPassword} class="space-y-3">
-          <div>
-            <label for="pw" class="block text-xs uppercase tracking-wider text-dim mb-1">New password</label>
-            <input
-              id="pw"
-              type="password"
-              autocomplete="new-password"
-              bind:value={password}
-              placeholder="at least 6 characters"
-              required
-              class="w-full px-3 py-3 bg-surface0 border border-surface1 rounded text-base text-text placeholder-dim focus:outline-none focus:border-primary"
-            />
-          </div>
-          <div>
-            <label for="pwc" class="block text-xs uppercase tracking-wider text-dim mb-1">Confirm password</label>
-            <input
-              id="pwc"
-              type="password"
-              autocomplete="new-password"
-              bind:value={passwordConfirm}
-              required
-              class="w-full px-3 py-3 bg-surface0 border border-surface1 rounded text-base text-text placeholder-dim focus:outline-none focus:border-primary"
-            />
-          </div>
-          {#if signInError}<div class="text-sm text-error">{signInError}</div>{/if}
-          <button type="submit" disabled={signingIn || !password} class="w-full px-3 py-3 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 disabled:opacity-50">
-            {signingIn ? 'creating…' : 'Set password & sign in'}
-          </button>
-          <p class="text-[11px] text-dim text-center">
-            Stored as an argon2id hash in <code>.granit/web-auth.json</code>.
-            Tip: use a passphrase you can remember — there's no recovery flow.
-          </p>
-        </form>
-      {:else if authScreen === 'login'}
-        <form onsubmit={login} class="space-y-3">
-          <input
-            type="password"
-            autocomplete="current-password"
-            bind:value={password}
-            placeholder="password"
-            required
-            use:focusOnMount
-            class="w-full px-3 py-3 bg-surface0 border border-surface1 rounded text-base text-text placeholder-dim focus:outline-none focus:border-primary"
-          />
-          {#if signInError}<div class="text-sm text-error">{signInError}</div>{/if}
-          <button type="submit" disabled={signingIn || !password} class="w-full px-3 py-3 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 disabled:opacity-50">
-            {signingIn ? 'signing in…' : 'Sign in'}
-          </button>
-          <button type="button" onclick={() => { authScreen = 'advanced'; signInError = ''; }} class="w-full text-xs text-dim hover:text-text">
-            use bearer token instead
-          </button>
-        </form>
-      {:else if authScreen === 'advanced'}
-        <form onsubmit={signInWithToken} class="space-y-3">
-          <input
-            type="password"
-            bind:value={tokenInput}
-            placeholder="bearer token (CLI)"
-            class="w-full px-3 py-3 bg-surface0 border border-surface1 rounded text-base text-text placeholder-dim focus:outline-none focus:border-primary font-mono"
-          />
-          {#if signInError}<div class="text-sm text-error">{signInError}</div>{/if}
-          <button type="submit" disabled={signingIn || !tokenInput.trim()} class="w-full px-3 py-3 bg-surface0 border border-surface1 text-text rounded text-sm font-medium hover:border-primary disabled:opacity-50">
-            {signingIn ? 'signing in…' : 'Sign in with token'}
-          </button>
-          <button type="button" onclick={refreshAuthScreen} class="w-full text-xs text-dim hover:text-text">
-            ← back to password
-          </button>
-          <p class="text-[11px] text-dim break-words">
-            Token is stored in <code>.granit/everything-token</code> on the server. Use this for CLI scripts only.
-          </p>
-        </form>
-      {:else}
-        <div class="text-sm text-dim text-center py-4">…</div>
-      {/if}
-    </div>
-  </div>
+  <AuthScreen />
 {:else}
   <div class="h-full overflow-y-auto">
     <!-- Tighter padding + max-width: power-UI density beats breathing
