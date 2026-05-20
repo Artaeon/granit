@@ -296,16 +296,18 @@
     {/each}
   </nav>
 
-  <!-- Footer rail. Settings, theme, compact toggle, sign out. -->
-  <div class="border-t border-surface1 {isCompact ? 'px-1.5 py-2 space-y-1' : 'px-2 py-3 space-y-1'}">
+  <!-- Footer rail. Settings, theme, sabbath, compact toggle, sign
+       out. Tightened from py-3 to py-2 and theme button shrunk —
+       it's a meta surface, not a content one. -->
+  <div class="border-t border-surface1 {isCompact ? 'px-1.5 py-2 space-y-0.5' : 'px-2 py-2 space-y-0.5'}">
     <NavItem item={settingsItem} {isCompact} onNavigate={navigate} />
 
     <button
       onclick={() => theme.set(nextTheme($theme))}
-      title={isCompact ? `Theme: ${themeLabel($theme)} — tap to cycle` : undefined}
-      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-1.5'} rounded text-sm text-subtext hover:bg-surface0 hover:text-text transition-colors"
+      title={isCompact ? `Theme: ${themeLabel($theme)} — tap to cycle` : 'Cycle theme: system → light → dark'}
+      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1.5' : 'gap-3 px-3 py-1'} rounded text-xs text-dim hover:bg-surface0 hover:text-subtext transition-colors"
     >
-      <svg viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         {#if $theme === 'dark'}
           <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>
         {:else if $theme === 'light'}
@@ -317,8 +319,7 @@
         {/if}
       </svg>
       {#if !isCompact}
-        <span class="flex-1 text-left">Theme: {themeLabel($theme)}</span>
-        <span class="text-[10px] text-dim">cycle</span>
+        <span class="flex-1 text-left">{themeLabel($theme)}</span>
       {/if}
     </button>
 
@@ -351,9 +352,9 @@
         <a
           href="/sabbath"
           onclick={navigate}
-          class="flex-1 flex items-center gap-3 px-3 py-2 rounded-l transition-colors {$sabbath ? 'hover:opacity-90' : 'text-dim hover:bg-surface0 hover:text-text'}"
+          class="flex-1 flex items-center gap-3 px-3 py-1 rounded-l transition-colors {$sabbath ? 'hover:opacity-90' : 'text-xs text-dim hover:bg-surface0 hover:text-subtext'}"
         >
-          <svg viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             {#if $sabbath}
               <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5L12 2zM12 14v8M9 22h6"/>
             {:else}
@@ -361,15 +362,14 @@
             {/if}
           </svg>
           <span class="flex-1 text-left">{$sabbath ? 'Sabbath on' : 'Sabbath'}</span>
-          <span class="text-[10px] {$sabbath ? 'opacity-80' : 'text-dim'}">open</span>
         </a>
         <button
           onclick={() => sabbath.toggle()}
           title={$sabbath ? 'tap to exit sabbath' : 'enter sabbath now'}
           aria-label={$sabbath ? 'exit sabbath' : 'enter sabbath'}
-          class="px-2.5 py-2 rounded-r transition-colors {$sabbath ? 'hover:opacity-90' : 'text-dim hover:bg-surface0 hover:text-text'}"
+          class="px-2 py-1 rounded-r transition-colors {$sabbath ? 'hover:opacity-90' : 'text-dim hover:bg-surface0 hover:text-subtext'}"
         >
-          <span class="text-base">{$sabbath ? '×' : '→'}</span>
+          <span class="text-sm">{$sabbath ? '×' : '→'}</span>
         </button>
       </div>
     {/if}
@@ -380,9 +380,9 @@
     <button
       onclick={toggleSidebarCompact}
       title={isCompact ? 'Expand sidebar' : 'Collapse to icons'}
-      class="hidden md:flex w-full items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm text-dim hover:bg-surface0 hover:text-text transition-colors"
+      class="hidden md:flex w-full items-center {isCompact ? 'justify-center px-2 py-1.5' : 'gap-3 px-3 py-1'} rounded text-xs text-dim hover:bg-surface0 hover:text-subtext transition-colors"
     >
-      <svg viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         {#if isCompact}
           <polyline points="9 18 15 12 9 6" />
         {:else}
