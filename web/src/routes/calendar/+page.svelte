@@ -659,8 +659,41 @@
       goto(`/goals?focus=${encodeURIComponent(ev.eventId)}`);
       return;
     }
+    // Meal slots are synthesized markers — no editable event exists
+    // server-side, so the detail modal would offer reschedule/delete
+    // that don't apply. Toggle done in-place instead; mirrors the
+    // dashboard widget's interaction so a tick anywhere syncs to
+    // both surfaces via the daily note.
+    if (ev.type === 'meal_slot' && ev.start) {
+      void toggleMealEvent(ev);
+      return;
+    }
     selected = ev;
     detailOpen = true;
+  }
+
+  // toggleMealEvent flips the done state of a meal_slot event by
+  // patching the underlying daily-note row. The (time, name, date)
+  // tuple is the slot identity — extracted from the synthesized
+  // event's start ISO + title.
+  async function toggleMealEvent(ev: CalendarEvent) {
+    if (!ev.start) return;
+    const start = new Date(ev.start);
+    if (Number.isNaN(start.getTime())) return;
+    const hh = String(start.getHours()).padStart(2, '0');
+    const mm = String(start.getMinutes()).padStart(2, '0');
+    const dateISO = ev.date ?? start.toISOString().slice(0, 10);
+    try {
+      await api.patchMeal({
+        time: `${hh}:${mm}`,
+        name: ev.title,
+        date: dateISO,
+        done: !ev.done
+      });
+      await load();
+    } catch (e) {
+      toast.error('Toggle meal failed: ' + errorMessage(e));
+    }
   }
   function clickSlot(date: Date, hour: number, minute: number) {
     createDate = date;
