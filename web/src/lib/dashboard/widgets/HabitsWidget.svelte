@@ -35,9 +35,12 @@
     try {
       await api.patchTask(taskId, { done: !done });
       await load();
-    } catch {
-      // patchTask errors silently — the optimistic refetch will
-      // re-render the unchanged state.
+    } catch (e) {
+      // Surface the failure — a silent fail used to leave the user
+      // wondering why their tick didn't stick. Toast names what
+      // failed so they can act (network, auth, server).
+      toast.error('habit toggle failed: ' + (e instanceof Error ? e.message : String(e)));
+      await load();
     }
   }
 

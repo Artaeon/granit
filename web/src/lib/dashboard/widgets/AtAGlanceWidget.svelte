@@ -124,7 +124,18 @@
         title={t.label}
       >
         <div class="flex items-baseline gap-1.5">
-          <span class="text-xl font-semibold text-text tabular-nums leading-none">{display(t.value)}</span>
+          {#if !loaded && t.value === null}
+            <!-- Pre-load skeleton — keeps the row at its rendered
+                 height so the rest of the dashboard doesn't shift
+                 once counts arrive. Width chosen to roughly match
+                 a 2-digit value. -->
+            <span
+              class="inline-block h-5 w-6 rounded bg-surface1 animate-pulse"
+              aria-hidden="true"
+            ></span>
+          {:else}
+            <span class="text-xl font-semibold text-text tabular-nums leading-none">{display(t.value)}</span>
+          {/if}
           <span class="text-[10px] uppercase tracking-wider text-dim truncate">{t.label}</span>
         </div>
       </a>
