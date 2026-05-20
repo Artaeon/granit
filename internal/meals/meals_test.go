@@ -144,3 +144,96 @@ func TestAggregate(t *testing.T) {
 		t.Fatalf("aggregate wrong: %d/%d", done, total)
 	}
 }
+
+func TestDetectHeading_Missing(t *testing.T) {
+	marker, level := DetectHeading("# Daily Note\n\nsome notes\n")
+	if marker != "## Meals" || level != 0 {
+		t.Fatalf("expected default fallback, got marker=%q level=%d", marker, level)
+	}
+}
+
+func TestDetectHeading_Level3(t *testing.T) {
+	body := "## Tasks\n\n### Meals\n- [ ] 08:00 Breakfast\n"
+	marker, level := DetectHeading(body)
+	if marker != "### Meals" || level != 3 {
+		t.Fatalf("expected level-3, got marker=%q level=%d", marker, level)
+	}
+}
+
+func TestDetectHeading_CaseFold(t *testing.T) {
+	body := "#### meals\n- [ ] 12:30 Lunch\n"
+	marker, level := DetectHeading(body)
+	if marker != "#### meals" || level != 4 {
+		t.Fatalf("case-fold detection broke: %q %d", marker, level)
+	}
+}
+
+func TestRewriteHeadingLevel(t *testing.T) {
+	in := "## Meals\n- [x] 08:00 Breakfast\n"
+	cases := []struct {
+		level int
+		want  string
+	}{
+		{0, in},                                    // no-op
+		{2, in},                                    // identity
+		{3, "### Meals\n- [x] 08:00 Breakfast\n"},  // bump
+		{4, "#### Meals\n- [x] 08:00 Breakfast\n"}, // higher
+	}
+	for _, c := range cases {
+		got := RewriteHeadingLevel(in, c.level)
+		if got != c.want {
+			t.Errorf("level=%d: got %q, want %q", c.level, got, c.want)
+		}
+	}
+}
+
+func TestRoundTrip_PatchPreservesAcrossExistingSection(t *testing.T) {
+	// Simulate: user has a daily note with `### Meals` already.
+	// We parse → patch → render with the existing level → upsert
+	// should rewrite in place, not append a new section.
+	body := strings.Join([]string{
+		"# Daily 2026-05-20",
+		"",
+		"## Tasks",
+		"- [ ] write the doc",
+		"",
+		"### Meals",
+		"- [ ] 08:00 Breakfast",
+		"- [ ] 12:30 Lunch",
+		"- [ ] 19:00 Dinner",
+		"",
+		"## Notes",
+		"random thoughts",
+		"",
+	}, "\n")
+
+	parsed := Parse(body)
+	if len(parsed) != 3 {
+		t.Fatalf("expected 3 parsed slots, got %d", len(parsed))
+	}
+
+	tr := true
+	updated, changed := ApplyPatch(parsed, "08:00", "", &tr, nil)
+	if !changed || !updated[0].Done {
+		t.Fatalf("breakfast toggle failed: %+v", updated)
+	}
+
+	rendered := RenderSection(updated)
+	marker, level := DetectHeading(body)
+	if level != 3 {
+		t.Fatalf("heading detection should return level 3, got %d", level)
+	}
+	rendered = RewriteHeadingLevel(rendered, level)
+	if !strings.HasPrefix(rendered, "### Meals\n") {
+		t.Errorf("rewritten section missing level-3 prefix: %q", rendered)
+	}
+	// Whole-line check — substring would false-positive because
+	// "### Meals" trivially contains "## Meals".
+	for _, line := range strings.Split(rendered, "\n") {
+		if line == "## Meals" {
+			t.Errorf("rewritten section still carries default ## marker line")
+		}
+	}
+	_ = marker
+}
+

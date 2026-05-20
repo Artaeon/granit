@@ -210,3 +210,42 @@ func Aggregate(slots []Slot) (done, total int) {
 	}
 	return
 }
+
+// DetectHeading scans the note body for an existing Meals heading
+// at any level (`# Meals`, `## Meals`, `### Meals`, …) and returns
+// the exact heading line plus its level. The level is the count of
+// leading `#` characters. Returns ("## Meals", 0) when no heading
+// exists — signalling the caller to use the canonical default.
+//
+// The case-fold match mirrors Parse, so a user's `### meals` written
+// in lowercase still resolves to the same section.
+func DetectHeading(body string) (marker string, level int) {
+	for _, raw := range strings.Split(body, "\n") {
+		line := strings.TrimRight(raw, "\r")
+		trim := strings.TrimSpace(line)
+		if !strings.HasPrefix(trim, "#") {
+			continue
+		}
+		lvl := 0
+		for lvl < len(trim) && trim[lvl] == '#' {
+			lvl++
+		}
+		text := strings.TrimSpace(trim[lvl:])
+		if strings.EqualFold(text, "Meals") {
+			return trim, lvl
+		}
+	}
+	return "## Meals", 0
+}
+
+// RewriteHeadingLevel swaps the leading `## Meals` of a rendered
+// section to the requested heading level. RenderSection always writes
+// level-2; this helper exists so the upsert path can keep the user's
+// chosen level when they wrote e.g. "### Meals" manually.
+func RewriteHeadingLevel(section string, level int) string {
+	if level <= 0 || level == 2 {
+		return section
+	}
+	prefix := strings.Repeat("#", level) + " Meals"
+	return strings.Replace(section, "## Meals", prefix, 1)
+}
