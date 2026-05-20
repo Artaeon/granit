@@ -1,10 +1,15 @@
 <script lang="ts">
   // Sidebar shell. Renders the brand, quick-jump button, Ask-AI
-  // button, AI sub-rail, pinned + recent rails, Today, sections,
-  // and the footer rail (settings, theme, sabbath, compact, sign
-  // out). Lives in $lib/nav/ rather than $lib/components/ so the
-  // navigation primitives (config, active, NavItem, NavSidebar)
-  // sit together.
+  // button, pinned + recent rails, Today, sections, and the footer
+  // rail (settings, theme, sabbath, compact, sign out). Lives in
+  // $lib/nav/ rather than $lib/components/ so the navigation
+  // primitives (config, active, NavItem, NavSidebar) sit together.
+  //
+  // The earlier AI sub-rail (Mode pill + 3 quick-action chips) was
+  // removed during the "professional" cleanup pass — the chips were
+  // discovery scaffolding for the AI overlay that's now reachable
+  // via the prominent Ask-AI button + ⌘J. Removing them buys ~50px
+  // of rail above the section list, which the actual nav uses.
   //
   // Drives its own state from the sidebar-ui store (collapsed
   // sections, compact toggle) and the pinned / recent stores.
@@ -23,10 +28,8 @@
     sections,
     today,
     settingsItem,
-    aiQuickActions,
     nav,
-    type NavItem as NavLink,
-    type AIQuick
+    type NavItem as NavLink
   } from './config';
   import { sidebarPins } from '$lib/stores/sidebar-pins';
   import { sidebarRecent, MAX_RECENT } from '$lib/stores/sidebar-recent';
@@ -42,7 +45,6 @@
   import { auth } from '$lib/stores/auth';
   import { wsConnected } from '$lib/ws';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
-  import { findMode, currentModeId } from '$lib/ai/agents';
   import { api } from '$lib/api';
 
   type Props = {
@@ -55,11 +57,6 @@
 
   function navigate() {
     onNavigate?.();
-  }
-
-  function runQuickAction(q: AIQuick) {
-    openAIOverlay({ modeId: q.modeId, text: q.text, send: q.send });
-    navigate();
   }
 
   // Pinned / recent rails resolve hrefs from the persisted stores
@@ -121,40 +118,38 @@
 </script>
 
 <div class="flex flex-col h-full">
-  <!-- Brand area collapses to icon-only in compact mode so the rail
-       doesn't blow up to full width on narrow desktops. The 'e'
-       monogram + accent dot reads as a logo without needing the
-       full text. -->
-  <div class="border-b border-surface1 {isCompact ? 'px-2 py-3 flex justify-center' : 'px-4 py-3'}">
+  <!-- Brand area collapses to icon-only in compact mode. The
+       earlier "your vault, anywhere" tagline was visual noise on a
+       surface the user looks at every minute; the wordmark + logo
+       carry the brand without it. -->
+  <div class="border-b border-surface1 {isCompact ? 'px-2 py-2.5 flex justify-center' : 'px-3 py-2.5'}">
     {#if isCompact}
-      <div class="w-9 h-9 rounded bg-surface1 text-primary flex items-center justify-center" aria-label="Granit">
-        <Logo class="w-5 h-5" label="" />
+      <div class="w-8 h-8 rounded bg-surface1 text-primary flex items-center justify-center" aria-label="Granit">
+        <Logo class="w-4 h-4" label="" />
       </div>
     {:else}
       <div class="flex items-center gap-2">
-        <div class="w-7 h-7 rounded bg-surface1 text-primary flex items-center justify-center flex-shrink-0">
-          <Logo class="w-4 h-4" label="" />
+        <div class="w-6 h-6 rounded bg-surface1 text-primary flex items-center justify-center flex-shrink-0">
+          <Logo class="w-3.5 h-3.5" label="" />
         </div>
-        <div class="min-w-0">
-          <div class="text-sm font-semibold text-text leading-tight">Granit</div>
-          <div class="text-[10px] text-dim leading-tight mt-0.5">your vault, anywhere</div>
-        </div>
+        <div class="text-sm font-semibold text-text">Granit</div>
       </div>
     {/if}
   </div>
 
-  <nav class="flex-1 overflow-y-auto {isCompact ? 'px-1.5 py-3' : 'px-2 py-3'} space-y-1">
-    <!-- Quick jump — compact form drops the kbd hint + label,
-         keeps the icon as the click target. -->
+  <nav class="flex-1 overflow-y-auto {isCompact ? 'px-1.5 py-2' : 'px-2 py-2'} space-y-0.5">
+    <!-- Quick jump — visually subdued so the Ask-AI button below
+         is the dominant primary affordance. ⌘K is the keyboard
+         pattern; this row exists for click-discovery. -->
     <button
       onclick={() => { onQuickJump(); navigate(); }}
       title={isCompact ? 'Quick jump (⌘K)' : undefined}
-      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-1.5'} rounded text-sm text-subtext hover:bg-surface0 hover:text-text transition-colors"
+      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1.5' : 'gap-3 px-3 py-1.5'} rounded text-xs text-dim hover:bg-surface0 hover:text-subtext transition-colors"
     >
-      <NavIcon name="search" class="w-5 h-5 flex-shrink-0" />
+      <NavIcon name="search" class="w-4 h-4 flex-shrink-0" />
       {#if !isCompact}
         <span class="flex-1 text-left">Quick jump</span>
-        <kbd class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">⌘K</kbd>
+        <kbd class="text-[10px] font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">⌘K</kbd>
       {/if}
     </button>
 
@@ -170,7 +165,7 @@
     <button
       onclick={() => { openAIOverlay(); navigate(); }}
       title={isCompact ? ($sabbath ? 'AI paused — Sabbath' : 'Ask AI (⌘J)') : undefined}
-      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm mb-2 transition-colors {$sabbath ? 'bg-surface0 text-dim' : 'bg-primary text-on-primary hover:opacity-90 font-medium'}"
+      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm mt-1 mb-3 transition-colors {$sabbath ? 'bg-surface0 text-dim' : 'bg-primary text-on-primary hover:opacity-90 font-medium'}"
     >
       <span class="relative flex-shrink-0">
         <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -191,43 +186,6 @@
         {/if}
       {/if}
     </button>
-
-    <!-- AI sub-rail. Mode pill + quick-action chips. Hidden in
-         Sabbath mode (the parent button already says AI is paused;
-         dimming the chips would just be visual noise) and in
-         compact mode (icon rail has no horizontal space for the
-         chip row — the user can still hit Mod+J). The mode pill
-         is informational, click-to-open: tells the user which
-         agent posture is currently selected so they read at a
-         glance "I'm in Coach mode" without opening the overlay. -->
-    {#if !isCompact && !$sabbath}
-      {@const cur = findMode($currentModeId)}
-      <div class="px-3 -mt-1 mb-2 space-y-1.5">
-        <button
-          type="button"
-          onclick={() => { openAIOverlay(); navigate(); }}
-          title={`current AI mode — ${cur.tagline}. Click to switch.`}
-          class="w-full flex items-center gap-1.5 text-[10px] text-dim hover:text-text transition-colors"
-        >
-          <span aria-hidden="true">{cur.glyph}</span>
-          <span class="uppercase tracking-wider">Mode: {cur.label}</span>
-          <span class="ml-auto opacity-60">change</span>
-        </button>
-        <div class="flex flex-wrap gap-1">
-          {#each aiQuickActions as q (q.id)}
-            <button
-              type="button"
-              onclick={() => runQuickAction(q)}
-              title={q.title}
-              class="text-[11px] px-2 py-1 rounded inline-flex items-center gap-1 bg-surface0 text-subtext hover:bg-surface1 hover:text-text transition-colors"
-            >
-              <span aria-hidden="true">{q.glyph}</span>
-              <span>{q.label}</span>
-            </button>
-          {/each}
-        </div>
-      </div>
-    {/if}
 
     <!-- Pinned items — user-curated rail above Today. Hidden when
          empty so first-time users don't see a phantom group. The
