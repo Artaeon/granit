@@ -226,11 +226,36 @@
     // mount so a back-nav onto /notes doesn't re-pop the dialog at
     // the user. The history.replaceState rinses the flag so a
     // subsequent reload also stays clean.
-    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('capture') === '1') {
-      openCapture();
-      const u = new URL(window.location.href);
-      u.searchParams.delete('capture');
-      window.history.replaceState({}, '', u.pathname + (u.search || '') + (u.hash || ''));
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const want = sp.get('capture') === '1';
+      // Web Share Target — manifest registers /notes as the share
+      // sink so the OS share sheet pipes title/text/url here. Treat
+      // any of them as an implicit capture intent.
+      const shTitle = sp.get('title') ?? '';
+      const shText = sp.get('text') ?? '';
+      const shUrl = sp.get('url') ?? '';
+      const shared = shTitle || shText || shUrl;
+      if (want || shared) {
+        openCapture();
+        if (shared) {
+          // Build a friendly pre-fill: title on its own line, then
+          // body text, then url (skip url if it's already inside the
+          // text — some clients duplicate it). openCapture() resets
+          // captureText to '', so this assignment must come AFTER.
+          const parts: string[] = [];
+          if (shTitle) parts.push(shTitle);
+          if (shText) parts.push(shText);
+          if (shUrl && !shText.includes(shUrl)) parts.push(shUrl);
+          captureText = parts.join('\n\n');
+        }
+        const u = new URL(window.location.href);
+        u.searchParams.delete('capture');
+        u.searchParams.delete('title');
+        u.searchParams.delete('text');
+        u.searchParams.delete('url');
+        window.history.replaceState({}, '', u.pathname + (u.search || '') + (u.hash || ''));
+      }
     }
     return () => {
       unsub();
