@@ -7,7 +7,6 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import RecurringEditor from '$lib/components/RecurringEditor.svelte';
-  import { modulesStore } from '$lib/stores/modules';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { relativeTime } from '$lib/util/relativeTime';
@@ -235,7 +234,6 @@
   }
   onMount(() => {
     load();
-    void modulesStore.ensureLoaded();
     void loadCalSources();
     void loadAutocommit();
     void loadStoiceraSettings();
@@ -720,35 +718,6 @@
   // doesn't fire a PUT per click (the server batches anyway, but the
   // round-trip still costs). Pending edits coalesce into one PUT after
   // a quiet period; toast on success/failure.
-  let pendingModulePatch: Record<string, boolean> = $state({});
-  let moduleSaveTimer: ReturnType<typeof setTimeout> | null = null;
-  let moduleSaving = $state(false);
-
-  function queueModuleToggle(id: string, enabled: boolean) {
-    pendingModulePatch[id] = enabled;
-    pendingModulePatch = { ...pendingModulePatch };
-    if (moduleSaveTimer) clearTimeout(moduleSaveTimer);
-    moduleSaveTimer = setTimeout(commitModulePatch, 350);
-  }
-
-  async function commitModulePatch() {
-    if (Object.keys(pendingModulePatch).length === 0) return;
-    const patch = pendingModulePatch;
-    pendingModulePatch = {};
-    moduleSaving = true;
-    try {
-      await modulesStore.set(patch);
-      toast.success('Modules updated');
-    } catch (e) {
-      toast.error(errorMessage(e));
-      // Roll back the optimistic store state so checkboxes match
-      // server truth on the next render tick.
-      void modulesStore.refresh();
-    } finally {
-      moduleSaving = false;
-    }
-  }
-
   const themeOptions: Theme[] = ['system', 'light', 'dark'];
 
   // Keyboard shortcuts list (mirrors what's actually wired)
@@ -771,11 +740,13 @@
   // settings page reads as 5 focused screens instead of a 14-section
   // phonebook. Persisted in localStorage so the user lands where
   // they last were.
-  type SettingsTab = 'general' | 'ai' | 'sync' | 'modules' | 'vault';
+  type SettingsTab = 'general' | 'ai' | 'sync' | 'vault';
   const TAB_KEY = 'granit.settings.tab';
   function loadTab(): SettingsTab {
     const v = loadStoredString(TAB_KEY, 'general');
-    if (v === 'general' || v === 'ai' || v === 'sync' || v === 'modules' || v === 'vault') return v;
+    if (v === 'general' || v === 'ai' || v === 'sync' || v === 'vault') return v;
+    // 'modules' used to be a tab here — feature toggles now live at
+    // /settings/features. Migrating users land on general.
     return 'general';
   }
   let tab = $state<SettingsTab>(loadTab());
@@ -784,14 +755,13 @@
     { id: 'general', label: 'General' },
     { id: 'ai', label: 'AI' },
     { id: 'sync', label: 'Sync' },
-    { id: 'modules', label: 'Modules' },
     { id: 'vault', label: 'Vault' }
   ];
 </script>
 
 <div class="h-full overflow-y-auto">
   <div class="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
-    <PageHeader title="Settings" subtitle="Theme, AI, sync, modules, vault" />
+    <PageHeader title="Settings" subtitle="Theme, AI, sync, vault" />
 
     <!-- Top tab strip. Pills stay visible above the section list
          on scroll via sticky top-0 so the user can jump between
@@ -843,6 +813,24 @@
         System follows your OS setting and updates live.
       </p>
     </section>
+
+    <!-- Features — entry point to /settings/features. Previously this
+         lived inside a "Modules" tab; promoted to a dedicated page so
+         the feature toggle list reads as the sidebar (grouped by
+         section) rather than a flat phonebook. -->
+    <a
+      href="/settings/features"
+      class="block bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5 hover:border-primary transition-colors group"
+    >
+      <div class="flex items-baseline gap-2">
+        <h2 class="text-xs uppercase tracking-wider text-dim font-medium group-hover:text-text transition-colors">Features</h2>
+        <span class="flex-1"></span>
+        <span class="text-secondary text-sm group-hover:underline">configure →</span>
+      </div>
+      <p class="text-xs text-dim mt-2 leading-relaxed">
+        Toggle which features show in the sidebar — Morning, Habits, Goals, Examen, and the rest. Hide anything you don't use; data stays on disk.
+      </p>
+    </a>
     {/if}
 
     {#if tab === 'sync'}
@@ -1490,64 +1478,6 @@
 
     {/if}
 
-    {#if tab === 'modules'}
-    <!-- Modules — toggle which surfaces appear in the sidebar / are
-         routable. Backed by .granit/modules.json (same file the TUI
-         registry persists to). Core surfaces (notes, tasks, calendar,
-         settings) are always-on and rendered with a lock icon. -->
-    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
-      <header class="flex items-baseline justify-between mb-2">
-        <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Modules</h2>
-        {#if moduleSaving}
-          <span class="text-[10px] uppercase tracking-wider text-dim">saving…</span>
-        {/if}
-      </header>
-      <p class="text-xs text-dim mb-3">
-        Disable a module to hide its sidebar entry, dashboard widgets, and route. Re-enable any time — your data stays on disk.
-      </p>
-      {#if !$modulesStore.loaded}
-        <Skeleton class="h-4 w-full mb-2" />
-        <Skeleton class="h-4 w-3/4" />
-      {:else}
-        <div class="space-y-1.5">
-          <!-- Always-on core. Rendered first with a lock icon so the
-               user understands these can't be disabled. -->
-          {#each $modulesStore.coreIds as core (core.id)}
-            <label class="flex items-start gap-3 py-1 opacity-70 cursor-not-allowed">
-              <input type="checkbox" checked disabled class="w-4 h-4 mt-0.5 accent-primary" />
-              <div class="flex-1">
-                <div class="text-sm text-text flex items-center gap-1.5">
-                  <span>{core.name}</span>
-                  <span class="text-[10px]" title="Always on — core surface">🔒</span>
-                </div>
-                <div class="text-[11px] text-dim">Always on, can't disable.</div>
-              </div>
-            </label>
-          {/each}
-
-          <div class="border-t border-surface1 my-2"></div>
-
-          {#each $modulesStore.modules as m (m.id)}
-            {@const queued = pendingModulePatch[m.id]}
-            {@const checked = queued !== undefined ? queued : m.enabled}
-            <label class="flex items-start gap-3 cursor-pointer py-1">
-              <input
-                type="checkbox"
-                {checked}
-                onchange={(e) => queueModuleToggle(m.id, (e.target as HTMLInputElement).checked)}
-                class="w-4 h-4 mt-0.5 accent-primary cursor-pointer"
-              />
-              <div class="flex-1">
-                <div class="text-sm text-text">{m.name}</div>
-                <div class="text-[11px] text-dim">{m.description}</div>
-              </div>
-            </label>
-          {/each}
-        </div>
-      {/if}
-    </section>
-
-    {/if}
 
     {#if tab === 'ai'}
     <!-- AI provider — same config the TUI reads. Setting up either
