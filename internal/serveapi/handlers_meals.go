@@ -86,6 +86,19 @@ func (s *Server) handlePatchMeals(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "time required")
 		return
 	}
+	// Normalise + validate the HH:MM time. Accept "8:00" or "08:00",
+	// reject anything else. Without normalisation a client sending
+	// "8:00" would not match the canonical "08:00" default and we'd
+	// silently append a duplicate slot — confusing on the dashboard
+	// and impossible for the user to clean up from the widget.
+	if t, err := time.Parse("15:04", b.Time); err == nil {
+		b.Time = t.Format("15:04")
+	} else if t, err := time.Parse("3:04", b.Time); err == nil {
+		b.Time = t.Format("15:04")
+	} else {
+		writeError(w, http.StatusBadRequest, "time must be HH:MM (24h)")
+		return
+	}
 	if b.Done == nil && b.Text == nil {
 		writeError(w, http.StatusBadRequest, "nothing to patch (need done and/or text)")
 		return
