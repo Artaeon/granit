@@ -128,25 +128,14 @@ func slotKey(s Slot) string { return s.Time + "|" + strings.ToLower(s.Name) }
 
 // RenderSection builds the `## Meals` section body (heading + rows
 // + trailing blank line) ready to feed into upsertNamedSection.
+// Used for the cold-start path where no section exists yet — once
+// the section exists, WriteSection does line-preserving edits
+// instead of regenerating the whole thing.
 func RenderSection(slots []Slot) string {
 	var sb strings.Builder
 	sb.WriteString("## Meals\n")
 	for _, s := range slots {
-		box := "[ ]"
-		if s.Done {
-			box = "[x]"
-		}
-		sb.WriteString("- ")
-		sb.WriteString(box)
-		sb.WriteString(" ")
-		sb.WriteString(s.Time)
-		sb.WriteString(" ")
-		sb.WriteString(s.Name)
-		txt := strings.TrimSpace(s.Text)
-		if txt != "" {
-			sb.WriteString(" — ")
-			sb.WriteString(txt)
-		}
+		sb.WriteString(renderRow(s))
 		sb.WriteString("\n")
 	}
 	sb.WriteString("\n")
@@ -248,4 +237,145 @@ func RewriteHeadingLevel(section string, level int) string {
 	}
 	prefix := strings.Repeat("#", level) + " Meals"
 	return strings.Replace(section, "## Meals", prefix, 1)
+}
+
+// WriteSection rewrites the Meals section *in place*, line by line:
+//
+//   - Existing meal-row lines are replaced with the rendered version
+//     of the matching slot (by Time + lowercased Name). If the slot
+//     was removed from `slots`, the line is dropped.
+//   - Non-meal lines inside the Meals section (free-form notes the
+//     user wrote between rows, like "today I tried oats") are kept
+//     verbatim — the original RenderSection-based upsert would have
+//     silently dropped them, which is a data-loss bug for daily-
+//     driver use.
+//   - Slots not seen in the original section are appended at the end
+//     of the section (just before the next heading or EOF), in the
+//     order they appear in `slots`.
+//   - If no Meals section exists, a fresh one is appended at the end
+//     of the body using RenderSection's format.
+//
+// Returns the new note body. Callers can pass the result of
+// ApplyPatch as `slots` so the rewrite reflects exactly the upsert
+// the API received — no global rewrite of unrelated content.
+func WriteSection(body string, slots []Slot) string {
+	marker, level := DetectHeading(body)
+	if level == 0 {
+		// No section yet — fall back to the original append-fresh
+		// path (caller's upsertNamedSection equivalent). We re-use
+		// RenderSection so the format is identical.
+		section := RenderSection(slots)
+		section = RewriteHeadingLevel(section, level) // no-op when level==0
+		trimmed := strings.TrimRight(body, "\n")
+		if trimmed == "" {
+			return section
+		}
+		return trimmed + "\n\n" + section
+	}
+
+	lines := strings.Split(body, "\n")
+	// Locate section bounds: heading line index + first line of next
+	// section (or len(lines) if it runs to EOF).
+	headingIdx := -1
+	for i, raw := range lines {
+		if strings.TrimSpace(strings.TrimRight(raw, "\r")) == marker {
+			headingIdx = i
+			break
+		}
+	}
+	if headingIdx < 0 {
+		// Shouldn't happen — DetectHeading just found it. Defensive
+		// fallback to the no-section path so we never lose the body.
+		section := RenderSection(slots)
+		section = RewriteHeadingLevel(section, level)
+		return strings.TrimRight(body, "\n") + "\n\n" + section
+	}
+	endIdx := len(lines)
+	for i := headingIdx + 1; i < len(lines); i++ {
+		trim := strings.TrimSpace(strings.TrimRight(lines[i], "\r"))
+		if !strings.HasPrefix(trim, "#") {
+			continue
+		}
+		// New heading found — anything below it is outside our section.
+		endIdx = i
+		break
+	}
+
+	// Index slots by key for O(1) lookups while walking the section.
+	byKey := make(map[string]Slot, len(slots))
+	for _, s := range slots {
+		byKey[slotKey(s)] = s
+	}
+	seen := make(map[string]bool, len(slots))
+
+	// Rebuild the section body (everything between headingIdx+1 and
+	// endIdx-1, exclusive of the next heading). Trailing blank lines
+	// inside the section are preserved by-default since we copy them.
+	var out []string
+	out = append(out, lines[:headingIdx+1]...) // up to and including heading
+	for i := headingIdx + 1; i < endIdx; i++ {
+		raw := lines[i]
+		m := mealRowRe.FindStringSubmatch(raw)
+		if m == nil {
+			out = append(out, raw)
+			continue
+		}
+		// Parse this row's identity so we can find the matching slot.
+		time := m[2]
+		rest := strings.TrimSpace(m[3])
+		name := rest
+		for _, sep := range []string{" — ", " – ", " - "} {
+			if idx := strings.Index(rest, sep); idx >= 0 {
+				name = strings.TrimSpace(rest[:idx])
+				break
+			}
+		}
+		key := time + "|" + strings.ToLower(name)
+		s, ok := byKey[key]
+		if !ok {
+			// Slot dropped — omit the line. (Not currently triggered
+			// by the API; the PATCH path never deletes slots. Kept
+			// for future remove-slot support.)
+			continue
+		}
+		seen[key] = true
+		out = append(out, renderRow(s))
+	}
+	// Append any slots not seen in the original section. Preserves
+	// the sort order ApplyPatch already imposed.
+	appended := 0
+	for _, s := range slots {
+		if seen[slotKey(s)] {
+			continue
+		}
+		out = append(out, renderRow(s))
+		appended++
+	}
+	// Tail content (next heading + everything after).
+	if endIdx < len(lines) {
+		// Keep one blank line between the appended rows and the next
+		// heading so the markdown stays readable. Only insert when
+		// we actually appended something AND there isn't a blank line
+		// already between us and the next heading.
+		if appended > 0 && (len(out) == 0 || strings.TrimSpace(out[len(out)-1]) != "") {
+			out = append(out, "")
+		}
+		out = append(out, lines[endIdx:]...)
+	}
+	return strings.Join(out, "\n")
+}
+
+// renderRow is the single-line equivalent of RenderSection's per-slot
+// emit. Pulled out so WriteSection can splice individual lines into
+// an existing section without rebuilding the heading.
+func renderRow(s Slot) string {
+	box := "[ ]"
+	if s.Done {
+		box = "[x]"
+	}
+	row := "- " + box + " " + s.Time + " " + s.Name
+	if txt := strings.TrimSpace(s.Text); txt != "" {
+		row += " — " + txt
+	}
+	return row
 }

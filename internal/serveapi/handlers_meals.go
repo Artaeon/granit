@@ -142,16 +142,12 @@ func (s *Server) handlePatchMeals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	section := meals.RenderSection(updated)
-	// Honour an existing `### Meals` (or any other heading level) if
-	// the user already wrote one manually — without this, upsert
-	// would treat the literal "## Meals" as missing and append a
-	// duplicate section, leaving the user's hand-written one
-	// stranded. Falls back to `## Meals` when no existing heading is
-	// found.
-	marker, level := meals.DetectHeading(raw)
-	section = meals.RewriteHeadingLevel(section, level)
-	rewritten := upsertNamedSection(raw, marker, section)
+	// WriteSection rewrites the Meals section line-by-line so the
+	// user's free-form notes inside the section (e.g. a journal line
+	// about a meal) survive the round-trip. The old RenderSection +
+	// upsertNamedSection path discarded non-meal lines silently — a
+	// data-loss bug we don't tolerate for a daily-driver tool.
+	rewritten := meals.WriteSection(raw, updated)
 	if err := atomicio.WriteNote(dailyPath, rewritten); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

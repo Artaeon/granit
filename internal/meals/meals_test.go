@@ -187,6 +187,96 @@ func TestRewriteHeadingLevel(t *testing.T) {
 	}
 }
 
+func TestWriteSection_PreservesFreeFormNotesInsideSection(t *testing.T) {
+	// The whole point of the line-preserving rewriter: a user can
+	// jot a thought inside the Meals section without it being eaten
+	// the next time they tick a row.
+	body := strings.Join([]string{
+		"## Meals",
+		"- [ ] 08:00 Breakfast",
+		"feeling pretty hungry this morning",
+		"- [ ] 12:30 Lunch",
+		"- [ ] 19:00 Dinner",
+		"",
+		"## Notes",
+		"random thoughts",
+		"",
+	}, "\n")
+
+	parsed := Parse(body)
+	tr := true
+	updated, _ := ApplyPatch(parsed, "08:00", "Breakfast", &tr, nil)
+	out := WriteSection(body, updated)
+
+	if !strings.Contains(out, "feeling pretty hungry this morning") {
+		t.Errorf("free-form note inside section was dropped: %q", out)
+	}
+	if !strings.Contains(out, "- [x] 08:00 Breakfast") {
+		t.Errorf("breakfast tick not written: %q", out)
+	}
+	if !strings.Contains(out, "## Notes\nrandom thoughts") {
+		t.Errorf("tail content outside section corrupted: %q", out)
+	}
+}
+
+func TestWriteSection_NoSection_AppendsFresh(t *testing.T) {
+	body := "# Today\n\nsome content\n"
+	out := WriteSection(body, []Slot{
+		{Time: "08:00", Name: "Breakfast", Done: true},
+	})
+	if !strings.Contains(out, "## Meals\n- [x] 08:00 Breakfast\n") {
+		t.Errorf("missing-section append failed: %q", out)
+	}
+	if !strings.Contains(out, "some content") {
+		t.Errorf("existing content lost: %q", out)
+	}
+}
+
+func TestWriteSection_AppendsNewSlotsBeforeNextHeading(t *testing.T) {
+	// User has Breakfast + Lunch, ticks Dinner (which wasn't yet
+	// materialised). Dinner should land inside the Meals section,
+	// not after the next heading.
+	body := strings.Join([]string{
+		"## Meals",
+		"- [x] 08:00 Breakfast",
+		"- [x] 12:30 Lunch",
+		"",
+		"## Notes",
+		"keep this safe",
+		"",
+	}, "\n")
+	tr := true
+	updated, _ := ApplyPatch(Parse(body), "19:00", "Dinner", &tr, nil)
+	out := WriteSection(body, updated)
+
+	mealsIdx := strings.Index(out, "## Meals")
+	notesIdx := strings.Index(out, "## Notes")
+	dinnerIdx := strings.Index(out, "Dinner")
+	if dinnerIdx < mealsIdx || dinnerIdx > notesIdx {
+		t.Errorf("Dinner not placed inside Meals section: %q", out)
+	}
+	if !strings.Contains(out, "keep this safe") {
+		t.Errorf("Notes section corrupted: %q", out)
+	}
+}
+
+func TestWriteSection_PreservesUnusualHeadingLevel(t *testing.T) {
+	body := "### Meals\n- [ ] 08:00 Breakfast\n"
+	tr := true
+	updated, _ := ApplyPatch(Parse(body), "08:00", "", &tr, nil)
+	out := WriteSection(body, updated)
+	if !strings.HasPrefix(out, "### Meals\n") {
+		t.Errorf("heading level not preserved: %q", out)
+	}
+	// Whole-line check — substring "## Meals" would false-positive
+	// inside "### Meals".
+	for _, line := range strings.Split(out, "\n") {
+		if line == "## Meals" {
+			t.Errorf("duplicate ## Meals heading appeared: %q", out)
+		}
+	}
+}
+
 func TestRoundTrip_PatchPreservesAcrossExistingSection(t *testing.T) {
 	// Simulate: user has a daily note with `### Meals` already.
 	// We parse → patch → render with the existing level → upsert
