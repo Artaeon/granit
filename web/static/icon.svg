@@ -1,9 +1,13 @@
-<!-- Granit logo. Faceted hexagonal stone — six-vertex outline with a
-     top-cap split (horizontal) plus two internal medians (vertical),
-     dividing the silhouette into four facets: two cap triangles on
-     top, two body trapezoids below. Reads as a hewn gem / monolith,
-     picks up on the "granit" name without being literal about
-     granite.
+<!-- Granit logo. Faceted hexagonal stone — six-vertex outline split
+     into four facets (two cap triangles up top, two body trapezoids
+     below) by a horizontal cap base + two vertical medians. Each
+     facet carries its own subtle tonal fill so the stone reads as
+     cut/dimensional rather than flat — the gradient simulates light
+     hitting from upper-left in dark mode (and the inverse shadow
+     play in light mode).
+
+     Reads as a hewn gem / monolith. Picks up on the "granit" name
+     without being literal about granite.
 
      Color scheme is responsive via inline CSS: dark default, light
      swap when the browser context prefers light. The PNG renderings
@@ -16,21 +20,38 @@
      through 512px install icon. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Granit">
   <style>
+    /* Backdrop — the rounded square the stone sits on. */
     .bg { fill: #0a0a0a; }
+    /* Per-facet tints, dark mode. Light comes from upper-left, so
+       cap-left is the brightest and body-right almost merges into
+       the backdrop — the eye reads dimension across the diagonal. */
+    .facet-cl { fill: #2c2c34; }
+    .facet-cr { fill: #1c1c22; }
+    .facet-bl { fill: #14141a; }
+    .facet-br { fill: #0d0d12; }
+    /* Outline + medians — high-contrast strokes that ride on top of
+       the facets so the silhouette stays crisp at every size. */
     .fg { stroke: #fafafa; }
-    .cap-fill { fill: #16161a; }
     @media (prefers-color-scheme: light) {
       .bg { fill: #fafafa; }
+      /* Light mode inverts the tonal direction — the brightest point
+         is bottom-right (recessed away from the viewer), so the stone
+         still reads as carved rather than flat. */
+      .facet-cl { fill: #d8d8e0; }
+      .facet-cr { fill: #e4e4ec; }
+      .facet-bl { fill: #eeeef4; }
+      .facet-br { fill: #f5f5f9; }
       .fg { stroke: #0a0a0a; }
-      .cap-fill { fill: #ededf0; }
     }
   </style>
   <rect class="bg" width="512" height="512" rx="96"/>
-  <!-- Subtle cap-fill polygon — same shape as the top facet, slightly
-       brighter (dark mode) or darker (light mode) than the bg. Reads
-       as a carved highlight; the outline strokes ride on top so the
-       silhouette stays crisp. -->
-  <polygon class="cap-fill" points="256,76 432,184 80,184"/>
+  <!-- Four facets, painted before the strokes. Order doesn't matter
+       since they don't overlap; listed clockwise from cap-left so the
+       diff reads naturally. -->
+  <polygon class="facet-cl" points="256,76 256,184 80,184"/>
+  <polygon class="facet-cr" points="256,76 432,184 256,184"/>
+  <polygon class="facet-bl" points="80,184 256,184 256,436 80,360"/>
+  <polygon class="facet-br" points="256,184 432,184 432,360 256,436"/>
   <g class="fg" fill="none" stroke-width="32" stroke-linejoin="round" stroke-linecap="round">
     <!-- Outer stone outline. Top apex, top shoulders, bottom shoulders, bottom apex. -->
     <path d="M 256 76 L 432 184 L 432 360 L 256 436 L 80 360 L 80 184 Z"/>

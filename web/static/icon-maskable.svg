@@ -10,22 +10,34 @@
      box on the 512px canvas, leaving 51px of breathing room on each
      side — comfortable margin for any reasonable mask shape.
 
-     Same 4-facet geometry as icon.svg + same prefers-color-scheme
-     swap (taken seriously by the few launchers that actually
-     respect it; most bake the dark PNG variant anyway). -->
+     Same 4-facet geometry as icon.svg + same per-facet tonal shading
+     so the launcher icon reads as a real cut stone, not a flat
+     outline. The prefers-color-scheme swap is taken seriously by the
+     few launchers that respect it; most bake the dark PNG variant. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <style>
     .bg { fill: #0a0a0a; }
+    .facet-cl { fill: #2c2c34; }
+    .facet-cr { fill: #1c1c22; }
+    .facet-bl { fill: #14141a; }
+    .facet-br { fill: #0d0d12; }
     .fg { stroke: #fafafa; }
-    .cap-fill { fill: #16161a; }
     @media (prefers-color-scheme: light) {
       .bg { fill: #fafafa; }
+      .facet-cl { fill: #d8d8e0; }
+      .facet-cr { fill: #e4e4ec; }
+      .facet-bl { fill: #eeeef4; }
+      .facet-br { fill: #f5f5f9; }
       .fg { stroke: #0a0a0a; }
-      .cap-fill { fill: #ededf0; }
     }
   </style>
   <rect class="bg" width="512" height="512"/>
-  <polygon class="cap-fill" points="256,128 396,214 116,214"/>
+  <!-- Four facets — same scheme as icon.svg, scaled to the maskable
+       safe area (256,128 apex; 116/396 shoulders at y=214). -->
+  <polygon class="facet-cl" points="256,128 256,214 116,214"/>
+  <polygon class="facet-cr" points="256,128 396,214 256,214"/>
+  <polygon class="facet-bl" points="116,214 256,214 256,414 116,354"/>
+  <polygon class="facet-br" points="256,214 396,214 396,354 256,414"/>
   <g class="fg" fill="none" stroke-width="28" stroke-linejoin="round" stroke-linecap="round">
     <path d="M 256 128 L 396 214 L 396 354 L 256 414 L 116 354 L 116 214 Z"/>
     <path d="M 116 214 L 396 214"/>
