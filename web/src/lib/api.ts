@@ -211,7 +211,8 @@ export type CalendarEventType =
   | 'task_scheduled'
   | 'event'
   | 'ics_event'
-  | 'deadline';
+  | 'deadline'
+  | 'meal_slot';
 
 export interface CalendarEvent {
   type: CalendarEventType;
@@ -2325,6 +2326,26 @@ export const api = {
       body: JSON.stringify({ path, pinned })
     }),
 
+  // Meals — daily-note `## Meals` section. listMeals merges parsed
+  // rows with the user's default slots; patchMeal upserts a single
+  // slot (done flag + optional free-text "what I ate"). Date defaults
+  // to today on both endpoints when omitted.
+  listMeals: (date?: string) => {
+    const q = date ? `?date=${encodeURIComponent(date)}` : '';
+    return req<MealsResponse>(`/meals${q}`);
+  },
+  patchMeal: (slot: {
+    time: string;
+    name?: string;
+    date?: string;
+    done?: boolean;
+    text?: string;
+  }) =>
+    req<MealsResponse>('/meals', {
+      method: 'PATCH',
+      body: JSON.stringify(slot)
+    }),
+
   // Habits (derived from `## Habits` sections in daily notes)
   listHabits: () => req<HabitsResponse>('/habits'),
   // Mark a habit done/undone for ANY date — used by the heatmap to
@@ -2932,6 +2953,23 @@ export interface HabitsResponse {
   total: number;
   today: string;
   days: number;
+}
+
+// Meals — one slot per planned meal in the day. Source of truth is the
+// daily note's `## Meals` section; the API merges with the user's
+// defaults so the client always sees the full row list.
+export interface MealSlot {
+  time: string; // HH:MM
+  name: string;
+  done: boolean;
+  text?: string;
+}
+
+export interface MealsResponse {
+  date: string;
+  slots: MealSlot[];
+  done: number;
+  total: number;
 }
 
 export interface SearchHit {
