@@ -21,6 +21,15 @@
   "edge_side_panel": {
     "preferred_width": 480
   },
+  "share_target": {
+    "action": "/notes",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
   "icons": [
     {
       "src": "/icon-192.png",
