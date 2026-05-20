@@ -275,7 +275,15 @@
             placeholder="…"
             value={displayText(s)}
             oninput={(e) => onTextInput(s, (e.currentTarget as HTMLInputElement).value)}
-            onblur={(e) => void saveText(s, (e.currentTarget as HTMLInputElement).value)}
+            onblur={(e) => {
+              // Cancel any pending debouncer first — without this,
+              // blurring with <600ms since the last keystroke would
+              // fire saveText twice (once from blur, once from the
+              // pending timer) and produce two PATCHes with the
+              // same body.
+              if (saveTimers[key]) clearTimeout(saveTimers[key]);
+              void saveText(s, (e.currentTarget as HTMLInputElement).value);
+            }}
             onkeydown={(e) => {
               if (e.key === 'Enter') {
                 // Save-and-blur on Enter — cancels the in-flight

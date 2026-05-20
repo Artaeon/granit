@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,10 +92,22 @@ func (s *Server) handlePatchMeals(w http.ResponseWriter, r *http.Request) {
 	// "8:00" would not match the canonical "08:00" default and we'd
 	// silently append a duplicate slot — confusing on the dashboard
 	// and impossible for the user to clean up from the widget.
-	if t, err := time.Parse("15:04", b.Time); err == nil {
-		b.Time = t.Format("15:04")
-	} else if t, err := time.Parse("3:04", b.Time); err == nil {
-		b.Time = t.Format("15:04")
+	//
+	// Explicit split-and-parse (instead of time.Parse) because Go's
+	// time layout matching is subtly lenient about leading zeros in
+	// different ways depending on whether you use "15" (24h) or "3"
+	// (12h) — explicit int-parse is unambiguous and rejects garbage
+	// like "23:5" or "24:00" cleanly.
+	parts := strings.Split(b.Time, ":")
+	if len(parts) == 2 {
+		hh, herr := strconv.Atoi(parts[0])
+		mm, merr := strconv.Atoi(parts[1])
+		if herr == nil && merr == nil && hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59 && len(parts[1]) == 2 {
+			b.Time = fmt.Sprintf("%02d:%02d", hh, mm)
+		} else {
+			writeError(w, http.StatusBadRequest, "time must be HH:MM (24h)")
+			return
+		}
 	} else {
 		writeError(w, http.StatusBadRequest, "time must be HH:MM (24h)")
 		return

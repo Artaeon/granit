@@ -302,9 +302,17 @@ func WriteSection(body string, slots []Slot) string {
 	}
 
 	// Index slots by key for O(1) lookups while walking the section.
+	// FIRST-write-wins (not last) because ApplyPatch only updates the
+	// first occurrence of a given (time, name) key and leaves any
+	// duplicate behind. If byKey overwrote with the duplicate, the
+	// user's tick would silently disappear on write-back — caught by
+	// TestWriteSection_DuplicateRowsBecomeIdenticalNotLost.
 	byKey := make(map[string]Slot, len(slots))
 	for _, s := range slots {
-		byKey[slotKey(s)] = s
+		k := slotKey(s)
+		if _, exists := byKey[k]; !exists {
+			byKey[k] = s
+		}
 	}
 	seen := make(map[string]bool, len(slots))
 
