@@ -129,7 +129,7 @@
       <h3 class="text-[11px] uppercase tracking-wider text-warning mb-1.5 flex items-baseline gap-1.5">
         <span class="w-1.5 h-1.5 rounded-full bg-warning inline-block"></span>
         Stale · {staleDeduped.length}
-        <span class="text-[10px] text-dim normal-case tracking-normal">untouched 7+ days</span>
+        <span class="text-[10px] text-dim normal-case tracking-normal">untouched {STALE_DAYS}+ days</span>
       </h3>
       <div class="space-y-px mb-3">
         {#each staleDeduped as t (t.id)}
