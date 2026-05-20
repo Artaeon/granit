@@ -539,7 +539,8 @@
                 <button
                   type="button"
                   onclick={() => { scripture = s; customScripture = ''; customSource = ''; }}
-                  class="text-[11px] px-2 py-0.5 rounded border
+                  class="text-xs px-2.5 py-1.5 rounded border
+                    sm:text-[11px] sm:px-2 sm:py-0.5
                     {scripture === s && !customScripture ? 'border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary'}"
                 >{s.source}</button>
               {/each}
@@ -828,7 +829,8 @@
               <button
                 type="button"
                 onclick={() => toggleHabit(h.name)}
-                class="px-2.5 py-1 text-[11px] rounded-full border transition-colors inline-flex items-center gap-1.5
+                class="px-3 py-2 text-xs rounded-full border transition-colors inline-flex items-center gap-1.5
+                  sm:px-2.5 sm:py-1 sm:text-[11px]
                   {sel ? 'bg-surface1 border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary'}"
               >
                 <span>{sel ? '☑' : '☐'}</span>
@@ -883,10 +885,12 @@
                   <button
                     type="button"
                     onclick={() => toggleIntention(p.id)}
-                    class="w-full text-left flex items-start gap-2 px-2 py-1.5 rounded
+                    class="w-full text-left flex items-start gap-2 px-2 py-2.5 rounded
+                      sm:py-1.5
                       {picked ? 'bg-primary/10' : 'hover:bg-surface0'}"
                   >
-                    <span class="w-3.5 h-3.5 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center text-[9px]
+                    <span class="w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center text-[10px]
+                      sm:w-3.5 sm:h-3.5 sm:text-[9px]
                       {picked ? 'bg-primary border-primary text-on-primary' : 'border-surface2'}">{picked ? '✓' : ''}</span>
                     <div class="flex-1 min-w-0">
                       <div class="text-sm text-text">{p.text}</div>
