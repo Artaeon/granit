@@ -137,7 +137,18 @@ func (s *Server) handlePatchMeals(w http.ResponseWriter, r *http.Request) {
 	}
 
 	section := meals.RenderSection(updated)
-	rewritten := upsertNamedSection(raw, "## Meals", section)
+	// Honour an existing `### Meals` (or any other heading level) if
+	// the user already wrote one manually — without this, upsert
+	// would treat the literal "## Meals" as missing and append a
+	// duplicate section, leaving the user's hand-written one
+	// stranded. Falls back to `## Meals` when no existing heading is
+	// found. RenderSection emits "## Meals\n…" so we also rewrite the
+	// rendered heading to match the existing level.
+	marker, level := detectMealsHeading(raw)
+	if level > 0 && level != 2 {
+		section = rewriteHeading(section, level)
+	}
+	rewritten := upsertNamedSection(raw, marker, section)
 	if err := atomicio.WriteNote(dailyPath, rewritten); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -186,6 +197,39 @@ func (s *Server) readDailyBody(dateISO string) string {
 		return ""
 	}
 	return string(data)
+}
+
+// detectMealsHeading scans the note body for an existing Meals
+// heading (any level) and returns the exact line text + the heading
+// level. Returns ("## Meals", 0) when no heading exists, signalling
+// the caller to use the default level-2 marker.
+func detectMealsHeading(body string) (marker string, level int) {
+	for _, raw := range strings.Split(body, "\n") {
+		line := strings.TrimRight(raw, "\r")
+		trim := strings.TrimSpace(line)
+		if !strings.HasPrefix(trim, "#") {
+			continue
+		}
+		// Count leading hashes for the level.
+		lvl := 0
+		for lvl < len(trim) && trim[lvl] == '#' {
+			lvl++
+		}
+		text := strings.TrimSpace(trim[lvl:])
+		if strings.EqualFold(text, "Meals") {
+			return trim, lvl
+		}
+	}
+	return "## Meals", 0
+}
+
+// rewriteHeading swaps the first "## Meals" prefix of a rendered
+// section to the requested heading level. RenderSection always writes
+// level-2; this lets upsert keep the user's chosen level when they
+// already authored e.g. "### Meals" in their daily-note template.
+func rewriteHeading(section string, level int) string {
+	prefix := strings.Repeat("#", level) + " Meals"
+	return strings.Replace(section, "## Meals", prefix, 1)
 }
 
 // resolveMealsDaily picks the daily-note absolute path for the target
