@@ -199,20 +199,17 @@
         {#each pinnedItems as item (item.href)}
           <NavItem {item} isCompact={true} onNavigate={navigate} />
         {/each}
-        <div class="my-1.5 flex items-center justify-center gap-1" aria-hidden="true">
-          <span class="h-px w-2 bg-surface1"></span>
+        <div class="my-1.5 flex items-center justify-center" aria-hidden="true">
           <span class="w-1 h-1 rounded-full bg-surface1"></span>
-          <span class="h-px w-2 bg-surface1"></span>
         </div>
       {:else}
-        <div class="pb-1 mb-1 border-b border-surface1">
-          <div class="px-3 pb-0.5 pt-0.5 text-[10px] uppercase tracking-wider text-dim flex items-center gap-1">
-            <svg viewBox="0 0 16 16" class="w-3 h-3" fill="currentColor" aria-hidden="true">
-              <path d="M8 1.5l1.85 4.05L14 6.2l-3.1 2.85L11.7 13 8 10.85 4.3 13l.8-3.95L2 6.2l4.15-.65z"/>
-            </svg>
-            <span>Pinned</span>
-          </div>
-          <div class="space-y-0.5">
+        <!-- Pinned + Recent + Sections share a single header style:
+             tiny caps + lowercase, no extra border, no inline icon.
+             Earlier the star/clock icons added noise without adding
+             information that the label alone wasn't already giving. -->
+        <div class="pb-1">
+          <div class="px-3 pt-2 pb-0.5 text-[10px] uppercase tracking-wider text-dim">Pinned</div>
+          <div class="space-y-0">
             {#each pinnedItems as item (item.href)}
               <NavItem {item} isCompact={false} onNavigate={navigate} />
             {/each}
@@ -233,21 +230,13 @@
         {#each recentItems as item (item.href)}
           <NavItem {item} isCompact={true} onNavigate={navigate} />
         {/each}
-        <div class="my-1.5 flex items-center justify-center gap-1" aria-hidden="true">
-          <span class="h-px w-2 bg-surface1"></span>
+        <div class="my-1.5 flex items-center justify-center" aria-hidden="true">
           <span class="w-1 h-1 rounded-full bg-surface1"></span>
-          <span class="h-px w-2 bg-surface1"></span>
         </div>
       {:else}
-        <div class="pb-1 mb-1 border-b border-surface1">
-          <div class="px-3 pb-0.5 pt-0.5 text-[10px] uppercase tracking-wider text-dim flex items-center gap-1">
-            <svg viewBox="0 0 16 16" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <circle cx="8" cy="8" r="6.5"/>
-              <polyline points="8 4 8 8 10.5 9.5"/>
-            </svg>
-            <span>Recent</span>
-          </div>
-          <div class="space-y-0.5">
+        <div class="pb-1">
+          <div class="px-3 pt-2 pb-0.5 text-[10px] uppercase tracking-wider text-dim">Recent</div>
+          <div class="space-y-0">
             {#each recentItems as item (item.href)}
               <NavItem {item} isCompact={false} onNavigate={navigate} />
             {/each}
@@ -283,20 +272,20 @@
           <NavItem {item} isCompact={true} onNavigate={navigate} />
         {/each}
       {:else}
-        <div class="pt-1">
+        <div>
           <button
             type="button"
             onclick={() => toggleSection(section.id)}
             aria-expanded={!isCollapsed}
-            class="w-full flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wider text-dim hover:text-subtext transition-colors"
+            class="w-full flex items-center gap-1 px-3 pt-2 pb-0.5 text-[10px] uppercase tracking-wider text-dim hover:text-subtext transition-colors"
           >
             <span class="flex-1 text-left">{section.label}</span>
-            <svg viewBox="0 0 24 24" class="w-3 h-3 transition-transform {isCollapsed ? '-rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" class="w-3 h-3 opacity-0 group-hover:opacity-100 transition-transform {isCollapsed ? '-rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
           {#if !isCollapsed}
-            <div class="space-y-0.5 mt-0.5">
+            <div class="space-y-0">
               {#each section.items as item}
                 <NavItem {item} isCompact={false} onNavigate={navigate} />
               {/each}
