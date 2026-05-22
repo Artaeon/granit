@@ -22,7 +22,6 @@
   import AIOverlay from '$lib/components/AIOverlay.svelte';
   import NoteTray from '$lib/components/NoteTray.svelte';
   import ShortcutsOverlay from '$lib/components/ShortcutsOverlay.svelte';
-  import { recordVisit } from '$lib/stores/sidebar-recent';
   import { lastOpenNote, trayEnabled } from '$lib/stores/open-note';
   import { nav, sections } from '$lib/nav/config';
   import { activeNav } from '$lib/nav/active';
@@ -64,15 +63,6 @@
   // $lib/stores/nav-badges. startNavBadges() wires the auth + WS
   // lifecycle once and returns a cleanup for onMount tear-down.
   onMount(() => startNavBadges());
-
-  // Record the current route into the recent-visits store whenever
-  // navigation lands somewhere. Pulled out of $effect into untrack
-  // because the store update would otherwise re-trigger the effect
-  // via its own subscription if anything in the effect read it.
-  $effect(() => {
-    const path = $page.url.pathname;
-    untrack(() => recordVisit(path));
-  });
 
   // Auto-expand the section containing the active route. Without
   // this the user can land on /goals (collapsed-by-default Plan
