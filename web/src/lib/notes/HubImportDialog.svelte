@@ -196,11 +196,18 @@
     onclick={onClose}
     role="presentation"
   >
-    <section
+    <!-- role="dialog" + click-stop + focus anchor live on a div.
+         svelte-check rejects role="dialog" on a `<section>` (it's
+         a landmark element, not a dialog container); the click-stop
+         and tabindex are the dialog's responsibility regardless. -->
+    <div
       class="w-full sm:max-w-2xl bg-base border border-surface1 rounded-t-xl sm:rounded-lg shadow-xl max-h-[92dvh] sm:max-h-[90dvh] flex flex-col"
-      onclick={(e) => e.stopPropagation()}
       role="dialog"
+      aria-modal="true"
       aria-label="Import browser bookmarks"
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
     >
       <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">Import browser bookmarks</h2>
@@ -324,6 +331,6 @@
           >Cancel</button>
         {/if}
       </footer>
-    </section>
+    </div>
   </div>
 {/if}

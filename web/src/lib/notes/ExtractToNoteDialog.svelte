@@ -305,12 +305,22 @@
     onkeydown={onKey}
     role="presentation"
   >
+    <!-- role="dialog" + the click-stop both live on a wrapping
+         div. svelte-check flags both `role="dialog"` and click
+         handlers on a `<form>` element (a form is interactive,
+         not a dialog container). The div is the right anchor;
+         the form just submits. -->
+    <div
+      class="w-full sm:max-w-lg bg-base border border-surface1 rounded-t-xl sm:rounded-lg shadow-xl max-h-[92dvh] sm:max-h-[88vh] overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Extract selection to new note"
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
     <form
       onsubmit={submit}
-      class="w-full sm:max-w-lg bg-base border border-surface1 rounded-t-xl sm:rounded-lg shadow-xl max-h-[92dvh] sm:max-h-[88vh] overflow-y-auto"
-      onclick={(e) => e.stopPropagation()}
-      role="dialog"
-      aria-label="Extract selection to new note"
     >
       <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">Extract to new note</h2>
@@ -487,5 +497,6 @@
         >{busy ? 'Extracting…' : 'Extract'}</button>
       </footer>
     </form>
+    </div>
   </div>
 {/if}

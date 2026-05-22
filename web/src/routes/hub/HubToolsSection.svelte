@@ -407,12 +407,22 @@
     onclick={() => (dialogOpen = false)}
     role="presentation"
   >
+    <!-- role="dialog" + click-stop live on a wrapping div so
+         svelte-check accepts the dialog semantics (a form is
+         interactive, not a dialog container). The form just
+         submits — Enter on any input triggers save(). -->
+    <div
+      class="w-full max-w-2xl bg-base border border-surface1 rounded-lg shadow-xl max-h-[90dvh] flex flex-col"
+      role="dialog"
+      aria-modal="true"
+      aria-label={editing ? 'Edit tool' : 'Add tool'}
+      tabindex="-1"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
     <form
       onsubmit={(e) => { e.preventDefault(); save(); }}
-      class="w-full max-w-2xl bg-base border border-surface1 rounded-lg shadow-xl max-h-[90dvh] flex flex-col"
-      onclick={(e) => e.stopPropagation()}
-      role="dialog"
-      aria-label={editing ? 'Edit tool' : 'Add tool'}
+      class="flex flex-col flex-1 min-h-0"
     >
       <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">
@@ -563,5 +573,6 @@
         >{saving ? 'saving…' : editing ? 'Save' : 'Add'}</button>
       </footer>
     </form>
+    </div>
   </div>
 {/if}
