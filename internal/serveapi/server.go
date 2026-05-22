@@ -87,6 +87,11 @@ type Server struct {
 	// NewServer on a unit test that exercises a single handler.
 	modulesMu  sync.Mutex
 	modulesReg *modules.Registry
+	// webhook is the outbound dispatcher that pings the configured
+	// intranet receiver after task / project / deadline mutations.
+	// Nil until NewServer runs; safe to call .notify() on either way
+	// (the method no-ops on nil receiver).
+	webhook *webhookDispatcher
 }
 
 // activeTimer is the in-memory shape of a running timer. We keep it
@@ -128,6 +133,7 @@ func NewServer(cfg Config) (*Server, error) {
 		push:       push.New(cfg.Vault.Root),
 		aiContext:  aicontext.New(cfg.Vault, cfg.TaskStore, cfg.Vault.Root),
 		aiAudit:    aiaudit.New(cfg.Vault.Root),
+		webhook:    newWebhookDispatcher(cfg.Vault.Root, cfg.Logger),
 	}
 	// Restore autocommit-enabled state from settings.json. The
 	// setting is opt-in (default off) so a vault that's a git repo
