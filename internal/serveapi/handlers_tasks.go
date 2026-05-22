@@ -532,6 +532,13 @@ type createTaskBody struct {
 	DurationMinutes int      `json:"durationMinutes,omitempty"`
 	GoalID          string   `json:"goalId,omitempty"`
 	DeadlineID      string   `json:"deadlineId,omitempty"`
+	// ProjectID assigns the task to a project on creation. Mirrors the
+	// patch handler — same semantics, written to the sidecar via
+	// UpdateMeta after the markdown line lands. The frontend's group-
+	// add flow on /tasks passes this when a project group is selected,
+	// so the task lands already-assigned rather than needing a follow-
+	// up PATCH.
+	ProjectID string `json:"projectId,omitempty"`
 	// ParentLine, when > 0, asks the store to insert the new task as
 	// a subtask of the task on that 1-indexed line in `notePath`. The
 	// resulting markdown line is indented one level deeper than the
@@ -608,6 +615,10 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 			_ = s.cfg.TaskStore.Schedule(t.ID, start, dur)
 			t, _ = s.cfg.TaskStore.GetByID(t.ID)
 		}
+	}
+	if b.ProjectID != "" {
+		_ = s.cfg.TaskStore.UpdateMeta(t.ID, func(t *tasks.Task) { t.ProjectID = b.ProjectID })
+		t, _ = s.cfg.TaskStore.GetByID(t.ID)
 	}
 	s.broadcastTaskChange(t.ID)
 	writeJSON(w, http.StatusCreated, taskToView(t))

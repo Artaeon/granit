@@ -1552,6 +1552,10 @@ export const api = {
     durationMinutes?: number;
     goalId?: string;
     deadlineId?: string;
+    /** Assigns the new task to a project on creation. Same semantics as
+     *  the PATCH handler — written to the sidecar after the markdown
+     *  line lands, so the task surfaces under its project immediately. */
+    projectId?: string;
     /** When set, the new task is inserted as a subtask of the task on
      *  this 1-indexed line in `notePath`. Resulting markdown is
      *  indented one level deeper than the parent (2 spaces). */
