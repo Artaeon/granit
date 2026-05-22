@@ -101,7 +101,14 @@
 </script>
 
 {#if mode === 'chromium'}
-  <div class="fixed bottom-4 right-4 z-40 max-w-xs bg-mantle border border-surface1 rounded-lg shadow-xl p-3 flex items-start gap-3">
+  <!-- Bottom offset is computed so the prompt clears: (a) iOS home-
+       indicator via env(safe-area-inset-bottom), (b) the mobile bottom-
+       nav (3.5rem h-14) when present, (c) a small visual gap. Desktop
+       has no bottom-nav, so the md: media query collapses (b). -->
+  <div
+    class="fixed right-4 z-40 max-w-xs bg-mantle border border-surface1 rounded-lg shadow-xl p-3 flex items-start gap-3"
+    style="bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);"
+  >
     <div class="w-8 h-8 rounded bg-surface1 flex items-center justify-center flex-shrink-0">
       <svg viewBox="0 0 24 24" class="w-4 h-4 text-primary" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M12 4v12M6 10l6 6 6-6M4 20h16"/>
@@ -123,7 +130,12 @@
     </div>
   </div>
 {:else if mode === 'ios'}
-  <div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-xs bg-mantle border border-surface1 rounded-lg shadow-xl p-3 flex items-start gap-3">
+  <!-- iOS install-hint: centred above the home-indicator. iOS always
+       has bottom inset, so the safe-area var carries the actual lift. -->
+  <div
+    class="fixed left-1/2 -translate-x-1/2 z-40 max-w-xs bg-mantle border border-surface1 rounded-lg shadow-xl p-3 flex items-start gap-3"
+    style="bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);"
+  >
     <div class="w-8 h-8 rounded bg-surface1 flex items-center justify-center flex-shrink-0">
       <svg viewBox="0 0 24 24" class="w-4 h-4 text-primary" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <path d="M12 4v12M8 8l4-4 4 4M5 14v5a1 1 0 001 1h12a1 1 0 001-1v-5"/>

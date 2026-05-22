@@ -32,8 +32,13 @@
   }
 </script>
 
+<!-- Top-right toast stack. The top offset adds env(safe-area-inset-top)
+     so on iOS Safari (in PWA standalone mode) toasts clear the notch /
+     status bar instead of sliding in half-under it. Falls back to the
+     plain 0.75rem when no safe-area inset exists (desktop, Android). -->
 <div
-  class="fixed top-3 right-3 z-[70] flex flex-col gap-2 pointer-events-none max-w-sm w-[calc(100vw-1.5rem)] sm:w-96"
+  class="fixed right-3 z-[70] flex flex-col gap-2 pointer-events-none max-w-sm w-[calc(100vw-1.5rem)] sm:w-96"
+  style="top: calc(env(safe-area-inset-top, 0px) + 0.75rem);"
   aria-live="polite"
   aria-atomic="true"
 >

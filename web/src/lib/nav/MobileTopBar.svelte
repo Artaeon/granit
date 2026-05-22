@@ -25,7 +25,14 @@
   );
 </script>
 
-<header class="md:hidden flex items-center gap-1 px-3 h-12 border-b border-surface1 bg-mantle sticky top-0 z-30 flex-shrink-0">
+<!-- Sticky header. `pt-safe` adds env(safe-area-inset-top) so on iOS
+     PWA standalone the bar shifts below the notch / status bar
+     instead of sitting half-under it. Browser tabs without an
+     inset see no change. -->
+<header
+  class="md:hidden flex items-center gap-1 px-3 h-12 border-b border-surface1 bg-mantle sticky top-0 z-30 flex-shrink-0"
+  style="padding-top: env(safe-area-inset-top, 0px); height: calc(3rem + env(safe-area-inset-top, 0px));"
+>
   {#if showBack && $activeNav}
     <a
       href={$activeNav.href}

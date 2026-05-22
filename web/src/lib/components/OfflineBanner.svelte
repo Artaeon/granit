@@ -104,9 +104,15 @@
 </script>
 
 {#if !$isOnline}
+  <!-- Mobile banner sits below MobileTopBar (which carries the
+       safe-area-inset). Add the same inset here so the banner shifts
+       down on notched iOS in PWA-standalone mode where the topbar
+       takes up extra room. The 3rem fallback matches the bar's
+       intrinsic height. -->
   <div
     in:fly={{ y: -10, duration: 180 }}
-    class="md:hidden fixed top-12 inset-x-0 z-30 px-3 py-1.5 bg-warning text-on-primary text-xs flex items-center gap-2"
+    class="md:hidden fixed inset-x-0 z-30 px-3 py-1.5 bg-warning text-on-primary text-xs flex items-center gap-2"
+    style="top: calc(3rem + env(safe-area-inset-top, 0px));"
   >
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
       <path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M5 12.55a11 11 0 0 1 14.08-1.4M1.42 9a16 16 0 0 1 4.5-3.07M9 19.5h.01" />
