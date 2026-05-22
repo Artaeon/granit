@@ -1,68 +1,56 @@
-<!-- Granit logo. Faceted hexagonal stone — six-vertex outline split
-     into four facets (two cap triangles up top, two body trapezoids
-     below) by a horizontal cap base + two vertical medians. Each
-     facet carries its own subtle tonal fill so the stone reads as
-     cut/dimensional rather than flat — the gradient simulates light
-     hitting from upper-left in dark mode (and the inverse shadow
-     play in light mode).
-
-     Reads as a hewn gem / monolith. Picks up on the "granit" name
-     without being literal about granite.
+<!-- Granit logo — Monogram G with stone-mason wedge.
+     A chiseled G constructed entirely from straight strokes (no
+     curves) so it reads as "carved into stone" rather than "set
+     in type". The notch in the bottom-right corner of the slab is
+     the differentiator — a mason's wedge cut, gives the silhouette
+     character no other G logo has AND remains identifiable at the
+     16px favicon size where the notch is the only thing the eye
+     can resolve.
 
      Color scheme is responsive via inline CSS: dark default, light
-     swap when the browser context prefers light. The PNG renderings
-     bake the dark variant (manifest icons are single-mode on iOS /
-     Android). Browser tabs + supported OS surfaces use the SVG and
-     therefore get the live theme swap.
+     swap when the browser context prefers light. PNG renderings
+     bake the dark variant (manifest icons are single-mode on
+     iOS/Android). Browser tabs + supported OS surfaces use the SVG
+     and therefore get the live theme swap.
 
-     Geometry uses absolute coordinates for clean diffs. Stroke width
-     tuned so the silhouette stays confident from 32px favicon up
-     through 512px install icon. -->
+     Geometry uses absolute coordinates for clean diffs. The G is
+     drawn as a single filled path so the inner counter (white space
+     inside) and outer silhouette are inseparable; the notch is a
+     subtractive polygon filled with the backdrop color. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Granit">
   <style>
-    /* Backdrop — the rounded square the stone sits on. */
     .bg { fill: #0a0a0a; }
-    /* Per-facet tints, dark mode. Light comes from upper-left, so
-       cap-left is the brightest and body-right almost merges into
-       the backdrop — the eye reads dimension across the diagonal. */
-    .facet-cl { fill: #2c2c34; }
-    .facet-cr { fill: #1c1c22; }
-    .facet-bl { fill: #14141a; }
-    .facet-br { fill: #0d0d12; }
-    /* Outline + medians — high-contrast strokes that ride on top of
-       the facets so the silhouette stays crisp at every size. */
-    .fg { stroke: #fafafa; }
+    .letter { fill: #fafafa; }
+    .notch { fill: #0a0a0a; }
     @media (prefers-color-scheme: light) {
       .bg { fill: #fafafa; }
-      /* Light mode inverts the tonal direction — the brightest point
-         is bottom-right (recessed away from the viewer), so the stone
-         still reads as carved rather than flat. */
-      .facet-cl { fill: #d8d8e0; }
-      .facet-cr { fill: #e4e4ec; }
-      .facet-bl { fill: #eeeef4; }
-      .facet-br { fill: #f5f5f9; }
-      .fg { stroke: #0a0a0a; }
+      .letter { fill: #0a0a0a; }
+      .notch { fill: #fafafa; }
     }
   </style>
   <rect class="bg" width="512" height="512" rx="96"/>
-  <!-- Four facets, painted before the strokes. Order doesn't matter
-       since they don't overlap; listed clockwise from cap-left so the
-       diff reads naturally. -->
-  <polygon class="facet-cl" points="256,76 256,184 80,184"/>
-  <polygon class="facet-cr" points="256,76 432,184 256,184"/>
-  <polygon class="facet-bl" points="80,184 256,184 256,436 80,360"/>
-  <polygon class="facet-br" points="256,184 432,184 432,360 256,436"/>
-  <g class="fg" fill="none" stroke-width="32" stroke-linejoin="round" stroke-linecap="round">
-    <!-- Outer stone outline. Top apex, top shoulders, bottom shoulders, bottom apex. -->
-    <path d="M 256 76 L 432 184 L 432 360 L 256 436 L 80 360 L 80 184 Z"/>
-    <!-- Cap base — splits the top facet from the body. -->
-    <path d="M 80 184 L 432 184"/>
-    <!-- Cap median — divides the top into two triangular facets. -->
-    <path d="M 256 76 L 256 184"/>
-    <!-- Body median — mirrors the cap median through the body so the
-         stone reads as four facets total instead of two-cap + flat-
-         body. Subtle but turns the silhouette from "hexagon with hat"
-         into "cut gemstone". -->
-    <path d="M 256 184 L 256 436"/>
-  </g>
+  <!-- The G, drawn as a single fill path. Geometry: a left bar
+       (width 88) running the full height, a top bar across the
+       width, a bottom bar across the width, and an interior
+       crossbar jutting INTO the counter to form the classic
+       G-spur. Stroke widths are tuned so the letter remains
+       legible from 16px favicon to 512px install icon. -->
+  <path class="letter" d="
+    M 130 96
+    L 382 96
+    L 382 184
+    L 218 184
+    L 218 328
+    L 312 328
+    L 312 280
+    L 250 280
+    L 250 224
+    L 382 224
+    L 382 416
+    L 130 416
+    Z"/>
+  <!-- Mason's wedge notch — a 45° cut in the bottom-right corner
+       of the slab. Reads as "stone hewn from a larger block" and
+       gives the silhouette an asymmetric signature. -->
+  <polygon class="notch" points="512,416 512,512 416,512"/>
 </svg>

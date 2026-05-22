@@ -1,42 +1,45 @@
-<!-- Favicon: same faceted-stone mark as icon.svg, tuned for tiny
-     sizes. Drops the cap median (it disappears at 16px anyway and
-     just adds visual noise at 32px), keeps the body median so the
-     mark still reads as "cut stone" not just "hexagon hat". Stroke
-     thicker than the 512 variant so the silhouette stays confident
-     at browser-tab scale.
+<!-- Favicon: Monogram G, scaled + thickened for 16/32px browser-
+     tab rendering. Different viewBox + thicker letter widths than
+     icon.svg so the silhouette stays confident at favicon scale —
+     a 1:1 downscale of the 512 master would dissolve into mush at
+     16px because the counters disappear.
 
-     Carries the same per-facet tonal fills as the full icon so the
-     stone reads as dimensional even at tab-icon size — the gradient
-     is more visible per-pixel at 32px than at 512px because each
-     facet covers a meaningful number of pixels.
+     Mason-wedge notch in the bottom-right corner survives at this
+     scale and remains the differentiator vs. other G-logo favicons.
 
-     Color scheme matches the system: dark default, light swap via
-     prefers-color-scheme so the favicon doesn't look stranded on a
-     light browser chrome. -->
+     Dark default + light swap via prefers-color-scheme so the
+     favicon doesn't look stranded on a light browser chrome. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Granit">
   <style>
     .bg { fill: #0a0a0a; }
-    .facet-cap { fill: #20202a; }
-    .facet-bl  { fill: #14141a; }
-    .facet-br  { fill: #0d0d12; }
-    .fg { stroke: #fafafa; }
+    .letter { fill: #fafafa; }
+    .notch { fill: #0a0a0a; }
     @media (prefers-color-scheme: light) {
       .bg { fill: #fafafa; }
-      .facet-cap { fill: #dededc; }
-      .facet-bl  { fill: #eeeef4; }
-      .facet-br  { fill: #f5f5f9; }
-      .fg { stroke: #0a0a0a; }
+      .letter { fill: #0a0a0a; }
+      .notch { fill: #fafafa; }
     }
   </style>
-  <rect class="bg" width="32" height="32" rx="6"/>
-  <!-- Cap is one polygon at this size (the cap median would be a
-       sub-pixel hair at 16px). Body splits left/right via the median. -->
-  <polygon class="facet-cap" points="16,5 27,11.5 5,11.5"/>
-  <polygon class="facet-bl"  points="5,11.5 16,11.5 16,27 5,22.5"/>
-  <polygon class="facet-br"  points="16,11.5 27,11.5 27,22.5 16,27"/>
-  <g class="fg" fill="none" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
-    <path d="M 16 5 L 27 11.5 L 27 22.5 L 16 27 L 5 22.5 L 5 11.5 Z"/>
-    <path d="M 5 11.5 L 27 11.5"/>
-    <path d="M 16 11.5 L 16 27"/>
-  </g>
+  <rect class="bg" width="32" height="32" rx="5"/>
+  <!-- Simplified G at 32px. Coordinates picked so the letter remains
+       readable down to 16px (where each unit is half a pixel). The
+       crossbar is intentionally short — at this scale a full inner
+       crossbar would close the counter and read as a square; the
+       short stub still cues "G" without losing legibility. -->
+  <path class="letter" d="
+    M 8 6
+    L 24 6
+    L 24 11
+    L 13.5 11
+    L 13.5 20.5
+    L 19 20.5
+    L 19 18
+    L 15.5 18
+    L 15.5 14
+    L 24 14
+    L 24 26
+    L 8 26
+    Z"/>
+  <!-- Mason-wedge notch — bottom-right corner of the slab. -->
+  <polygon class="notch" points="32,26 32,32 26,32"/>
 </svg>

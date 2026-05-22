@@ -65,20 +65,17 @@
     <div id="app-splash" aria-hidden="true">
       <div class="app-splash__center">
         <svg viewBox="0 0 512 512" aria-hidden="true" class="app-splash__icon">
-          <!-- Per-facet fills — match icon.svg / icon-maskable.svg
-               so the splash never reads as just a wire-outline. The
-               tonal direction inverts via prefers-color-scheme (see
-               style block below). -->
-          <polygon class="app-splash__facet-cl" points="256,76 256,184 80,184" />
-          <polygon class="app-splash__facet-cr" points="256,76 432,184 256,184" />
-          <polygon class="app-splash__facet-bl" points="80,184 256,184 256,436 80,360" />
-          <polygon class="app-splash__facet-br" points="256,184 432,184 432,360 256,436" />
-          <g fill="none" stroke="currentColor" stroke-width="32" stroke-linejoin="round" stroke-linecap="round">
-            <path d="M 256 76 L 432 184 L 432 360 L 256 436 L 80 360 L 80 184 Z" />
-            <path d="M 80 184 L 432 184" />
-            <path d="M 256 76 L 256 184" />
-            <path d="M 256 184 L 256 436" />
-          </g>
+          <!-- Monogram G + mason-wedge notch — matches icon.svg so
+               the pre-paint splash shows exactly what the installed
+               app icon shows. Backdrop + notch colours invert via
+               data-theme so the bootstrap script's theme choice
+               drives the splash before any framework JS has loaded. -->
+          <rect class="app-splash__bg" width="512" height="512" rx="96" />
+          <path
+            class="app-splash__letter"
+            d="M 130 96 L 382 96 L 382 184 L 218 184 L 218 328 L 312 328 L 312 280 L 250 280 L 250 224 L 382 224 L 382 416 L 130 416 Z"
+          />
+          <polygon class="app-splash__notch" points="512,416 512,512 416,512" />
         </svg>
         <div class="app-splash__title">Granit</div>
         <div class="app-splash__tagline">your vault, anywhere</div>
@@ -125,17 +122,16 @@
         width: clamp(56px, 18vw, 128px);
         height: clamp(56px, 18vw, 128px);
       }
-      /* Per-facet fills, dark mode default. Mirror icon.svg's tonal
-         direction (light from upper-left) so the launch screen looks
-         like the same gemstone the user just tapped. */
-      .app-splash__facet-cl { fill: #2c2c34; }
-      .app-splash__facet-cr { fill: #1c1c22; }
-      .app-splash__facet-bl { fill: #14141a; }
-      .app-splash__facet-br { fill: #0d0d12; }
-      [data-theme='light'] .app-splash__facet-cl { fill: #d8d8e0; }
-      [data-theme='light'] .app-splash__facet-cr { fill: #e4e4ec; }
-      [data-theme='light'] .app-splash__facet-bl { fill: #eeeef4; }
-      [data-theme='light'] .app-splash__facet-br { fill: #f5f5f9; }
+      /* Monogram-G colour scheme. Mirrors icon.svg so the splash
+         shows exactly what the installed app icon shows. Inverts
+         on data-theme=light so the bootstrap script's theme pick
+         drives the splash pre-paint (no flash of wrong colours). */
+      .app-splash__bg { fill: #0a0a0a; }
+      .app-splash__letter { fill: #fafafa; }
+      .app-splash__notch { fill: #0a0a0a; }
+      [data-theme='light'] .app-splash__bg { fill: #fafafa; }
+      [data-theme='light'] .app-splash__letter { fill: #0a0a0a; }
+      [data-theme='light'] .app-splash__notch { fill: #fafafa; }
       .app-splash__title {
         font-size: 0.875rem;
         letter-spacing: 0.32em;

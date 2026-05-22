@@ -3,45 +3,44 @@
        - background is full-bleed (no rounded corners on our side)
        - the mark fits within the centered 80% safe area (Android
          spec: anything outside the central 80% radius can be
-         clipped). Our stone is shrunk by ~25% from the standalone
-         icon and re-centered.
+         clipped)
 
-     Numbers chosen so the mark sits inside a centered 410px-wide
-     box on the 512px canvas, leaving 51px of breathing room on each
-     side — comfortable margin for any reasonable mask shape.
+     The G is centered + scaled to ~70% of the canvas so even an
+     aggressive circular crop preserves the whole letter. The
+     mason-wedge notch is dropped here intentionally — it would
+     sit OUTSIDE the safe area and most adaptive masks would clip
+     it anyway. The bare G in the centered safe-area reads as the
+     same brand without the asymmetric signature; mask shape
+     becomes the signature here, which is what the maskable spec
+     is designed for.
 
-     Same 4-facet geometry as icon.svg + same per-facet tonal shading
-     so the launcher icon reads as a real cut stone, not a flat
-     outline. The prefers-color-scheme swap is taken seriously by the
-     few launchers that respect it; most bake the dark PNG variant. -->
+     Color scheme matches the system. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <style>
     .bg { fill: #0a0a0a; }
-    .facet-cl { fill: #2c2c34; }
-    .facet-cr { fill: #1c1c22; }
-    .facet-bl { fill: #14141a; }
-    .facet-br { fill: #0d0d12; }
-    .fg { stroke: #fafafa; }
+    .letter { fill: #fafafa; }
     @media (prefers-color-scheme: light) {
       .bg { fill: #fafafa; }
-      .facet-cl { fill: #d8d8e0; }
-      .facet-cr { fill: #e4e4ec; }
-      .facet-bl { fill: #eeeef4; }
-      .facet-br { fill: #f5f5f9; }
-      .fg { stroke: #0a0a0a; }
+      .letter { fill: #0a0a0a; }
     }
   </style>
   <rect class="bg" width="512" height="512"/>
-  <!-- Four facets — same scheme as icon.svg, scaled to the maskable
-       safe area (256,128 apex; 116/396 shoulders at y=214). -->
-  <polygon class="facet-cl" points="256,128 256,214 116,214"/>
-  <polygon class="facet-cr" points="256,128 396,214 256,214"/>
-  <polygon class="facet-bl" points="116,214 256,214 256,414 116,354"/>
-  <polygon class="facet-br" points="256,214 396,214 396,354 256,414"/>
-  <g class="fg" fill="none" stroke-width="28" stroke-linejoin="round" stroke-linecap="round">
-    <path d="M 256 128 L 396 214 L 396 354 L 256 414 L 116 354 L 116 214 Z"/>
-    <path d="M 116 214 L 396 214"/>
-    <path d="M 256 128 L 256 214"/>
-    <path d="M 256 214 L 256 414"/>
-  </g>
+  <!-- G centered + scaled to ~70% canvas = ~360px wide, sitting in
+       a 410-wide safe-area box (51px breathing room each side).
+       Coordinates picked so the letter is geometrically centered
+       on (256, 256). -->
+  <path class="letter" d="
+    M 156 152
+    L 356 152
+    L 356 222
+    L 226 222
+    L 226 332
+    L 296 332
+    L 296 294
+    L 246 294
+    L 246 252
+    L 356 252
+    L 356 392
+    L 156 392
+    Z"/>
 </svg>
