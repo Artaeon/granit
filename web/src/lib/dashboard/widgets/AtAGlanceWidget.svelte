@@ -4,14 +4,23 @@
   import { onWsEvent } from '$lib/ws';
   import { createCoalescedReload } from '$lib/util/coalesce';
 
-  // AtAGlanceWidget — single dense row that answers "what's the shape
-  // of today?" in four count tiles (due-today, overdue, deadlines-7d,
-  // habits-left). Each tile links to the source page on tap.
+  // AtAGlanceWidget — the dashboard's headline row. Answers "what's
+  // the shape of today?" in four count tiles with strong visual
+  // hierarchy:
   //
-  // Why four, not five: Prayer used to live here but it's a different
-  // altitude — work counts read as "today's pressure", prayer reads
-  // as "today's intention". Mixing them muddied the glance. Prayer
-  // has its own widget; this row stays focused on what's due.
+  //   - Numbers are BIG (text-3xl/4xl) so the eye scans them in one
+  //     sweep without having to read the label first.
+  //   - Number colour matches the tile's tone — overdue = error red,
+  //     due = primary, deadlines = warning, habits = info. The
+  //     glance becomes pre-attentive: red number = react now,
+  //     dimmed number = nothing here.
+  //   - Order is urgency-descending: Overdue (most urgent) → Due
+  //     today → Deadlines (week) → Habits. The eye reads left-to-
+  //     right; the leftmost slot is the most-important seat.
+  //   - All-clear state ("Wide open. Focus on your one thing.")
+  //     replaces the strip when every count is zero — a row of
+  //     four 0s is visual noise that hides the more useful "today
+  //     has no fire on it" signal.
 
   let openTasks = $state<Task[] | null>(null);
   let deadlines = $state<Deadline[] | null>(null);
@@ -32,11 +41,6 @@
     loaded = true;
   }
 
-  // Coalesce three independent event sources (task.changed bursts on
-  // checkbox edits, deadlines state.changed, habit toggles, autosaved
-  // note.changed) into one trailing reload per 600ms window. Without
-  // this every keystroke in the editor — which fires note.changed
-  // repeatedly — would refetch all three sources in parallel.
   const reload = createCoalescedReload(load, 600);
 
   onMount(() => {
@@ -53,6 +57,15 @@
 
   // ----- Counts -----
 
+  // Overdue: open task with a past due date. Snoozed tasks ride on
+  // their snoozedUntil but we count them as overdue here too — they're
+  // still on the user's plate, just hidden by default in the list view.
+  // Highest urgency, lands in slot 1.
+  let overdue = $derived.by(() => {
+    if (!openTasks) return null;
+    return openTasks.filter((t) => !!t.dueDate && t.dueDate < today).length;
+  });
+
   // Tasks due today: due_date === today OR scheduled_start starts today.
   let dueToday = $derived.by(() => {
     if (!openTasks) return null;
@@ -61,14 +74,6 @@
       if (t.scheduledStart && t.scheduledStart.slice(0, 10) === today) return true;
       return false;
     }).length;
-  });
-
-  // Overdue: open task with a past due date. Snoozed tasks ride on
-  // their snoozedUntil but we count them as overdue here too — they're
-  // still on the user's plate, just hidden by default in the list view.
-  let overdue = $derived.by(() => {
-    if (!openTasks) return null;
-    return openTasks.filter((t) => !!t.dueDate && t.dueDate < today).length;
   });
 
   // Active deadlines in the next 7 days. We hide met + cancelled —
@@ -88,67 +93,146 @@
     return habits.filter((h) => !h.doneToday).length;
   });
 
-  // Tone math: a 0 stays dim (nothing on fire = good); a positive
-  // count picks a critical-tone so the eye lands on what's pressing.
-  type Tile = { label: string; value: number | null; href: string; tone: string };
+  // Tile shape. `tone` drives both the number colour and the left-rail
+  // accent so the eye sees "this is the urgent one" without parsing
+  // the number itself. Caption reads as a tight one-liner under the
+  // label so the tile communicates the period at a glance ("Due today
+  // · tasks" vs "Deadlines · next 7d").
+  type Tile = {
+    label: string;
+    caption: string;
+    value: number | null;
+    href: string;
+    tone: 'error' | 'primary' | 'warning' | 'info' | 'dim';
+    icon: string;
+  };
   let tiles = $derived<Tile[]>([
     {
-      label: 'Due',
-      value: dueToday,
-      href: '/tasks?group=due',
-      tone: dueToday && dueToday > 0 ? 'primary' : 'dim'
-    },
-    {
       label: 'Overdue',
+      caption: 'tasks',
       value: overdue,
       href: '/tasks?group=due',
-      tone: overdue && overdue > 0 ? 'error' : 'dim'
+      tone: overdue && overdue > 0 ? 'error' : 'dim',
+      icon: '⚠'
     },
     {
-      label: 'Deadlines · 7d',
+      label: 'Due today',
+      caption: 'tasks',
+      value: dueToday,
+      href: '/tasks?group=due',
+      tone: dueToday && dueToday > 0 ? 'primary' : 'dim',
+      icon: '◉'
+    },
+    {
+      label: 'Deadlines',
+      caption: 'next 7d',
       value: weekDeadlines,
       href: '/deadlines',
-      tone: weekDeadlines && weekDeadlines > 0 ? 'warning' : 'dim'
+      tone: weekDeadlines && weekDeadlines > 0 ? 'warning' : 'dim',
+      icon: '⚑'
     },
     {
-      label: 'Habits left',
+      label: 'Habits',
+      caption: 'left today',
       value: habitsRemaining,
       href: '/habits',
-      tone: habitsRemaining && habitsRemaining > 0 ? 'info' : 'success'
+      tone: habitsRemaining && habitsRemaining > 0 ? 'info' : 'dim',
+      icon: '✓'
     }
   ]);
+
+  // All-clear: every count is loaded AND zero. Renders a single
+  // calming row instead of four `0`s, which read as visual noise
+  // and undersell "nothing burning today" as a win.
+  let allClear = $derived(
+    loaded &&
+      (overdue ?? 0) === 0 &&
+      (dueToday ?? 0) === 0 &&
+      (weekDeadlines ?? 0) === 0 &&
+      (habitsRemaining ?? 0) === 0
+  );
 
   function display(v: number | null): string {
     if (v === null) return '—';
     return String(v);
   }
+
+  // Tailwind doesn't compile arbitrary `text-{var}` patterns, so we
+  // map tone → fixed class string. Same trick the rest of the app
+  // uses (TaskCard, NowWidget, etc.).
+  const toneText: Record<Tile['tone'], string> = {
+    error: 'text-error',
+    primary: 'text-primary',
+    warning: 'text-warning',
+    info: 'text-info',
+    dim: 'text-dim'
+  };
+  const toneAccent: Record<Tile['tone'], string> = {
+    error: 'bg-error',
+    primary: 'bg-primary',
+    warning: 'bg-warning',
+    info: 'bg-info',
+    dim: 'bg-surface1'
+  };
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg px-3 py-2">
-  <div class="grid grid-cols-4 gap-1.5">
-    {#each tiles as t}
-      <a
-        href={t.href}
-        class="block px-2 py-1.5 rounded bg-mantle hover:bg-black/60 border-l-2 transition-colors"
-        style="border-left-color: var(--color-{t.tone});"
-        title={t.label}
-      >
-        <div class="flex items-baseline gap-1.5">
-          {#if !loaded && t.value === null}
-            <!-- Pre-load skeleton — keeps the row at its rendered
-                 height so the rest of the dashboard doesn't shift
-                 once counts arrive. Width chosen to roughly match
-                 a 2-digit value. -->
-            <span
-              class="inline-block h-5 w-6 rounded bg-surface1 animate-pulse"
-              aria-hidden="true"
-            ></span>
-          {:else}
-            <span class="text-xl font-semibold text-text tabular-nums leading-none">{display(t.value)}</span>
-          {/if}
-          <span class="text-[10px] uppercase tracking-wider text-dim truncate">{t.label}</span>
-        </div>
-      </a>
-    {/each}
-  </div>
-</section>
+{#if allClear}
+  <!-- All-clear state: every count is zero. Reads as a win, not
+       as four empty tiles. Subtle success tint without being
+       celebratory-cheesy — granit isn't a gamified app. -->
+  <section class="bg-surface0 border border-surface1 rounded-lg px-4 py-3 flex items-center gap-3">
+    <span class="text-success text-xl leading-none" aria-hidden="true">✓</span>
+    <div class="flex-1 min-w-0">
+      <p class="text-sm text-text font-medium">Wide open.</p>
+      <p class="text-xs text-dim">Nothing overdue, due, or unhabited. Focus on your one thing.</p>
+    </div>
+    <a href="/morning" class="text-xs text-secondary hover:underline flex-shrink-0">plan →</a>
+  </section>
+{:else}
+  <section class="bg-surface0 border border-surface1 rounded-lg p-2">
+    <div class="grid grid-cols-4 gap-2">
+      {#each tiles as t (t.label)}
+        {@const value = t.value ?? 0}
+        {@const active = loaded && value > 0}
+        <a
+          href={t.href}
+          class="group relative block px-2.5 py-2 rounded bg-mantle hover:bg-black/40 transition-colors overflow-hidden"
+          title="{value} {t.label.toLowerCase()} {t.caption}"
+        >
+          <!-- Tone accent rail on the left. Heavier (3px) when the
+               count is non-zero so urgency reads at a glance; thin
+               and dim (2px on surface1) when count is zero so the
+               tile recedes. -->
+          <span
+            class="absolute left-0 top-1.5 bottom-1.5 rounded-full {active ? toneAccent[t.tone] + ' w-[3px]' : 'bg-surface1 w-[2px]'}"
+            aria-hidden="true"
+          ></span>
+          <div class="pl-2">
+            {#if !loaded && t.value === null}
+              <span
+                class="inline-block h-7 w-8 rounded bg-surface1 animate-pulse"
+                aria-hidden="true"
+              ></span>
+              <span class="block text-[10px] uppercase tracking-wider text-dim mt-0.5">{t.label}</span>
+            {:else}
+              <!-- The number is the headline — text-3xl on mobile,
+                   text-4xl on sm+ so it dominates the tile. Tabular
+                   nums keeps a 2-digit "10" the same width as "11"
+                   so the layout doesn't twitch when a task ticks. -->
+              <div class="flex items-baseline gap-1.5">
+                <span class="text-3xl sm:text-4xl font-bold {active ? toneText[t.tone] : 'text-dim'} tabular-nums leading-none">
+                  {display(t.value)}
+                </span>
+                <span class="text-xs {active ? toneText[t.tone] : 'text-dim'} opacity-70" aria-hidden="true">{t.icon}</span>
+              </div>
+              <div class="mt-1 leading-tight">
+                <span class="block text-[11px] font-medium {active ? 'text-text' : 'text-dim'}">{t.label}</span>
+                <span class="block text-[10px] text-dim">{t.caption}</span>
+              </div>
+            {/if}
+          </div>
+        </a>
+      {/each}
+    </div>
+  </section>
+{/if}

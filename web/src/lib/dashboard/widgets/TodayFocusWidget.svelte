@@ -90,9 +90,16 @@
   let tasks = $derived(section ? extractTasks(section) : []);
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-3 flex flex-col">
+<!-- Today's focus reads as a banner statement, not a list item.
+     When a goal is set, the line gets larger text-lg/xl + medium
+     weight + tight leading so it lands like a daily mantra. Tasks
+     beneath are smaller chevron-bulleted lines — a reminder of the
+     committed scope without competing with the goal itself. Empty
+     state surfaces a single CTA so the user has a one-tap path
+     back to /morning. -->
+<section class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4 flex flex-col h-full">
   <div class="flex items-baseline justify-between mb-2">
-    <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Today's focus</h2>
+    <h2 class="text-[10px] uppercase tracking-wider text-dim font-medium">Today's focus</h2>
     {#if daily && section}
       <a href="/notes/{encodeURIComponent(daily.path)}" class="text-xs text-secondary hover:underline">edit →</a>
     {:else}
@@ -104,21 +111,36 @@
     <div class="text-sm text-dim">loading…</div>
   {:else if section}
     {#if goal}
-      <p class="text-base text-text font-medium leading-snug mb-2">{@html inlineMd(goal)}</p>
+      <!-- The goal line is the visual heart of the widget. text-lg
+           jumps from the default text-base so the eye lands here
+           first; leading-snug stops a multi-word goal from spreading
+           too wide vertically. text-text (not subtext) so it reads
+           as primary content. -->
+      <p class="text-lg sm:text-xl text-text font-medium leading-snug mb-2.5">{@html inlineMd(goal)}</p>
     {/if}
     {#if tasks.length > 0}
-      <ul class="space-y-0.5 text-sm text-subtext">
+      <!-- Tasks beneath. text-subtext + smaller size so they recede
+           behind the goal. Chevron bullet ('›') reads as "next /
+           continuing" — same glyph the editor breadcrumb uses. -->
+      <ul class="space-y-1 text-sm text-subtext">
         {#each tasks as t}
-          <li class="truncate">· {@html inlineMd(t)}</li>
+          <li class="flex items-baseline gap-1.5 truncate">
+            <span class="text-dim flex-shrink-0" aria-hidden="true">›</span>
+            <span class="truncate">{@html inlineMd(t)}</span>
+          </li>
         {/each}
       </ul>
     {:else if !goal}
       <p class="text-sm text-dim italic">Plan section is empty. <a href="/morning" class="text-secondary hover:underline">Plan today →</a></p>
     {/if}
   {:else}
-    <p class="text-sm text-dim mb-3">No focus set for today.</p>
-    <a href="/morning" class="self-start px-3 py-1.5 text-xs bg-primary text-on-primary rounded font-medium hover:opacity-90">
-      Set a focus →
-    </a>
+    <!-- No daily-plan section at all. Centre the CTA so the empty
+         state reads as deliberate breathing room, not visual junk. -->
+    <div class="flex-1 flex flex-col items-center justify-center text-center py-2 gap-2">
+      <p class="text-sm text-dim">No focus set for today.</p>
+      <a href="/morning" class="px-3 py-1.5 text-xs bg-primary text-on-primary rounded font-medium hover:opacity-90">
+        Set a focus →
+      </a>
+    </div>
   {/if}
 </section>

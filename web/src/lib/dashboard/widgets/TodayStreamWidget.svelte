@@ -312,21 +312,16 @@
 </script>
 
 <section class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4">
-  <!-- Header. Day + date on the left, "now-event" inline + "N left"
-       pill on the right. One line, no decorative chrome. -->
+  <!-- Header. Day + date on the left, "N left" pill on the right.
+       Single line, no decorative chrome. The "now" event lived
+       here as a tiny inline pill before — too easy to miss. We
+       moved it into a dedicated banner row below so what's
+       happening RIGHT NOW reads as the loudest signal in the
+       widget. -->
   <header class="flex items-baseline gap-3 mb-2">
     <h2 class="text-base font-semibold text-text">
       {fmtTodayHeader(now)}
     </h2>
-    {#if nowEvent}
-      <span class="hidden sm:inline-flex items-baseline gap-1.5 text-xs">
-        <span class="text-success">●</span>
-        <a href="/calendar" class="text-success hover:underline truncate max-w-[260px]" title="happening now">
-          {nowEvent.title}
-        </a>
-        <span class="text-dim font-mono tabular-nums">{nowEvent.start!.slice(11, 16)}–{nowEvent.end!.slice(11, 16)}</span>
-      </span>
-    {/if}
     <span class="flex-1"></span>
     {#if loaded && stream.length > 0}
       <span class="text-[11px] text-dim font-mono tabular-nums">
@@ -335,12 +330,27 @@
     {/if}
   </header>
 
-  <!-- Mobile-only "now" row — desktop folds it into the header. -->
+  <!-- Now-banner: the unified prominent "happening now" row. Both
+       desktop and mobile see the same surface so the urgency reads
+       identically across viewports. bg-success/10 tints the row
+       without overwhelming the rest of the stream; the pulsing
+       dot is the live indicator. Whole row clickable → /calendar
+       so the user can jump to the event in context. Animation is
+       pure CSS (no JS) and respects prefers-reduced-motion. -->
   {#if nowEvent}
-    <a href="/calendar" class="sm:hidden flex items-baseline gap-2 mb-2 text-xs border-l-2 border-success pl-2">
-      <span class="text-success">● now</span>
-      <span class="text-text truncate flex-1">{nowEvent.title}</span>
-      <span class="text-dim font-mono">{nowEvent.start!.slice(11, 16)}</span>
+    <a
+      href="/calendar"
+      title="Currently happening — open in calendar"
+      class="block mb-2.5 px-3 py-2 rounded-md bg-success/10 border border-success/30 hover:bg-success/15 transition-colors"
+    >
+      <div class="flex items-center gap-2">
+        <span class="now-pulse relative flex-shrink-0 w-2 h-2 rounded-full bg-success" aria-hidden="true"></span>
+        <span class="text-[10px] uppercase tracking-wider font-semibold text-success flex-shrink-0">Now</span>
+        <span class="text-sm font-medium text-text truncate flex-1 min-w-0">{nowEvent.title}</span>
+        <span class="text-[11px] text-success/80 font-mono tabular-nums flex-shrink-0">
+          {nowEvent.start!.slice(11, 16)}–{nowEvent.end!.slice(11, 16)}
+        </span>
+      </div>
     </a>
   {/if}
 
@@ -414,3 +424,26 @@
     </div>
   {/if}
 </section>
+
+<style>
+  /* Now-banner pulsing dot. Two-state breathing animation — the
+     dot grows + dims slightly + shrinks back. Pure CSS so no JS
+     work per frame; respects prefers-reduced-motion. The pulse
+     drives the "live" cue the rest of the row gives via colour. */
+  .now-pulse::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: currentColor;
+    animation: now-pulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    color: rgb(var(--color-success-rgb, 156 220 254) / 1);
+  }
+  @keyframes now-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.9); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .now-pulse::before { animation: none; opacity: 0.4; }
+  }
+</style>
