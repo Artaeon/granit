@@ -43,13 +43,19 @@ export interface KeyBinding {
 // scoped bindings (Deadlines `n` etc.) can register themselves here
 // over time; the first drop only enumerates what's currently in the
 // layout.
+//
+// New entries should land here FIRST and the consuming component
+// reads via findBinding(id). This is what closes the drift loop the
+// ShortcutsHelpOverlay used to suffer from — adding a new chord in a
+// component without telling the cheat sheet meant the cheat sheet
+// went stale until somebody noticed.
 export const KEYBINDINGS: KeyBinding[] = [
   {
     id: 'quick-jump',
-    label: 'Quick jump',
+    label: 'Quick jump · command palette',
     keys: 'Mod+K',
     scope: 'global',
-    description: 'Open the command palette to navigate anywhere.'
+    description: 'Open the command palette to navigate anywhere — pages, notes, projects, goals, agent commands.'
   },
   {
     id: 'ask-ai',
@@ -67,10 +73,31 @@ export const KEYBINDINGS: KeyBinding[] = [
   },
   {
     id: 'quick-capture',
-    label: 'Quick capture',
+    label: 'Quick capture · new task',
     keys: 'Ctrl+Shift+N',
     scope: 'global',
-    description: 'Open the task-capture modal from anywhere.'
+    description: 'Open the task-capture modal from anywhere. Optional priority / due / project / recurrence.'
+  },
+  {
+    id: 'voice-note',
+    label: 'Voice note',
+    keys: 'Ctrl+Shift+V',
+    scope: 'global',
+    description: 'Open the voice-note recorder — captures audio + transcribes to a fresh note.'
+  },
+  {
+    id: 'shortcuts-help',
+    label: 'Show keyboard shortcuts',
+    keys: '?',
+    scope: 'app',
+    description: 'Pop the cheat sheet overlay listing every shortcut the app knows about.'
+  },
+  {
+    id: 'print-preview',
+    label: 'Print preview',
+    keys: 'Mod+P',
+    scope: 'app',
+    description: 'Open the branded print/PDF preview for the current note (browser print stays available via the OS shortcut menu).'
   }
 ];
 

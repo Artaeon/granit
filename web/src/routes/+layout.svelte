@@ -21,6 +21,7 @@
   import PomodoroPill from '$lib/components/PomodoroPill.svelte';
   import AIOverlay from '$lib/components/AIOverlay.svelte';
   import NoteTray from '$lib/components/NoteTray.svelte';
+  import ShortcutsOverlay from '$lib/components/ShortcutsOverlay.svelte';
   import { recordVisit } from '$lib/stores/sidebar-recent';
   import { lastOpenNote, trayEnabled } from '$lib/stores/open-note';
   import { nav, sections } from '$lib/nav/config';
@@ -34,6 +35,7 @@
   import { findBinding, matchesKey } from '$lib/keybindings/registry';
 
   let palette: { show: () => void } | undefined = $state();
+  let shortcutsOpen = $state(false);
 
   let { children } = $props();
 
@@ -146,6 +148,24 @@
       if (here === targetPath) return;
       e.preventDefault();
       goto(targetPath);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  // shortcuts-help — `?` opens the cheat-sheet from anywhere in the
+  // app, BUT not while the user is typing in an input/textarea
+  // (otherwise `?` in a text field would never reach the document).
+  // No Mod modifier — it's a single-key shortcut, app-shell scope.
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '?') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      e.preventDefault();
+      shortcutsOpen = true;
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -274,3 +294,11 @@
 {/if}
 <Toaster />
 <UpdateAvailableBanner />
+
+<!-- Global shortcuts cheat sheet. Opens via `?` from anywhere; the
+     overlay self-derives its contents from the KEYBINDINGS registry
+     so there's no drift between the chord that actually fires and
+     the row the user sees. Auth-agnostic — the cheat sheet is
+     useful even on the login screen ("how do I see what I can do
+     once I'm in?"). -->
+<ShortcutsOverlay bind:open={shortcutsOpen} onClose={() => (shortcutsOpen = false)} />
