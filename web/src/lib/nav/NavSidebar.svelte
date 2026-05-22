@@ -59,19 +59,28 @@
     onNavigate?.();
   }
 
-  // Pinned / recent rails resolve hrefs from the persisted stores
-  // against the flat nav so a pin to a route that's been disabled
-  // simply drops out instead of throwing. Module + sabbath gating
-  // mirrors the section-body filters below.
+  // Pinned rail resolves hrefs from the persisted store against the
+  // flat nav so a pin to a route that's been disabled simply drops
+  // out instead of throwing. Module + sabbath gating mirrors the
+  // section-body filters below.
+  //
+  // Items that already live in the Essentials tier are filtered out
+  // here too — pinning Tasks (an essential) used to render it in
+  // both Pinned AND Essentials, which is just visual duplication.
+  // Pre-existing pins on essentials silently dedup; the user's
+  // intent ("keep this visible") is already satisfied by the
+  // higher-tier surface.
   let pinnedItems = $derived.by(() => {
     void $modulesStore;
     void $sabbath;
     if ($sidebarPins.length === 0) return [] as NavLink[];
     const byHref = new Map(nav.map((n) => [n.href, n]));
+    const essentialHrefs = new Set(essentials.map((e) => e.href));
     return $sidebarPins
       .map((h) => byHref.get(h))
       .filter((it): it is NavLink => {
         if (!it) return false;
+        if (essentialHrefs.has(it.href)) return false; // already in Essentials
         if (it.moduleId) {
           if (!modulesStore.isEnabled(it.moduleId)) return false;
           if ($sabbath && SABBATH_HIDE_MODULES.includes(it.moduleId)) return false;
@@ -234,10 +243,14 @@
          visual separator drops below the group to mark the
          transition into Tier 2. -->
     {#each essentialItems as item (item.href)}
+      <!-- Pin action suppressed on essentials: they're already
+           top-tier, a "pin to top" toggle would be tautological
+           and the duplicate Pinned-row would be visual noise. -->
       <NavItem
         {item}
         {isCompact}
         tier="essential"
+        showPinAction={false}
         onNavigate={navigate}
       />
     {/each}
