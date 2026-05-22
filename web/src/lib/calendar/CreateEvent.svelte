@@ -435,7 +435,10 @@
              one-click "60-min focus block at 14:00" workflow exists
              from the create form). -->
         <div>
-          <label class="block text-[11px] uppercase tracking-wider text-dim mb-1.5">Type <span class="text-dim normal-case tracking-normal">(optional)</span></label>
+          <!-- Not a real form-label: the group below is a row of
+               toggle buttons, not a single input. Span keeps the
+               visual without lying about the relationship. -->
+          <span class="block text-[11px] uppercase tracking-wider text-dim mb-1.5">Type <span class="text-dim normal-case tracking-normal">(optional)</span></span>
           <div class="flex items-center gap-1 flex-wrap">
             {#each EVENT_TYPES as t (t.id)}
               {@const on = kind === t.id}

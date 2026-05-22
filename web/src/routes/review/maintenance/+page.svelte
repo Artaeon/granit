@@ -232,7 +232,8 @@
            is the same as the server's default of 7 days unless the
            user changes it. -->
       <div class="flex items-center gap-2 mb-4 flex-wrap">
-        <label class="text-xs text-dim">Lookback:</label>
+        <!-- Inline group label for a row of toggle buttons. -->
+        <span class="text-xs text-dim">Lookback:</span>
         {#each [7, 14, 30] as days}
           <button
             type="button"

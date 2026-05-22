@@ -472,7 +472,10 @@
         </div>
 
         <div>
-          <label class="block text-xs uppercase tracking-wider text-dim mb-1">Color</label>
+          <!-- Not a real form-label: the row is toggle buttons, not
+               a single input. Span keeps the visual without lying
+               about the relationship. -->
+          <span class="block text-xs uppercase tracking-wider text-dim mb-1">Color</span>
           <div class="flex flex-wrap gap-1.5">
             {#each COLORS as c}
               <button

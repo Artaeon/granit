@@ -1345,7 +1345,9 @@
             />
           </div>
           <div>
-            <label class="block text-[11px] uppercase tracking-wider text-dim mb-1">Tags</label>
+            <!-- Not a real form-label — the field below is a chip-grid
+                 + free-text input, no single control to bind to. -->
+            <span class="block text-[11px] uppercase tracking-wider text-dim mb-1">Tags</span>
             <div class="flex flex-wrap items-center gap-1 px-2 py-1.5 bg-surface0 border border-surface1 rounded">
               {#each stageTags as tag (tag)}
                 <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface1 text-secondary text-xs">
@@ -1383,7 +1385,9 @@
           </div>
           {#if stageWikilinkCandidates.length > 0}
             <div>
-              <label class="block text-[11px] uppercase tracking-wider text-dim mb-1">Related notes <span class="text-dim/70 normal-case">(toggle to insert as <code class="text-text">[[wikilinks]]</code>)</span></label>
+              <!-- Group heading for a row of toggle buttons; not
+                   bound to a single input. -->
+              <span class="block text-[11px] uppercase tracking-wider text-dim mb-1">Related notes <span class="text-dim/70 normal-case">(toggle to insert as <code class="text-text">[[wikilinks]]</code>)</span></span>
               <div class="flex flex-wrap gap-1">
                 {#each stageWikilinkCandidates as cand (cand)}
                   {@const on = stageWikilinksChosen.has(cand)}
