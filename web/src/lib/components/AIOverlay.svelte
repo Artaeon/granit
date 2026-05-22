@@ -2226,7 +2226,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
     in:fly={{ duration: $aiOverlayPinned ? 0 : 200, easing: cubicOut, ...panelTransitionParams() }}
     out:fly={{ duration: $aiOverlayPinned ? 0 : 150, easing: cubicOut, ...panelTransitionParams() }}
     class="ai-overlay-panel fixed z-50 flex flex-col bg-base border-surface1
-           inset-x-0 rounded-t-xl border-t pb-safe
+           inset-x-0 rounded-t-xl border-t {keyboardOpen ? '' : 'pb-safe'} {keyboardOpen ? 'ai-overlay-kb-open' : ''}
            md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:top-0 md:h-full md:max-h-none md:rounded-none md:border-l md:border-t-0 md:pb-0 {$aiOverlayPinned ? 'md:shadow-none' : 'shadow-2xl'} {resizing ? 'ai-overlay-resizing' : ''} {sheetDragging ? 'ai-overlay-snapping' : ''}"
   >
     <!-- Desktop-only drag handle on the LEFT edge of the panel. The
@@ -3298,7 +3298,21 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
          snapping class below kills the transition during an active
          drag so the sheet follows the finger 1:1. */
       transition: height 220ms cubic-bezier(0.22, 1, 0.36, 1),
-                  bottom 180ms ease-out;
+                  bottom 180ms ease-out,
+                  top 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    /* Keyboard-open override: anchor the panel by top + bottom
+       (visualViewport.top = 0 always; bottom = lift to clear the
+       keyboard). `height: auto` lets the browser compute it from
+       the anchors, which is bulletproof across the iOS/Android
+       split where dvh / innerHeight / vv.height each disagree on
+       what "visible" means. The flex column inside renders header
+       at top, body filling, compose form at bottom = above the
+       keyboard. No snap-height math needed in this state. */
+    :global(.ai-overlay-panel.ai-overlay-kb-open) {
+      top: 0;
+      height: auto;
+      max-height: none;
     }
     :global(.ai-overlay-panel.ai-overlay-snapping) {
       transition: none;
