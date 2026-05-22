@@ -72,6 +72,24 @@ func (w *watcher) Close() error {
 	return nil
 }
 
+// Dir names the watcher refuses to register OR descend into. Dot-
+// prefixed dirs (`.git`, `.granit`, `.obsidian`, ...) are caught by the
+// HasPrefix check below; this set covers the well-known non-dot bloat
+// (Node deps, build outputs, Python envs) that a user might keep
+// alongside notes when the vault doubles as a project root. Each entry
+// can register thousands of inodes and produce noise on every save,
+// blocking the main flush queue.
+var watchSkipDirs = map[string]struct{}{
+	"node_modules": {},
+	"dist":         {},
+	"build":        {},
+	".next":        {},
+	"target":       {}, // rust / java
+	"venv":         {},
+	".venv":        {},
+	"__pycache__":  {},
+}
+
 func (w *watcher) addTree(root string) error {
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d == nil {
@@ -83,6 +101,11 @@ func (w *watcher) addTree(root string) error {
 		base := filepath.Base(path)
 		if path != root && strings.HasPrefix(base, ".") {
 			return fs.SkipDir
+		}
+		if path != root {
+			if _, skip := watchSkipDirs[base]; skip {
+				return fs.SkipDir
+			}
 		}
 		return w.w.Add(path)
 	})
@@ -106,7 +129,8 @@ func (w *watcher) loop() {
 			if ev.Op&fsnotify.Create != 0 {
 				if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
 					base := filepath.Base(ev.Name)
-					if !strings.HasPrefix(base, ".") {
+					_, skip := watchSkipDirs[base]
+					if !strings.HasPrefix(base, ".") && !skip {
 						_ = w.w.Add(ev.Name)
 					}
 				}
