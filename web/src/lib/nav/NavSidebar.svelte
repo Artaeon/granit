@@ -27,12 +27,12 @@
   import {
     sections,
     today,
+    essentials,
     settingsItem,
     nav,
     type NavItem as NavLink
   } from './config';
   import { sidebarPins } from '$lib/stores/sidebar-pins';
-  import { sidebarRecent, MAX_RECENT } from '$lib/stores/sidebar-recent';
   import {
     collapsedSections,
     toggleSection,
@@ -80,25 +80,21 @@
       });
   });
 
-  let recentItems = $derived.by(() => {
+  // Essentials — Tier-1 items above the sections. Filters with the
+  // same module + sabbath gating as the sections themselves so a
+  // disabled module drops its entry from this rail too. Skipped
+  // entries are silent (no placeholder); essentials is a curated
+  // short-list, not a contract.
+  let essentialItems = $derived.by(() => {
     void $modulesStore;
     void $sabbath;
-    if ($sidebarRecent.length === 0) return [] as NavLink[];
-    const pinned = new Set($sidebarPins);
-    const byHref = new Map(nav.map((n) => [n.href, n]));
-    return $sidebarRecent
-      .map((h) => byHref.get(h))
-      .filter((it): it is NavLink => {
-        if (!it) return false;
-        if (pinned.has(it.href)) return false;
-        if (it.href === '/') return false; // Today is rendered separately
-        if (it.moduleId) {
-          if (!modulesStore.isEnabled(it.moduleId)) return false;
-          if ($sabbath && SABBATH_HIDE_MODULES.includes(it.moduleId)) return false;
-        }
-        return true;
-      })
-      .slice(0, MAX_RECENT);
+    return essentials.filter((it) => {
+      if (it.moduleId) {
+        if (!modulesStore.isEnabled(it.moduleId)) return false;
+        if ($sabbath && SABBATH_HIDE_MODULES.includes(it.moduleId)) return false;
+      }
+      return true;
+    });
   });
 
   let visibleSections = $derived.by(() => {
@@ -218,35 +214,41 @@
       {/if}
     {/if}
 
-    <!-- Recent items — surfaces what the user just touched so a
-         re-entry into the app lands them back on the rhythm they
-         had. Sits between Pinned (curated) and Today (home) so the
-         top-of-rail mental model is: things I anchored, things I
-         was just on, then home. Hidden when empty so first-time
-         users don't see a phantom group. In compact mode renders
-         without its header (parity with Pinned). -->
-    {#if recentItems.length > 0}
-      {#if isCompact}
-        {#each recentItems as item (item.href)}
-          <NavItem {item} isCompact={true} onNavigate={navigate} />
-        {/each}
-        <div class="my-1.5 flex items-center justify-center" aria-hidden="true">
-          <span class="w-1 h-1 rounded-full bg-surface1"></span>
-        </div>
-      {:else}
-        <div class="pb-1">
-          <div class="px-3 pt-2 pb-0.5 text-[10px] uppercase tracking-wider text-dim">Recent</div>
-          <div class="space-y-0">
-            {#each recentItems as item (item.href)}
-              <NavItem {item} isCompact={false} onNavigate={navigate} />
-            {/each}
-          </div>
-        </div>
-      {/if}
-    {/if}
+    <!-- Today sits at the absolute top of the essentials tier, no
+         header since it's the always-on home. Rendered with the
+         same prominent styling as the other essentials so the
+         visual hierarchy reads cleanly: home + 5 daily-core items
+         + the section list below. -->
+    <NavItem
+      item={today}
+      {isCompact}
+      tier="essential"
+      showPinAction={false}
+      onNavigate={navigate}
+    />
 
-    <!-- Today sits above all groups, no header, since it's home. -->
-    <NavItem item={today} {isCompact} showPinAction={false} onNavigate={navigate} />
+    <!-- Essentials — Tier 1. The 5 daily-core surfaces (tasks,
+         calendar, notes, jots, morning) rendered with heavier visual
+         weight than the sections below so the eye lands on them
+         first. No section header (they ARE the headline). A small
+         visual separator drops below the group to mark the
+         transition into Tier 2. -->
+    {#each essentialItems as item (item.href)}
+      <NavItem
+        {item}
+        {isCompact}
+        tier="essential"
+        onNavigate={navigate}
+      />
+    {/each}
+    {#if !isCompact && essentialItems.length > 0}
+      <div class="my-2 mx-3 h-px bg-surface1" aria-hidden="true"></div>
+    {/if}
+    {#if isCompact && essentialItems.length > 0}
+      <div class="my-2 flex items-center justify-center gap-1" aria-hidden="true">
+        <span class="h-px w-3 bg-surface1"></span>
+      </div>
+    {/if}
 
     <!-- Sections. In compact mode the section header collapses to a
          thin separator line so the visual rhythm of grouping is

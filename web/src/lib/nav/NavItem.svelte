@@ -19,10 +19,20 @@
     item: NavItem;
     isCompact: boolean;
     showPinAction?: boolean;
+    /** Visual tier. 'essential' renders bigger + bolder for the
+     *  Tier-1 rail above the sections (Today + daily-core). 'default'
+     *  is the normal section-item style. */
+    tier?: 'essential' | 'default';
     onNavigate?: () => void;
   };
 
-  let { item, isCompact, showPinAction = true, onNavigate }: Props = $props();
+  let {
+    item,
+    isCompact,
+    showPinAction = true,
+    tier = 'default',
+    onNavigate
+  }: Props = $props();
 
   let active = $derived($activeNav?.href === item.href);
   let badge = $derived(
@@ -43,10 +53,15 @@
   onclick={() => onNavigate?.()}
   title={isCompact ? (badge ? `${item.label} — ${badge.label}` : item.label) : undefined}
   aria-label={badge ? `${item.label}, ${badge.label}` : item.label}
-  class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-1.5'} rounded text-sm transition-colors
+  class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3'} rounded transition-colors
+    {tier === 'essential' && !isCompact ? 'py-2 text-[15px]' : 'py-1.5 text-sm'}
     {active
-      ? 'text-primary bg-surface1 font-medium'
-      : 'text-subtext hover:bg-surface0 hover:text-text focus-visible:bg-surface0 focus-visible:text-text focus-visible:outline-none'}"
+      ? tier === 'essential'
+        ? 'text-primary bg-surface1 font-semibold'
+        : 'text-primary bg-surface1 font-medium'
+      : tier === 'essential'
+        ? 'text-text font-medium hover:bg-surface0 focus-visible:bg-surface0 focus-visible:outline-none'
+        : 'text-subtext hover:bg-surface0 hover:text-text focus-visible:bg-surface0 focus-visible:text-text focus-visible:outline-none'}"
 >
   <!-- Active rail: a 3px accent strip on the left edge replaces
        the heavier full-row fill, so scanning down the sidebar
@@ -57,7 +72,11 @@
     <span class="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-primary" aria-hidden="true"></span>
   {/if}
   <span class="relative flex-shrink-0">
-    <NavIcon name={item.icon} class="w-5 h-5 flex-shrink-0" />
+    <!-- Essential-tier icons render a hair bigger so the row's
+         vertical rhythm matches its heavier text size. Default
+         tier sticks with 20px (w-5) which has been the rail's
+         baseline forever. -->
+    <NavIcon name={item.icon} class="{tier === 'essential' && !isCompact ? 'w-[22px] h-[22px]' : 'w-5 h-5'} flex-shrink-0" />
     {#if isCompact && badge}
       <!-- Compact-mode badge sits as a corner overlay on the icon
            so the rail can still surface alerts without labels. The

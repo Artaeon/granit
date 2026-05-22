@@ -25,17 +25,41 @@ export type NavSection = {
 // home — sections start where organisation begins to help.
 export const today: NavItem = { href: '/', label: 'Today', icon: 'today' };
 
+// Tier-1 essentials — rendered above the sections with heavier visual
+// weight (bigger text, primary tint, more padding). The user's daily-
+// core workflow lives here; anything they touch every day deserves
+// the most prominent rail. Items are still NavItems with the same
+// route resolution — the difference is purely how NavSidebar renders
+// them. Today is in the flat `today` constant (rendered separately
+// even from this tier) so the home is the absolute first thing the
+// eye lands on.
+export const essentials: NavItem[] = [
+  { href: '/tasks', label: 'Tasks', icon: 'tasks' },
+  { href: '/calendar', label: 'Calendar', icon: 'calendar' },
+  { href: '/notes', label: 'Notes', icon: 'notes' },
+  { href: '/jots', label: 'Jots', icon: 'jots', moduleId: 'jots' },
+  { href: '/morning', label: 'Morning', icon: 'morning', moduleId: 'morning' }
+];
+
+// Niche routes pulled out of the sidebar to reduce cognitive load —
+// they remain fully functional via direct URL / command palette / AI
+// agent navigation, but don't appear in the rail by default. Per user
+// feedback: "examen, maintenance, weekly plan, review nicht so wichtig".
+// Keep this list explicit so a future "show advanced" toggle could
+// promote them back in one place.
+const HIDDEN_NAV: NavItem[] = [
+  { href: '/examen', label: 'Examen', icon: 'examen', moduleId: 'examen' },
+  { href: '/plans/week', label: 'Weekly plan', icon: 'review' },
+  { href: '/review', label: 'Review', icon: 'review', moduleId: 'weekly_review' },
+  { href: '/review/maintenance', label: 'Maintenance', icon: 'wrench' }
+];
+
 export const sections: NavSection[] = [
   {
     id: 'daily',
     label: 'Daily',
     items: [
-      { href: '/morning', label: 'Morning', icon: 'morning', moduleId: 'morning' },
-      { href: '/tasks', label: 'Tasks', icon: 'tasks' },
-      { href: '/calendar', label: 'Calendar', icon: 'calendar' },
-      { href: '/jots', label: 'Jots', icon: 'jots', moduleId: 'jots' },
-      { href: '/habits', label: 'Habits', icon: 'habits', moduleId: 'habit_tracker' },
-      { href: '/examen', label: 'Examen', icon: 'examen', moduleId: 'examen' }
+      { href: '/habits', label: 'Habits', icon: 'habits', moduleId: 'habit_tracker' }
     ]
   },
   {
@@ -43,9 +67,6 @@ export const sections: NavSection[] = [
     label: 'Plan',
     items: [
       { href: '/vision', label: 'Vision', icon: 'vision', moduleId: 'vision' },
-      { href: '/plans/week', label: 'Weekly plan', icon: 'review' },
-      { href: '/review', label: 'Review', icon: 'review', moduleId: 'weekly_review' },
-      { href: '/review/maintenance', label: 'Maintenance', icon: 'wrench' },
       { href: '/goals', label: 'Goals', icon: 'goals', moduleId: 'goals' },
       { href: '/deadlines', label: 'Deadlines', icon: 'deadline', moduleId: 'deadlines' },
       { href: '/projects', label: 'Projects', icon: 'projects', moduleId: 'projects' },
@@ -71,7 +92,6 @@ export const sections: NavSection[] = [
     id: 'knowledge',
     label: 'Knowledge',
     items: [
-      { href: '/notes', label: 'Notes', icon: 'notes' },
       { href: '/notes/graph', label: 'Graph', icon: 'graph' },
       { href: '/search', label: 'Search', icon: 'search' },
       { href: '/books', label: 'Books', icon: 'books', moduleId: 'books' },
@@ -95,7 +115,14 @@ export const sections: NavSection[] = [
 export const settingsItem: NavItem = { href: '/settings', label: 'Settings', icon: 'settings' };
 
 // Flat nav list — used for: route guard match, mobile back-to-section
-// header, modules filter parity. Includes Today + every section item +
-// settings so route resolution covers the full surface.
-export const nav: NavItem[] = [today, ...sections.flatMap((s) => s.items), settingsItem];
-
+// header, modules filter parity. Includes Today + essentials + every
+// section item + the hidden-from-sidebar set + settings so route
+// resolution still covers the full surface even when a route is
+// invisible in the rail.
+export const nav: NavItem[] = [
+  today,
+  ...essentials,
+  ...sections.flatMap((s) => s.items),
+  ...HIDDEN_NAV,
+  settingsItem
+];
