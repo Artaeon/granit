@@ -1,0 +1,54 @@
+<!-- Variant C: Cornerstone — three stacked stone blocks forming a
+     foundation, with the top block subtly bearing a cross-shaped
+     incision. References Eph 2:20 ("Christ Jesus himself being
+     the cornerstone") + Granite's solidity, without being a
+     religious-only mark — the cross is a recess in the masonry,
+     not a placard. Reads as "foundation" at 16px (3 horizontal
+     bars), reveals the cornerstone story at 192px+.
+     This variant fits kingdom-building purpose without screaming
+     denomination. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Granit">
+  <style>
+    .bg { fill: #0a0a0a; }
+    /* Each block one tone lighter than the next — depth via
+       stratigraphy, not shadow. */
+    .block-top { fill: #2c2c34; }
+    .block-mid { fill: #1c1c22; }
+    .block-bot { fill: #14141a; }
+    .mortar { fill: #050507; }
+    /* Cross-incision sits inside the top block as a subtractive
+       feature (filled with backdrop color so it reads as carved-
+       into-the-stone, not painted-on). */
+    .incision { fill: #0a0a0a; }
+    @media (prefers-color-scheme: light) {
+      .bg { fill: #fafafa; }
+      .block-top { fill: #d8d8e0; }
+      .block-mid { fill: #e4e4ec; }
+      .block-bot { fill: #eeeef4; }
+      .mortar { fill: #f8f8fb; }
+      .incision { fill: #fafafa; }
+    }
+  </style>
+  <rect class="bg" width="512" height="512" rx="96"/>
+  <!-- Three stacked courses. Slight stagger on x so it reads as
+       hand-laid masonry, not factory-cut tile. Mortar lines are
+       thin negative-space gaps between blocks. -->
+  <!-- Bottom course — widest, anchors the visual mass. -->
+  <rect class="block-bot" x="64"  y="344" width="384" height="88"/>
+  <!-- Mortar bottom-mid -->
+  <rect class="mortar"    x="64"  y="332" width="384" height="12"/>
+  <!-- Middle course — slightly inset. -->
+  <rect class="block-mid" x="88"  y="244" width="336" height="88"/>
+  <!-- Mortar mid-top -->
+  <rect class="mortar"    x="88"  y="232" width="336" height="12"/>
+  <!-- Top course (the cornerstone). Tighter inset. -->
+  <rect class="block-top" x="120" y="116" width="272" height="116"/>
+  <!-- Cross incision — recessed into the cornerstone face.
+       Two narrow rects forming a Greek cross. Sized so it reads
+       as "incised mark" at the 192px install icon size and as
+       "a thing is happening on the top block" at 16px favicon.
+       Vertical arm slightly longer than horizontal so it doesn't
+       feel mathematical. -->
+  <rect class="incision" x="248" y="138" width="16" height="72"/>
+  <rect class="incision" x="220" y="166" width="72" height="16"/>
+</svg>

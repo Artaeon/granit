@@ -1,0 +1,44 @@
+<!-- Variant B: Monogram G — chiseled letter on a stone slab.
+     The G is constructed from straight strokes (no curves) so it
+     reads as "carved" rather than "typed". The notch on the right
+     side of the bowl is a stone-mason's wedge mark — gives the
+     letter a distinct silhouette no other G logo has, AND it
+     doubles as the visual identity at favicon size (16px) where
+     the notch is the only thing the eye can resolve.
+     Heavier stroke than variant A so the G reads at small sizes. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Granit">
+  <style>
+    .bg { fill: #0a0a0a; }
+    .letter { fill: #fafafa; }
+    .notch { fill: #0a0a0a; }
+    @media (prefers-color-scheme: light) {
+      .bg { fill: #fafafa; }
+      .letter { fill: #0a0a0a; }
+      .notch { fill: #fafafa; }
+    }
+  </style>
+  <rect class="bg" width="512" height="512" rx="96"/>
+  <!-- The G itself, drawn as a single filled path so the inner
+       counter (white space inside) and outer silhouette are
+       inseparable. Geometry: a left bar + top + bottom + right
+       bar that stops short, with the crossbar jutting INTO the
+       counter to form the classic G. -->
+  <path class="letter" d="
+    M 130 96
+    L 382 96
+    L 382 184
+    L 218 184
+    L 218 328
+    L 312 328
+    L 312 280
+    L 250 280
+    L 250 224
+    L 382 224
+    L 382 416
+    L 130 416
+    Z"/>
+  <!-- Stone-mason's wedge notch — bottom-right corner of the slab
+       cut off at 45°. Subtle but turns "G in a square" into a
+       letter with character. -->
+  <polygon class="notch" points="512,416 512,512 416,512"/>
+</svg>

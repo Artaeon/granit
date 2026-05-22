@@ -1,0 +1,35 @@
+<!-- Variant A: Dimensional Stone (refinement of current).
+     Same 4-facet geometry but with dramatically widened tonal range:
+     cap-left now near-bright (#3d3d48), body-right near-black (#08080c).
+     The viewer reads "carved gemstone" at first glance instead of
+     "hexagon with internal lines". Outline thinned 32→24 so the
+     silhouette stays confident without dominating at small sizes. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Granit">
+  <style>
+    .bg { fill: #0a0a0a; }
+    .facet-cl { fill: #3d3d48; }
+    .facet-cr { fill: #1f1f27; }
+    .facet-bl { fill: #14141a; }
+    .facet-br { fill: #08080c; }
+    .fg { stroke: #fafafa; }
+    @media (prefers-color-scheme: light) {
+      .bg { fill: #fafafa; }
+      .facet-cl { fill: #cfcfd9; }
+      .facet-cr { fill: #e0e0e8; }
+      .facet-bl { fill: #eaeaf1; }
+      .facet-br { fill: #f6f6fa; }
+      .fg { stroke: #0a0a0a; }
+    }
+  </style>
+  <rect class="bg" width="512" height="512" rx="96"/>
+  <polygon class="facet-cl" points="256,76 256,184 80,184"/>
+  <polygon class="facet-cr" points="256,76 432,184 256,184"/>
+  <polygon class="facet-bl" points="80,184 256,184 256,436 80,360"/>
+  <polygon class="facet-br" points="256,184 432,184 432,360 256,436"/>
+  <g class="fg" fill="none" stroke-width="24" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M 256 76 L 432 184 L 432 360 L 256 436 L 80 360 L 80 184 Z"/>
+    <path d="M 80 184 L 432 184"/>
+    <path d="M 256 76 L 256 184"/>
+    <path d="M 256 184 L 256 436"/>
+  </g>
+</svg>
