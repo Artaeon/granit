@@ -119,28 +119,32 @@ func isICSDisabled(src icsSource, disabled []string) bool {
 
 // icsScan walks the vault for .ics files and returns parsed events from
 // every file NOT matched by `disabled` (a list of substrings — same
-// semantics as the TUI's `m.config.DisabledCalendars`).
+// semantics as the TUI's `m.config.DisabledCalendars`). Source listing
+// and per-file parsing both go through mtime-keyed caches (ics_cache.go)
+// so a calendar request that hits unchanged .ics files is reduced to
+// stat + slice copy.
 func icsScan(vaultRoot string, disabled []string) []icsEvent {
 	var out []icsEvent
-	for _, src := range icsListSources(vaultRoot) {
+	for _, src := range icsListSourcesCached(vaultRoot) {
 		if isICSDisabled(src, disabled) {
 			continue
 		}
-		evs, err := parseICSFile(src.Path)
+		evs, err := parseICSFileCached(src.Path)
 		if err != nil {
 			continue
 		}
-		// Tag each parsed event with its origin filename so the web
-		// can color-by-source (faith.ics vs training.ics get distinct
-		// hues). expandRRULE preserves the field on every instance it
-		// produces. Writable goes along so the feed can emit per-event
-		// editable=false for read-only roots without re-resolving the
-		// source.
-		for i := range evs {
-			evs[i].Source = src.Source
-			evs[i].Writable = src.Writable
+		// Cached events come back as a SHARED slice — we must clone
+		// before tagging Source/Writable or two concurrent calendar
+		// requests for different source dirs would race on the same
+		// underlying array. The slice is small (per-file events), so
+		// the copy is cheap relative to the parse cost we just skipped.
+		evsCopy := make([]icsEvent, len(evs))
+		copy(evsCopy, evs)
+		for i := range evsCopy {
+			evsCopy[i].Source = src.Source
+			evsCopy[i].Writable = src.Writable
 		}
-		out = append(out, evs...)
+		out = append(out, evsCopy...)
 	}
 	return out
 }

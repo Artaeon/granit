@@ -54,7 +54,7 @@ type calSourceView struct {
 // this to draw per-source toggles in the calendar sidebar.
 func (s *Server) handleListCalendarSources(w http.ResponseWriter, r *http.Request) {
 	cfg := config.LoadForVault(s.cfg.Vault.Root)
-	sources := icsListSources(s.cfg.Vault.Root)
+	sources := icsListSourcesCached(s.cfg.Vault.Root)
 	out := make([]calSourceView, len(sources))
 	for i, src := range sources {
 		rel, _ := filepath.Rel(s.cfg.Vault.Root, src.Path)

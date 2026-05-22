@@ -87,7 +87,7 @@ func (s *Server) findICSSource(name string) *icsSource {
 		lower += ".ics"
 	}
 	var fallback *icsSource
-	for _, src := range icsListSources(s.cfg.Vault.Root) {
+	for _, src := range icsListSourcesCached(s.cfg.Vault.Root) {
 		if strings.ToLower(src.Source) != lower {
 			continue
 		}
