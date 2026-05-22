@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 )
 
 type Config struct {
@@ -339,11 +341,54 @@ func Load() Config {
 	return cfg
 }
 
-func LoadForVault(vaultRoot string) Config {
-	cfg := Load()
+// loadForVaultCacheEntry holds a previously-loaded vault config together
+// with the mtime of both files that fed it. A read is a cache hit only
+// when neither file has changed since we cached it; otherwise we re-read
+// from disk.
+type loadForVaultCacheEntry struct {
+	cfg         Config
+	globalMtime time.Time
+	vaultMtime  time.Time
+	// negative mtime sentinels (`time.Time{}.IsZero()`) record "file did
+	// not exist at cache time" so a later create flips the cache to miss.
+}
 
-	// Override with vault-specific config
+var (
+	loadForVaultCacheMu sync.Mutex
+	loadForVaultCache   = map[string]loadForVaultCacheEntry{}
+)
+
+// statMtime returns the file's mtime, or the zero time if it doesn't
+// exist. Errors other than ENOENT return the zero time too — the cache
+// just treats them as "no cached state" and the caller re-reads.
+func statMtime(path string) time.Time {
+	info, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}
+	}
+	return info.ModTime()
+}
+
+// LoadForVault reads the global config and overlays the vault-local
+// `.granit.json`. The result is memoised per vaultRoot and keyed by both
+// files' mtimes — every Save{,ToVault} bumps the underlying mtime via
+// atomicWriteFile's rename so a stale cache invalidates on the next read.
+// Process-local cache only (no cross-process coherence needed; each
+// granit process owns its own vault root).
+func LoadForVault(vaultRoot string) Config {
+	globalPath := ConfigPath()
 	vaultPath := VaultConfigPath(vaultRoot)
+	gMtime := statMtime(globalPath)
+	vMtime := statMtime(vaultPath)
+
+	loadForVaultCacheMu.Lock()
+	entry, ok := loadForVaultCache[vaultRoot]
+	loadForVaultCacheMu.Unlock()
+	if ok && entry.globalMtime.Equal(gMtime) && entry.vaultMtime.Equal(vMtime) {
+		return entry.cfg
+	}
+
+	cfg := Load()
 	if data, err := os.ReadFile(vaultPath); err == nil {
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to parse %s: %v (using defaults)\n", vaultPath, err)
@@ -351,6 +396,9 @@ func LoadForVault(vaultRoot string) Config {
 	}
 	cfg.filePath = vaultPath
 
+	loadForVaultCacheMu.Lock()
+	loadForVaultCache[vaultRoot] = loadForVaultCacheEntry{cfg: cfg, globalMtime: gMtime, vaultMtime: vMtime}
+	loadForVaultCacheMu.Unlock()
 	return cfg
 }
 
