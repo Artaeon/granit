@@ -685,7 +685,7 @@
     if (Number.isNaN(start.getTime())) return;
     const hh = String(start.getHours()).padStart(2, '0');
     const mm = String(start.getMinutes()).padStart(2, '0');
-    const dateISO = ev.date ?? start.toISOString().slice(0, 10);
+    const dateISO = ev.date ?? fmtDateISO(start);
     try {
       await api.patchMeal({
         time: `${hh}:${mm}`,

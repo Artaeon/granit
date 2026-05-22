@@ -12,6 +12,7 @@
     type Project,
     type ShoppingTotals
   } from '$lib/api';
+  import { fmtDateISO } from '$lib/util/date';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
@@ -345,7 +346,7 @@
   let subForm = $state({
     name: '', amount: '', currency: 'USD',
     cadence: 'monthly' as FinSubscription['cadence'],
-    next_renewal: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+    next_renewal: fmtDateISO(new Date(Date.now() + 30 * 86400000)),
     account_id: '', project: '', tags: '', category: '', url: ''
   });
   function openSub() {
@@ -353,7 +354,7 @@
       name: '', amount: '',
       currency: accounts[0]?.currency || 'USD',
       cadence: 'monthly',
-      next_renewal: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      next_renewal: fmtDateISO(new Date(Date.now() + 30 * 86400000)),
       account_id: accounts[0]?.id ?? '',
       project: '',
       tags: '',

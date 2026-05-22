@@ -16,6 +16,7 @@
 -->
 <script lang="ts">
 	import type { Project, Task } from '$lib/api';
+	import { todayISO } from '$lib/util/date';
 	import { groupByStatus, statusLabel, type KanbanStatus } from './kanbanGroup';
 	import ProjectStatusBar from './ProjectStatusBar.svelte';
 
@@ -91,7 +92,7 @@
 	// so each card render doesn't re-walk the global task list.
 	let countsByProject = $derived.by(() => {
 		const out = new Map<string, { open: number; done: number; overdue: number }>();
-		const today = new Date().toISOString().slice(0, 10);
+		const today = todayISO();
 		for (const p of projects) out.set(p.name, { open: 0, done: 0, overdue: 0 });
 		for (const t of tasks) {
 			for (const p of projects) {

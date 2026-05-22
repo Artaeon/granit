@@ -15,6 +15,7 @@
   //     surface1 border; tap targets ≥40px on mobile.
   import { onMount } from 'svelte';
   import { api, type Goal, type Milestone } from '$lib/api';
+  import { fmtDateISO } from '$lib/util/date';
   import { toast } from '$lib/components/toast';
   import {
     loadGoalContext,
@@ -129,7 +130,7 @@
     const now = new Date();
     const diff = Math.round((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     return {
-      dueDate: due.toISOString().slice(0, 10),
+      dueDate: fmtDateISO(due),
       diffDays: diff,
       overdue: diff < 0,
       label: fmtDays(diff)
