@@ -95,8 +95,11 @@ if (typeof window !== 'undefined') {
 //      body-token match (simple substring count).
 // Recency bumps the final score slightly so a note touched yesterday
 // wins over one untouched in 2024 when titles tie. We cap at 3 hits +
-// clip each excerpt to 800 chars so the prompt stays bounded on a 5k-
-// note vault.
+// clip each excerpt to 500 chars so the prompt stays bounded on a 5k-
+// note vault. Earlier we used 800 chars per excerpt — empirically the
+// match-anchored ±200 char window catches the relevant passage in 500
+// chars too, and the lower cap saves ~150 tokens × 3 hits = 450 tokens
+// per RAG-enabled chat turn.
 export async function retrieveForRag(
   query: string,
   currentNote?: string
@@ -154,13 +157,14 @@ export async function retrieveForRag(
     const totalScore = meta.score + bodyScore;
     if (totalScore <= 0) continue;
     // Excerpt: find the first body line that mentions any token,
-    // ±200 chars. Falls back to the start of the body.
-    let excerpt = body.slice(0, 800);
+    // ±125 chars on either side. Falls back to the start of the body.
+    // Total slice = 500 chars per hit (was 800).
+    let excerpt = body.slice(0, 500);
     for (const t of tokens) {
       const at = lc.indexOf(t);
       if (at >= 0) {
-        const start = Math.max(0, at - 200);
-        excerpt = body.slice(start, start + 800);
+        const start = Math.max(0, at - 125);
+        excerpt = body.slice(start, start + 500);
         if (start > 0) excerpt = '…' + excerpt;
         break;
       }

@@ -390,12 +390,15 @@ func defaultSystemMessages(s *Server, notePath string) []chatMessage {
 		return out
 	}
 	body := n.Content
-	// Cap at ~10k chars so the chat doesn't blow the model's context
-	// on a giant note. The user can always paste excerpts if they
-	// need more.
-	const maxAttach = 10000
+	// Cap at ~6k chars (~1500 tokens) so the chat doesn't blow the
+	// model's context window on a giant note. Earlier this was 10k
+	// chars (~2500 tokens) — empirically the top 6k carries the
+	// answer in 90% of "what does this note say" cases, and the
+	// truncation hint tells the model + user that more is available.
+	// The user can always paste a specific excerpt for deep dives.
+	const maxAttach = 6000
 	if len(body) > maxAttach {
-		body = body[:maxAttach] + "\n\n[truncated; user can paste more if needed]"
+		body = body[:maxAttach] + "\n\n[truncated; paste specific excerpts for deep dives]"
 	}
 	out = append(out, chatMessage{
 		Role:    "system",

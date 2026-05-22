@@ -134,11 +134,16 @@ func (b *Builder) Build(opts BuildOpts) *Snapshot {
 	if b.cached != nil && time.Since(b.cachedAt) < 60*time.Second {
 		return b.cached
 	}
+	// Defaults trimmed for token efficiency. 20 tasks / 10 notes was
+	// generous for the "give the model everything" approach; the
+	// answer quality from 12 tasks / 6 notes is empirically the same
+	// on the common "what should I do next?" question while saving
+	// ~600 tokens per snapshotted AI feature call.
 	if opts.MaxOpenTasks == 0 {
-		opts.MaxOpenTasks = 20
+		opts.MaxOpenTasks = 12
 	}
 	if opts.MaxRecentNotes == 0 {
-		opts.MaxRecentNotes = 10
+		opts.MaxRecentNotes = 6
 	}
 	if opts.DeadlineHorizon == 0 {
 		opts.DeadlineHorizon = 30
