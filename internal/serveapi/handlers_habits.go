@@ -145,12 +145,11 @@ func (s *Server) handleListHabits(w http.ResponseWriter, r *http.Request) {
 		if date < windowStartStr || date > today {
 			continue
 		}
-		// Ensure content loaded
-		if !s.cfg.Vault.EnsureLoaded(n.RelPath) {
-			continue
-		}
-		hs := parseHabitsSection(n.Content)
-		if len(hs) == 0 {
+		// mtime-keyed cache (habits_cache.go) skips both EnsureLoaded
+		// and parseHabitsSection when the daily note hasn't changed
+		// since the previous /habits request.
+		hs, found := s.parseHabitsSectionCached(n)
+		if !found {
 			continue
 		}
 		per[date] = hs
