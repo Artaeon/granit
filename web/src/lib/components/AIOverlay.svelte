@@ -2359,26 +2359,42 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
           </div>
         {/if}
       </div>
-      {#if statusInfo && panelWidth >= 480}
-        <!-- Status pill shows on desktop panels >=480px wide. On
-             narrower panels the mode picker label + 3 right-side
-             icons + close button already fill the row; the pill
-             gets hidden so the layout doesn't compress the mode
-             label into ellipsis. Mobile keeps it hidden too —
-             the user opened the overlay to chat, not to read a
-             provider name. -->
+      {#if statusInfo}
+        <!-- Status pill — provider · model. Visible on every viewport
+             so the user always knows which backend the next turn will
+             hit (matters for cost transparency on paid providers and
+             for "why is this slow?" when ollama is local). On narrow
+             panels we truncate harder (max-w-[5.5rem]) so the mode
+             label doesn't ellipsize. The pill becomes a tap-target on
+             mobile so a long-press / title shows the full string. -->
         <span
-          class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface1 text-subtext truncate hidden md:inline-block max-w-[10rem]"
-          title="Default backend (per-feature overrides apply individually)"
-        >{statusInfo.provider} · {statusInfo.model}</span>
+          class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface1 text-subtext truncate inline-block max-w-[5.5rem] sm:max-w-[10rem]"
+          title="{statusInfo.provider} · {statusInfo.model} — default backend (per-feature overrides apply individually)"
+        >{statusInfo.model}</span>
       {/if}
       <span class="flex-1"></span>
       {#if busy}
-        <button
-          onclick={cancelInflight}
-          class="px-2 py-1 text-[11px] text-warning hover:underline"
-          title="Cancel the in-flight request"
-        >cancel</button>
+        <!-- Animated thinking-pill. Replaces the earlier tiny "cancel"
+             text link. Three pulsing dots + label + clear cancel
+             button make it obvious that work is in flight + give a
+             prominent affordance to stop. Reduced-motion users get
+             a static row instead of breathing dots. -->
+        <div
+          class="inline-flex items-center gap-2 px-2 py-0.5 rounded-md bg-surface1 text-[11px]"
+          aria-live="polite"
+        >
+          <span class="ai-thinking-dots inline-flex items-center gap-0.5" aria-hidden="true">
+            <span class="ai-thinking-dot block w-1 h-1 rounded-full bg-primary"></span>
+            <span class="ai-thinking-dot block w-1 h-1 rounded-full bg-primary"></span>
+            <span class="ai-thinking-dot block w-1 h-1 rounded-full bg-primary"></span>
+          </span>
+          <span class="text-subtext font-medium hidden sm:inline">thinking</span>
+          <button
+            onclick={cancelInflight}
+            class="text-warning hover:text-error font-medium px-1 -mx-1 rounded hover:bg-surface0 transition-colors"
+            title="Stop the in-flight request (Esc)"
+          >stop</button>
+        </div>
       {/if}
       <!-- History toggle. The side rail beneath shows saved threads
            + pinned messages; auto-saves so the user never loses a
@@ -2792,8 +2808,17 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                 {@const cleaned = stripStructuredBlocks(m.content || '')}
                 {@const followups = busy && i === messages.length - 1 ? [] : parseFollowups(m.content || '')}
                 {@const actions = busy && i === messages.length - 1 ? [] : parseActions(m.content || '')}
+                {@const inflight = busy && i === messages.length - 1}
                 <div class="prose prose-sm max-w-none">
                   <MarkdownRenderer body={cleaned || '_…_'} />
+                  {#if inflight}
+                    <!-- Streaming caret. Inserted after the markdown
+                         so the user has a continuous "still writing"
+                         signal between chunks. Blinks at 1.06s so it
+                         reads as live composition rather than a stuck
+                         cursor. CSS in the style block at end of file. -->
+                    <span class="ai-streaming-caret text-primary" aria-hidden="true"></span>
+                  {/if}
                 </div>
                 {#if actions.length > 0}
                   <!-- Vault action chips proposed by the assistant —
@@ -3179,5 +3204,47 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
       transition: none;
       user-select: none;
     }
+  }
+
+  /* Thinking-dots animation. Three dots breathe in sequence so the
+     row reads as "work in progress" without spinning busy-glyphs.
+     Pure CSS — no rAF cost per frame. Respects prefers-reduced-
+     motion: the dots stop pulsing and just hold at 0.6 opacity so
+     the user still sees the pill but no animation runs. */
+  .ai-thinking-dot {
+    animation: ai-thinking-pulse 1.2s ease-in-out infinite;
+    opacity: 0.4;
+  }
+  .ai-thinking-dot:nth-child(2) { animation-delay: 0.15s; }
+  .ai-thinking-dot:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes ai-thinking-pulse {
+    0%, 80%, 100% { opacity: 0.3; transform: scale(0.85); }
+    40% { opacity: 1; transform: scale(1.15); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ai-thinking-dot { animation: none; opacity: 0.6; transform: none; }
+  }
+
+  /* Streaming caret on the in-flight assistant message. Inserted as
+     a final inline-block sibling so it tracks the last line's
+     end-of-content position without disturbing the markdown
+     renderer. Blinks at 1.06s — a touch slower than the OS default
+     so it reads as "live writing" rather than "broken cursor". */
+  :global(.ai-streaming-caret) {
+    display: inline-block;
+    width: 0.5em;
+    height: 1em;
+    margin-left: 1px;
+    background: currentColor;
+    vertical-align: -0.15em;
+    opacity: 0.65;
+    animation: ai-caret-blink 1.06s steps(1, end) infinite;
+  }
+  @keyframes ai-caret-blink {
+    0%, 49% { opacity: 0.65; }
+    50%, 100% { opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.ai-streaming-caret) { animation: none; opacity: 0.4; }
   }
 </style>
