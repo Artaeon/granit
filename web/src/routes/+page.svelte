@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
   import { api, ApiError, type DashboardConfig, type DashboardWidget, type VaultInfo } from '$lib/api';
-  import { onWsEvent } from '$lib/ws';
   import { widgetRegistry, widgetMeta } from '$lib/dashboard/registry';
   import AuthScreen from '$lib/components/AuthScreen.svelte';
 

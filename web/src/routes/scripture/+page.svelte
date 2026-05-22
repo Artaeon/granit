@@ -11,7 +11,6 @@
     type BibleSearchHit,
     type BibleBookmark
   } from '$lib/api';
-  import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import StreakBadge from '$lib/notes/StreakBadge.svelte';
