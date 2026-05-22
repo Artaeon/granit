@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, type CalendarEvent, fmtDateISO } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { glyphForKind } from '$lib/calendar/eventTypes';
+  import { createCoalescedReload } from '$lib/util/coalesce';
 
   // NowWidget answers "what's happening right now?" — current local
   // time + the upcoming event/scheduled task. Big and quiet so it sits
@@ -11,14 +12,16 @@
   let now = $state(new Date());
   let events = $state<CalendarEvent[]>([]);
 
+  const reload = createCoalescedReload(load, 600);
   onMount(() => {
     const tick = setInterval(() => (now = new Date()), 30_000);
     load();
     const unsub = onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed' || ev.type === 'event.changed') load();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed' || ev.type === 'event.changed') reload.trigger();
     });
     return () => { clearInterval(tick); unsub(); };
   });
+  onDestroy(() => reload.cancel());
 
   async function load() {
     try {

@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, type Task } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
+  import { createCoalescedReload } from '$lib/util/coalesce';
 
   // TaskVelocityWidget — 8-week bar chart of completed tasks per
   // ISO week. Pure-CSS bars (no SVG, no chart lib) — height as a
@@ -87,12 +88,14 @@
     }
   }
 
+  const reload = createCoalescedReload(load, 600);
   onMount(() => {
     load();
     return onWsEvent((ev) => {
-      if (ev.type === 'task.changed' || ev.type === 'note.changed') void load();
+      if (ev.type === 'task.changed' || ev.type === 'note.changed') reload.trigger();
     });
   });
+  onDestroy(() => reload.cancel());
 
   const max = $derived(buckets.reduce((m, b) => Math.max(m, b.count), 0));
   // Trend = average of last 3 weeks vs the 3 weeks before. >1.0 =

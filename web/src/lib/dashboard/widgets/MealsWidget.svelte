@@ -4,6 +4,7 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
+  import { createCoalescedReload } from '$lib/util/coalesce';
 
   // MealsWidget — three (or more) per-day meal slots rendered as a
   // compact check list. The goal is glanceable "did I eat today?"
@@ -80,6 +81,7 @@
     }, next.getTime() - now.getTime());
   }
 
+  const reload = createCoalescedReload(load, 600);
   onMount(() => {
     load();
     armMidnight();
@@ -93,10 +95,11 @@
       // ticking in parallel.
       if (ev.type !== 'note.changed') return;
       if (busyKeys.size > 0) return;
-      load();
+      reload.trigger();
     });
     return () => {
       unsub();
+      reload.cancel();
       if (midnightTimer) clearTimeout(midnightTimer);
       // Flush every pending debouncer so a navigate-away during the
       // 600ms window doesn't leave dangling timers firing patchMeal

@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, todayISO, type Task } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { inlineMd } from '$lib/util/inlineMd';
   import { cleanTaskText } from '$lib/util/taskParse';
+  import { createCoalescedReload } from '$lib/util/coalesce';
 
   let tasks = $state<Task[]>([]);
 
@@ -11,12 +12,14 @@
     const list = await api.listTasks({ status: 'open' });
     tasks = list.tasks;
   }
+  const reload = createCoalescedReload(load, 600);
   onMount(() => {
     load();
     return onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
     });
   });
+  onDestroy(() => reload.cancel());
 
   const today = todayISO();
   let scheduled = $derived(

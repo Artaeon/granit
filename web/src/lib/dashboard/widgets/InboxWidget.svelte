@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, todayISO, type Task } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import TaskRow from '$lib/components/TaskRow.svelte';
+  import { createCoalescedReload } from '$lib/util/coalesce';
 
   // InboxWidget is the "what's slipping?" surface. Today / overdue
   // live in TodayTasksWidget; this one owns the buckets that AREN'T
@@ -37,12 +38,14 @@
     }
   }
 
+  const reload = createCoalescedReload(load, 600);
   onMount(() => {
     load();
     return onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
     });
   });
+  onDestroy(() => reload.cancel());
 
   const STALE_DAYS = 7;
   const QUICK_MAX_MIN = 30;

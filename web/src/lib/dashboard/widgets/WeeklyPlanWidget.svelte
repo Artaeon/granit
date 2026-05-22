@@ -14,10 +14,11 @@
   // scanning the note body and matching task line numbers to the
   // most recent "### " heading above them. Cheap, no new endpoint.
 
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, type Task } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { isoWeekString, planNotePath } from '$lib/util/isoWeek';
+  import { createCoalescedReload } from '$lib/util/coalesce';
 
   const weekISO = isoWeekString();
   const planPath = planNotePath();
@@ -93,16 +94,18 @@
       });
   }
 
+  const reload = createCoalescedReload(load, 600);
   onMount(() => {
     void load();
     // Reload on task changes targeting this plan note (someone ticked
     // a task elsewhere) or on note edits to the plan itself.
     return onWsEvent((ev) => {
       if (ev.type === 'task.changed' || ev.type === 'note.changed') {
-        void load();
+        reload.trigger();
       }
     });
   });
+  onDestroy(() => reload.cancel());
 
   let totalDone = $derived(buckets.reduce((s, b) => s + b.done, 0));
   let totalTotal = $derived(buckets.reduce((s, b) => s + b.total, 0));

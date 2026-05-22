@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, fmtDateISO } from '$lib/api';
   import type { CalendarEvent } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
+  import { createCoalescedReload } from '$lib/util/coalesce';
 
   // CalendarWeek — 7-day strip with the FIRST event title per day,
   // not just a count. "Mon: 09:00 Standup · +2" reads as a scannable
@@ -29,12 +30,14 @@
     events = feed.events;
     loaded = true;
   }
+  const reload = createCoalescedReload(load, 600);
   onMount(() => {
     load();
     return onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
     });
   });
+  onDestroy(() => reload.cancel());
 
   function timeOf(e: CalendarEvent): string {
     if (!e.start) return '';

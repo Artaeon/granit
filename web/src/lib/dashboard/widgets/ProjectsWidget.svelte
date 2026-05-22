@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, type Project } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
+  import { createCoalescedReload } from '$lib/util/coalesce';
 
   let projects = $state<Project[]>([]);
   let loaded = $state(false);
@@ -20,12 +21,14 @@
     }
   }
 
+  const reload = createCoalescedReload(load, 600);
   onMount(() => {
     load();
     return onWsEvent((ev) => {
-      if (ev.type.startsWith('project.') || ev.type === 'note.changed') load();
+      if (ev.type.startsWith('project.') || ev.type === 'note.changed') reload.trigger();
     });
   });
+  onDestroy(() => reload.cancel());
 
   function colorVar(c?: string): string {
     const map: Record<string, string> = {

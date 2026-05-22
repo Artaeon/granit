@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, type HabitsResponse } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { habitTargets } from '$lib/habits/targets';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { toast } from '$lib/components/toast';
+  import { createCoalescedReload } from '$lib/util/coalesce';
 
   // HabitsWidget — at-a-glance daily ticks with an aggregate progress
   // bar at the top + per-habit weekly target chips (when set on the
@@ -23,12 +24,14 @@
       loading = false;
     }
   }
+  const reload = createCoalescedReload(load, 600);
   onMount(() => {
     load();
     return onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
     });
   });
+  onDestroy(() => reload.cancel());
 
   async function toggle(taskId: string | undefined, done: boolean) {
     if (!taskId) return;
