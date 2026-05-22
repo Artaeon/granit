@@ -45,6 +45,7 @@
   import { auth } from '$lib/stores/auth';
   import { wsConnected } from '$lib/ws';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
+  import { aiStatus } from '$lib/stores/ai-status';
   import { api } from '$lib/api';
 
   type Props = {
@@ -191,6 +192,26 @@
         {/if}
       {/if}
     </button>
+
+    {#if !isCompact && !$sabbath && $aiStatus}
+      <!-- AI model indicator — tiny pill below the Ask AI button
+           showing the active provider's model so the user knows
+           which backend the next click will pay for. Reads from
+           the shared aiStatus store ($lib/stores/ai-status) so
+           settings changes propagate without a sidebar refetch.
+           Hidden during Sabbath (already gates the AI button) and
+           in compact mode (the icon-only rail has no room for a
+           model name). Click → /settings/ai for provider switch. -->
+      <a
+        href="/settings"
+        onclick={navigate}
+        class="block -mt-2 mb-3 px-3 py-1 text-[10px] font-mono text-dim hover:text-subtext truncate flex items-center gap-1.5 transition-colors"
+        title="Default AI backend — click to change in Settings"
+      >
+        <span class="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" aria-hidden="true"></span>
+        <span class="truncate">{$aiStatus.global_model || $aiStatus.global_provider || 'AI ready'}</span>
+      </a>
+    {/if}
 
     <!-- Pinned items — user-curated rail above Today. Hidden when
          empty so first-time users don't see a phantom group. The
