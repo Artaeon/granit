@@ -1556,6 +1556,12 @@ export const api = {
      *  the PATCH handler — written to the sidecar after the markdown
      *  line lands, so the task surfaces under its project immediately. */
     projectId?: string;
+    /** Recurrence hashtag tag — "daily" / "weekly" / "monthly" / "3x-week".
+     *  Bundled into the create so a follow-up PATCH isn't needed; without
+     *  this the new task would flicker (appear, broadcast, reload, then
+     *  patch reorders it as recurrence lands). Anything outside the
+     *  whitelist is silently dropped by the server. */
+    recurrence?: string;
     /** When set, the new task is inserted as a subtask of the task on
      *  this 1-indexed line in `notePath`. Resulting markdown is
      *  indented one level deeper than the parent (2 spaces). */

@@ -539,6 +539,13 @@ type createTaskBody struct {
 	// so the task lands already-assigned rather than needing a follow-
 	// up PATCH.
 	ProjectID string `json:"projectId,omitempty"`
+	// Recurrence sets the #daily / #weekly / #monthly / #3x-week tag
+	// on the new task line. Quick-capture's recurrence dropdown used
+	// to do this via a follow-up PATCH, which raced the broadcast for
+	// the create and made the task flicker (appear → disappear →
+	// reappear with recurrence). Bundling it into the create avoids
+	// the second round-trip and the second broadcast.
+	Recurrence string `json:"recurrence,omitempty"`
 	// ParentLine, when > 0, asks the store to insert the new task as
 	// a subtask of the task on that 1-indexed line in `notePath`. The
 	// resulting markdown line is indented one level deeper than the
@@ -597,6 +604,15 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.DeadlineID != "" {
 		textWithMarkers += " deadline:" + b.DeadlineID
+	}
+	if b.Recurrence != "" {
+		// Whitelist matches transformRecurrence's accepted forms.
+		// Anything else gets silently dropped — better than letting a
+		// caller stuff arbitrary "#<garbage>" into the line.
+		switch b.Recurrence {
+		case "daily", "weekly", "monthly", "3x-week":
+			textWithMarkers += " #" + b.Recurrence
+		}
 	}
 	opts := tasks.CreateOpts{
 		File:       notePath,

@@ -137,24 +137,20 @@
     saving = true;
     try {
       if (mode === 'task') {
-        const created = await api.createTask({
+        await api.createTask({
           notePath: dailyPath(),
           text: text.trim(),
           priority: priority || undefined,
           dueDate: dueDate || undefined,
           tags: parseTags().length ? parseTags() : undefined,
-          section: '## Tasks'
+          section: '## Tasks',
+          // Bundled into the create so the new task lands fully-formed
+          // in one round-trip; the prior two-step (create + patch)
+          // shape produced a brief flicker when WS broadcast the create
+          // before the patch arrived.
+          projectId: projectId || undefined,
+          recurrence: recurrence || undefined
         });
-        const patch: Record<string, string> = {};
-        if (recurrence) patch.recurrence = recurrence;
-        if (projectId) patch.projectId = projectId;
-        if (Object.keys(patch).length) {
-          try {
-            await api.patchTask(created.id, patch as Parameters<typeof api.patchTask>[1]);
-          } catch {
-            /* ignore — primary capture succeeded */
-          }
-        }
         toast.success('task captured');
         invalidateTitleCache();
       } else if (mode === 'note') {
