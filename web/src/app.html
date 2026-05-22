@@ -64,7 +64,7 @@
          cue without dominating the screen. -->
     <div id="app-splash" aria-hidden="true">
       <div class="app-splash__center">
-        <svg viewBox="0 0 512 512" width="72" height="72" aria-hidden="true" class="app-splash__icon">
+        <svg viewBox="0 0 512 512" aria-hidden="true" class="app-splash__icon">
           <!-- Per-facet fills — match icon.svg / icon-maskable.svg
                so the splash never reads as just a wire-outline. The
                tonal direction inverts via prefers-color-scheme (see
@@ -81,6 +81,7 @@
           </g>
         </svg>
         <div class="app-splash__title">Granit</div>
+        <div class="app-splash__tagline">your vault, anywhere</div>
         <div class="app-splash__bar"><div class="app-splash__bar-fill"></div></div>
       </div>
     </div>
@@ -108,7 +109,21 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 1.25rem;
+        /* Tighter gap on phones (smaller viewport vertical budget),
+           more breathing room on desktops. clamp() avoids a media-
+           query for one axis. */
+        gap: clamp(0.75rem, 2.5vh, 1.5rem);
+        /* Honour iOS safe-area so the splash doesn't sit half under
+           the notch on small phones with deep insets. */
+        padding: env(safe-area-inset-top) 1rem env(safe-area-inset-bottom);
+      }
+      /* Icon scales from 56px (small phones / watches) up to 128px
+         (tablets / desktops). 18vw gives the right ratio on mid-range
+         phones; the bounds keep both ends sane. The fixed-size 72px
+         shipped before looked mickrig on phones with 6"+ screens. */
+      .app-splash__icon {
+        width: clamp(56px, 18vw, 128px);
+        height: clamp(56px, 18vw, 128px);
       }
       /* Per-facet fills, dark mode default. Mirror icon.svg's tonal
          direction (light from upper-left) so the launch screen looks
@@ -127,19 +142,35 @@
         text-transform: uppercase;
         font-weight: 600;
         opacity: 0.85;
+        /* Drop the bottom gap so title + tagline read as one block
+           rather than two stacked items. */
+        margin: 0;
+      }
+      .app-splash__tagline {
+        /* Tiny italic line beneath the title — gives the splash a
+           voice without dominating. Set in monospace to echo the
+           power-UI grammar of the app proper. */
+        font-size: 0.6875rem;
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        letter-spacing: 0.02em;
+        opacity: 0.45;
+        margin-top: -0.25rem;
       }
       .app-splash__bar {
-        width: 120px;
+        /* clamp matches the icon — narrower on phones, wider when
+           there's room. */
+        width: clamp(80px, 20vw, 160px);
         height: 2px;
         background: rgba(127, 127, 127, 0.18);
         overflow: hidden;
+        border-radius: 1px;
       }
       .app-splash__bar-fill {
         width: 30%;
         height: 100%;
         background: currentColor;
         opacity: 0.65;
-        animation: app-splash-slide 1.2s ease-in-out infinite;
+        animation: app-splash-slide 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
       }
       @keyframes app-splash-slide {
         0% { transform: translateX(-120%); }
