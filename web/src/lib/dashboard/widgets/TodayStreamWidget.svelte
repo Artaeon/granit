@@ -3,6 +3,7 @@
   import { api, fmtDateISO, todayISO, type CalendarEvent, type Task, type Deadline } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { glyphForKind } from '$lib/calendar/eventTypes';
+  import { createCoalescedReload } from '$lib/util/coalesce';
 
   // TodayStreamWidget — single span-2 widget that answers "what's
   // happening today" in one chronological feed. Today's events,
@@ -72,17 +73,25 @@
     loaded = true;
   }
 
+  // Coalesce the three-way reload (calendar + tasks + deadlines) into
+  // one trailing refresh per 600ms window. Without this, editor
+  // autosave bursts (one note.changed per keystroke) would refire the
+  // full three-way fetch on every key, multiplying the per-keystroke
+  // server cost by N widgets that follow the same pattern.
+  const reload = createCoalescedReload(load, 600);
+
   onMount(() => {
     load();
     nowTick = setInterval(() => { now = new Date(); }, 60_000);
     return onWsEvent((ev) => {
-      if (ev.type === 'task.changed') load();
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
-      if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') load();
+      if (ev.type === 'task.changed') reload.trigger();
+      else if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
+      else if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') reload.trigger();
     });
   });
 
   onDestroy(() => {
+    reload.cancel();
     if (nowTick) clearInterval(nowTick);
   });
 
