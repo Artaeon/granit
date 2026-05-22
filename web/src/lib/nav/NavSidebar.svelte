@@ -205,7 +205,7 @@
       <a
         href="/settings"
         onclick={navigate}
-        class="block -mt-2 mb-3 px-3 py-1 text-[10px] font-mono text-dim hover:text-subtext truncate flex items-center gap-1.5 transition-colors"
+        class="-mt-2 mb-3 px-3 py-1 text-[10px] font-mono text-dim hover:text-subtext transition-colors flex items-center gap-1.5 min-w-0"
         title="Default AI backend — click to change in Settings"
       >
         <span class="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" aria-hidden="true"></span>
