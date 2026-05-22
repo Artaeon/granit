@@ -25,7 +25,10 @@ func TestNormaliseTaskTokens(t *testing.T) {
 		{"sidecar ref stripped", "talk to alice ^abc123",
 			[]string{"talk", "alice"}},
 		{"wikilink stripped", "follow up on [[meeting notes]]",
-			[]string{"follow"}},
+			// "up" is intentionally NOT a stopword — "follow up" is a
+			// distinct action signal, so keep it for Jaccard overlap.
+			// "on" is a stopword. The wikilink + its inner words drop.
+			[]string{"follow", "up"}},
 		{"stopwords removed", "the report is on the way",
 			[]string{"report", "way"}},
 		{"1-char tokens dropped", "a b call mom",

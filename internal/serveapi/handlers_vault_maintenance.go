@@ -788,11 +788,11 @@ func (s *Server) applyAddBacklink(fromPath, toPath, anchor string) error {
 	}
 	src := s.cfg.Vault.GetNote(fromPath)
 	if src == nil {
-		return fmt.Errorf("source note not found: " + fromPath)
+		return fmt.Errorf("source note not found: %s", fromPath)
 	}
 	dst := s.cfg.Vault.GetNote(toPath)
 	if dst == nil {
-		return fmt.Errorf("target note not found: " + toPath)
+		return fmt.Errorf("target note not found: %s", toPath)
 	}
 	s.cfg.Vault.EnsureLoaded(fromPath)
 

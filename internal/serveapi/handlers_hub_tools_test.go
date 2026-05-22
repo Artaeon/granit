@@ -365,10 +365,10 @@ func TestHubTools_SeedStarterSet(t *testing.T) {
 		Tools []hub.Tool `json:"tools"`
 	}
 	_ = json.Unmarshal(lw2.Body.Bytes(), &listed2)
-	for _, t := range listed2.Tools {
-		if t.ID == gitID {
-			if len(t.Commands) != 1 || t.Commands[0].Label != "my custom" {
-				t.Errorf("custom git card mutated by re-seed: %+v", t.Commands)
+	for _, tool := range listed2.Tools {
+		if tool.ID == gitID {
+			if len(tool.Commands) != 1 || tool.Commands[0].Label != "my custom" {
+				t.Errorf("custom git card mutated by re-seed: %+v", tool.Commands)
 			}
 			return
 		}
