@@ -289,7 +289,18 @@ export function sabbathMinutesRemaining(): number {
 // previous value before the PUT-response reconciles. Acceptable
 // tradeoff — the alternative (timestamps + last-write-wins) is more
 // machinery than this surface needs.
+//
+// Coalesce: refetch is fired from the module init AND from every
+// visibilitychange. A user toggling between tabs repeatedly while the
+// server is slow would otherwise queue overlapping GETs — they all
+// land on the same endpoint and the last one's `.set()` wins. The
+// inFlight flag drops anything that comes in while a fetch is open;
+// the visibilitychange that fires after it lands will pick up any new
+// state.
+let refetchInFlight = false;
 async function refetchSchedule() {
+  if (refetchInFlight) return;
+  refetchInFlight = true;
   try {
     const res = await api.getSabbath();
     const remote = fromWire(res.schedule);
@@ -314,6 +325,8 @@ async function refetchSchedule() {
   } catch {
     // Server unreachable / auth not yet hydrated — try again on next
     // visibilitychange. The local copy is fine until then.
+  } finally {
+    refetchInFlight = false;
   }
 }
 
