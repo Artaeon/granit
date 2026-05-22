@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, todayISO, fmtDateISO, type Task, type HabitInfo, type Deadline } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
+  import { createCoalescedReload } from '$lib/util/coalesce';
 
   // AtAGlanceWidget — single dense row that answers "what's the shape
   // of today?" in four count tiles (due-today, overdue, deadlines-7d,
@@ -31,15 +32,24 @@
     loaded = true;
   }
 
+  // Coalesce three independent event sources (task.changed bursts on
+  // checkbox edits, deadlines state.changed, habit toggles, autosaved
+  // note.changed) into one trailing reload per 600ms window. Without
+  // this every keystroke in the editor — which fires note.changed
+  // repeatedly — would refetch all three sources in parallel.
+  const reload = createCoalescedReload(load, 600);
+
   onMount(() => {
     load();
     return onWsEvent((ev) => {
-      if (ev.type === 'task.changed') load();
-      if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') load();
-      if (ev.type === 'state.changed' && ev.path?.startsWith('.granit/habits/')) load();
-      if (ev.type === 'note.changed') load();
+      if (ev.type === 'task.changed') reload.trigger();
+      else if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') reload.trigger();
+      else if (ev.type === 'state.changed' && ev.path?.startsWith('.granit/habits/')) reload.trigger();
+      else if (ev.type === 'note.changed') reload.trigger();
     });
   });
+
+  onDestroy(() => reload.cancel());
 
   // ----- Counts -----
 
