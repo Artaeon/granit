@@ -372,13 +372,13 @@ func (s *Server) handlePatchTask(w http.ResponseWriter, r *http.Request) {
 		// goal-<timestamp> form. Accept any letters/digits/dash/underscore
 		// token; reject only payloads that would break the line marker
 		// (whitespace, quotes, markdown punctuation).
-		if !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(*b.GoalID) {
+		if !reGoalIDValid.MatchString(*b.GoalID) {
 			writeError(w, http.StatusBadRequest, "goalId must be alphanumeric / dash / underscore")
 			return
 		}
 	}
 	if b.DeadlineID != nil && *b.DeadlineID != "" {
-		if !regexp.MustCompile(`^[0-9a-z]{26}$`).MatchString(*b.DeadlineID) {
+		if !reDeadlineIDValid.MatchString(*b.DeadlineID) {
 			writeError(w, http.StatusBadRequest, "deadlineId must be a 26-char ULID")
 			return
 		}
@@ -557,11 +557,11 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if b.GoalID != "" && !regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(b.GoalID) {
+	if b.GoalID != "" && !reGoalIDValid.MatchString(b.GoalID) {
 		writeError(w, http.StatusBadRequest, "goalId must be alphanumeric / dash / underscore")
 		return
 	}
-	if b.DeadlineID != "" && !regexp.MustCompile(`^[0-9a-z]{26}$`).MatchString(b.DeadlineID) {
+	if b.DeadlineID != "" && !reDeadlineIDValid.MatchString(b.DeadlineID) {
 		writeError(w, http.StatusBadRequest, "deadlineId must be a 26-char ULID")
 		return
 	}
@@ -639,6 +639,15 @@ func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 // ---- line transforms ----
 
 var (
+	// Strict full-string validators for IDs accepted via JSON. Used by
+	// PATCH/POST handlers to reject malformed values before they hit
+	// the line-marker writer (where a bad value would leak through the
+	// permissive line-scanner and produce a duplicate marker on the
+	// next patch). Promoted to package vars so we don't pay
+	// regexp.MustCompile on every request.
+	reGoalIDValid     = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	reDeadlineIDValid = regexp.MustCompile(`^[0-9a-z]{26}$`)
+
 	rePriorityMarker = regexp.MustCompile(`(^|\s)![1-3](\s|$)`)
 	reDueMarker      = regexp.MustCompile(`(^|\s)due:\d{4}-\d{2}-\d{2}(\s|$)`)
 	reSnoozeMarker   = regexp.MustCompile(`(^|\s)snooze:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(\s|$)`)
