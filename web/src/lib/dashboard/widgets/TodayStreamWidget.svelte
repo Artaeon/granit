@@ -344,7 +344,17 @@
       class="block mb-2.5 px-3 py-2 rounded-md bg-success/10 border border-success/30 hover:bg-success/15 transition-colors"
     >
       <div class="flex items-center gap-2">
-        <span class="now-pulse relative flex-shrink-0 w-2 h-2 rounded-full bg-success" aria-hidden="true"></span>
+        <!-- Two-layer pulse: a solid dot + an expanding-fading ring
+             behind it. Both use bg-success (Tailwind class) directly —
+             earlier code used currentColor + --color-success-rgb CSS
+             var, but that var doesn't exist in our token set so the
+             fallback (light blue) shipped on every device. Now the
+             ring renders the right green on every browser, no var
+             lookup. -->
+        <span class="relative flex-shrink-0 w-2 h-2" aria-hidden="true">
+          <span class="now-pulse-ring absolute inset-0 rounded-full bg-success"></span>
+          <span class="relative block w-2 h-2 rounded-full bg-success"></span>
+        </span>
         <span class="text-[10px] uppercase tracking-wider font-semibold text-success flex-shrink-0">Now</span>
         <span class="text-sm font-medium text-text truncate flex-1 min-w-0">{nowEvent.title}</span>
         <span class="text-[11px] text-success/80 font-mono tabular-nums flex-shrink-0">
@@ -426,24 +436,21 @@
 </section>
 
 <style>
-  /* Now-banner pulsing dot. Two-state breathing animation — the
-     dot grows + dims slightly + shrinks back. Pure CSS so no JS
-     work per frame; respects prefers-reduced-motion. The pulse
-     drives the "live" cue the rest of the row gives via colour. */
-  .now-pulse::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 9999px;
-    background: currentColor;
+  /* Now-banner pulsing ring. Grows from the solid dot's size to
+     1.9× and fades to transparent, then resets. The ring is its
+     own DOM element with bg-success applied via Tailwind, so the
+     animation has zero colour ambiguity. Pure CSS — no JS per
+     frame. Respects prefers-reduced-motion (sits at opacity 0.4
+     scale 1 instead of breathing). */
+  .now-pulse-ring {
     animation: now-pulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    color: rgb(var(--color-success-rgb, 156 220 254) / 1);
+    transform-origin: center;
   }
   @keyframes now-pulse {
-    0%, 100% { transform: scale(1); opacity: 0.6; }
+    0%, 100% { transform: scale(1); opacity: 0.55; }
     50% { transform: scale(1.9); opacity: 0; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .now-pulse::before { animation: none; opacity: 0.4; }
+    .now-pulse-ring { animation: none; opacity: 0.4; }
   }
 </style>

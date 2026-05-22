@@ -104,7 +104,6 @@
     value: number | null;
     href: string;
     tone: 'error' | 'primary' | 'warning' | 'info' | 'dim';
-    icon: string;
   };
   let tiles = $derived<Tile[]>([
     {
@@ -112,32 +111,28 @@
       caption: 'tasks',
       value: overdue,
       href: '/tasks?group=due',
-      tone: overdue && overdue > 0 ? 'error' : 'dim',
-      icon: '⚠'
+      tone: overdue && overdue > 0 ? 'error' : 'dim'
     },
     {
       label: 'Due today',
       caption: 'tasks',
       value: dueToday,
       href: '/tasks?group=due',
-      tone: dueToday && dueToday > 0 ? 'primary' : 'dim',
-      icon: '◉'
+      tone: dueToday && dueToday > 0 ? 'primary' : 'dim'
     },
     {
       label: 'Deadlines',
       caption: 'next 7d',
       value: weekDeadlines,
       href: '/deadlines',
-      tone: weekDeadlines && weekDeadlines > 0 ? 'warning' : 'dim',
-      icon: '⚑'
+      tone: weekDeadlines && weekDeadlines > 0 ? 'warning' : 'dim'
     },
     {
       label: 'Habits',
       caption: 'left today',
       value: habitsRemaining,
       href: '/habits',
-      tone: habitsRemaining && habitsRemaining > 0 ? 'info' : 'dim',
-      icon: '✓'
+      tone: habitsRemaining && habitsRemaining > 0 ? 'info' : 'dim'
     }
   ]);
 
@@ -218,13 +213,13 @@
               <!-- The number is the headline — text-3xl on mobile,
                    text-4xl on sm+ so it dominates the tile. Tabular
                    nums keeps a 2-digit "10" the same width as "11"
-                   so the layout doesn't twitch when a task ticks. -->
-              <div class="flex items-baseline gap-1.5">
-                <span class="text-3xl sm:text-4xl font-bold {active ? toneText[t.tone] : 'text-dim'} tabular-nums leading-none">
-                  {display(t.value)}
-                </span>
-                <span class="text-xs {active ? toneText[t.tone] : 'text-dim'} opacity-70" aria-hidden="true">{t.icon}</span>
-              </div>
+                   so the layout doesn't twitch when a task ticks.
+                   No icon — the colour + label + caption do the
+                   semantic work and an emoji-prone glyph (⚠, ⚑)
+                   was rendering as full-colour on iOS/Android. -->
+              <span class="block text-3xl sm:text-4xl font-bold {active ? toneText[t.tone] : 'text-dim'} tabular-nums leading-none">
+                {display(t.value)}
+              </span>
               <div class="mt-1 leading-tight">
                 <span class="block text-[11px] font-medium {active ? 'text-text' : 'text-dim'}">{t.label}</span>
                 <span class="block text-[10px] text-dim">{t.caption}</span>
