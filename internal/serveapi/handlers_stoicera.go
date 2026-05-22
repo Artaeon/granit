@@ -42,10 +42,19 @@ import (
 // stoiceraSettings is the on-disk shape of the integration config.
 // Empty Token + Enabled=false is the natural default — caller must
 // explicitly enable + (re)generate.
+//
+// Webhook fields drive the outbound push-to-intranet path (see
+// webhook.go): when a task / project / deadline changes on the granit
+// side, we POST a tiny nudge to WebhookURL with WebhookSecret as the
+// bearer. The intranet's webhook handler debounces + triggers its
+// syncAll(), so the user sees fresh data without polling. Empty URL
+// disables the dispatch entirely (no goroutine, no allocation).
 type stoiceraSettings struct {
-	Enabled      bool   `json:"enabled"`
-	Token        string `json:"token,omitempty"`
-	VentureName  string `json:"venture_name,omitempty"`
+	Enabled       bool   `json:"enabled"`
+	Token         string `json:"token,omitempty"`
+	VentureName   string `json:"venture_name,omitempty"`
+	WebhookURL    string `json:"webhook_url,omitempty"`
+	WebhookSecret string `json:"webhook_secret,omitempty"`
 }
 
 func stoiceraSettingsPath(vaultRoot string) string {
@@ -145,10 +154,12 @@ func (s *Server) handleGetStoiceraSettings(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"enabled":      cur.Enabled,
-		"venture_name": cur.VentureName,
-		"token_masked": masked,
-		"has_token":    cur.Token != "",
+		"enabled":            cur.Enabled,
+		"venture_name":       cur.VentureName,
+		"token_masked":       masked,
+		"has_token":          cur.Token != "",
+		"webhook_url":        cur.WebhookURL,
+		"has_webhook_secret": cur.WebhookSecret != "",
 	})
 }
 
@@ -168,9 +179,11 @@ func (s *Server) handleGetStoiceraToken(w http.ResponseWriter, r *http.Request) 
 // fields are optional pointers so the UI can patch one at a time.
 // regenerate=true generates a fresh token (only valid when enabled).
 type stoiceraSettingsPatch struct {
-	Enabled     *bool   `json:"enabled,omitempty"`
-	VentureName *string `json:"venture_name,omitempty"`
-	Regenerate  bool    `json:"regenerate,omitempty"`
+	Enabled       *bool   `json:"enabled,omitempty"`
+	VentureName   *string `json:"venture_name,omitempty"`
+	Regenerate    bool    `json:"regenerate,omitempty"`
+	WebhookURL    *string `json:"webhook_url,omitempty"`
+	WebhookSecret *string `json:"webhook_secret,omitempty"`
 }
 
 // handlePatchStoiceraSettings updates the on-disk settings. Generates
@@ -189,6 +202,12 @@ func (s *Server) handlePatchStoiceraSettings(w http.ResponseWriter, r *http.Requ
 	}
 	if p.VentureName != nil {
 		cur.VentureName = strings.TrimSpace(*p.VentureName)
+	}
+	if p.WebhookURL != nil {
+		cur.WebhookURL = strings.TrimSpace(*p.WebhookURL)
+	}
+	if p.WebhookSecret != nil {
+		cur.WebhookSecret = strings.TrimSpace(*p.WebhookSecret)
 	}
 	// First-time enable without an existing token: generate one so
 	// the UI has something to show / copy immediately.
