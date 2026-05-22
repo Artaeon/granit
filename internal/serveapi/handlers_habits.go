@@ -119,6 +119,13 @@ var (
 	taskDateEmojiRe = regexp.MustCompile(`\x{1F4C5}\s*\d{4}-\d{2}-\d{2}`)
 	// 🔺⏫🔼🔽⏬ — granit emoji priorities
 	taskEmojiPrioRe = regexp.MustCompile(`[\x{1F53A}\x{23EB}\x{1F53C}\x{1F53D}\x{23EC}]`)
+	// Plain-text markers used by stripHabitMarkers below. Promoted out
+	// of the function body so we don't pay regexp.MustCompile per
+	// habit aggregation call (which happens once per task line, across
+	// every daily note, on every /habits request).
+	taskBangPrioRe = regexp.MustCompile(`(?:^|\s)!([1-3])(?:\s|$)`)
+	taskDueTextRe  = regexp.MustCompile(`due:\d{4}-\d{2}-\d{2}`)
+	taskHashTagRe  = regexp.MustCompile(`#[A-Za-z0-9_/-]+`)
 )
 
 func (s *Server) handleListHabits(w http.ResponseWriter, r *http.Request) {
@@ -461,9 +468,9 @@ func stripHabitMarkers(text string) string {
 	t = taskTimeMarkerRe.ReplaceAllString(t, "")
 	t = taskDateEmojiRe.ReplaceAllString(t, "")
 	t = taskEmojiPrioRe.ReplaceAllString(t, "")
-	t = regexp.MustCompile(`(?:^|\s)!([1-3])(?:\s|$)`).ReplaceAllString(t, " ")
-	t = regexp.MustCompile(`due:\d{4}-\d{2}-\d{2}`).ReplaceAllString(t, "")
-	t = regexp.MustCompile(`#[A-Za-z0-9_/-]+`).ReplaceAllString(t, "")
+	t = taskBangPrioRe.ReplaceAllString(t, " ")
+	t = taskDueTextRe.ReplaceAllString(t, "")
+	t = taskHashTagRe.ReplaceAllString(t, "")
 	return strings.TrimSpace(t)
 }
 
