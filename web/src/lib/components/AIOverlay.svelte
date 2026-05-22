@@ -276,11 +276,24 @@
   // The actual height we render at — drag value while a drag is in
   // flight, otherwise the snap target. Empty string lets the desktop
   // override class (md:h-full md:max-h-none) win unchanged.
-  let mobileSheetHeight = $derived(
-    sheetDragging && sheetDragHeight !== null
-      ? `${Math.round(sheetDragHeight)}px`
-      : `${snapHeightPx(sheetSnap, typeof window === 'undefined' ? 800 : window.innerHeight)}px`
-  );
+  //
+  // When the keyboard is open we shrink the snap-target base from
+  // window.innerHeight to the visible viewport (window.innerHeight -
+  // keyboardOffset). Without this, a 'full' snap (92%) computed
+  // against innerHeight + a bottom-lift equal to keyboardOffset
+  // pushes the panel's TOP above the viewport, which the user sees
+  // as "the AI overlay jumped to the top of the screen when I
+  // started typing." Computing against the visible viewport makes
+  // 'full' mean "all the room the keyboard left me", which is what
+  // the user expects.
+  let mobileSheetHeight = $derived.by(() => {
+    if (typeof window === 'undefined') return `${snapHeightPx(sheetSnap, 800)}px`;
+    if (sheetDragging && sheetDragHeight !== null) {
+      return `${Math.round(sheetDragHeight)}px`;
+    }
+    const visibleH = window.innerHeight - keyboardOffset;
+    return `${snapHeightPx(sheetSnap, visibleH)}px`;
+  });
 
   let busy = $state(false);
   let abort: AbortController | null = null;
@@ -3149,7 +3162,12 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
   @media (max-width: 767px) {
     :global(.ai-overlay-panel) {
       height: var(--ai-sheet-h, 65dvh);
-      max-height: 100dvh;
+      /* Defence-in-depth clamp: even if --ai-sheet-h overshoots
+         (stale render, race, browser rounding), max-height pins
+         the panel to the visible viewport above the keyboard.
+         calc subtracts the lift so the top edge can never go
+         off-screen. */
+      max-height: calc(100dvh - var(--ai-sheet-lift, 0px));
       bottom: var(--ai-sheet-lift, 0px);
       /* Tween height + bottom for the snap-into-place feeling; the
          snapping class below kills the transition during an active
