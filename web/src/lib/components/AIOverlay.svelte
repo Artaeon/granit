@@ -1528,6 +1528,50 @@
   // file lands under Drafts/. The path is exposed via the toast's
   // "open" action so the user can verify what got written.
   let savingMessageIdx = $state<number | null>(null);
+
+  // copiedMessageIdx — tracks which assistant message just got
+  // copied so the button can flash a checkmark for ~1.2s before
+  // reverting to the copy icon. Single-slot (only one feedback at
+  // a time) — a fresh copy on another row resets the previous.
+  let copiedMessageIdx = $state<number | null>(null);
+  let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
+  async function copyAssistantMessage(content: string, idx: number): Promise<void> {
+    // stripStructuredBlocks is the same cleaner saveAssistantAsNote
+    // uses — drops action / suggestion blocks so the clipboard
+    // contains only the human-readable reply, not the JSON the
+    // assistant emitted alongside.
+    const cleaned = stripStructuredBlocks(content || '').trim();
+    if (!cleaned) {
+      toast.info('Nothing to copy.');
+      return;
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(cleaned);
+      } else {
+        // Fallback for non-secure contexts / older browsers: temporary
+        // textarea + execCommand. Deprecated but still works on iOS
+        // Safari served over plain HTTP (rare for granit but possible
+        // on a LAN).
+        const ta = document.createElement('textarea');
+        ta.value = cleaned;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      copiedMessageIdx = idx;
+      if (copyResetTimer) clearTimeout(copyResetTimer);
+      copyResetTimer = setTimeout(() => {
+        copiedMessageIdx = null;
+      }, 1200);
+    } catch {
+      toast.error('Copy failed — your browser blocked clipboard access.');
+    }
+  }
+
   async function saveAssistantAsNote(idx: number) {
     const m = messages[idx];
     if (!m || m.role !== 'assistant') return;
@@ -2005,9 +2049,24 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
       // long replies. The throttle commits the latest buffer once
       // per animation frame; flush() runs on stream completion so
       // the final state lands before auto-save fires.
+      //
+      // Smart auto-scroll: if the user is within 80px of the
+      // bottom we keep them pinned to the streaming edge so a long
+      // reply doesn't run off-screen. If they scrolled up to re-
+      // read older content, we respect that — no yank-back when a
+      // chunk lands. 80px is generous enough that the user clearly
+      // intended to stay near the bottom; smaller windows would
+      // disengage from the stream on a single trackpad nudge.
       const t = rafThrottle((full) => {
+        const stickBottom = !!scrollEl &&
+          (scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight) < 80;
         acc = full;
         messages = messages.map((m, i) => (i === idx ? { ...m, content: full } : m));
+        if (stickBottom) {
+          tick().then(() => {
+            if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+          });
+        }
       });
       await api.chatStream(
         history,
@@ -2697,6 +2756,31 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <path d="M5 4h11l3 3v13H5z"/>
                           <path d="M9 4v5h6V4M8 14h8M8 18h6"/>
+                        </svg>
+                      {/if}
+                    </button>
+                    <!-- Copy — drops the assistant reply's content
+                         straight to clipboard so the user can paste
+                         elsewhere without first saving it as a vault
+                         note. Falls back silently when the Clipboard
+                         API isn't available (HTTP context, ancient
+                         browsers); toast confirms success or hints
+                         at the failure mode. -->
+                    <button
+                      type="button"
+                      onclick={() => copyAssistantMessage(m.content, i)}
+                      class="tap-target inline-flex items-center justify-center w-7 h-7 rounded leading-none hover:bg-surface0 active:bg-surface1 transition-colors {copiedMessageIdx === i ? 'text-success' : 'text-dim hover:text-primary'}"
+                      aria-label="Copy this reply to clipboard"
+                      title={copiedMessageIdx === i ? 'Copied!' : 'Copy reply to clipboard'}
+                    >
+                      {#if copiedMessageIdx === i}
+                        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                      {:else}
+                        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <rect x="9" y="9" width="11" height="11" rx="2"/>
+                          <path d="M5 15V5a2 2 0 0 1 2-2h10"/>
                         </svg>
                       {/if}
                     </button>
