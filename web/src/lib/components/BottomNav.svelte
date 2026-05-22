@@ -44,9 +44,14 @@
      look. Vertical divider lines between cells make the five
      columns scannable as discrete targets, matching the dense
      power-UI grammar of the rest of the app. -->
+<!-- Mobile bottom-nav. `bottom-nav-hide-on-kb` is intentional: when
+     the layout's visualViewport listener sets data-kb-open on <html>,
+     the bar disappears so the on-screen keyboard doesn't sit on top
+     of it and the user gets the whole screen for typing. Re-appears
+     when the keyboard closes. -->
 <nav
   aria-label="primary"
-  class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-mantle border-t border-surface1 pb-safe"
+  class="bottom-nav-hide-on-kb md:hidden fixed bottom-0 inset-x-0 z-30 bg-mantle border-t border-surface1 pb-safe"
 >
   <div class="flex items-stretch justify-around h-14">
     {#each tabs as t, i (t.href)}
@@ -84,3 +89,19 @@
     </button>
   </div>
 </nav>
+
+<style>
+  /* Hide the mobile bottom-nav while the on-screen keyboard is open.
+     +layout.svelte's visualViewport listener flips data-kb-open on
+     <html> when the keyboard pushes content out of the visible
+     viewport. Without this rule, the nav sits under the keyboard
+     wasting the bottom strip of layout and visually competes with
+     whatever floating action the OS surfaces above its keyboard. */
+  :global(html[data-kb-open]) .bottom-nav-hide-on-kb {
+    transform: translateY(110%);
+    pointer-events: none;
+  }
+  .bottom-nav-hide-on-kb {
+    transition: transform 180ms ease-out;
+  }
+</style>

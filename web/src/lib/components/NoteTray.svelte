@@ -259,10 +259,14 @@
     edge-to-edge. The 28px height (h-7) matches the user's "ganz
     schmal" brief — readable but visually unobtrusive.
   -->
+  <!-- The tray sits above the bottom-nav on mobile. When the on-
+       screen keyboard opens the bottom-nav hides (data-kb-open on
+       <html>); the tray follows so a typing user gets the whole
+       editor height. Re-appears together with the nav. -->
   <div
     role="region"
     aria-label="Open note tray"
-    class="note-tray fixed inset-x-0 z-20 bg-mantle border-t border-surface1
+    class="note-tray note-tray-hide-on-kb fixed inset-x-0 z-20 bg-mantle border-t border-surface1
            h-7 md:h-7 flex items-stretch overflow-x-auto"
     style="bottom: var(--note-tray-bottom, 0px);"
   >
@@ -291,4 +295,15 @@
      visible scrollbar would steal vertical pixels from a 28px bar. */
   .note-tray::-webkit-scrollbar { display: none; }
   .note-tray { scrollbar-width: none; }
+  /* When the on-screen keyboard opens (data-kb-open set by the
+     layout's visualViewport listener), the tray slides off-screen
+     together with the bottom-nav so a typing user gets the whole
+     editor height. */
+  :global(html[data-kb-open]) .note-tray-hide-on-kb {
+    transform: translateY(150%);
+    pointer-events: none;
+  }
+  .note-tray-hide-on-kb {
+    transition: transform 180ms ease-out;
+  }
 </style>

@@ -171,6 +171,41 @@
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // Global mobile-keyboard awareness. iOS Safari (and to a lesser
+  // extent Android Chrome) floats the on-screen keyboard OVER fixed-
+  // bottom UI without telling layout — visualViewport.height shrinks
+  // when the keyboard opens. We expose two pieces of information for
+  // child components to react to:
+  //   - data-kb-open on <html> when the keyboard is up. CSS selectors
+  //     like `html[data-kb-open] .bottom-nav { display:none }` can
+  //     hide nav chrome that would otherwise sit under the keyboard.
+  //   - --kb-h CSS variable (px) carrying the obscured strip height.
+  //     Components that want to lift themselves above the keyboard
+  //     can use `bottom: calc(env(safe-area-inset-bottom) + var(--kb-h, 0px))`.
+  // 120px threshold separates "keyboard is up" from "URL bar
+  // collapsed during scroll" (which shrinks VV by 40-80px on iOS).
+  onMount(() => {
+    if (typeof window === 'undefined') return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    function update() {
+      const obscured = Math.max(0, window.innerHeight - (vv?.height ?? window.innerHeight));
+      document.documentElement.style.setProperty('--kb-h', `${obscured}px`);
+      if (obscured > 120) {
+        document.documentElement.setAttribute('data-kb-open', '1');
+      } else {
+        document.documentElement.removeAttribute('data-kb-open');
+      }
+    }
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    update();
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  });
+
   // Browser tab title. Empty home stays as just 'Granit'; deep
   // pages get 'Granit · Pagename' so multiple open tabs are
   // distinguishable. Single source of truth (the same activeNav
