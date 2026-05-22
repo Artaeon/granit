@@ -15,9 +15,28 @@ export const minutesByTaskId = writable<Record<string, number>>({});
 
 // elapsedSec: a derived store that ticks every second so the pill
 // shows live elapsed time. Returns 0 when no timer is running.
+// The interval pauses while the tab is hidden — the elapsed value is
+// stateless (Date.now() - startTime), so it catches up the instant the
+// tab becomes visible again. Avoids the once-per-second CPU/battery
+// drain when the user has the app in another tab for hours.
 const tick = writable(Date.now());
 if (typeof window !== 'undefined') {
-  setInterval(() => tick.set(Date.now()), 1000);
+  let id: ReturnType<typeof setInterval> | null = null;
+  const start = () => {
+    if (id !== null) return;
+    tick.set(Date.now());
+    id = setInterval(() => tick.set(Date.now()), 1000);
+  };
+  const stop = () => {
+    if (id === null) return;
+    clearInterval(id);
+    id = null;
+  };
+  if (!document.hidden) start();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stop();
+    else start();
+  });
 }
 
 export const elapsedSec: Readable<number> = derived([activeTimer, tick], ([$t, $now]) => {
