@@ -2854,7 +2854,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
                   <div class="mt-1">
                     <textarea
                       bind:value={editingUserDraft}
-                      class="w-full bg-surface0 border border-primary rounded p-2 text-sm text-text resize-none focus:outline-none focus:border-primary"
+                      class="w-full bg-surface0 border border-primary rounded p-2 text-base md:text-sm text-text resize-none focus:outline-none focus:border-primary"
                       rows={Math.min(10, Math.max(2, (editingUserDraft.match(/\n/g)?.length ?? 0) + 1))}
                       onkeydown={(e) => {
                         if (e.key === 'Escape') { e.preventDefault(); cancelEditUser(); return; }
@@ -3190,6 +3190,16 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
       <div
         class="relative bg-surface0 border rounded-2xl px-3 py-2 transition-colors {recording ? 'border-error' : 'border-surface1 focus-within:border-primary'}"
       >
+        <!-- font-size: 16px on mobile is CRITICAL. iOS Safari
+             auto-zooms any focused input with font-size < 16px and,
+             while zooming, scrolls the page to centre the input —
+             dragging fixed-positioned ancestors (this whole AI panel)
+             up with it. That's the long-standing "input field
+             wanders to the top, big gap to the keyboard" bug the
+             user kept reporting through three previous height-math
+             fixes. The actual root cause is the 14px text-sm here.
+             text-base md:text-sm gives 16px on mobile (no iOS zoom)
+             + 14px on desktop (matches the rest of the chat). -->
         <textarea
           bind:this={inputEl}
           bind:value={input}
@@ -3199,7 +3209,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
           rows="2"
           placeholder={$sabbath ? 'Sabbath active — AI paused' : recording ? 'Listening… speak freely' : 'Ask anything, /help for commands, @ to reference…'}
           disabled={busy || $sabbath}
-          class="w-full bg-transparent border-0 text-sm text-text placeholder-dim focus:outline-none resize-none disabled:opacity-60 pr-20"
+          class="w-full bg-transparent border-0 text-base md:text-sm text-text placeholder-dim focus:outline-none resize-none disabled:opacity-60 pr-20"
           style="min-height: 2.5rem; max-height: 12rem;"
         ></textarea>
         <!-- Bottom-right action cluster — mic (optional) + send.
