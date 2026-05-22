@@ -1,0 +1,35 @@
+<!-- Install-prompt screenshot for tablet/landscape form-factor.
+     Same brand surface as install-narrow.svg, recomposed for a
+     1920×1080 viewport — Android shows this for tablets and
+     desktop install. Sticks to the same monogram + wordmark
+     hierarchy so brand recognition is identical across form
+     factors. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <defs>
+    <linearGradient id="bgw" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#14141a"/>
+      <stop offset="100%" stop-color="#0a0a0a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bgw)"/>
+  <!-- Left: icon — same monogram G, sized for landscape. -->
+  <g transform="translate(380, 290)">
+    <rect width="500" height="500" rx="94" fill="#0a0a0a" stroke="#1c1c22" stroke-width="2"/>
+    <path
+      fill="#fafafa"
+      d="M 127 94 L 373 94 L 373 180 L 213 180 L 213 320 L 305 320 L 305 274 L 244 274 L 244 219 L 373 219 L 373 406 L 127 406 Z"
+    />
+    <polygon fill="#0a0a0a" points="500,406 500,500 406,500"/>
+  </g>
+  <!-- Right: copy block. Reads as "logo · pause · words" so the
+       eye lands left and reads right. -->
+  <g transform="translate(1020, 350)">
+    <text x="0" y="0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="120" font-weight="600" fill="#fafafa" letter-spacing="40">GRANIT</text>
+    <text x="0" y="80" font-family="ui-monospace, monospace" font-size="38" fill="#7a7a82">your vault, anywhere</text>
+    <text x="0" y="220" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="46" fill="#cdd6f4">Notes. Tasks. Calendar. Habits.</text>
+    <text x="0" y="280" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="46" fill="#cdd6f4">One vault. Plain markdown.</text>
+    <text x="0" y="340" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="46" fill="#cdd6f4">Yours forever.</text>
+    <rect x="0" y="420" width="380" height="56" rx="28" fill="#1c1c22" stroke="#2c2c34" stroke-width="2"/>
+    <text x="190" y="456" font-family="ui-monospace, monospace" font-size="24" fill="#a0a0a8" text-anchor="middle">self-hosted · no telemetry</text>
+  </g>
+</svg>

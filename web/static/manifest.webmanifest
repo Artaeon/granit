@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Granit",
   "short_name": "Granit",
-  "description": "Your vault, anywhere. Web companion to Granit.",
+  "description": "Self-hosted, single-tenant knowledge manager built on plain Markdown. Notes, tasks, calendar, habits, scripture, finance and AI — one vault, your filesystem, no telemetry. Works offline. Install anywhere.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -10,7 +10,7 @@
   "orientation": "any",
   "background_color": "#0a0a0a",
   "theme_color": "#0a0a0a",
-  "categories": ["productivity"],
+  "categories": ["productivity", "lifestyle"],
   "lang": "en",
   "dir": "ltr",
   "prefer_related_applications": false,
@@ -30,42 +30,40 @@
       "url": "url"
     }
   },
+  "protocol_handlers": [
+    {
+      "protocol": "web+granit",
+      "url": "/?deep=%s"
+    }
+  ],
   "icons": [
+    { "src": "/icon-96.png",  "sizes": "96x96",   "type": "image/png", "purpose": "any" },
+    { "src": "/icon-144.png", "sizes": "144x144", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-384.png", "sizes": "384x384", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-96.png",  "sizes": "96x96",   "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-maskable-144.png", "sizes": "144x144", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-maskable-384.png", "sizes": "384x384", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon.svg",          "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ],
+  "screenshots": [
     {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
+      "src": "/screenshots/install-narrow.png",
+      "sizes": "1080x1920",
       "type": "image/png",
-      "purpose": "any"
+      "form_factor": "narrow",
+      "label": "Granit — your vault, anywhere"
     },
     {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
+      "src": "/screenshots/install-wide.png",
+      "sizes": "1920x1080",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-maskable-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icon-maskable-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-maskable.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "maskable"
+      "form_factor": "wide",
+      "label": "Granit — your vault, anywhere"
     }
   ],
   "shortcuts": [

@@ -1,0 +1,43 @@
+<!-- Install-prompt screenshot for phone form-factor (narrow). Shown
+     in Android Chrome's WebAPK install dialog. Granit doesn't have
+     a captive marketing screen yet, so this serves as a branded
+     first-impression placeholder — the monogram-G logo, the brand
+     tagline, and a single power-statement under it. 1080×1920 is
+     the canonical phone screenshot ratio for Play Store / WebAPK.
+
+     When real app screenshots become available (post-deploy), this
+     file can be replaced with a PNG capture of the dashboard. The
+     manifest path stays the same. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="1080" height="1920">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#14141a"/>
+      <stop offset="100%" stop-color="#0a0a0a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#bg)"/>
+  <!-- Monogram G centred, sized to roughly fill 50% of viewport
+       width — same proportional weight as the install icon will
+       have once tapped. -->
+  <g transform="translate(290, 600) scale(1.0)">
+    <rect width="500" height="500" rx="94" fill="#0a0a0a" stroke="#1c1c22" stroke-width="2"/>
+    <path
+      fill="#fafafa"
+      d="M 127 94 L 373 94 L 373 180 L 213 180 L 213 320 L 305 320 L 305 274 L 244 274 L 244 219 L 373 219 L 373 406 L 127 406 Z"
+      transform="translate(0,0)"
+    />
+    <polygon fill="#0a0a0a" points="500,406 500,500 406,500"/>
+  </g>
+  <!-- Wordmark + tagline below the icon — same hierarchy as the
+       splash screen so the install prompt and the launch experience
+       feel like the same surface. -->
+  <text x="540" y="1240" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="96" font-weight="600" fill="#fafafa" text-anchor="middle" letter-spacing="32">GRANIT</text>
+  <text x="540" y="1310" font-family="ui-monospace, monospace" font-size="36" fill="#7a7a82" text-anchor="middle">your vault, anywhere</text>
+  <!-- Power statement -->
+  <text x="540" y="1500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="42" fill="#cdd6f4" text-anchor="middle">Notes. Tasks. Calendar. Habits.</text>
+  <text x="540" y="1560" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="42" fill="#cdd6f4" text-anchor="middle">One vault. Plain markdown.</text>
+  <text x="540" y="1620" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="42" fill="#cdd6f4" text-anchor="middle">Yours forever.</text>
+  <!-- Footer pill -->
+  <rect x="380" y="1740" width="320" height="56" rx="28" fill="#1c1c22" stroke="#2c2c34" stroke-width="2"/>
+  <text x="540" y="1776" font-family="ui-monospace, monospace" font-size="24" fill="#a0a0a8" text-anchor="middle">self-hosted · no telemetry</text>
+</svg>
