@@ -38,7 +38,10 @@ export type WsEvent =
   | { type: 'state.changed'; path: string }
   // Modules — fired after a successful PUT /api/v1/modules so connected
   // clients refresh their cached enable-state without polling.
-  | { type: 'modules.changed' };
+  | { type: 'modules.changed' }
+  // Hub tools — fired after any CRUD on .granit/hub-tools.json so the
+  // hub page refreshes its tool catalogue without polling.
+  | { type: 'hub.tools.changed'; path?: string };
 
 export const wsConnected: Writable<boolean> = writable(false);
 
