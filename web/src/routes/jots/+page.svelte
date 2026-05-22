@@ -1311,7 +1311,7 @@
         >AI</button>
         <button
           type="button"
-          onclick={submitJot}
+          onclick={() => submitJot()}
           disabled={composerBusy || expanding || expandedText.length > 0 || !composerText.trim()}
           class="text-[11px] px-2 py-1 rounded bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-40 shrink-0"
         >{composerBusy ? '…' : composerExpand ? 'expand' : 'add'}</button>
