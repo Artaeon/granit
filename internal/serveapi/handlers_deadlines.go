@@ -20,9 +20,11 @@ const statePathDeadlines = ".granit/deadlines.json"
 
 // broadcastDeadlinesChanged emits the WS event the web pages listen
 // for (the calendar / dedicated deadlines route both refetch on this
-// path). Centralised so every write site stays in lockstep.
+// path). Centralised so every write site stays in lockstep. Also
+// pings the outbound webhook (no-op when unconfigured).
 func (s *Server) broadcastDeadlinesChanged() {
 	s.hub.Broadcast(wshub.Event{Type: "state.changed", Path: statePathDeadlines})
+	s.webhook.notify("deadline.changed")
 }
 
 // handleListDeadlines returns the full deadline schema, sorted via

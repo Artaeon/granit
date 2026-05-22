@@ -27,11 +27,15 @@ import (
 // unrelated edit. An explicit task.changed broadcast closes that gap
 // and matches the rest of the API surface (event.changed, deadlines
 // state.changed, etc).
+//
+// Also nudges the outbound webhook (no-op when not configured), so the
+// stoicera-intranet's syncAll fires shortly after the change lands.
 func (s *Server) broadcastTaskChange(id string) {
 	if s == nil || s.hub == nil {
 		return
 	}
 	s.hub.Broadcast(wshub.Event{Type: "task.changed", ID: id})
+	s.webhook.notify("task.changed")
 }
 
 type taskView struct {

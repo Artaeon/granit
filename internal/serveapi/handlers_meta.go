@@ -179,6 +179,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.hub.Broadcast(wshub.Event{Type: "project.changed", ID: p.Name})
+	s.webhook.notify("project.changed")
 	writeJSON(w, http.StatusCreated, decorateProject(p, s.cfg.TaskStore.All()))
 }
 
@@ -267,6 +268,7 @@ func (s *Server) handlePatchProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.hub.Broadcast(wshub.Event{Type: "project.changed", ID: p.Name})
+	s.webhook.notify("project.changed")
 	writeJSON(w, http.StatusOK, decorateProject(p, s.cfg.TaskStore.All()))
 }
 
@@ -295,6 +297,7 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.hub.Broadcast(wshub.Event{Type: "project.removed", ID: name})
+	s.webhook.notify("project.removed")
 	w.WriteHeader(http.StatusNoContent)
 }
 
