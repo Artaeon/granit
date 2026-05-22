@@ -2606,7 +2606,13 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
          exclusive: firing a quick action clears the chat, sending
          a chat message clears the quick result. Keeps the overlay
          single-purpose at any moment. -->
-    <div bind:this={scrollEl} class="flex-1 overflow-y-auto px-4 py-3">
+    <!-- min-h-0 is the classic flexbox-with-overflow-auto guard: without
+         it, a flex item with overflow:auto refuses to shrink below its
+         intrinsic content height. On a tall message list that'd push
+         the compose form below the panel's bottom edge (behind the
+         keyboard); on a short one the layout's fine but the bug
+         surfaces under stress. Safe to always have. -->
+    <div bind:this={scrollEl} class="flex-1 min-h-0 overflow-y-auto px-4 py-3">
       {#if quickResult}
         <div class="text-[10px] uppercase tracking-wider text-secondary mb-2">{quickTitle}</div>
         <div class="prose prose-sm max-w-none">
