@@ -277,21 +277,30 @@
   // flight, otherwise the snap target. Empty string lets the desktop
   // override class (md:h-full md:max-h-none) win unchanged.
   //
-  // When the keyboard is open we shrink the snap-target base from
-  // window.innerHeight to the visible viewport (window.innerHeight -
-  // keyboardOffset). Without this, a 'full' snap (92%) computed
-  // against innerHeight + a bottom-lift equal to keyboardOffset
-  // pushes the panel's TOP above the viewport, which the user sees
-  // as "the AI overlay jumped to the top of the screen when I
-  // started typing." Computing against the visible viewport makes
-  // 'full' mean "all the room the keyboard left me", which is what
-  // the user expects.
+  // Why visualViewport.height + not innerHeight - keyboardOffset:
+  // iOS Safari keeps window.innerHeight FIXED when the keyboard
+  // opens (only visualViewport shrinks). Chrome Android in recent
+  // versions does the same. So `innerHeight - keyboardOffset` is
+  // correct on iOS but double-subtracts on Android (where the
+  // keyboard already isn't in innerHeight). The earlier fix worked
+  // on iOS Safari, broke on Android Chrome: panel collapsed to
+  // ~innerHeight - 2×keyboardOffset, input field floated mid-
+  // screen with a big gap above the keyboard.
+  //
+  // visualViewport.height is the visible viewport on every modern
+  // mobile browser — the area between viewport top and keyboard
+  // top (or just viewport bottom when keyboard is closed). Using
+  // it as the snap-base gives "fill the room I have" semantics
+  // that work everywhere.
   let mobileSheetHeight = $derived.by(() => {
     if (typeof window === 'undefined') return `${snapHeightPx(sheetSnap, 800)}px`;
     if (sheetDragging && sheetDragHeight !== null) {
       return `${Math.round(sheetDragHeight)}px`;
     }
-    const visibleH = window.innerHeight - keyboardOffset;
+    // visualViewport.height = visible-above-keyboard space on iOS +
+    // Android. Falls back to innerHeight on desktop / older browsers
+    // where the var doesn't exist.
+    const visibleH = window.visualViewport?.height ?? window.innerHeight;
     return `${snapHeightPx(sheetSnap, visibleH)}px`;
   });
 
@@ -3178,21 +3187,22 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
   }
 
   /* Mobile bottom-sheet height + keyboard-safe lift. --ai-sheet-h is
-     written from the Svelte side as the snap-target height (or live
-     drag height while a pull is in flight); --ai-sheet-lift is the
-     visualViewport obscured strip when the iOS soft keyboard is up.
-     Bottom-positioning means lifting via `bottom` rather than padding
-     so the compose textarea genuinely sits above the keyboard, not
-     just visually padded with content overflow underneath. */
+     written from the Svelte side as the snap-target height computed
+     against visualViewport.height (always the visible area above the
+     keyboard), so the panel height is already correct without any
+     CSS clamp. --ai-sheet-lift is the obscured strip height — used
+     for `bottom` so the panel anchors flush against the keyboard
+     top, not the viewport bottom.
+
+     Earlier code carried a `max-height: calc(100dvh - lift)` clamp
+     as defence-in-depth. Removed: `100dvh` on iOS Safari does NOT
+     shrink for the keyboard, so subtracting lift from 100dvh gave
+     the correct visible area on iOS but accidentally aligned with
+     the wrong reference on Chrome Android (where dvh DOES shrink).
+     The JS-side height is now the single source of truth. */
   @media (max-width: 767px) {
     :global(.ai-overlay-panel) {
       height: var(--ai-sheet-h, 65dvh);
-      /* Defence-in-depth clamp: even if --ai-sheet-h overshoots
-         (stale render, race, browser rounding), max-height pins
-         the panel to the visible viewport above the keyboard.
-         calc subtracts the lift so the top edge can never go
-         off-screen. */
-      max-height: calc(100dvh - var(--ai-sheet-lift, 0px));
       bottom: var(--ai-sheet-lift, 0px);
       /* Tween height + bottom for the snap-into-place feeling; the
          snapping class below kills the transition during an active
