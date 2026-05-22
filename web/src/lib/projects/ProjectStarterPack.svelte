@@ -44,12 +44,39 @@
 	// grounding context to the AI on the next Generate. Persisted
 	// per-project in localStorage so the user doesn't re-type the
 	// path on every visit.
-	const REPO_PATH_KEY = `granit.starterpack.repo.${project.name}`;
-	let repoPath = $state(loadStoredString(REPO_PATH_KEY, ''));
+	//
+	// The storage key is rebuilt at every read/write rather than
+	// captured once. SvelteKit's same-route navigation changes the
+	// `project` prop without remounting — a `const KEY = ...` would
+	// have stayed pinned to the first project's name, so project B's
+	// repo path would land in project A's localStorage slot.
+	function repoStorageKey(): string {
+		return `granit.starterpack.repo.${project.name}`;
+	}
+	let repoPath = $state(loadStoredString(repoStorageKey(), ''));
 	let repoBusy = $state(false);
 	let repoError = $state('');
 	let repoContext = $state<StarterPackRepoContext | null>(null);
-	$effect(() => saveStoredString(REPO_PATH_KEY, repoPath));
+	// Reload the saved path when the project changes so the input
+	// reflects THIS project's history, not the previous one's.
+	// lastProjectName is initialised lazily inside the effect (the
+	// first run snapshots it, subsequent runs compare). Doing it
+	// this way keeps Svelte's compiler from warning about a "state
+	// reference only captures initial value" — we genuinely want the
+	// frozen snapshot here.
+	let lastProjectName: string | null = null;
+	$effect(() => {
+		if (lastProjectName === null) {
+			lastProjectName = project.name;
+			return;
+		}
+		if (project.name !== lastProjectName) {
+			lastProjectName = project.name;
+			repoPath = loadStoredString(repoStorageKey(), '');
+			repoContext = null;
+		}
+	});
+	$effect(() => saveStoredString(repoStorageKey(), repoPath));
 
 	async function scanRepo() {
 		const p = repoPath.trim();
