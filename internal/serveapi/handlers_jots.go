@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/artaeon/granit/internal/config"
@@ -43,12 +44,26 @@ type jotEntry struct {
 // jotPathRegex returns a compiled regex that matches a daily-note relative
 // path for the given folder. Empty folder = vault root. Group 1 captures
 // the YYYY-MM-DD date.
+//
+// Memoised by folder string: the daily-notes folder only changes when the
+// user edits config, but the regex was being recompiled on every /jots
+// request. Cache hit is now a sync.Map lookup; cache miss only happens
+// once per distinct folder for the lifetime of the process.
+var jotPathRegexCache sync.Map // map[string]*regexp.Regexp
+
 func jotPathRegex(folder string) *regexp.Regexp {
 	folder = strings.Trim(folder, "/")
-	if folder == "" {
-		return regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\.md$`)
+	if v, ok := jotPathRegexCache.Load(folder); ok {
+		return v.(*regexp.Regexp)
 	}
-	return regexp.MustCompile(`^` + regexp.QuoteMeta(folder) + `/(\d{4}-\d{2}-\d{2})\.md$`)
+	var re *regexp.Regexp
+	if folder == "" {
+		re = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\.md$`)
+	} else {
+		re = regexp.MustCompile(`^` + regexp.QuoteMeta(folder) + `/(\d{4}-\d{2}-\d{2})\.md$`)
+	}
+	actual, _ := jotPathRegexCache.LoadOrStore(folder, re)
+	return actual.(*regexp.Regexp)
 }
 
 func (s *Server) handleListJots(w http.ResponseWriter, r *http.Request) {
