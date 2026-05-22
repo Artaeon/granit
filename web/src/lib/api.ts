@@ -212,7 +212,8 @@ export type CalendarEventType =
   | 'event'
   | 'ics_event'
   | 'deadline'
-  | 'meal_slot';
+  | 'meal_slot'
+  | 'goal_target';
 
 export interface CalendarEvent {
   type: CalendarEventType;
