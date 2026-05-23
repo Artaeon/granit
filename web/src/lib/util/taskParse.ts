@@ -19,6 +19,25 @@ const reTag = /(^|\s)#([\p{L}\p{N}_/-]+)/gu;
 const rePriority = /(^|\s)!([1-3])(\s|$)/;
 const reDue = /(^|\s)due:(\d{4}-\d{2}-\d{2})(\s|$)/;
 
+// Low-ambiguity natural-language date words. Used as a gate before
+// calling smartDate so the parser doesn't false-positive on common
+// English/German words. Excludes:
+//   - "do" / "mi" (German short for Donnerstag/Mittwoch) — collide
+//     with the English verb "do" and the noun "mi"; "do laundry"
+//     must not parse as Donnerstag
+//   - "mo"/"di"/"fr"/"sa"/"so" — same risk; "mo" appears in "more",
+//     "fr" in slugs, "so" in "so what" etc. Users wanting weekday
+//     abbreviations should use the English short forms (mon/tue/...)
+//     which the SET below DOES include because their English usage
+//     pattern is narrower.
+const NL_DATE_WORDS = new Set([
+  'today', 'tomorrow', 'tmrw', 'yesterday',
+  'heute', 'morgen', 'übermorgen', 'gestern',
+  'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun',
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+  'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag', 'sonntag'
+]);
+
 export function parseTaskInput(raw: string): ParsedTask {
   let text = raw;
   const tags: string[] = [];
@@ -41,6 +60,43 @@ export function parseTaskInput(raw: string): ParsedTask {
   if (dm) {
     dueDate = dm[2];
     text = text.replace(reDue, '$1$3');
+  }
+
+  // Natural-language date recognition. Only runs if no explicit
+  // due:YYYY-MM-DD was already captured. Scans words against
+  // NL_DATE_WORDS (low-ambiguity set), takes the first hit, drops
+  // the token from the title text. Examples that now parse:
+  //   "review PR morgen #work"     → dueDate=tomorrow
+  //   "meeting friday with j"      → dueDate=next friday
+  //   "gym samstag !2"             → dueDate=next saturday, p=2
+  // The "next" prefix nudges to the following week's instance,
+  // mirroring smartDate's existing behaviour.
+  if (dueDate === '') {
+    const words = text.split(/\s+/);
+    // Skip empty entries from leading/trailing whitespace.
+    for (let i = 0; i < words.length; i++) {
+      if (!words[i]) continue;
+      // Honour an explicit "next" prefix: "next mon" / "next freitag".
+      let probe = words[i].toLowerCase();
+      let probeNext = false;
+      if (probe === 'next' && i + 1 < words.length) {
+        probeNext = true;
+        probe = words[i + 1].toLowerCase();
+      }
+      if (!NL_DATE_WORDS.has(probe)) continue;
+      const resolved = smartDate(probeNext ? `next ${probe}` : probe);
+      if (resolved) {
+        dueDate = resolved;
+        if (probeNext) {
+          // Drop both "next" and the weekday word.
+          words.splice(i, 2);
+        } else {
+          words.splice(i, 1);
+        }
+        text = words.join(' ');
+        break;
+      }
+    }
   }
 
   text = text.trim().replace(/\s+/g, ' ');
@@ -89,7 +145,16 @@ export function cleanTaskText(raw: string): string {
   return s.trim().replace(/\s+/g, ' ');
 }
 
-// "today" / "tomorrow" / "fri" / "next mon" → YYYY-MM-DD
+// English + German date shortcuts → YYYY-MM-DD.
+//   today / heute              → ref
+//   tomorrow / morgen / tmrw   → ref + 1
+//   übermorgen                 → ref + 2
+//   yesterday / gestern        → ref - 1
+//   mon / monday / montag …    → next occurrence of that weekday
+//   next mon / next freitag …  → following week's instance
+// Bare weekday returns the SAME day this week if today matches; the
+// `next ` prefix always pushes to the next week. Bare weekdays in
+// the past relative to today roll forward to this coming week.
 export function smartDate(token: string, ref = new Date()): string | null {
   const t = token.toLowerCase().trim();
   const day = (n: number) => {
@@ -97,15 +162,28 @@ export function smartDate(token: string, ref = new Date()): string | null {
     d.setDate(d.getDate() + n);
     return iso(d);
   };
-  if (t === 'today') return iso(ref);
-  if (t === 'tomorrow' || t === 'tmrw') return day(1);
-  if (t === 'yesterday') return day(-1);
-  // weekday tokens
-  const wd = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  // Single-word shortcuts.
+  if (t === 'today' || t === 'heute') return iso(ref);
+  if (t === 'tomorrow' || t === 'tmrw' || t === 'morgen') return day(1);
+  if (t === 'übermorgen') return day(2);
+  if (t === 'yesterday' || t === 'gestern') return day(-1);
+  // Weekday lookup: English (short + full) and German full. German
+  // 2-letter abbreviations (mo/di/mi/do/fr/sa/so) are intentionally
+  // excluded — they collide with too many ordinary German words. See
+  // NL_DATE_WORDS comment.
+  const wdMap: Record<string, number> = {
+    sun: 0, sunday: 0, sonntag: 0,
+    mon: 1, monday: 1, montag: 1,
+    tue: 2, tuesday: 2, dienstag: 2,
+    wed: 3, wednesday: 3, mittwoch: 3,
+    thu: 4, thursday: 4, donnerstag: 4,
+    fri: 5, friday: 5, freitag: 5,
+    sat: 6, saturday: 6, samstag: 6
+  };
   const next = t.startsWith('next ');
   const word = next ? t.slice(5) : t;
-  const idx = wd.findIndex((w) => word.startsWith(w));
-  if (idx >= 0) {
+  const idx = wdMap[word];
+  if (idx !== undefined) {
     const cur = ref.getDay();
     let delta = (idx - cur + 7) % 7;
     if (delta === 0 || next) delta += 7;
