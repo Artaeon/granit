@@ -34,6 +34,7 @@
   import HistoryPanel from '$lib/notes/HistoryPanel.svelte';
   import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
   import SelectionToolbar from '$lib/editor/SelectionToolbar.svelte';
+  import MobileEditorToolbar from '$lib/editor/MobileEditorToolbar.svelte';
   import LinkSuggestPanel from '$lib/notes/LinkSuggestPanel.svelte';
   import InlineAIMenu from '$lib/notes/InlineAIMenu.svelte';
   import AIActionBar from '$lib/notes/AIActionBar.svelte';
@@ -2321,6 +2322,19 @@
 <SelectionToolbar
   container={editorDOM}
   onCommand={(chord) => editor?.dispatchChord(chord)}
+/>
+
+<!-- Mobile-only floating formatting bar — anchored above the on-screen
+     keyboard while the editor is focused. Dispatches through the same
+     chord path as desktop shortcuts (single source of truth: the
+     keymap); also exposes literal-insert buttons for the highest-value
+     mobile snippets (checkbox / wikilink / tag) that don't map to a
+     keymap chord. Self-hides off-mobile via md:hidden inside the
+     component. -->
+<MobileEditorToolbar
+  contentDOM={editorDOM}
+  onCommand={(chord) => editor?.dispatchChord(chord)}
+  onInsert={(text) => editor?.insertAtCursor(text)}
 />
 
 <!-- Floating action bar that follows the inline-AI ghost. During

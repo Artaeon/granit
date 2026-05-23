@@ -161,38 +161,106 @@
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // Global mobile-keyboard awareness. iOS Safari (and to a lesser
-  // extent Android Chrome) floats the on-screen keyboard OVER fixed-
-  // bottom UI without telling layout — visualViewport.height shrinks
-  // when the keyboard opens. We expose two pieces of information for
-  // child components to react to:
-  //   - data-kb-open on <html> when the keyboard is up. CSS selectors
-  //     like `html[data-kb-open] .bottom-nav { display:none }` can
-  //     hide nav chrome that would otherwise sit under the keyboard.
-  //   - --kb-h CSS variable (px) carrying the obscured strip height.
-  //     Components that want to lift themselves above the keyboard
-  //     can use `bottom: calc(env(safe-area-inset-bottom) + var(--kb-h, 0px))`.
-  // 120px threshold separates "keyboard is up" from "URL bar
-  // collapsed during scroll" (which shrinks VV by 40-80px on iOS).
+  // Global mobile-keyboard awareness. Two detection paths fold into a
+  // single data-kb-open signal on <html> that CSS / child components
+  // can read:
+  //
+  //   1. visualViewport delta — innerHeight - vv.height > 120 means
+  //      the keyboard is up. This is the only signal on older iOS
+  //      (<16.4) and Chrome Android (<108) where the layout viewport
+  //      doesn't shrink when the keyboard opens.
+  //
+  //   2. focusin / focusout on editable elements — input / textarea /
+  //      contentEditable. This is the only signal on browsers that
+  //      DO honour `interactive-widget=resizes-content` in the
+  //      viewport meta (iOS 16.4+, Chrome 108+), because there
+  //      innerHeight and vv.height shrink TOGETHER, leaving the
+  //      delta at zero. Without the focus path, data-kb-open would
+  //      never fire on modern phones and bottom-nav / editor
+  //      toolbar logic that depends on it would break.
+  //
+  // Either path setting kb-open is enough; we OR them. --kb-h still
+  // gets the viewport delta (zero on modern browsers, useful on
+  // legacy) so floating UI that wants a precise lift value can use it.
   onMount(() => {
     if (typeof window === 'undefined') return;
+    const html = document.documentElement;
     const vv = window.visualViewport;
-    if (!vv) return;
-    function update() {
+
+    let viewportKbOpen = false;
+    let focusKbOpen = false;
+
+    function commit() {
+      if (viewportKbOpen || focusKbOpen) html.setAttribute('data-kb-open', '1');
+      else html.removeAttribute('data-kb-open');
+    }
+
+    function isEditable(el: EventTarget | null): boolean {
+      const node = el as HTMLElement | null;
+      if (!node || node.nodeType !== 1) return false;
+      const tag = node.tagName;
+      if (tag === 'INPUT') {
+        const t = (node as HTMLInputElement).type;
+        // checkbox / radio / button etc. don't bring up the soft
+        // keyboard, so they shouldn't flip data-kb-open.
+        return ['text', 'search', 'email', 'tel', 'url', 'password', 'number', 'date', 'time', 'datetime-local', 'month', 'week'].includes(t);
+      }
+      if (tag === 'TEXTAREA') return true;
+      return node.isContentEditable === true;
+    }
+
+    function updateViewport() {
       const obscured = Math.max(0, window.innerHeight - (vv?.height ?? window.innerHeight));
-      document.documentElement.style.setProperty('--kb-h', `${obscured}px`);
-      if (obscured > 120) {
-        document.documentElement.setAttribute('data-kb-open', '1');
-      } else {
-        document.documentElement.removeAttribute('data-kb-open');
+      html.style.setProperty('--kb-h', `${obscured}px`);
+      // 120px threshold separates "keyboard is up" from "URL bar
+      // collapsed during scroll" (which shrinks VV by 40-80px on iOS).
+      viewportKbOpen = obscured > 120;
+      commit();
+    }
+
+    // Only mobile breakpoint cares about the soft keyboard. Desktop
+    // input focus shouldn't masquerade as "keyboard up" — there's no
+    // OS keyboard to be displaced. We re-check the media query at
+    // event time (not once on mount) so a user resizing across the
+    // breakpoint while focused gets the right behaviour.
+    function isMobile(): boolean {
+      return window.matchMedia('(max-width: 767px)').matches;
+    }
+    function onFocusIn(ev: FocusEvent) {
+      if (!isMobile()) return;
+      if (isEditable(ev.target)) {
+        focusKbOpen = true;
+        commit();
       }
     }
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    update();
+    function onFocusOut() {
+      if (!isMobile()) return;
+      // Delay one tick: focus often shifts editable→editable without
+      // an intervening blur (e.g. picker → input). Re-check on the
+      // next microtask so a focus-bounce doesn't toggle the keyboard
+      // signal off-then-on, which would cause the bottom-nav /
+      // toolbar to flicker.
+      queueMicrotask(() => {
+        focusKbOpen = isEditable(document.activeElement);
+        commit();
+      });
+    }
+
+    if (vv) {
+      vv.addEventListener('resize', updateViewport);
+      vv.addEventListener('scroll', updateViewport);
+      updateViewport();
+    }
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+
     return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
+      if (vv) {
+        vv.removeEventListener('resize', updateViewport);
+        vv.removeEventListener('scroll', updateViewport);
+      }
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
     };
   });
 

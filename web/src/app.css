@@ -298,3 +298,47 @@ mark.md-highlight {
   height: auto;
   border-radius: 0;
 }
+
+/* ============================================================
+   iOS auto-zoom defence — mobile form-control font-size.
+   ============================================================
+   iOS Safari auto-zooms any focused input/textarea/select with a
+   computed font-size below 16px. The zoom drags the page (and any
+   position:fixed containers) around, which is the root cause of
+   the long-running AI-overlay "input wanders to the top" bug.
+   Even with the `interactive-widget=resizes-content` viewport meta
+   in place (which fixes the layout-viewport shrink on keyboard
+   open), the auto-zoom remains a separate trigger on small fonts.
+
+   Granit's design system uses text-xs (12px) and text-sm (14px)
+   liberally for dense forms (frontmatter editor, quick-capture,
+   daily quick-add, filter chips). All of these would trigger
+   auto-zoom on iOS. Rather than retro-fitting 60+ inputs with
+   `text-base md:text-xs` Tailwind classes, this single rule
+   forces every form control to 16px on the mobile breakpoint
+   (under 768px = Tailwind's md). Desktop sizes are untouched.
+
+   16px is the Apple-documented threshold. The visual chunkiness
+   on mobile is the price of not having the page jump under the
+   user every time they tap a field. Designers needing a smaller
+   visual on mobile can override per-element with an inline style
+   or a `!font-size-XX` arbitrary class; both win on specificity.
+
+   font-size only — padding / line-height / icon size remain at
+   the Tailwind-class values, so the visual rhythm is preserved
+   apart from the text itself. */
+@media (max-width: 767px) {
+  /* !important here is intentional and appropriate: Tailwind's
+     text-xs / text-sm utilities compile to (0,1,0) specificity
+     classes which would otherwise win against this (0,0,1)
+     element selector. The auto-zoom defence is non-negotiable on
+     mobile — every interactive field gets at least 16px. Any
+     design that genuinely needs sub-16px text on mobile should
+     use inline style or a !text-xx Tailwind escape, both of
+     which also win on specificity. */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
