@@ -1,7 +1,18 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
-  import { api, type Project, type Goal, type SearchHit } from '$lib/api';
+  import {
+    api,
+    fmtDateISO,
+    todayISO,
+    type Project,
+    type Goal,
+    type SearchHit,
+    type Task,
+    type HabitInfo,
+    type Deadline,
+    type CalendarEvent
+  } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { fuzzyScoreMulti } from '$lib/util/fuzzy';
   import { loadStored, saveStored } from '$lib/util/storage';
@@ -18,7 +29,17 @@
   // Recent picks bubble to the top within each section, persisted to
   // localStorage so muscle memory survives across reloads.
 
-  type Group = 'Pages' | 'Projects' | 'Goals' | 'Notes' | 'Agents' | 'Content';
+  type Group =
+    | 'Pages'
+    | 'Projects'
+    | 'Goals'
+    | 'Notes'
+    | 'Tasks'
+    | 'Events'
+    | 'Deadlines'
+    | 'Habits'
+    | 'Agents'
+    | 'Content';
 
   interface CmdItem {
     /** Stable ID — also the localStorage recent key. Pages: 'page:/path',
@@ -50,6 +71,13 @@
   let notes = $state<{ path: string; title: string }[]>([]);
   let projects = $state<Project[]>([]);
   let goals = $state<Goal[]>([]);
+  // Individual entity rows (Spotlight-style): open tasks, all habits,
+  // active deadlines, upcoming events. Indexed alongside Pages so the
+  // palette finds them with the same fuzzy filter — no separate UI.
+  let tasks = $state<Task[]>([]);
+  let habits = $state<HabitInfo[]>([]);
+  let deadlines = $state<Deadline[]>([]);
+  let events = $state<CalendarEvent[]>([]);
   let dataLoaded = $state(false);
 
   // Live full-text search results — only consulted when the query is
@@ -80,7 +108,7 @@
   });
 
   async function loadData() {
-    // Fire all three in parallel — the slowest will gate dataLoaded.
+    // Fire all sources in parallel — the slowest gates dataLoaded.
     // Errors per-source are swallowed so a /goals 500 doesn't kill
     // the whole switcher (the user can still jump to pages + notes).
     const np = api.listNotes({ limit: 30 }).then(
@@ -95,7 +123,42 @@
       (r) => { goals = r.goals; },
       () => {}
     );
-    await Promise.allSettled([np, pp, gp]);
+    // Open tasks — fuzzy filter searches the text + project name. We
+    // pull only open ones (closed tasks aren't actionable navigation
+    // targets); the /tasks page is the canonical home if the user
+    // wants archived/done. Cap defensively at 200 in case a heavy
+    // user has hundreds open — the palette ranks by score so
+    // a needle still finds the right row, but we don't ship a list
+    // of 500 to fuzzyScore on every keystroke.
+    const tp = api.listTasks({ status: 'open' }).then(
+      (r) => { tasks = r.tasks.slice(0, 200); },
+      () => {}
+    );
+    // All habits — usually <20, no cap needed.
+    const hp = api.listHabits().then(
+      (r) => { habits = r.habits; },
+      () => {}
+    );
+    // Active deadlines only (met/cancelled clutter the list).
+    const dp = api.tryListDeadlines().then(
+      (r) => {
+        const all = r ?? [];
+        deadlines = all.filter((d) => d.status === 'active');
+      },
+      () => {}
+    );
+    // Calendar events — next 14 days. Covers "go to my meeting"
+    // jumps. Past events aren't useful as nav targets; further-out
+    // events go through the calendar page directly.
+    const today = todayISO();
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() + 14);
+    const cutoff = fmtDateISO(cutoffDate);
+    const ep = api.calendar(today, cutoff).then(
+      (r) => { events = r.events; },
+      () => {}
+    );
+    await Promise.allSettled([np, pp, gp, tp, hp, dp, ep]);
     dataLoaded = true;
   }
 
@@ -371,9 +434,9 @@
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // Live-refresh notes / projects / goals on WS events. Each event
-  // type only refreshes the relevant slice — we don't want a single
-  // task change to refetch goals + projects too.
+  // Live-refresh every indexed slice on WS events. Each event type
+  // only refreshes the relevant slice so a task change doesn't drag a
+  // goals + projects + notes round-trip with it.
   onMount(() =>
     onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed') {
@@ -394,6 +457,45 @@
       if (ev.type === 'state.changed' && ev.path.endsWith('goals.json')) {
         api.listGoals().then(
           (r) => { goals = r.goals; },
+          () => {}
+        );
+      }
+      // Tasks — any task mutation invalidates the open-tasks list.
+      if (ev.type === 'task.changed') {
+        api.listTasks({ status: 'open' }).then(
+          (r) => { tasks = r.tasks.slice(0, 200); },
+          () => {}
+        );
+      }
+      // Habits sidecars live under .granit/habits/. A check-off or
+      // habit-add fires state.changed with that prefix.
+      if (ev.type === 'state.changed' && ev.path?.startsWith('.granit/habits/')) {
+        api.listHabits().then(
+          (r) => { habits = r.habits; },
+          () => {}
+        );
+      }
+      // Deadlines live in .granit/deadlines.json.
+      if (ev.type === 'state.changed' && ev.path?.endsWith('deadlines.json')) {
+        api.tryListDeadlines().then(
+          (r) => {
+            const all = r ?? [];
+            deadlines = all.filter((d) => d.status === 'active');
+          },
+          () => {}
+        );
+      }
+      // Calendar events — refetch the 14-day window on event mutations.
+      // Skipping note.changed here on purpose: note writes fire on
+      // every editor autosave keystroke, and piling a calendar refetch
+      // onto every one would burn bandwidth for the rare case where
+      // a note edit changes a scheduled-task event.
+      if (ev.type === 'event.changed' || ev.type === 'event.removed') {
+        const today = todayISO();
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() + 14);
+        api.calendar(today, fmtDateISO(cutoffDate)).then(
+          (r) => { events = r.events; },
           () => {}
         );
       }
@@ -507,6 +609,101 @@
       scoreMap.set(id, (empty ? 100 - i : sc) + recencyBoost(id));
     }
 
+    // Tasks — open ones, indexed by text + project. Empty needle:
+    // hide everything except recents so an empty palette doesn't dump
+    // 100 task rows in the user's face (the /tasks page is for that).
+    // With a needle: show every fuzzy match.
+    for (const t of tasks) {
+      const sc = fuzzyScoreMulti(needle, [t.text, t.projectId ?? '']);
+      if (sc === null) continue;
+      const id = 'task:' + t.id;
+      const isRecent = recents.includes(id);
+      if (!needle && !isRecent) continue;
+      // Detail line: project (if any) + due date hint so the user
+      // can pick the right task when the text alone is ambiguous.
+      const bits: string[] = [];
+      if (t.projectId) bits.push(t.projectId);
+      if (t.dueDate) bits.push('due ' + t.dueDate);
+      else if (t.scheduledStart) bits.push('at ' + t.scheduledStart.slice(11, 16));
+      out.push({
+        id,
+        label: t.text,
+        detail: bits.join(' · '),
+        icon: 'tasks',
+        group: 'Tasks',
+        run: () => goto('/tasks?focus=' + encodeURIComponent(t.id))
+      });
+      scoreMap.set(id, sc + recencyBoost(id));
+    }
+
+    // Calendar events — next 14 days. Detail line carries the
+    // start time + a one-glance type glyph so two events with the
+    // same title (recurring stand-up) read distinguishably.
+    for (const ev of events) {
+      const sc = fuzzyScoreMulti(needle, [ev.title, ev.location ?? '']);
+      if (sc === null) continue;
+      // Each event already carries either start (RFC3339) or date
+      // (YYYY-MM-DD all-day). Compose a stable id from the strongest
+      // available identifier.
+      const stableId = ev.eventId || ev.taskId || `${ev.title}@${ev.start || ev.date}`;
+      const id = 'event:' + stableId;
+      const dateStr = (ev.start || ev.date || '').slice(0, 10);
+      const timeStr = ev.start ? ev.start.slice(11, 16) : 'all-day';
+      out.push({
+        id,
+        label: ev.title,
+        detail: `${dateStr} · ${timeStr}${ev.location ? ' · ' + ev.location : ''}`,
+        icon: 'calendar',
+        group: 'Events',
+        // /calendar doesn't yet read a `?date=` query param, so we
+        // jump to the calendar page and let the user land on the
+        // event from the visible day. Future v2: add date routing.
+        run: () => goto('/calendar')
+      });
+      scoreMap.set(id, sc + recencyBoost(id));
+    }
+
+    // Deadlines — active only (filtered at load time). Date proximity
+    // matters more than fuzzy score for sort, so we lean on the date
+    // string as a tiebreaker via score adjustment.
+    for (const d of deadlines) {
+      const sc = fuzzyScoreMulti(needle, [d.title, d.project ?? '', d.venture ?? '']);
+      if (sc === null) continue;
+      const id = 'deadline:' + d.id;
+      const bits: string[] = [d.date];
+      if (d.importance && d.importance !== 'normal') bits.push(d.importance);
+      if (d.project) bits.push(d.project);
+      out.push({
+        id,
+        label: d.title,
+        detail: bits.join(' · '),
+        icon: 'deadline',
+        group: 'Deadlines',
+        // /deadlines doesn't yet read ?focus — navigate to the page
+        // and let the user scan. The detail line already shows the
+        // distinguishing fields (date + importance + project).
+        run: () => goto('/deadlines')
+      });
+      scoreMap.set(id, sc + recencyBoost(id));
+    }
+
+    // Habits — usually a small set (<20). All show on empty needle so
+    // the user can jump to the habits page with one keystroke.
+    for (const h of habits) {
+      const sc = fuzzyScoreMulti(needle, [h.name]);
+      if (sc === null) continue;
+      const id = 'habit:' + h.name;
+      out.push({
+        id,
+        label: h.name,
+        detail: h.doneToday ? 'done today' : `${h.currentStreak}d streak`,
+        icon: 'habits',
+        group: 'Habits',
+        run: () => goto('/habits')
+      });
+      scoreMap.set(id, sc + recencyBoost(id));
+    }
+
     // Agent commands
     for (const a of AGENTS) {
       const sc = fuzzyScoreMulti(needle, [a.label, a.detail]);
@@ -564,15 +761,26 @@
   const scoreMap = new Map<string, number>();
 
   function groupRank(g: Group): number {
-    // Content (full-text body hits) wins when present — the user
-    // typed something specific enough to want body matches.
-    // Then Pages (fast jumps), Projects, Goals, Notes, Agents.
+    // Ordering encodes "what does the user most often want when they
+    // type something into this palette". Content body hits win
+    // because they're the most specific (the user typed enough to
+    // get a body match). Pages next — keystroke-to-jump is the
+    // headline use. Tasks above other entities because action items
+    // are the highest-frequency navigation target. Then Events /
+    // Deadlines (time-pressure surfaces), Projects + Goals
+    // (structural anchors), Notes (the long tail), Habits +
+    // Agents (lowest because their pages are reachable by keyboard
+    // already; the palette rows are reach-from-anywhere fallbacks).
     if (g === 'Content') return 0;
     if (g === 'Pages') return 1;
-    if (g === 'Projects') return 2;
-    if (g === 'Goals') return 3;
-    if (g === 'Notes') return 4;
-    return 5; // Agents
+    if (g === 'Tasks') return 2;
+    if (g === 'Events') return 3;
+    if (g === 'Deadlines') return 4;
+    if (g === 'Projects') return 5;
+    if (g === 'Goals') return 6;
+    if (g === 'Notes') return 7;
+    if (g === 'Habits') return 8;
+    return 9; // Agents
   }
 
   // Group for visual headers
@@ -616,7 +824,7 @@
       <input
         bind:this={inputEl}
         bind:value={q}
-        placeholder="jump to a page, project, goal, note, or agent…"
+        placeholder="jump to anything — task, event, deadline, page, project, goal, note, habit, agent…"
         class="flex-1 bg-transparent text-base sm:text-sm text-text placeholder-dim focus:outline-none"
       />
       <span class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">esc</span>
