@@ -21,13 +21,19 @@
   // here: today-stream + today-focus, both of which directly answer
   // the user's first morning question. Everything else is opt-in.
   const NEW_WIDGETS: { id: string; type: import('$lib/api').DashboardWidgetType; afterId: string; enabled: boolean }[] = [
+    // Tagesordnung — 16 Leitbegriffe as a quiet anchor right
+    // beneath the greeting. The day reads top-down: date → inner
+    // order → tactical stream → focus commitment. Enabled by
+    // default; users who want a leaner dashboard can hide it via
+    // Customize like any other widget.
+    { id: 'w-tagesordnung', type: 'tagesordnung', afterId: 'w-greeting', enabled: true },
     // Today stream sits at the very top after greeting — the
     // headline "what's happening now + what's next" panel. Merges
     // today's events, scheduled tasks, due tasks, and deadlines
     // into one chronological feed plus a tomorrow + day-after
     // preview. Single source of truth for "shape of today" so the
     // user doesn't have to triangulate four separate today-* tiles.
-    { id: 'w-today-stream', type: 'today-stream', afterId: 'w-greeting', enabled: true },
+    { id: 'w-today-stream', type: 'today-stream', afterId: 'w-tagesordnung', enabled: true },
     // Today focus — the AI-suggested #1 thing for the day. Anchors
     // intention right under the stream.
     { id: 'w-today-focus', type: 'today-focus', afterId: 'w-today-stream', enabled: true },

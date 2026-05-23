@@ -3228,7 +3228,8 @@ export type DashboardWidgetType =
   | 'sabbath'
   | 'roots'
   | 'weekly-plan'
-  | 'meals';
+  | 'meals'
+  | 'tagesordnung';
 
 export interface DashboardWidget {
   id: string;

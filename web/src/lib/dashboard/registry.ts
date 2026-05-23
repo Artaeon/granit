@@ -146,7 +146,12 @@ export const widgetRegistry: WidgetMeta[] = [
   // `## Meals` section. Goal is glanceable "did I eat enough today?"
   // visibility, NOT calorie tracking. Syncs with the calendar's
   // meal_slot strip.
-  { type: 'meals', label: 'Meals', description: 'Today\'s meal slots with checkbox + free-text capture; syncs to the calendar', span: 1, load: lazy(() => import('./widgets/MealsWidget.svelte')) }
+  { type: 'meals', label: 'Meals', description: 'Today\'s meal slots with checkbox + free-text capture; syncs to the calendar', span: 1, load: lazy(() => import('./widgets/MealsWidget.svelte')) },
+  // Tagesordnung — 16 Leitbegriffe as a quiet, always-on anchor
+  // beneath the greeting. Pure presentation; reads from the central
+  // PRINCIPLES constant. Phase 1 of the alignment system — lived
+  // testing first before adding check-in / review / task tagging.
+  { type: 'tagesordnung', label: 'Tagesordnung', description: 'Sixteen Leitbegriffe — daily anchor for inner order. Quiet, no tracking, no score.', span: 2, load: lazy(() => import('./widgets/TagesordnungWidget.svelte')) }
 ];
 
 export function widgetMeta(type: string): WidgetMeta | undefined {
