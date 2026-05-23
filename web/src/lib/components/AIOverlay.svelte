@@ -119,6 +119,43 @@
   let inputEl: HTMLTextAreaElement | undefined = $state();
   let scrollEl: HTMLDivElement | undefined = $state();
 
+  // ── Mobile body-scroll lock ──────────────────────────────────
+  // When the sheet is open on mobile, lock the document body so iOS
+  // Safari can't scroll the page to bring the focused composer above
+  // the keyboard — that scroll is what historically dragged the
+  // position: fixed panel up with it, leaving the input mid-screen
+  // with a fat gap to the keyboard top. Paired with the
+  // `interactive-widget=resizes-content` viewport meta this kills
+  // the bug on every supported iOS / Android browser. The classic
+  // "save scrollY → fix body → restore" recipe so the user lands
+  // back at the same scroll position when the overlay closes.
+  // Desktop (md+) is exempt: the panel is a side rail, not a sheet,
+  // and locking body scroll there would be obnoxious.
+  let savedScrollY = 0;
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const isMobile = window.matchMedia('(max-width: 767px)').matches;
+    // Pinned desktop panel doesn't trigger this lock; mobile pinned
+    // isn't a thing (pinned is forced false on mobile breakpoints).
+    if (open && isMobile && !$aiOverlayPinned) {
+      savedScrollY = window.scrollY;
+      const body = document.body;
+      body.style.position = 'fixed';
+      body.style.top = `-${savedScrollY}px`;
+      body.style.left = '0';
+      body.style.right = '0';
+      body.style.width = '100%';
+      return () => {
+        body.style.position = '';
+        body.style.top = '';
+        body.style.left = '';
+        body.style.right = '';
+        body.style.width = '';
+        window.scrollTo(0, savedScrollY);
+      };
+    }
+  });
+
   // ── Resizable panel (desktop only) ──────────────────────────────
   // Geometry helpers + constants live in ./ai-overlay-geometry.ts.
   // This component owns the panel's reactive $state (panelWidth /

@@ -533,25 +533,34 @@
         </div>
       {/if}
       {#if config}
-        <!-- Three-column grid above 1280px: span-2 widgets become
-             full-width strips, span-1 widgets pack 3 per row so wide
-             displays don't leave half-empty rows. items-start keeps
-             each widget at its natural content height — without it,
-             a short widget paired with a tall one stretches and the
-             card looks half-empty inside. -->
-        <!-- grid-auto-flow: dense lets the browser slot smaller cards
-             into gaps left by tall ones in earlier rows, so the layout
-             auto-fills empty space instead of leaving a phonebook-style
-             waterfall. items-start keeps each widget at its natural
-             height (no ugly empty padding inside short widgets). -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 items-start" style="grid-auto-flow: dense;">
+        <!-- Responsive widget grid. Breakpoint progression is tuned
+             so every viewport class gets a sensible column count
+             instead of jumping from 1 → 2 → 3 with a huge dead zone
+             of 1-col scrolling between 640px and 1024px (the entire
+             tablet + small-laptop range).
+               mobile           : 1 col   (phone portrait)
+               md  (≥768px)     : 2 cols  (tablet portrait, small laptop)
+               xl  (≥1280px)    : 3 cols  (standard laptop / desktop)
+               2xl (≥1536px)    : 4 cols  (large monitor, power-user density)
+             span-2 widgets occupy ALL columns at any given breakpoint
+             so they read as hero/strip widgets that anchor the row.
+             items-start keeps each widget at its natural content
+             height so a short tile next to a tall one doesn't stretch
+             into half-empty padding. grid-auto-flow: dense lets the
+             browser slot smaller cards into gaps left by tall ones in
+             earlier rows — auto-fill instead of phonebook waterfall.
+             Tighter gaps on mobile (gap-2.5) keep cards from drifting
+             too far apart on small screens where vertical real estate
+             is the scarce axis. -->
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5 sm:gap-3 lg:gap-4 items-start" style="grid-auto-flow: dense;">
           {#each activeWidgets as { widget, meta } (widget.id)}
             <!-- Each widget chunk is loaded lazily via meta.load();
                  the registry's loader is memoised so re-renders await
                  the same resolved promise instead of refetching.
                  The skeleton placeholder reserves a small height so
-                 the grid doesn't reflow once each chunk lands. -->
-            <div class={meta.span === 2 ? 'lg:col-span-2 xl:col-span-3' : ''}>
+                 the grid doesn't reflow once each chunk lands.
+                 span-2 = full row at each breakpoint above 1 col. -->
+            <div class={meta.span === 2 ? 'md:col-span-2 xl:col-span-3 2xl:col-span-4' : ''}>
               {#await meta.load()}
                 <div class="bg-surface0 border border-surface1 rounded-lg p-3 animate-pulse h-24"></div>
               {:then Widget}
