@@ -150,16 +150,23 @@
     // Calendar events — next 14 days. Covers "go to my meeting"
     // jumps. Past events aren't useful as nav targets; further-out
     // events go through the calendar page directly.
+    const ep = fetchEventsWindow();
+    await Promise.allSettled([np, pp, gp, tp, hp, dp, ep]);
+    dataLoaded = true;
+  }
+
+  // Single window: today → today + 14 days. Shared by the initial
+  // loadData() call and the WS-driven event.changed refetch so the
+  // date math + cutoff stay in lockstep — previously the same loop
+  // existed twice and a change to one side could drift.
+  function fetchEventsWindow(): Promise<void> {
     const today = todayISO();
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() + 14);
-    const cutoff = fmtDateISO(cutoffDate);
-    const ep = api.calendar(today, cutoff).then(
+    return api.calendar(today, fmtDateISO(cutoffDate)).then(
       (r) => { events = r.events; },
       () => {}
     );
-    await Promise.allSettled([np, pp, gp, tp, hp, dp, ep]);
-    dataLoaded = true;
   }
 
   // ── Recents persistence ────────────────────────────────────────────
@@ -491,13 +498,7 @@
       // onto every one would burn bandwidth for the rare case where
       // a note edit changes a scheduled-task event.
       if (ev.type === 'event.changed' || ev.type === 'event.removed') {
-        const today = todayISO();
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() + 14);
-        api.calendar(today, fmtDateISO(cutoffDate)).then(
-          (r) => { events = r.events; },
-          () => {}
-        );
+        void fetchEventsWindow();
       }
     })
   );

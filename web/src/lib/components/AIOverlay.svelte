@@ -31,6 +31,7 @@
     nearestSnap
   } from './ai-overlay-geometry';
   import { rafThrottle } from '$lib/util/streamThrottle';
+  import { isMobile } from '$lib/util/breakpoint';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import {
     AGENT_MODES,
@@ -129,15 +130,21 @@
   // the bug on every supported iOS / Android browser. The classic
   // "save scrollY → fix body → restore" recipe so the user lands
   // back at the same scroll position when the overlay closes.
+  //
   // Desktop (md+) is exempt: the panel is a side rail, not a sheet,
-  // and locking body scroll there would be obnoxious.
+  // and locking body scroll there would be obnoxious. The breakpoint
+  // is tracked reactively via $lib/util/breakpoint so an iPad rotate
+  // (portrait/landscape crosses the 768px line) or a touch-laptop
+  // resize re-runs this effect and the body lock follows the new
+  // mode — previously we read matchMedia once at effect time and a
+  // user crossing the breakpoint with the overlay open would have
+  // the body stay locked on desktop or unlocked on mobile.
   let savedScrollY = 0;
   $effect(() => {
     if (typeof window === 'undefined') return;
-    const isMobile = window.matchMedia('(max-width: 767px)').matches;
     // Pinned desktop panel doesn't trigger this lock; mobile pinned
     // isn't a thing (pinned is forced false on mobile breakpoints).
-    if (open && isMobile && !$aiOverlayPinned) {
+    if (open && $isMobile && !$aiOverlayPinned) {
       savedScrollY = window.scrollY;
       const body = document.body;
       const html = document.documentElement;

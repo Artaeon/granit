@@ -129,7 +129,19 @@
           e.preventDefault();
           run(a);
         }}
-        class="w-10 h-9 flex-shrink-0 inline-flex items-center justify-center rounded text-sm text-subtext hover:text-text hover:bg-surface0 active:bg-surface1 transition-colors font-medium"
+        onkeydown={(e) => {
+          // Hardware-keyboard fallback (rare on phones but reachable
+          // via an external Bluetooth keyboard on iPad / Android
+          // tablets). Tab-focus + Enter / Space should still work.
+          // pointerdown doesn't fire on keyboard activation, so without
+          // this handler the button would visually highlight but do
+          // nothing.
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            run(a);
+          }
+        }}
+        class="w-10 h-9 flex-shrink-0 inline-flex items-center justify-center rounded text-sm text-subtext hover:text-text hover:bg-surface0 active:bg-surface1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary transition-colors font-medium"
       >{a.label}</button>
     {/each}
   </div>

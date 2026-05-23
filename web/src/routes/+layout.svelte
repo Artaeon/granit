@@ -32,6 +32,7 @@
   import { expandSectionTransient, sidebarCompact } from '$lib/stores/sidebar-ui';
   import { toast } from '$lib/components/toast';
   import { findBinding, matchesKey } from '$lib/keybindings/registry';
+  import { isMobile, isMobileNow } from '$lib/util/breakpoint';
 
   let palette: { show: () => void } | undefined = $state();
   let shortcutsOpen = $state(false);
@@ -220,21 +221,18 @@
 
     // Only mobile breakpoint cares about the soft keyboard. Desktop
     // input focus shouldn't masquerade as "keyboard up" — there's no
-    // OS keyboard to be displaced. We re-check the media query at
-    // event time (not once on mount) so a user resizing across the
-    // breakpoint while focused gets the right behaviour.
-    function isMobile(): boolean {
-      return window.matchMedia('(max-width: 767px)').matches;
-    }
+    // OS keyboard to be displaced. isMobileNow() is a sync read on
+    // every event so a user crossing the breakpoint mid-focus gets
+    // the right behaviour at the next event boundary.
     function onFocusIn(ev: FocusEvent) {
-      if (!isMobile()) return;
+      if (!isMobileNow()) return;
       if (isEditable(ev.target)) {
         focusKbOpen = true;
         commit();
       }
     }
     function onFocusOut() {
-      if (!isMobile()) return;
+      if (!isMobileNow()) return;
       // Delay one tick: focus often shifts editable→editable without
       // an intervening blur (e.g. picker → input). Re-check on the
       // next microtask so a focus-bounce doesn't toggle the keyboard
@@ -245,6 +243,19 @@
         commit();
       });
     }
+
+    // Subscribe to the breakpoint store so a crossing to desktop
+    // (iPad rotation, touch-laptop resize) clears any stale
+    // focusKbOpen flag set while the device was in mobile mode.
+    // Without this, rotating an iPad with a text input still
+    // focused would leave data-kb-open=1 on desktop and bottom-nav-
+    // hide-on-kb would persist incorrectly.
+    const unsubMobile = isMobile.subscribe((m) => {
+      if (!m && focusKbOpen) {
+        focusKbOpen = false;
+        commit();
+      }
+    });
 
     if (vv) {
       vv.addEventListener('resize', updateViewport);
@@ -261,6 +272,7 @@
       }
       document.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('focusout', onFocusOut);
+      unsubMobile();
     };
   });
 

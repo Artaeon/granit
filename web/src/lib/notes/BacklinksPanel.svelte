@@ -115,6 +115,16 @@
     const base = `/notes/${encodeURIComponent(srcPath)}`;
     return line ? `${base}?line=${line}` : base;
   }
+
+  // Title hint for the empty-state code example. Strips the directory
+  // and `.md` extension so the user sees the same string they'd type
+  // inside `[[...]]` from another note. Falls back to "this note" on
+  // the (unusual) empty-path edge case so the hint still reads.
+  let emptyStateTitleHint = $derived.by(() => {
+    if (!path) return 'this note';
+    const base = path.split('/').pop() ?? path;
+    return base.replace(/\.md$/, '');
+  });
 </script>
 
 {#if loading && !data}
@@ -185,7 +195,7 @@
     <div class="text-xs text-dim italic px-2 py-1 leading-relaxed">
       No notes link here yet.
       <span class="block text-[11px] mt-1 text-dim/70">
-        Write <code class="font-mono text-[10px] bg-surface0 px-1 py-0.5 rounded">[[{data.backlinks.length === 0 && path ? path.split('/').pop()?.replace(/\.md$/, '') : 'this note'}]]</code> in another note to create a backlink.
+        Write <code class="font-mono text-[10px] bg-surface0 px-1 py-0.5 rounded">[[{emptyStateTitleHint}]]</code> in another note to create a backlink.
       </span>
     </div>
   {/if}
