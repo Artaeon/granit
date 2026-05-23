@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +21,14 @@ import (
 	"github.com/artaeon/granit/internal/wshub"
 	"gopkg.in/yaml.v3"
 )
+
+// backlinkWikiRe matches a wikilink span and captures the target text
+// inside the brackets (alias text after | is excluded — we only care
+// about the link target, not the display label). Mirrors the regex in
+// internal/vault/parser.go; duplicated here to avoid exporting a
+// package-private symbol just for the backlinks handler. Tweak both
+// in lockstep if the link syntax ever changes.
+var backlinkWikiRe = regexp.MustCompile(`\[\[([^\]|]+)(?:\|[^\]]+)?\]\]`)
 
 type noteSummary struct {
 	Path        string                 `json:"path"`
@@ -338,13 +347,35 @@ func (s *Server) handleGetLinks(w http.ResponseWriter, r *http.Request) {
 	// Off by default so existing callers (BacklinksPanel) keep their
 	// cheap response shape.
 	withBodies := r.URL.Query().Get("bodies") == "1"
-	bl := []map[string]string{}
+	// Each backlink entry can carry multiple contexts: one per wikilink
+	// occurrence in the source note's body. {"line", "snippet"} so the
+	// editor's panel can show "...mentioned at line 47: 'see [[X]] for
+	// background...'" instead of just the source title. We build a
+	// title→relpath + basename→relpath map once here and reuse it inside
+	// findBacklinkContexts so the resolver doesn't re-walk the vault
+	// per source note (n×N → n+N).
+	byTitle, byBase := s.buildLinkResolverMaps()
+	type bcontext struct {
+		Line    int    `json:"line"`
+		Snippet string `json:"snippet"`
+	}
+	bl := []map[string]any{}
 	for _, src := range n.Backlinks {
 		other := s.cfg.Vault.GetNote(src)
 		if other == nil {
 			continue
 		}
-		entry := map[string]string{"path": other.RelPath, "title": other.Title}
+		entry := map[string]any{"path": other.RelPath, "title": other.Title}
+		// Contexts: scan the source body for wikilinks resolving to the
+		// target path. Cap at 5 per source so a hub-style note that
+		// mentions the target 30 times doesn't bloat the response.
+		if ctxs := findBacklinkContexts(other.Content, n.RelPath, byTitle, byBase, 5); len(ctxs) > 0 {
+			out := make([]bcontext, len(ctxs))
+			for i, c := range ctxs {
+				out[i] = bcontext{Line: c.Line, Snippet: c.Snippet}
+			}
+			entry["contexts"] = out
+		}
 		if withBodies {
 			entry["snippet"] = noteSnippet(other.Content, 400)
 		}
@@ -385,6 +416,145 @@ func (s *Server) handleGetLinks(w http.ResponseWriter, r *http.Request) {
 		"outgoing":  n.Links,
 		"backlinks": bl,
 	})
+}
+
+// backlinkContext is the per-mention data the editor's backlinks
+// panel renders under each source note: the 1-indexed line number
+// where the wikilink appears + a short snippet centred on it.
+type backlinkContext struct {
+	Line    int
+	Snippet string
+}
+
+// buildLinkResolverMaps walks the vault once and returns the two
+// maps a wikilink resolver needs: title→relpath (the common case,
+// since most links are by note title) and basename→relpath
+// (Obsidian's shortest-path fallback for when no title match). Built
+// up-front by handleGetLinks so the per-source context scan doesn't
+// rebuild them for each backlink. Cheap on a 5k-note vault — O(N)
+// allocation, no I/O.
+func (s *Server) buildLinkResolverMaps() (byTitle, byBase map[string]string) {
+	notes := s.cfg.Vault.SnapshotNotes()
+	byTitle = make(map[string]string, len(notes))
+	byBase = make(map[string]string, len(notes))
+	for relPath, note := range notes {
+		base := filepath.Base(relPath)
+		noExt := strings.TrimSuffix(base, filepath.Ext(base))
+		// First occurrence wins — matches vault.Index.Build's resolution
+		// rule so the API and the UI agree on which path a duplicate
+		// title resolves to.
+		if _, ok := byBase[noExt]; !ok {
+			byBase[noExt] = relPath
+		}
+		if note.Title != "" {
+			if _, ok := byTitle[note.Title]; !ok {
+				byTitle[note.Title] = relPath
+			}
+		}
+	}
+	return byTitle, byBase
+}
+
+// findBacklinkContexts scans `sourceContent` for every wikilink span
+// that resolves to `targetRelPath` and returns the surrounding
+// context for each match — line number + ~120-char inline snippet
+// centred on the link. Capped at `cap` matches because a hub-style
+// note can mention the same target 30+ times and the panel only
+// needs the first handful to anchor the user's memory.
+//
+// Resolution mirrors the rules in internal/vault/index.go:
+//
+//   1. byTitle map (most common — wikilinks are usually by title)
+//   2. byBase map (Obsidian's basename-shortest-path fallback)
+//   3. literal path with .md suffix (for `[[folder/note.md]]`)
+//   4. literal path without .md if the source already wrote it (for
+//      `[[folder/note]]`)
+//
+// Anchor fragments (`[[Note#Heading]]`) are stripped before
+// resolution so the match still counts as a link to Note.
+func findBacklinkContexts(sourceContent, targetRelPath string, byTitle, byBase map[string]string, cap int) []backlinkContext {
+	if sourceContent == "" || targetRelPath == "" || cap <= 0 {
+		return nil
+	}
+	matches := backlinkWikiRe.FindAllStringSubmatchIndex(sourceContent, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	out := make([]backlinkContext, 0, len(matches))
+	for _, m := range matches {
+		if len(out) >= cap {
+			break
+		}
+		// m[0..1] = full `[[…]]` span; m[2..3] = the captured target
+		// (text inside the brackets, alias stripped by the regex).
+		if len(m) < 4 {
+			continue
+		}
+		link := strings.TrimSpace(sourceContent[m[2]:m[3]])
+		// Strip anchor fragment — `[[Note#Section]]` still backlinks
+		// to Note, the section is just a deep-link hint.
+		if i := strings.Index(link, "#"); i >= 0 {
+			link = link[:i]
+		}
+		if link == "" {
+			continue
+		}
+		var resolved string
+		switch {
+		case byTitle[link] != "":
+			resolved = byTitle[link]
+		case strings.HasSuffix(link, ".md"):
+			// `[[folder/note.md]]` — author wrote the full path.
+			resolved = link
+		default:
+			base := strings.TrimSuffix(filepath.Base(link), filepath.Ext(link))
+			if p := byBase[base]; p != "" {
+				resolved = p
+			} else if !strings.HasSuffix(link, ".md") {
+				// `[[folder/note]]` — extension omitted but path written
+				// in full. Try with .md appended.
+				resolved = link + ".md"
+			}
+		}
+		if resolved != targetRelPath {
+			continue
+		}
+		line := strings.Count(sourceContent[:m[0]], "\n") + 1
+		out = append(out, backlinkContext{
+			Line:    line,
+			Snippet: makeContextSnippet(sourceContent, m[0], m[1], 60),
+		})
+	}
+	return out
+}
+
+// makeContextSnippet returns a short inline preview of the wikilink
+// match: `pad` chars before the opening bracket + the link itself +
+// `pad` chars after the closing bracket. Newlines are collapsed to
+// spaces so the snippet renders on one line in the panel; leading /
+// trailing ellipses mark whether the snippet was clipped at either
+// end. Total length ≈ 2*pad + linkLen, typically ~120-160 chars.
+func makeContextSnippet(content string, matchStart, matchEnd, pad int) string {
+	start := matchStart - pad
+	if start < 0 {
+		start = 0
+	}
+	end := matchEnd + pad
+	if end > len(content) {
+		end = len(content)
+	}
+	snippet := content[start:end]
+	// Collapse any whitespace run (newlines, tabs, multi-spaces) to a
+	// single space — the panel renders this as a one-liner, and the
+	// raw newlines would otherwise break out of the row.
+	snippet = strings.Join(strings.Fields(snippet), " ")
+	if start > 0 {
+		snippet = "…" + snippet
+	}
+	if end < len(content) {
+		snippet = snippet + "…"
+	}
+	return snippet
 }
 
 // noteSnippet returns a plain-text preview of a note suitable for AI
