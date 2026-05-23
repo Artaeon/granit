@@ -102,44 +102,73 @@
   {:else if loadError && tasks.length === 0}
     <p class="text-sm text-dim italic">Couldn't load tasks. <button class="underline hover:text-text" onclick={() => void load()}>retry</button></p>
   {:else}
-    {#if overdue.length > 0}
-      <h3 class="text-[11px] uppercase tracking-wider text-error mb-1.5 mt-1 font-semibold">
-        Overdue · <span class="tabular-nums">{overdue.length}</span>
-      </h3>
-      <div class="space-y-px mb-3">
-        {#each overdue.slice(0, 6) as t (t.id)}
-          <TaskRow task={t} onChanged={load} />
-        {/each}
-        {#if overdue.length > 6}
-          <a href="/tasks?view=overdue" class="block text-[11px] text-dim hover:text-error pl-6 mt-1">+{overdue.length - 6} more overdue</a>
+    <!-- Three sections stack on narrow widget cells and flow into
+         columns (auto-fit, min 240px) when the cell has horizontal
+         room. The container is the widget's .widget-cell, set in
+         routes/+page.svelte. -->
+    <div class="task-sections">
+      {#if overdue.length > 0}
+        <section>
+          <h3 class="text-[11px] uppercase tracking-wider text-error mb-1.5 font-semibold">
+            Overdue · <span class="tabular-nums">{overdue.length}</span>
+          </h3>
+          <div class="space-y-px">
+            {#each overdue.slice(0, 6) as t (t.id)}
+              <TaskRow task={t} onChanged={load} />
+            {/each}
+            {#if overdue.length > 6}
+              <a href="/tasks?view=overdue" class="block text-[11px] text-dim hover:text-error pl-6 mt-1">+{overdue.length - 6} more overdue</a>
+            {/if}
+          </div>
+        </section>
+      {/if}
+
+      <section>
+        <h3 class="text-[11px] uppercase tracking-wider text-dim mb-1.5">
+          Today · <span class="tabular-nums">{dueToday.length}</span>
+        </h3>
+        {#if dueToday.length === 0}
+          <p class="text-sm text-dim italic">
+            {totalOpen === 0 ? 'inbox zero — nothing open at all' : 'nothing due today'}
+          </p>
+        {:else}
+          <div class="space-y-px">
+            {#each dueToday as t (t.id)}
+              <TaskRow task={t} onChanged={load} />
+            {/each}
+          </div>
         {/if}
-      </div>
-    {/if}
+      </section>
 
-    <h3 class="text-[11px] uppercase tracking-wider text-dim mb-1.5">
-      Today · <span class="tabular-nums">{dueToday.length}</span>
-    </h3>
-    {#if dueToday.length === 0}
-      <p class="text-sm text-dim italic mb-3">
-        {totalOpen === 0 ? 'inbox zero — nothing open at all' : 'nothing due today'}
-      </p>
-    {:else}
-      <div class="space-y-px mb-3">
-        {#each dueToday as t (t.id)}
-          <TaskRow task={t} onChanged={load} />
-        {/each}
-      </div>
-    {/if}
-
-    {#if noDate.length > 0 && totalOpen > 0}
-      <h3 class="text-[11px] uppercase tracking-wider text-dim mb-1.5">
-        No date · top <span class="tabular-nums">{noDate.length}</span>
-      </h3>
-      <div class="space-y-px">
-        {#each noDate as t (t.id)}
-          <TaskRow task={t} onChanged={load} />
-        {/each}
-      </div>
-    {/if}
+      {#if noDate.length > 0 && totalOpen > 0}
+        <section>
+          <h3 class="text-[11px] uppercase tracking-wider text-dim mb-1.5">
+            No date · top <span class="tabular-nums">{noDate.length}</span>
+          </h3>
+          <div class="space-y-px">
+            {#each noDate as t (t.id)}
+              <TaskRow task={t} onChanged={load} />
+            {/each}
+          </div>
+        </section>
+      {/if}
+    </div>
   {/if}
 </section>
+
+<style>
+  /* Vertical stack by default; auto-fit grid once the widget cell
+     is wide enough that ≥2 columns fit at min 240px each. The
+     min-width avoids the awkward "barely-2-column" state where rows
+     wrap within each column. */
+  .task-sections > section + section { margin-top: 0.75rem; }
+  @container (min-width: 640px) {
+    .task-sections {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem 1.25rem;
+      align-items: start;
+    }
+    .task-sections > section + section { margin-top: 0; }
+  }
+</style>

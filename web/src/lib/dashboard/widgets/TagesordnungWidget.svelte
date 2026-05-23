@@ -30,11 +30,11 @@
     <span class="text-[11px] text-dim">Innere Ordnung — täglicher Anker</span>
   </header>
 
-  <!-- 16 Leitbegriffe in a compact grid. Column counts chosen so the
-       list divides evenly at every breakpoint: 1×16 on phone, 2×8 on
-       tablet/laptop, 4×4 on a wide monitor. No orphan rows, no
-       half-empty trailing columns. -->
-  <ul class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-5 gap-y-2.5">
+  <!-- 16 Leitbegriffe in a compact grid. Column count adapts to the
+       widget's OWN width via @container queries on .widget-cell (set
+       in routes/+page.svelte). Breakpoints chosen so the list always
+       divides evenly: 1×16, 2×8, or 4×4 — never an orphan row. -->
+  <ul class="principles-grid gap-x-5 gap-y-2.5">
     {#each PRINCIPLES as p (p.id)}
       <li class="leading-snug">
         <div class="text-sm font-medium text-text">{p.name}</div>
@@ -44,9 +44,31 @@
   </ul>
 
   <!-- Kurzform of the Leitsatz — the verb refrain. Quiet, italic, no
-       border above; a signature line, not a divider. Hidden on the
-       narrowest phones where vertical space is the scarce axis. -->
-  <p class="hidden sm:block mt-4 text-[11px] text-dim italic">
+       border above; a signature line, not a divider. Hidden when the
+       widget itself is narrow (phone-portrait widget cell) to save
+       vertical space. -->
+  <p class="leitsatz-line mt-4 text-[11px] text-dim italic">
     {PRINCIPLES_KURZ}
   </p>
 </section>
+
+<style>
+  .principles-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  /* Two columns once the widget cell has room. */
+  @container (min-width: 480px) {
+    .principles-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  /* Four columns on wide cells (span-2 widget on xl/2xl viewport). */
+  @container (min-width: 900px) {
+    .principles-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+  /* Hide the signature line when the cell is too narrow for it to
+     read as a refrain (it'd wrap awkwardly on phone-portrait). */
+  .leitsatz-line { display: none; }
+  @container (min-width: 480px) {
+    .leitsatz-line { display: block; }
+  }
+</style>

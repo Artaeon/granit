@@ -582,8 +582,20 @@
                  the same resolved promise instead of refetching.
                  The skeleton placeholder reserves a small height so
                  the grid doesn't reflow once each chunk lands.
-                 span-2 = full row at each breakpoint above 1 col. -->
-            <div class={meta.span === 2 ? 'md:col-span-2 xl:col-span-3 2xl:col-span-4' : ''}>
+                 span-2 = full row at each breakpoint above 1 col.
+
+                 container-type: inline-size establishes each widget
+                 wrapper as a CSS container. Individual widgets can
+                 then use @container queries to adapt their internal
+                 layout to the cell width they were given (which
+                 varies by viewport breakpoint × span × focus state).
+                 Container queries beat viewport queries here because
+                 a span-1 widget at 2xl gets ~1/4 viewport while a
+                 span-2 widget at 2xl gets full viewport — the widget
+                 itself needs to react to ITS width, not the window's. -->
+            <div
+              class={meta.span === 2 ? 'md:col-span-2 xl:col-span-3 2xl:col-span-4 widget-cell' : 'widget-cell'}
+            >
               {#await meta.load()}
                 <div class="bg-surface0 border border-surface1 rounded-lg p-3 animate-pulse h-24"></div>
               {:then Widget}
@@ -602,3 +614,14 @@
     </div>
   </div>
 {/if}
+
+<style>
+  /* Each widget cell is a CSS containment context so widgets can use
+     @container queries to adapt to their available width instead of
+     the viewport width. Inline-size containment is the cheap kind —
+     no layout containment, no paint containment. The container the
+     widget's @container queries reference is THIS .widget-cell. */
+  .widget-cell {
+    container-type: inline-size;
+  }
+</style>
