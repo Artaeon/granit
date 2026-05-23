@@ -140,17 +140,25 @@
     if (open && isMobile && !$aiOverlayPinned) {
       savedScrollY = window.scrollY;
       const body = document.body;
+      const html = document.documentElement;
+      // Body lock (fixed + saved scrollY) — the load-bearing piece.
       body.style.position = 'fixed';
       body.style.top = `-${savedScrollY}px`;
       body.style.left = '0';
       body.style.right = '0';
       body.style.width = '100%';
+      // html overflow:hidden as second-stage defence against iOS rubber-
+      // band scrolling that can leak through a fixed body in some
+      // Safari builds (the touch-action: none alternative is too
+      // aggressive — it would kill tap handling on the panel itself).
+      html.style.overflow = 'hidden';
       return () => {
         body.style.position = '';
         body.style.top = '';
         body.style.left = '';
         body.style.right = '';
         body.style.width = '';
+        html.style.overflow = '';
         window.scrollTo(0, savedScrollY);
       };
     }
