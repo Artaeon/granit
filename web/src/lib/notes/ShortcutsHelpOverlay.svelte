@@ -116,11 +116,19 @@
     onclick={dismiss}
     role="presentation"
   >
-    <section
+    <!-- div + role=dialog instead of <section> + role=dialog: svelte-
+         check rejects interactive roles on non-interactive HTML
+         elements like <section>. The dialog semantics are the same
+         either way; the click is a stop-propagation guard so taps
+         INSIDE the modal don't bubble to the backdrop and close it. -->
+    <div
       class="w-full sm:max-w-2xl bg-base border border-surface1 rounded-t-xl sm:rounded-lg shadow-xl max-h-[92dvh] sm:max-h-[80dvh] flex flex-col"
       onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
       role="dialog"
+      aria-modal="true"
       aria-label="Keyboard shortcuts"
+      tabindex="-1"
     >
       <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">Keyboard shortcuts</h2>
@@ -149,7 +157,7 @@
       <footer class="px-4 py-2.5 border-t border-surface1 text-[11px] text-dim flex items-center gap-2">
         <span class="flex-1">Tip: keep one foot on the keyboard. Half of these are why this editor was built.</span>
       </footer>
-    </section>
+    </div>
   </div>
 {/if}
 

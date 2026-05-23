@@ -37,10 +37,12 @@
   let panY = $state(0);
   let zoom = $state(1);
   let svgEl: SVGSVGElement | undefined = $state();
-  // Drag tracking. We don't use a $state for these because the values
-  // change at pointermove cadence — mutation inside listeners during
-  // a frame is fine, no UI binding needs to react.
-  let dragging = false;
+  // Drag tracking. `dragging` IS bound via `class:cursor-grabbing` in
+  // the template below — without $state(), Svelte 5 wouldn't observe
+  // the toggle and the cursor would stay default through a drag. The
+  // numeric offsets stay as plain locals because they only matter
+  // inside pointermove math; nothing in the template reads them.
+  let dragging = $state(false);
   let dragStartX = 0;
   let dragStartY = 0;
   let dragOriginPanX = 0;

@@ -708,6 +708,8 @@
           bind:this={chapterEl}
           onscroll={onChapterScroll}
           onpointerup={onChapterPointerUp}
+          role="region"
+          aria-label="Chapter content"
           class="h-full overflow-y-auto px-4 sm:px-8 py-6"
         >
           {#if chapterLoading}

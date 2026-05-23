@@ -434,6 +434,8 @@
               {#each COLORS as c (c)}
                 <button
                   type="button"
+                  aria-label="Highlight colour {c}"
+                  aria-pressed={editColor === c}
                   class="w-5 h-5 rounded-full border-2 {editColor === c ? 'border-text' : 'border-transparent'}"
                   style="background: {annotationSwatchHex(c)}"
                   onclick={() => (editColor = c)}

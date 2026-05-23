@@ -138,6 +138,7 @@
     style="top: {top}px; left: {left}px;"
     role="toolbar"
     aria-label="Selection actions"
+    tabindex="-1"
     onmousedown={(e) => e.preventDefault()}
   >
     {#each ACTIONS as a}

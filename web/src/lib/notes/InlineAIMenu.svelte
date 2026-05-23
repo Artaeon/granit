@@ -66,8 +66,17 @@
   // a tab reload doesn't lose history; localStorage scope is the right
   // grain here (per-device, not per-vault) because what the user asks
   // about a note is intimately tied to their current train of thought.
+  //
+  // historyKey is $derived from notePath so a parent reusing this
+  // component across notes (without remount) gets the right per-note
+  // storage bucket. The previous form was `const historyKey = …` which
+  // froze the original notePath value forever — pushHistory would
+  // then write to the OLD bucket even after the prop changed. svelte-
+  // check rightly flagged this as state_referenced_locally; the
+  // practical risk was low (menu is transient per-trigger) but the
+  // fix is one line.
   const HISTORY_LIMIT = 20;
-  const historyKey = `granit.ai.history.${notePath}`;
+  let historyKey = $derived(`granit.ai.history.${notePath}`);
   let history = $state<string[]>(loadHistory());
   let historyIdx = $state(-1); // -1 = live input; 0 = most recent
 
@@ -772,7 +781,12 @@
         Library
       </li>
       {#each libraryFiltered as e (e.id)}
-        <li role="option">
+        <!-- aria-selected={false}: library entries aren't keyboard-
+             navigable via the highlightedIdx scheme (presets are);
+             they're click/tap targets. ARIA still requires the
+             attribute on every role="option" so screen readers can
+             announce list position correctly. -->
+        <li role="option" aria-selected={false}>
           <button
             type="button"
             onclick={() => runLibraryEntry(e)}
