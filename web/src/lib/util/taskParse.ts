@@ -150,11 +150,12 @@ export function cleanTaskText(raw: string): string {
 //   tomorrow / morgen / tmrw   → ref + 1
 //   übermorgen                 → ref + 2
 //   yesterday / gestern        → ref - 1
-//   mon / monday / montag …    → next occurrence of that weekday
+//   mon / monday / montag …    → next future occurrence of that weekday
 //   next mon / next freitag …  → following week's instance
-// Bare weekday returns the SAME day this week if today matches; the
-// `next ` prefix always pushes to the next week. Bare weekdays in
-// the past relative to today roll forward to this coming week.
+// Bare weekday always returns a FUTURE day: if today is Sunday and
+// you type "sun" you get next Sunday (+7), not today. Today is
+// already addressable via `today` / `heute`. The `next ` prefix
+// pushes by an extra week on top of that.
 export function smartDate(token: string, ref = new Date()): string | null {
   const t = token.toLowerCase().trim();
   const day = (n: number) => {

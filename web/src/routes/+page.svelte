@@ -79,15 +79,19 @@
       vault = v;
       // Two transforms over the server's saved config:
       //   1. Strip deprecated widget types from the saved config (one-
-      //      time-per-device migration). Cheap to run on every load
-      //      and idempotent once stripped.
+      //      time-per-device migration). Runs on top-level widgets AND
+      //      every saved layout preset's widgets — otherwise re-
+      //      activating a stale preset would push retired types back
+      //      into the active arrangement.
       //   2. Inject any NEW_WIDGETS the saved config doesn't have yet,
       //      anchored after their preferred slot.
-      // If either transform changed the widget count we persist back
-      // so the cleaned + extended config travels across devices.
+      // Persist back if anything changed (we hash the saved-vs-cleaned
+      // state by widget IDs rather than just .length, because a strip
+      // that exactly balances an injection would otherwise no-op the
+      // write and leave the file dirty).
       const cleaned = migrateRemoveDeprecated(c);
       config = injectNewWidgets(cleaned);
-      if (config.widgets.length !== c.widgets.length) {
+      if (configDiffersById(c, config)) {
         await api.putDashboard(config).catch((err) => {
           console.error('dashboard initial-sync persist failed', err);
         });
@@ -103,15 +107,39 @@
   }
 
   // Drop widget entries for types that were retired in the 2026-05-23
-  // cleanup. Existing saved configs still contain them; widgetMeta
-  // returns undefined for these types so they wouldn't render, but
-  // leaving them in the JSON file is clutter. One pass over the
-  // widgets array; the upstream persist in load() writes back if
-  // anything was dropped.
+  // cleanup. Cleans both the top-level Widgets AND each saved layout
+  // preset's Widgets — without the layouts pass, switching to a stale
+  // preset later would push retired types back into the active set
+  // and the user would see ghost rows in Customize (widgetMeta returns
+  // undefined; the row label and toggle don't render).
   function migrateRemoveDeprecated(c: DashboardConfig): DashboardConfig {
-    const kept = c.widgets.filter((w) => !DEPRECATED_WIDGET_TYPES.has(w.type));
-    if (kept.length === c.widgets.length) return c;
-    return { ...c, widgets: kept };
+    const stripWidgets = (ws: typeof c.widgets) => ws.filter((w) => !DEPRECATED_WIDGET_TYPES.has(w.type));
+    const widgets = stripWidgets(c.widgets);
+    const layouts = (c.layouts ?? []).map((l) => ({ ...l, widgets: stripWidgets(l.widgets) }));
+    const widgetsChanged = widgets.length !== c.widgets.length;
+    const layoutsChanged = (c.layouts ?? []).some((l, i) => layouts[i].widgets.length !== l.widgets.length);
+    if (!widgetsChanged && !layoutsChanged) return c;
+    return { ...c, widgets, ...(c.layouts ? { layouts } : {}) };
+  }
+
+  // True if the two configs differ in either widget IDs, widget order,
+  // or any layout-preset widget IDs. Used to decide whether to persist
+  // after the migrate+inject pass. Cheap because configs are small
+  // (under ~30 widgets each). We compare IDs and not enabled-state
+  // because the migration never flips enabled, only adds/removes.
+  function configDiffersById(a: DashboardConfig, b: DashboardConfig): boolean {
+    const idsA = a.widgets.map((w) => w.id).join('|');
+    const idsB = b.widgets.map((w) => w.id).join('|');
+    if (idsA !== idsB) return true;
+    const aLayouts = a.layouts ?? [];
+    const bLayouts = b.layouts ?? [];
+    if (aLayouts.length !== bLayouts.length) return true;
+    for (let i = 0; i < aLayouts.length; i++) {
+      const la = aLayouts[i].widgets.map((w) => w.id).join('|');
+      const lb = bLayouts[i].widgets.map((w) => w.id).join('|');
+      if (la !== lb) return true;
+    }
+    return false;
   }
 
   // Splice in any NEW_WIDGETS the saved config doesn't have, anchored
