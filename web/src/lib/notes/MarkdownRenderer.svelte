@@ -1,8 +1,38 @@
 <script lang="ts">
   import { marked } from 'marked';
+  import DOMPurify from 'dompurify';
   import { api } from '$lib/api';
   import { errorMessage } from '$lib/util/errorMessage';
   import WikilinkHoverPreview from './WikilinkHoverPreview.svelte';
+
+  // DOMPurify config — single shared profile for every sanitize() call
+  // in this component. We allow our wikilink / tag / diagram / image
+  // sentinel attributes (`data-wikilink`, `data-tag`, `data-diagram`,
+  // `data-img-src`) because postprocess() decorates spans with them
+  // for the click-delegation handler. Without explicit ADD_DATA_URI_TAGS
+  // and ADD_ATTR, DOMPurify would strip the data-* hooks and our
+  // wikilink navigation would silently break.
+  //
+  // Why USE_PROFILES.html: we explicitly want body HTML allowed
+  // (paragraphs, lists, tables, code blocks, headings — everything
+  // marked emits). The default whitelist covers it. We do NOT enable
+  // SVG/MathML because the editor doesn't ship those as input
+  // formats; opening that surface would expand the attack vector
+  // without payoff.
+  //
+  // FORBID_TAGS: `script` is already excluded by the default profile,
+  // but listing it (plus iframe + object + embed) is belt-and-braces
+  // — three layers cheaper than one DOMPurify CVE escape.
+  const PURIFY_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
+    USE_PROFILES: { html: true },
+    ADD_ATTR: ['data-wikilink', 'data-tag', 'data-diagram', 'data-img-src', 'data-mermaid-src'],
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
+    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur']
+  };
+
+  function purify(html: string): string {
+    return DOMPurify.sanitize(html, PURIFY_CONFIG) as string;
+  }
 
   let { body, onWikilink }: { body: string; onWikilink?: (target: string) => void } = $props();
 
@@ -406,7 +436,15 @@
     try {
       const pre = preprocess(body);
       const out = marked.parse(pre, { async: false }) as string;
-      return postprocess(out);
+      // purify() is the load-bearing XSS defence — marked itself
+      // dropped its `sanitize` option in v7 and explicitly recommends
+      // DOMPurify downstream. The threat surface is small (self-
+      // hosted single-user vault) but real once notes sync across
+      // devices: a `<script>` slipped into a note on device A would
+      // execute on device B without this layer. PURIFY_CONFIG keeps
+      // our data-wikilink / data-tag etc. hooks alive so click
+      // delegation still works after sanitisation.
+      return purify(postprocess(out));
     } catch (e) {
       const msg = errorMessage(e);
       return (
@@ -552,7 +590,12 @@
           // wikilink cards inside the embedded content.
           const stripped = (full.body ?? '').replace(/!\[\[[^\]]+\]\]/g, '');
           const pre = preprocess(stripped);
-          bodyHtml = postprocess(marked.parse(pre, { async: false }) as string);
+          // Same sanitisation pass as the top-level body. The embed
+          // is just a recursive call into the same render — anything
+          // unsafe in target.md should be neutralised here BEFORE we
+          // assign to aside.innerHTML below, since innerHTML doesn't
+          // re-trigger the framework's render-time defences.
+          bodyHtml = purify(postprocess(marked.parse(pre, { async: false }) as string));
           embedCache.set(target, bodyHtml);
         }
         if (!bodyHtml) continue;

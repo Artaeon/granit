@@ -14,6 +14,7 @@
   import { onWsEvent } from '$lib/ws';
   import { errorMessage } from '$lib/util/errorMessage';
   import { toast } from '$lib/components/toast';
+  import DOMPurify from 'dompurify';
   import { loadStored, saveStored, loadStoredString, saveStoredString } from '$lib/util/storage';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import {
@@ -118,7 +119,17 @@
     revokeChapterAssets();
     try {
       const r = await api.getBookChapter(bookId, idx);
-      chapterHTML = r.html;
+      // Sanitise before assigning to chapterHTML — the server marshals
+      // EPUB / PDF-extracted HTML through, and even legitimate sources
+      // can carry on* event handlers or <script> tags that survived
+      // extraction. The same purifier is used in MarkdownRenderer;
+      // configured here inline because this route has narrower needs
+      // (no wikilink data-hooks, just plain reader HTML).
+      chapterHTML = DOMPurify.sanitize(r.html, {
+        USE_PROFILES: { html: true },
+        FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+        FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onsubmit']
+      }) as string;
       await tick();
       await patchChapterAssets();
       applyHighlights();
