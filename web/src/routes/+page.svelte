@@ -4,6 +4,7 @@
   import { api, ApiError, type DashboardConfig, type DashboardWidget, type VaultInfo } from '$lib/api';
   import { widgetRegistry, widgetMeta } from '$lib/dashboard/registry';
   import AuthScreen from '$lib/components/AuthScreen.svelte';
+  import { toast } from '$lib/components/toast';
 
   // New widget types we ship in this build that the server's defaults
   // (internal/serveapi/handlers_dashboard.go) doesn't know about yet. We
@@ -92,9 +93,14 @@
       vault = v;
       config = injectNewWidgets(c);
       // If we added widgets the server didn't know about, persist so the
-      // toggle states travel across devices on next load.
+      // toggle states travel across devices on next load. We don't toast
+      // failures here (this is a passive sync, not a user-initiated
+      // toggle) but we do log so the bug below has a paper trail if a
+      // real save fails for a non-user-visible reason.
       if (config.widgets.length !== c.widgets.length) {
-        await api.putDashboard(config).catch(() => {});
+        await api.putDashboard(config).catch((err) => {
+          console.error('dashboard initial-sync persist failed', err);
+        });
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -122,13 +128,24 @@
     return { ...c, widgets };
   }
 
+  // Persists the current widget arrangement (toggles, order, layout
+  // presets) to the server. Toasts on failure: previously this was a
+  // silent `console.error(e)` and the user reported "I toggle widgets
+  // off in Customize and they come back after reload" — the toggle had
+  // taken local effect but the PUT had silently failed (in their case,
+  // the service worker was serving a stale GET on reload). A silent
+  // catch hid both that bug and any future ones. Toast surfaces it.
   async function persist() {
     if (!config) return;
     try {
       const saved = await api.putDashboard(config);
       config = saved;
     } catch (e) {
-      console.error(e);
+      console.error('dashboard persist failed', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error("Couldn't save dashboard changes — your toggle may not stick across reload.", {
+        details: msg
+      });
     }
   }
 

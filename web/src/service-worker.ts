@@ -136,6 +136,22 @@ function isNoCacheGet(url: URL): boolean {
   // is fine to cache because the listing is mod-time-keyed and the
   // mutation invalidation below also clears it.
   if (/^\/api\/v1\/notes\/[^?]/.test(url.pathname)) return true;
+  // /api/v1/dashboard and /api/v1/dashboard/layouts — user-writable
+  // config that's mutated by Customize toggles. The mutation-invalidation
+  // path below WAS deleting cached GET entries on PUT, but a stale-
+  // while-revalidate response on the immediately-following reload still
+  // served the pre-PUT state under fast-reload timing (cache delete vs
+  // page nav race). The user's reported symptom: "hide a widget, reload,
+  // widget is back" — the dashboard.json on disk was unchanged for days
+  // even though the PUT had returned 200, because the SPA was reading
+  // stale cache, not fresh server state. Skip caching entirely; the
+  // payload is small and the freshness guarantee matters far more here
+  // than offline-first does.
+  if (url.pathname.startsWith('/api/v1/dashboard')) return true;
+  // /api/v1/modules — same shape as dashboard (writable feature-toggle
+  // config). Same staleness risk; user disables a module, reloads, the
+  // module looks enabled again because the GET came from cache.
+  if (url.pathname === '/api/v1/modules') return true;
   return false;
 }
 
