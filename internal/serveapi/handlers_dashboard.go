@@ -61,13 +61,22 @@ func defaultDashboard() dashboardConfig {
 	// surfaces the user actually reaches for every morning. The client
 	// also runs a migration that strips the removed types from
 	// existing saved configs, so this isn't a transition-cost ask.
+	// Note: tagesordnung + today-stream + today-focus are intentionally
+	// NOT in this default list, even though they're enabled-by-default
+	// for fresh installs. They're injected client-side by the
+	// NEW_WIDGETS list in routes/+page.svelte with positional anchors
+	// (after w-greeting → tagesordnung → today-stream → today-focus).
+	// Putting them here too would let the server's missing-default
+	// loop pre-inject them at the end of an existing user's config,
+	// which would then make the client's NEW_WIDGETS injection no-op
+	// (the widgets are already in `have`) — they'd render but at the
+	// bottom of the dashboard, not at the intended top-of-day
+	// position. Single ownership: client controls position + enabled
+	// for these three; server controls everything else.
 	return dashboardConfig{
 		Version: dashboardVersion,
 		Widgets: []dashboardWidget{
 			{ID: "w-greeting", Type: "greeting", Enabled: true},
-			{ID: "w-tagesordnung", Type: "tagesordnung", Enabled: true},
-			{ID: "w-today-stream", Type: "today-stream", Enabled: true},
-			{ID: "w-today-focus", Type: "today-focus", Enabled: true},
 			{ID: "w-quick-capture", Type: "quick-capture", Enabled: true},
 			{ID: "w-today-tasks", Type: "today-tasks", Enabled: true},
 			{ID: "w-scheduled", Type: "scheduled-today", Enabled: true},
@@ -167,13 +176,24 @@ func (s *Server) readDashboard() (dashboardConfig, error) {
 	if cfg.Version == 0 {
 		cfg.Version = dashboardVersion
 	}
+	// Re-introduce widgets that exist in the current defaults but
+	// aren't in the user's saved config (typically: a widget added to
+	// the registry after they last saved). Previously this forced
+	// dw.Enabled = false so new defaults wouldn't surprise existing
+	// users — but that conflicted with the client's NEW_WIDGETS
+	// injection, which intends some new widgets (tagesordnung,
+	// today-stream) to land enabled-by-default. The server's pre-
+	// injection won the race and the client's enabled=true intent was
+	// silently overridden. Now we trust the default's Enabled field:
+	// new defaults respect their declared default state. Widgets
+	// meant to be opt-in (like inbox) still ship with Enabled=false
+	// in defaultDashboard() and stay disabled for new arrivals.
 	have := map[string]bool{}
 	for _, w := range cfg.Widgets {
 		have[w.ID] = true
 	}
 	for _, dw := range defaultDashboard().Widgets {
 		if !have[dw.ID] {
-			dw.Enabled = false
 			cfg.Widgets = append(cfg.Widgets, dw)
 		}
 	}
