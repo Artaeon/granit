@@ -6,53 +6,39 @@
   import AuthScreen from '$lib/components/AuthScreen.svelte';
   import { toast } from '$lib/components/toast';
 
-  // New widget types we ship in this build that the server's defaults
-  // (internal/serveapi/handlers_dashboard.go) doesn't know about yet. We
-  // inject them into the user's saved config locally so they appear in
-  // customize-mode and can render. Order matters — these are the slots
-  // we want the new widgets to occupy by default.
-  // Widgets we inject into a user's saved config because the server
-  // default didn't ship them. Most go in DISABLED so the dashboard
-  // stays focused — the user opts in via Customize. Only widgets
-  // that materially change "what is today?" land enabled.
+  // Widgets the client ships that the server's defaults
+  // (internal/serveapi/handlers_dashboard.go) may not include yet for
+  // existing users. We inject them locally so they appear in the
+  // saved config the first time the SPA loads them; subsequent loads
+  // see them via `have` and skip the inject. Order matters — afterId
+  // anchors each new widget below an existing one.
   //
-  // Tightened during the "professional cleanup" pass: the previous
-  // default lit up 21 widgets on first launch (server's 15 + 6 new),
-  // which read as "a wall of tiles" rather than a workspace. Tier-1
-  // here: today-stream + today-focus, both of which directly answer
-  // the user's first morning question. Everything else is opt-in.
+  // After the 2026-05-23 widget cleanup this list is small. Most
+  // widgets that used to live here (vision, one-thing, top-deadlines,
+  // quick-links, verse-for-mood) were removed entirely. The three
+  // remaining injections are the top-of-day flow: tagesordnung,
+  // today-stream, today-focus.
   const NEW_WIDGETS: { id: string; type: import('$lib/api').DashboardWidgetType; afterId: string; enabled: boolean }[] = [
-    // Tagesordnung — 16 Leitbegriffe as a quiet anchor right
-    // beneath the greeting. The day reads top-down: date → inner
-    // order → tactical stream → focus commitment. Enabled by
-    // default; users who want a leaner dashboard can hide it via
-    // Customize like any other widget.
     { id: 'w-tagesordnung', type: 'tagesordnung', afterId: 'w-greeting', enabled: true },
-    // Today stream sits at the very top after greeting — the
-    // headline "what's happening now + what's next" panel. Merges
-    // today's events, scheduled tasks, due tasks, and deadlines
-    // into one chronological feed plus a tomorrow + day-after
-    // preview. Single source of truth for "shape of today" so the
-    // user doesn't have to triangulate four separate today-* tiles.
     { id: 'w-today-stream', type: 'today-stream', afterId: 'w-tagesordnung', enabled: true },
-    // Today focus — the AI-suggested #1 thing for the day. Anchors
-    // intention right under the stream.
-    { id: 'w-today-focus', type: 'today-focus', afterId: 'w-today-stream', enabled: true },
-    // Vision anchors the morning re-read but isn't critical for
-    // tactical day-of work — opt-in.
-    { id: 'w-vision', type: 'vision', afterId: 'w-today-focus', enabled: false },
-    // One-thing: weekly-plan commitment. Opt-in for users who do
-    // a Sunday planning ritual.
-    { id: 'w-one-thing', type: 'one-thing', afterId: 'w-vision', enabled: false },
-    // top-deadlines: deadline pressure tile. Opt-in — at-a-glance
-    // already shows a 7-day deadline count and that's enough for
-    // most days.
-    { id: 'w-top-deadlines', type: 'top-deadlines', afterId: 'w-now', enabled: false },
-    // Quick links — hub favorites. Opt-in.
-    { id: 'w-quick-links', type: 'quick-links', afterId: 'w-top-deadlines', enabled: false },
-    // Verse-for-mood — secondary scripture surface. Opt-in.
-    { id: 'w-verse-for-mood', type: 'verse-for-mood', afterId: 'w-scripture', enabled: false }
+    { id: 'w-today-focus', type: 'today-focus', afterId: 'w-today-stream', enabled: true }
   ];
+
+  // Widget types removed in the 2026-05-23 cleanup. Saved configs
+  // from before that build still contain entries for these types;
+  // they wouldn't render (widgetMeta returns undefined and the
+  // activeWidgets filter drops them) but they'd clutter the file.
+  // The migration below strips them out and persists once, so the
+  // file stays clean. After every device has loaded once, this set
+  // is dead weight — but it's cheap to keep as a defence against
+  // someone re-importing an old config.
+  const DEPRECATED_WIDGET_TYPES = new Set([
+    'task-velocity', 'ai-usage', 'ai-briefing',
+    'at-a-glance', 'calendar-week', 'top-deadlines', 'top-goals',
+    'one-thing', 'vision',
+    'install', 'pinned', 'weekly-review-nudge',
+    'recent-annotations', 'verse-for-mood', 'pomodoro', 'quick-links'
+  ]);
 
   // The auth surface (setup / login / token paste) lives in the
   // AuthScreen component so this file stays focused on the dashboard
@@ -91,12 +77,16 @@
     try {
       const [v, c] = await Promise.all([api.vault(), api.getDashboard()]);
       vault = v;
-      config = injectNewWidgets(c);
-      // If we added widgets the server didn't know about, persist so the
-      // toggle states travel across devices on next load. We don't toast
-      // failures here (this is a passive sync, not a user-initiated
-      // toggle) but we do log so the bug below has a paper trail if a
-      // real save fails for a non-user-visible reason.
+      // Two transforms over the server's saved config:
+      //   1. Strip deprecated widget types from the saved config (one-
+      //      time-per-device migration). Cheap to run on every load
+      //      and idempotent once stripped.
+      //   2. Inject any NEW_WIDGETS the saved config doesn't have yet,
+      //      anchored after their preferred slot.
+      // If either transform changed the widget count we persist back
+      // so the cleaned + extended config travels across devices.
+      const cleaned = migrateRemoveDeprecated(c);
+      config = injectNewWidgets(cleaned);
       if (config.widgets.length !== c.widgets.length) {
         await api.putDashboard(config).catch((err) => {
           console.error('dashboard initial-sync persist failed', err);
@@ -110,6 +100,18 @@
         auth.clear();
       } else loadError = e instanceof Error ? e.message : String(e);
     }
+  }
+
+  // Drop widget entries for types that were retired in the 2026-05-23
+  // cleanup. Existing saved configs still contain them; widgetMeta
+  // returns undefined for these types so they wouldn't render, but
+  // leaving them in the JSON file is clutter. One pass over the
+  // widgets array; the upstream persist in load() writes back if
+  // anything was dropped.
+  function migrateRemoveDeprecated(c: DashboardConfig): DashboardConfig {
+    const kept = c.widgets.filter((w) => !DEPRECATED_WIDGET_TYPES.has(w.type));
+    if (kept.length === c.widgets.length) return c;
+    return { ...c, widgets: kept };
   }
 
   // Splice in any NEW_WIDGETS the saved config doesn't have, anchored
@@ -284,22 +286,20 @@
   // Focus mode — temporarily hides everything except the essentials
   // for a quiet "what matters today" view. Not a saved preset; just
   // a render-time filter so the user's preset/layout choices are
-  // untouched. Toggle is at the top of the page.
+  // untouched.
   //
-  // Curated set: greeting (date anchor), at-a-glance (today's counts),
-  // today-stream (the chronological feed — covers events + scheduled
-  // + due + deadlines in one), today-focus (the morning commitment),
-  // today-tasks (action surface for due/overdue rows), top-deadlines
-  // (by-when pressure). Six tiles, no scrolling on a typical desktop.
-  // calendar-week was dropped because today-stream's tomorrow/day-
-  // after preview covers the same ground for the focus-mode use.
+  // Curated set after the 2026-05-23 cleanup: the inner anchor
+  // (greeting + tagesordnung) plus the four tactical surfaces
+  // (today-stream / today-focus / today-tasks / scheduled-today).
+  // at-a-glance + top-deadlines used to be in here but were retired —
+  // today-stream covers both counts and deadlines.
   const FOCUS_ESSENTIALS = new Set<import('$lib/api').DashboardWidgetType>([
     'greeting',
-    'at-a-glance',
+    'tagesordnung',
     'today-stream',
     'today-focus',
     'today-tasks',
-    'top-deadlines'
+    'scheduled-today'
   ]);
   const FOCUS_KEY = 'granit.dashboard.focus';
   let focus = $state<boolean>(
@@ -546,7 +546,7 @@
         <div class="mb-4 p-4 bg-mantle border border-surface1 rounded-lg text-sm">
           <div class="text-text font-medium mb-1">Focus mode is on, but no essential widgets are enabled.</div>
           <p class="text-xs text-dim mb-3">
-            Focus shows: greeting, at-a-glance, today's focus, today's tasks, calendar week, top deadlines.
+            Focus shows: greeting, tagesordnung, today stream, today's focus, today's tasks, scheduled today.
             Enable any of these in customize, or turn focus off.
           </p>
           <div class="flex items-center gap-2">

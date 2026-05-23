@@ -48,31 +48,38 @@ type dashboardConfig struct {
 }
 
 func defaultDashboard() dashboardConfig {
+	// Curated default for fresh installs. The big "kitchen sink" of 18
+	// widgets (May 2026) was trimmed after the user reported the
+	// dashboard reading as a wall of tiles rather than a workspace.
+	// Removals were grouped: analytics (task-velocity / ai-usage /
+	// ai-briefing) belong on /settings; today-stream subsumes at-a-
+	// glance / calendar-week / top-deadlines / top-goals; today-focus
+	// subsumes one-thing / vision; install + pinned + weekly-review-
+	// nudge + recent-annotations + verse-for-mood + pomodoro + quick-
+	// links were either first-launch-only, legacy, or niche enough to
+	// not earn a permanent slot. Surviving defaults are the daily-loop
+	// surfaces the user actually reaches for every morning. The client
+	// also runs a migration that strips the removed types from
+	// existing saved configs, so this isn't a transition-cost ask.
 	return dashboardConfig{
 		Version: dashboardVersion,
 		Widgets: []dashboardWidget{
 			{ID: "w-greeting", Type: "greeting", Enabled: true},
-			// at-a-glance sits second in the default config so a fresh
-			// install reads "shape of today" right under the greeting.
-			// Existing users keep their saved layout — this only
-			// affects users with no dashboard config on disk yet.
-			{ID: "w-at-a-glance", Type: "at-a-glance", Enabled: true},
-			{ID: "w-now", Type: "now", Enabled: true},
-			{ID: "w-streaks", Type: "streaks", Enabled: true},
-			{ID: "w-scripture", Type: "scripture", Enabled: true},
-			{ID: "w-pinned", Type: "pinned", Enabled: true},
-			{ID: "w-daily", Type: "daily-note", Enabled: true},
-			{ID: "w-habits", Type: "habits", Enabled: true},
-			{ID: "w-pomodoro", Type: "pomodoro", Enabled: false},
+			{ID: "w-tagesordnung", Type: "tagesordnung", Enabled: true},
+			{ID: "w-today-stream", Type: "today-stream", Enabled: true},
+			{ID: "w-today-focus", Type: "today-focus", Enabled: true},
 			{ID: "w-quick-capture", Type: "quick-capture", Enabled: true},
 			{ID: "w-today-tasks", Type: "today-tasks", Enabled: true},
 			{ID: "w-scheduled", Type: "scheduled-today", Enabled: true},
+			{ID: "w-now", Type: "now", Enabled: true},
+			{ID: "w-habits", Type: "habits", Enabled: true},
+			{ID: "w-streaks", Type: "streaks", Enabled: true},
+			{ID: "w-scripture", Type: "scripture", Enabled: true},
+			{ID: "w-daily", Type: "daily-note", Enabled: true},
 			{ID: "w-goals", Type: "goals-progress", Enabled: true},
-			{ID: "w-recent", Type: "recent-notes", Enabled: true},
 			{ID: "w-projects", Type: "projects-active", Enabled: true},
-			{ID: "w-install", Type: "install", Enabled: true},
+			{ID: "w-recent", Type: "recent-notes", Enabled: true},
 			{ID: "w-inbox", Type: "inbox", Enabled: false},
-			{ID: "w-week", Type: "calendar-week", Enabled: false},
 		},
 	}
 }
@@ -87,9 +94,6 @@ var widgetTypeToModuleID = map[string]string{
 	"projects-active": "projects",
 	"habits":          "habit_tracker",
 	"streaks":         "habit_tracker",
-	"top-deadlines":   "deadlines",
-	"top-goals":       "goals",
-	"quick-links":     "hub",
 	"scripture":       "scripture",
 	"today-focus":     "morning",
 	"ventures":        "ventures",

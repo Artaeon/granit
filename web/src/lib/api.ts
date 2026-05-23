@@ -3191,9 +3191,16 @@ export interface VaultStats {
   recentlyEdited: StatEntry[];
 }
 
+// Widget types the client knows about. Removed types (16 of them — see
+// the 2026-05-23 cleanup commit) were dropped from this union AND from
+// the runtime registry. An existing saved config with one of the
+// removed types still parses (the dashboardWidget Type field is a
+// plain string on the server) but the client filters them out via
+// widgetMeta() returning undefined, and the load-time migration in
+// +page.svelte's load() actively strips them from the saved config
+// so the file stays clean over time.
 export type DashboardWidgetType =
   | 'greeting'
-  | 'pinned'
   | 'daily-note'
   | 'quick-capture'
   | 'today-tasks'
@@ -3202,29 +3209,14 @@ export type DashboardWidgetType =
   | 'recent-notes'
   | 'projects-active'
   | 'inbox'
-  | 'calendar-week'
-  | 'install'
   | 'habits'
-  | 'pomodoro'
   | 'now'
   | 'streaks'
   | 'scripture'
-  | 'verse-for-mood'
   | 'today-focus'
-  | 'top-deadlines'
-  | 'vision'
-  | 'one-thing'
   | 'ventures'
   | 'prayer'
-  | 'at-a-glance'
-  | 'top-goals'
-  | 'quick-links'
-  | 'ai-briefing'
-  | 'task-velocity'
-  | 'weekly-review-nudge'
-  | 'ai-usage'
   | 'today-stream'
-  | 'recent-annotations'
   | 'sabbath'
   | 'roots'
   | 'weekly-plan'
