@@ -41,7 +41,7 @@
           <TaskCard task={t} compact onChanged={onChanged} />
         {/each}
         {#if list.length === 0}
-          <div class="text-[11px] text-dim italic text-center py-4">empty</div>
+          <div class="text-[11px] text-dim/60 text-center py-6 border border-dashed border-surface1 rounded">drop tasks here</div>
         {/if}
       </div>
     </section>

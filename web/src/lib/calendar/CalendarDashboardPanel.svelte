@@ -298,7 +298,10 @@
               <span class="text-[11px] text-dim font-mono">{eventCount}</span>
             </div>
             {#if upcomingVisible.length === 0}
-              <p class="text-xs text-dim italic">No events in the next 14 days.</p>
+              <div class="text-xs text-dim italic leading-relaxed">
+                No events in the next 14 days.
+                <a href="/calendar" class="block mt-1 not-italic text-secondary hover:underline">open calendar →</a>
+              </div>
             {:else}
               {@const groups = (() => {
                 const seen = new Set<string>();

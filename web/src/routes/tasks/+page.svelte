@@ -2559,11 +2559,30 @@
           </p>
         </div>
       {:else if filtered.length === 0 && view === 'review'}
-        <div class="text-sm text-dim italic">No tasks completed in the last 7 days. Get to work!</div>
+        <div class="bg-surface0 border border-surface1 rounded-lg p-5 text-center">
+          <p class="text-sm text-text mb-1">No tasks completed in the last 7 days.</p>
+          <p class="text-xs text-dim mb-3">The review tab shows what you've finished — once a few tasks roll through, this is where you'll spot patterns.</p>
+          <button
+            type="button"
+            onclick={() => (view = 'list')}
+            class="text-xs px-3 py-1.5 bg-primary text-on-primary rounded font-medium hover:opacity-90"
+          >Open task list →</button>
+        </div>
       {:else if filtered.length === 0 && view === 'inbox'}
-        <p class="text-sm text-success">Inbox empty 🎉 nothing waiting to be triaged.</p>
+        <div class="bg-surface0 border border-surface1 rounded-lg p-5 text-center">
+          <p class="text-sm text-success mb-1">Inbox empty.</p>
+          <p class="text-xs text-dim mb-3">Nothing waiting to be triaged. Captured tasks land here for sorting before they hit the main list.</p>
+          <button
+            type="button"
+            onclick={() => (view = 'list')}
+            class="text-xs px-3 py-1.5 bg-surface1 border border-surface2 text-text rounded font-medium hover:border-primary"
+          >Open task list →</button>
+        </div>
       {:else if filtered.length === 0 && view === 'stale'}
-        <p class="text-sm text-success">No stale tasks — everything's been touched in the last week.</p>
+        <div class="bg-surface0 border border-surface1 rounded-lg p-5 text-center">
+          <p class="text-sm text-success mb-1">No stale tasks.</p>
+          <p class="text-xs text-dim">Everything's been touched in the last week — nothing rotting in the backlog.</p>
+        </div>
       {:else if filtered.length === 0 && view === 'quickwins'}
         <p class="text-sm text-dim italic">No quick wins available. Add an estimate (e.g. <code class="text-secondary">est:30m</code>) to high-priority tasks.</p>
       {:else if filtered.length === 0 && tasks.length === 0}

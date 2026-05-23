@@ -201,8 +201,13 @@
       <p class="text-sm text-dim">loading…</p>
     {:else if series.length === 0}
       <div class="bg-surface0 border border-surface1 rounded-lg p-6 text-center">
-        <p class="text-sm text-text">No metrics yet.</p>
-        <p class="text-xs text-dim mt-1">Add what you want to track — weight, sleep hours, push-ups, mood — and log values over time.</p>
+        <p class="text-sm text-text mb-1">No metrics yet.</p>
+        <p class="text-xs text-dim mb-4 max-w-sm mx-auto leading-relaxed">Add what you want to track — weight, sleep hours, push-ups, mood — and log values over time.</p>
+        <button
+          type="button"
+          onclick={openCreate}
+          class="text-sm px-4 py-2 bg-primary text-on-primary rounded font-medium hover:opacity-90"
+        >+ Add your first metric</button>
       </div>
     {:else}
       <!-- Card grid: one card per active series. Click selects for

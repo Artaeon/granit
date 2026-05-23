@@ -638,7 +638,13 @@
               {/if}
             </div>
             {#if activeProjects.length === 0 && pausedProjects.length === 0}
-              <p class="text-xs text-dim italic px-2.5">No projects linked yet.</p>
+              <a
+                href={`/projects?venture=${encodeURIComponent(venture.name)}`}
+                class="block px-3 py-4 border border-dashed border-surface1 rounded text-center text-xs text-dim hover:border-primary hover:text-text transition-colors"
+              >
+                No projects linked yet.
+                <span class="block mt-0.5 text-secondary">+ create one for this venture</span>
+              </a>
             {:else}
               <ul class="space-y-1.5">
                 {#each activeProjects.slice(0, 4) as p (p.name)}
@@ -691,7 +697,13 @@
               {/if}
             </div>
             {#if activeGoals.length === 0}
-              <p class="text-xs text-dim italic px-2.5">No goals linked yet.</p>
+              <a
+                href="/goals"
+                class="block px-3 py-4 border border-dashed border-surface1 rounded text-center text-xs text-dim hover:border-primary hover:text-text transition-colors"
+              >
+                No goals linked yet.
+                <span class="block mt-0.5 text-secondary">+ link this venture to a goal</span>
+              </a>
             {:else}
               <ul class="space-y-1.5">
                 {#each activeGoals.slice(0, 4) as g (g.id)}

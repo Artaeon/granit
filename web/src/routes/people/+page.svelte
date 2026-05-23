@@ -437,8 +437,13 @@
       <p class="text-sm text-dim">loading…</p>
     {:else if people.length === 0}
       <div class="bg-surface0 border border-surface1 rounded-lg p-6 text-center">
-        <p class="text-sm text-text">No one tracked yet.</p>
-        <p class="text-xs text-dim mt-1">Add people you want to keep in touch with — set a cadence and granit reminds you when it's been too long.</p>
+        <p class="text-sm text-text mb-1">No one tracked yet.</p>
+        <p class="text-xs text-dim mb-4 max-w-sm mx-auto leading-relaxed">Add people you want to keep in touch with — set a cadence and granit reminds you when it's been too long.</p>
+        <button
+          type="button"
+          onclick={openCreate}
+          class="text-sm px-4 py-2 bg-primary text-on-primary rounded font-medium hover:opacity-90"
+        >+ Add your first person</button>
       </div>
     {:else if filtered.length === 0}
       <p class="text-sm text-dim italic">No matches.</p>

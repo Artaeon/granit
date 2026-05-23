@@ -476,7 +476,15 @@
           {/if}
 
           {#if habits.length === 0 && measurementSeries.length === 0}
-            <p class="text-xs text-dim italic">No habits or measurements yet — set some up in /habits or /measurements.</p>
+            <div class="text-xs text-dim italic leading-relaxed">
+              No habits or measurements yet.
+              <span class="block mt-1 not-italic">
+                Set some up in
+                <a href="/habits" class="text-secondary hover:underline">/habits</a>
+                or
+                <a href="/measurements" class="text-secondary hover:underline">/measurements</a>.
+              </span>
+            </div>
           {/if}
 
           <div class="mt-3 pt-3 border-t border-surface1">
