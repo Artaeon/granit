@@ -53,6 +53,33 @@ export const SABBATH_HIDE_MODULES = [
   'hub'
 ];
 
+// Dashboard widget types hidden during sabbath. Mirror of
+// SABBATH_HIDE_MODULES at widget granularity — the modules list
+// gates the nav and route guards, this list gates the home-page
+// widget grid so a "tasks paused" sabbath doesn't still surface a
+// today-tasks widget right under the greeting. The string literals
+// match the keys in $lib/dashboard/registry.ts.
+//
+// today-stream is hidden because it merges events + tasks +
+// deadlines into one feed and there's no per-row sabbath filter
+// inside it. Surface events via /calendar (route guard exempts
+// it — calendar isn't in SABBATH_HIDE_MODULES) if you need them.
+// today-focus is hidden because the morning routine commitment is
+// a work-day artifact.
+export const SABBATH_HIDE_WIDGET_TYPES: ReadonlySet<string> = new Set([
+  'today-tasks',
+  'scheduled-today',
+  'inbox',
+  'goals-progress',
+  'projects-active',
+  'ventures',
+  'habits',
+  'streaks',
+  'weekly-plan',
+  'today-focus',
+  'today-stream'
+]);
+
 // Rest modules surfaced as a hint when sabbath starts — nav doesn't
 // hide anything from this list even if the user has them disabled
 // in normal config.

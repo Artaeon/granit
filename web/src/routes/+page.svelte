@@ -5,6 +5,7 @@
   import { widgetRegistry, widgetMeta } from '$lib/dashboard/registry';
   import AuthScreen from '$lib/components/AuthScreen.svelte';
   import { toast } from '$lib/components/toast';
+  import { sabbath, SABBATH_HIDE_WIDGET_TYPES } from '$lib/stores/sabbath';
 
   // Widgets the client ships that the server's defaults
   // (internal/serveapi/handlers_dashboard.go) may not include yet for
@@ -341,9 +342,29 @@
   let activeWidgets = $derived.by(() => {
     if (!config) return [];
     return config.widgets
-      .filter((w) => w.enabled && (!focus || FOCUS_ESSENTIALS.has(w.type)))
+      .filter((w) => {
+        if (!w.enabled) return false;
+        if (focus && !FOCUS_ESSENTIALS.has(w.type)) return false;
+        // Sabbath gates the work-shaped widgets in the same spirit as
+        // the route-guard in +layout.svelte and the nav filter in
+        // NavSidebar — without this, hiding /tasks from the sidebar
+        // while leaving the today-tasks widget on the home page is
+        // an inconsistency that defeats the point of sabbath mode.
+        if ($sabbath && SABBATH_HIDE_WIDGET_TYPES.has(w.type)) return false;
+        return true;
+      })
       .map((w) => ({ widget: w, meta: widgetMeta(w.type) }))
       .filter((x): x is { widget: DashboardWidget; meta: NonNullable<ReturnType<typeof widgetMeta>> } => !!x.meta);
+  });
+
+  // Count of widgets currently muted by sabbath — surfaced in a banner
+  // so the user knows why their dashboard looks lighter (and that
+  // they're getting what they asked for, not a render bug).
+  let sabbathHiddenCount = $derived.by(() => {
+    if (!$sabbath || !config) return 0;
+    return config.widgets.filter(
+      (w) => w.enabled && SABBATH_HIDE_WIDGET_TYPES.has(w.type)
+    ).length;
   });
 
   // AI setup hint. Shown until the user has either configured a cloud
