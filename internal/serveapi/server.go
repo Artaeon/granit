@@ -403,6 +403,18 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/vision", s.handleGetVision)
 		r.Put("/api/v1/vision", s.handlePutVision)
 
+		// Visions (plural) — multi-document catalogue at
+		// .granit/visions.json. Hauptvision, Kurzversion, Mission,
+		// Stoicera/Arbeit, Körper/Training, Glaube — plus user-defined
+		// custom keys. Each doc carries its own edit history with
+		// per-edit reasons. Distinct from /vision (singular), which
+		// still owns the values + season focus + notes sidecar.
+		r.Get("/api/v1/visions", s.handleListVisions)
+		r.Post("/api/v1/visions", s.handleCreateVisionDoc)
+		r.Get("/api/v1/visions/{key}", s.handleGetVisionDoc)
+		r.Put("/api/v1/visions/{key}", s.handlePutVisionDoc)
+		r.Post("/api/v1/visions/{key}/pin", s.handlePinVisionDoc)
+
 		// Roots — contemplative diagram of who the user is in Christ.
 		// Single record per vault under .granit/roots.json. Distinct
 		// from vision: vision is "what am I doing", roots is "where am
