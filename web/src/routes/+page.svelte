@@ -21,7 +21,8 @@
   // today-stream, today-focus.
   const NEW_WIDGETS: { id: string; type: import('$lib/api').DashboardWidgetType; afterId: string; enabled: boolean }[] = [
     { id: 'w-tagesordnung', type: 'tagesordnung', afterId: 'w-greeting', enabled: true },
-    { id: 'w-today-stream', type: 'today-stream', afterId: 'w-tagesordnung', enabled: true },
+    { id: 'w-kurzvision', type: 'kurzvision', afterId: 'w-tagesordnung', enabled: true },
+    { id: 'w-today-stream', type: 'today-stream', afterId: 'w-kurzvision', enabled: true },
     { id: 'w-today-focus', type: 'today-focus', afterId: 'w-today-stream', enabled: true }
   ];
 

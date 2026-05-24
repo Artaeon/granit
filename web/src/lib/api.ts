@@ -898,6 +898,29 @@ export interface Vision {
   season_total?: number;
 }
 
+// Visions (plural) — multi-document catalogue. Each Doc is one
+// named vision narrative (Hauptvision / Kurzversion / Mission /
+// Stoicera / Körper / Glaube — plus user-defined keys) with its
+// own edit history. Distinct from Vision (singular) above, which
+// still owns the values list + season focus sidecar.
+export interface VisionHistoryEntry {
+  when: string;          // ISO timestamp of the edit
+  reason: string;        // why the user changed it
+  content: string;       // snapshot of the previous content
+}
+export interface VisionDoc {
+  key: string;
+  label: string;
+  content?: string;
+  pinned?: boolean;      // surfaced on the home page Kurzvision widget
+  updated_at: string;
+  history?: VisionHistoryEntry[];
+}
+export interface VisionsStore {
+  version: number;
+  docs: VisionDoc[];
+}
+
 // Roots — the "rooted in Christ" diagram. Single record per vault.
 // Ring numbers: 1=Identity, 2=Callings, 3=Gifts, 4=Longings. The
 // server sends ring_labels so the client never has to hard-code
@@ -2229,6 +2252,22 @@ export const api = {
   putVision: (v: Partial<Vision>) =>
     req<Vision>('/vision', { method: 'PUT', body: JSON.stringify(v) }),
 
+  // Visions (plural) — multi-document catalogue with per-doc edit
+  // history + reasons. The PUT endpoint requires `reason` in the
+  // body and 400s without it; that's the whole point of the feature
+  // (intentional, reviewable vision edits).
+  listVisions: () => req<VisionsStore>('/visions'),
+  getVisionDoc: (key: string) => req<VisionDoc>(`/visions/${encodeURIComponent(key)}`),
+  putVisionDoc: (key: string, body: { content: string; reason: string }) =>
+    req<VisionDoc>(`/visions/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    }),
+  createVisionDoc: (body: { key: string; label: string; content?: string; reason?: string }) =>
+    req<VisionDoc>('/visions', { method: 'POST', body: JSON.stringify(body) }),
+  pinVisionDoc: (key: string) =>
+    req<VisionsStore>(`/visions/${encodeURIComponent(key)}/pin`, { method: 'POST' }),
+
   // Prayer intentions
   listPrayer: () => req<{ intentions: PrayerIntention[]; total: number }>('/prayer/intentions'),
   createPrayer: (b: Partial<PrayerIntention>) =>
@@ -3221,7 +3260,8 @@ export type DashboardWidgetType =
   | 'roots'
   | 'weekly-plan'
   | 'meals'
-  | 'tagesordnung';
+  | 'tagesordnung'
+  | 'kurzvision';
 
 export interface DashboardWidget {
   id: string;

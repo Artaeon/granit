@@ -50,6 +50,11 @@ export const widgetRegistry: WidgetMeta[] = [
   // Tagesordnung — 16 Leitbegriffe as a quiet anchor beneath the
   // greeting. Single source of truth lives in $lib/principles.
   { type: 'tagesordnung', label: 'Tagesordnung', description: 'Sixteen Leitbegriffe — daily anchor for inner order. Quiet, no tracking, no score.', span: 2, load: lazy(() => import('./widgets/TagesordnungWidget.svelte')) },
+  // Kurzvision — surfaces the currently-pinned vision doc from
+  // the multi-doc /vision catalogue. Read-only on the dashboard;
+  // edits happen on /vision. Hideable like any other widget for
+  // users who don't want vision text on the home page.
+  { type: 'kurzvision', label: 'Kurzvision', description: 'Pinned vision from /vision — daily reminder of what you\'re aiming at', span: 1, load: lazy(() => import('./widgets/KurzvisionWidget.svelte')) },
   // Today stream — the headline "what's happening now and what's
   // next" widget. Merges today's events + scheduled tasks + due
   // tasks + due deadlines into one chronological feed with past

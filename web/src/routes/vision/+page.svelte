@@ -1,40 +1,121 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type Vision } from '$lib/api';
+  import { api, type VisionsStore, type VisionDoc, type Vision } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
+  import { errorMessage } from '$lib/util/errorMessage';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
 
-  // /vision is the user's "above goals" layer — life mission, core
-  // values, current season focus. The page is intentionally calm:
-  // big serif typography for the read view, single-column edit form,
-  // no chrome. The point is for the user to come here and re-read,
-  // not poke at controls.
+  // /vision — multi-document vision catalogue. One tab per doc
+  // (Hauptvision / Kurzversion / Mission / Stoicera / Körper /
+  // Glaube + user-defined custom keys), each with its own edit
+  // history. Edits require a Reason — the whole point of the
+  // feature is making vision changes intentional and reviewable.
+  //
+  // Legacy values + season focus from the old single-record vision
+  // live in a compact sidecar strip at the top of the page; they
+  // don't fit the multi-doc narrative model so they stay as
+  // structured sidecar data the user can edit inline.
 
-  let vision = $state<Vision | null>(null);
+  let store = $state<VisionsStore | null>(null);
+  let legacy = $state<Vision | null>(null);
+  let activeKey = $state('main');
   let loading = $state(false);
 
-  // Edit-mode state. The page renders read view by default and
-  // flips to a form when the user clicks "edit" — staying in
-  // read mode by default keeps the page feeling like a poster
-  // rather than a dashboard.
-  let editing = $state(false);
-  let form = $state({
-    mission: '',
-    valuesText: '', // newline- or comma-separated, parsed on submit
-    season_focus: '',
-    notes: ''
-  });
+  // Per-tab UI mode: read | edit | history. Tracked per-key so
+  // switching tabs doesn't reset edit-in-progress on another tab.
+  type Mode = 'read' | 'edit' | 'history';
+  let mode = $state<Record<string, Mode>>({});
+  function setMode(key: string, m: Mode) {
+    mode = { ...mode, [key]: m };
+  }
+  function getMode(key: string): Mode {
+    return mode[key] ?? 'read';
+  }
+
+  // Edit-form state. Bound to whichever tab is currently in edit
+  // mode. Reset on entry/cancel.
+  let editContent = $state('');
+  let editReason = $state('');
+  let saving = $state(false);
+
+  // "Add custom domain" dialog state. Simple inline form, not a
+  // modal — appears below the tab strip when toggled.
+  let creatingCustom = $state(false);
+  let newKey = $state('');
+  let newLabel = $state('');
+
+  // "Add new vision domain" toggles the creator panel below the tabs.
+  function startCreate() {
+    creatingCustom = true;
+    newKey = '';
+    newLabel = '';
+  }
+  function cancelCreate() {
+    creatingCustom = false;
+  }
+  async function submitCreate() {
+    const key = newKey.trim();
+    const label = newLabel.trim();
+    if (!key || !label) {
+      toast.error('key and label required');
+      return;
+    }
+    try {
+      const created = await api.createVisionDoc({ key, label });
+      toast.success(`added "${label}"`);
+      creatingCustom = false;
+      await load();
+      activeKey = created.key;
+    } catch (e) {
+      toast.error('failed: ' + errorMessage(e));
+    }
+  }
+
+  // Sidecar (legacy) edit state. Toggled separately from per-doc edit.
+  let editingLegacy = $state(false);
+  let legacyForm = $state({ valuesText: '', season_focus: '' });
+  function startLegacyEdit() {
+    if (!legacy) return;
+    legacyForm = {
+      valuesText: (legacy.values ?? []).join('\n'),
+      season_focus: legacy.season_focus ?? ''
+    };
+    editingLegacy = true;
+  }
+  async function saveLegacy() {
+    const values = legacyForm.valuesText.split(/[\n,]+/).map((v) => v.trim()).filter(Boolean);
+    try {
+      const next = await api.putVision({
+        ...legacy,
+        values,
+        season_focus: legacyForm.season_focus.trim()
+      });
+      legacy = next;
+      editingLegacy = false;
+      toast.success('values + season saved');
+    } catch (e) {
+      toast.error('failed: ' + errorMessage(e));
+    }
+  }
 
   async function load() {
     if (!$auth) return;
     loading = true;
     try {
-      vision = await api.getVision();
+      const [s, l] = await Promise.all([api.listVisions(), api.getVision()]);
+      store = s;
+      legacy = l;
+      // If our active tab no longer exists (deleted? renamed?), fall
+      // back to the first available doc — never render against a
+      // missing key.
+      if (!store.docs.find((d) => d.key === activeKey) && store.docs.length > 0) {
+        activeKey = store.docs[0].key;
+      }
     } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
+      toast.error('failed: ' + errorMessage(e));
     } finally {
       loading = false;
     }
@@ -43,308 +124,346 @@
   onMount(() => {
     load();
     return onWsEvent((ev) => {
-      if (ev.type === 'state.changed' && ev.path === '.granit/vision.json') load();
+      if (ev.type === 'state.changed' && (ev.path === '.granit/visions.json' || ev.path === '.granit/vision.json')) {
+        load();
+      }
     });
   });
 
-  function startEdit() {
-    if (!vision) return;
-    form = {
-      mission: vision.mission ?? '',
-      // Show one value per line — easier to scan + reorder than a
-      // single comma-separated input.
-      valuesText: (vision.values ?? []).join('\n'),
-      season_focus: vision.season_focus ?? '',
-      notes: vision.notes ?? ''
-    };
-    editing = true;
-  }
-  function cancelEdit() {
-    editing = false;
-  }
-  async function saveEdit() {
-    // Parse values: split on newline OR comma, trim, drop empties.
-    // Both are common ways users write a short list and we don't
-    // need to be strict.
-    const values = form.valuesText
-      .split(/[\n,]+/)
-      .map((v) => v.trim())
-      .filter(Boolean);
-    try {
-      const next = await api.putVision({
-        mission: form.mission.trim(),
-        values,
-        season_focus: form.season_focus.trim(),
-        notes: form.notes.trim(),
-        // Don't supply season_started_at — server stamps it when
-        // the focus changes from prev. Sending an empty string
-        // would force-clear it, which is the wrong default.
-      });
-      vision = next;
-      editing = false;
-      toast.success('vision saved');
-    } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-
-  // Helper: renders the season-day pill text. Returns empty when
-  // the season hasn't started — the pill simply doesn't render.
-  function seasonPill(v: Vision): string {
-    if (!v.season_day || !v.season_total) return '';
-    const remaining = v.season_total - v.season_day;
-    if (remaining === 0) return `Day ${v.season_day} of ${v.season_total} — last day`;
-    return `Day ${v.season_day} of ${v.season_total} · ${remaining} days left`;
-  }
-
-  let isEmpty = $derived(
-    !vision ||
-      ((!vision.mission || vision.mission === '') &&
-        !vision.season_focus &&
-        (!vision.values || vision.values.length === 0))
+  let activeDoc = $derived<VisionDoc | null>(
+    store?.docs.find((d) => d.key === activeKey) ?? null
   );
 
-  // ── AI: harden the vision ────────────────────────────────────────
-  // The vision is the page the user re-reads every morning, but
-  // most first drafts are too vague to actually steer behaviour
-  // ("Live a meaningful life" — what does that even mean on a
-  // Tuesday at 3pm?). The Harden button fires /chat with the
-  // current state and asks for a critique + sharpened
-  // alternatives. Goes through the audit-gated chat path so it
-  // shows in the settings AI usage rollup like every other call.
-  let aiBusy = $state(false);
-  let aiResponse = $state('');
-  let aiError = $state('');
-  let aiAbort: AbortController | null = null;
-
-  async function hardenVision() {
-    if (!vision || aiBusy) return;
-    aiBusy = true;
-    aiError = '';
-    aiResponse = '';
-    aiAbort = new AbortController();
-    const ctx = [
-      vision.mission ? `Mission: ${vision.mission}` : 'Mission: (not set)',
-      vision.values && vision.values.length > 0
-        ? `Values: ${vision.values.join(', ')}`
-        : 'Values: (none set)',
-      vision.season_focus ? `Season focus: ${vision.season_focus}` : 'Season focus: (not set)',
-      vision.notes ? `Notes: ${vision.notes}` : ''
-    ].filter(Boolean).join('\n');
-    const userMessage =
-      "Critique and sharpen this user's life vision. " +
-      'They re-read this every morning before drilling into tasks, so the language has to be concrete enough to actually steer behaviour. ' +
-      'Format your reply with three sections:\n\n' +
-      '## Where it\'s vague\n' +
-      'Point out lines that could mean anything. Be specific — quote the phrase.\n\n' +
-      '## Sharpened versions\n' +
-      'Rewrite the weakest 1-2 lines into versions a stranger could act on without further interpretation. ' +
-      'Show the BEFORE in italic and the AFTER in bold so the user can compare.\n\n' +
-      '## Questions to sit with\n' +
-      "2-3 questions whose honest answers would make the next iteration of this vision better. Don't preach; ask.\n\n" +
-      'Vision context:\n\n' + ctx;
+  function startEdit(d: VisionDoc) {
+    editContent = d.content ?? '';
+    editReason = '';
+    setMode(d.key, 'edit');
+  }
+  function cancelEdit(d: VisionDoc) {
+    editContent = '';
+    editReason = '';
+    setMode(d.key, 'read');
+  }
+  async function saveEdit(d: VisionDoc) {
+    const reason = editReason.trim();
+    if (!reason) {
+      toast.error('reason required — say why you\'re changing this');
+      return;
+    }
+    saving = true;
     try {
-      await api.chatStream(
-        [{ role: 'user', content: userMessage }],
-        undefined,
-        {
-          onChunk: (c) => { aiResponse += c; },
-          onError: (err) => { aiError = err.message; }
-        },
-        aiAbort.signal
-      );
+      await api.putVisionDoc(d.key, { content: editContent, reason });
+      toast.success('saved');
+      setMode(d.key, 'read');
+      await load();
+    } catch (e) {
+      toast.error('failed: ' + errorMessage(e));
     } finally {
-      aiBusy = false;
-      aiAbort = null;
+      saving = false;
     }
   }
-  function cancelAI() { aiAbort?.abort(); }
+
+  async function togglePin(d: VisionDoc) {
+    try {
+      if (d.pinned) {
+        // Already pinned — clicking again would unpin. Backend
+        // currently only supports pin (single-slot semantics).
+        // Pin a different doc to move the spotlight.
+        toast.info('already pinned to today — pin another doc to move it');
+        return;
+      }
+      await api.pinVisionDoc(d.key);
+      toast.success(`"${d.label}" is now on the today view`);
+      await load();
+    } catch (e) {
+      toast.error('failed: ' + errorMessage(e));
+    }
+  }
+
+  async function restoreHistory(d: VisionDoc, idx: number) {
+    const entry = d.history?.[idx];
+    if (!entry) return;
+    if (!confirm(`Replace "${d.label}" with the version from ${new Date(entry.when).toLocaleString()}?\n\nThe current text will be moved into history.`)) return;
+    try {
+      await api.putVisionDoc(d.key, {
+        content: entry.content,
+        reason: `restored from ${new Date(entry.when).toLocaleDateString()}`
+      });
+      toast.success('restored');
+      setMode(d.key, 'read');
+      await load();
+    } catch (e) {
+      toast.error('failed: ' + errorMessage(e));
+    }
+  }
+
+  function fmtDate(iso: string): string {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      return iso;
+    }
+  }
 </script>
 
+<svelte:head><title>Vision · granit</title></svelte:head>
+
 <div class="h-full overflow-y-auto">
-  <div class="max-w-2xl mx-auto p-6 sm:p-10 lg:p-14">
-    <PageHeader title="Vision" subtitle="Life mission, core values, season focus — the layer above goals" />
+  <div class="max-w-4xl mx-auto p-3 sm:p-4 lg:p-6">
+    <PageHeader title="Vision" />
 
-    {#if loading && !vision}
-      <p class="text-sm text-dim">loading…</p>
-    {:else if isEmpty && !editing}
-      <!-- First-time / empty state. Single CTA. The copy is the
-           page's invitation to actually do the exercise — most
-           users won't have done this before, and a pile of empty
-           form fields is the wrong invite. -->
-      <div class="bg-surface0 border border-surface1 rounded-lg p-8 text-center">
-        <p class="text-base text-text">No vision set yet.</p>
-        <p class="text-sm text-dim mt-2 max-w-md mx-auto">
-          One sentence about why you're here. Three to five words for what you stand for. One phrase for what this season is about.
-          You'll re-read it every morning before drilling into tasks.
-        </p>
-        <button
-          onclick={startEdit}
-          class="mt-5 px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
-        >Set your vision →</button>
-      </div>
-    {:else if editing}
-      <!-- Edit form. Generous spacing, big inputs — discourages
-           treating this like a quick form-fill. -->
-      <form onsubmit={(e) => { e.preventDefault(); saveEdit(); }} class="space-y-4">
-        <section>
-          <label for="mission" class="block text-xs uppercase tracking-wider text-dim mb-2">Life mission</label>
-          <textarea
-            id="mission"
-            bind:value={form.mission}
-            rows="2"
-            placeholder="One sentence about why you're here."
-            class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-base text-text placeholder-dim focus:outline-none focus:border-primary resize-y font-serif"
-          ></textarea>
-        </section>
+    {#if loading && !store}
+      <div class="text-sm text-dim">loading…</div>
+    {:else if !$auth}
+      <div class="text-sm text-dim">not authorized</div>
+    {:else if store}
 
-        <section>
-          <label for="values" class="block text-xs uppercase tracking-wider text-dim mb-2">Core values</label>
-          <textarea
-            id="values"
-            bind:value={form.valuesText}
-            rows="5"
-            placeholder="One per line, e.g.&#10;Faith&#10;Family&#10;Craft&#10;Honesty"
-            class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y font-mono"
-          ></textarea>
-          <p class="text-[11px] text-dim mt-1">3-5 words or short phrases. Newlines or commas — both work.</p>
-        </section>
-
-        <section>
-          <label for="season" class="block text-xs uppercase tracking-wider text-dim mb-2">Season focus</label>
-          <input
-            id="season"
-            bind:value={form.season_focus}
-            placeholder="One phrase for the next 90 days."
-            class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-base text-text placeholder-dim focus:outline-none focus:border-primary"
-          />
-          <p class="text-[11px] text-dim mt-1">
-            {#if vision?.season_started_at && vision.season_focus === form.season_focus}
-              Started {vision.season_started_at} · changing this resets the day counter.
-            {:else}
-              Changing this stamps today as day 1 of the new 90-day season.
-            {/if}
-          </p>
-        </section>
-
-        <section>
-          <label for="notes" class="block text-xs uppercase tracking-wider text-dim mb-2">Notes</label>
-          <textarea
-            id="notes"
-            bind:value={form.notes}
-            rows="3"
-            placeholder="Optional context — why these values, why this season, what triggered the change…"
-            class="w-full bg-surface0 border border-surface1 rounded px-3 py-2 text-sm text-text placeholder-dim focus:outline-none focus:border-primary resize-y"
-          ></textarea>
-        </section>
-
-        <div class="flex gap-2 justify-end pt-2">
-          <button type="button" onclick={cancelEdit} class="text-sm px-4 py-2 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-          <button type="submit" class="text-sm px-4 py-2 rounded bg-primary text-on-primary font-medium hover:opacity-90">Save vision</button>
-        </div>
-      </form>
-    {:else if vision}
-      <!-- Read view. Big serif typography, generous spacing — meant
-           to be re-read, not skimmed past. -->
-      <article class="space-y-10">
-        {#if vision.mission}
-          <section>
-            <p class="text-xs uppercase tracking-wider text-dim mb-2">Mission</p>
-            <p class="text-xl sm:text-2xl text-text leading-relaxed font-serif italic">
-              {vision.mission}
-            </p>
-          </section>
-        {/if}
-
-        {#if vision.values && vision.values.length > 0}
-          <section>
-            <p class="text-xs uppercase tracking-wider text-dim mb-3">Values</p>
-            <ul class="flex flex-wrap gap-2">
-              {#each vision.values as v}
-                <li class="px-3 py-1.5 bg-surface0 border border-surface1 rounded-full text-sm text-text font-medium">{v}</li>
-              {/each}
-            </ul>
-          </section>
-        {/if}
-
-        {#if vision.season_focus}
-          <section>
-            <p class="text-xs uppercase tracking-wider text-dim mb-2">This season</p>
-            <p class="text-lg sm:text-xl text-text leading-relaxed font-serif">
-              {vision.season_focus}
-            </p>
-            {#if seasonPill(vision)}
-              <p class="text-[11px] text-dim mt-2">{seasonPill(vision)}</p>
-              <!-- Visual progress bar mirroring the day-counter so
-                   the season's runway feels concrete. -->
-              {#if vision.season_total}
-                {@const pct = Math.min(100, Math.round(((vision.season_day ?? 0) / vision.season_total) * 100))}
-                <div class="h-1 mt-1.5 bg-mantle rounded-full overflow-hidden max-w-md">
-                  <div class="h-full bg-primary transition-all" style="width: {pct}%"></div>
-                </div>
-              {/if}
-            {/if}
-          </section>
-        {/if}
-
-        {#if vision.notes}
-          <section>
-            <p class="text-xs uppercase tracking-wider text-dim mb-2">Notes</p>
-            <p class="text-sm text-subtext leading-relaxed whitespace-pre-line">{vision.notes}</p>
-          </section>
-        {/if}
-
-        <!-- AI: Harden the vision. The button fires /chat with a
-             structured prompt asking for a critique + sharpened
-             alternatives. Streaming so tokens arrive progressively
-             on slow local LLMs; cancel button while busy. The
-             response stays in the page until cleared so the user
-             can edit alongside it without re-running. -->
-        <section class="pt-4 border-t border-surface1">
-          <div class="flex items-baseline gap-2 mb-2">
-            <h2 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">AI · Harden this vision</h2>
-            {#if aiBusy}
-              <button onclick={cancelAI} class="text-[11px] text-warning hover:underline">cancel</button>
-            {:else if aiResponse}
-              <button onclick={() => { aiResponse = ''; aiError = ''; }} class="text-[11px] text-dim hover:text-error">clear</button>
-            {/if}
-            <button
-              onclick={() => void hardenVision()}
-              disabled={aiBusy || isEmpty}
-              class="text-[11px] px-2 py-1 rounded bg-surface1 border border-surface2 text-primary hover:border-primary disabled:opacity-50"
-              title="Ask the AI to critique your vision and suggest sharper alternatives"
-            >{aiBusy ? '✨ thinking…' : aiResponse ? '✨ regenerate' : '✨ Harden'}</button>
-          </div>
-          {#if aiError}
-            <div class="text-xs text-error border border-error bg-surface0 rounded px-3 py-2">{aiError}</div>
-          {:else if aiResponse || aiBusy}
-            <div class="bg-surface0 border border-surface1 rounded-lg px-4 py-3 text-sm text-text">
-              <div class="prose prose-sm max-w-none">
-                <MarkdownRenderer body={aiResponse || '_…_'} />
+      <!-- Sidecar: legacy values + season focus. Compact, editable
+           inline. Kept above the tabs because they're stable
+           reference data (values change yearly, season changes ~90
+           days) — read them first, then go into the narrative tabs. -->
+      {#if legacy}
+        <section class="mb-5 bg-mantle border border-surface1 rounded-lg p-3 sm:p-4">
+          {#if editingLegacy}
+            <div class="space-y-3">
+              <div>
+                <label for="leg-values" class="block text-[11px] uppercase tracking-wider text-dim font-medium mb-1">Werte (one per line)</label>
+                <textarea
+                  id="leg-values"
+                  bind:value={legacyForm.valuesText}
+                  rows="4"
+                  class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary font-mono"
+                  placeholder="Treue&#10;Wahrheit&#10;Demut"
+                ></textarea>
+              </div>
+              <div>
+                <label for="leg-season" class="block text-[11px] uppercase tracking-wider text-dim font-medium mb-1">Season-Focus (this 90 days)</label>
+                <input
+                  id="leg-season"
+                  type="text"
+                  bind:value={legacyForm.season_focus}
+                  class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+                  placeholder="e.g. build the daily-loop foundation"
+                />
+              </div>
+              <div class="flex gap-2 justify-end">
+                <button type="button" onclick={() => (editingLegacy = false)} class="px-3 py-1.5 text-xs text-subtext hover:text-text">cancel</button>
+                <button type="button" onclick={saveLegacy} class="px-3 py-1.5 text-xs bg-primary text-on-primary rounded font-medium">save</button>
               </div>
             </div>
-            <p class="text-[10px] text-dim italic mt-2">
-              Suggestions from your configured AI. Take what sharpens, ignore what doesn't.
-            </p>
           {:else}
-            <p class="text-xs text-dim leading-relaxed">
-              Re-read it every morning, sharpen it every season. Tap Harden to get a critique
-              of vague phrasing + sharpened alternatives + questions to sit with.
-            </p>
+            <div class="flex items-start gap-3">
+              <div class="flex-1 min-w-0 space-y-1.5">
+                {#if (legacy.values ?? []).length > 0}
+                  <div class="flex flex-wrap items-baseline gap-1.5">
+                    <span class="text-[11px] uppercase tracking-wider text-dim mr-1">Werte</span>
+                    {#each legacy.values ?? [] as v}
+                      <span class="text-sm text-text">{v}</span>
+                      <span class="text-dim/50">·</span>
+                    {/each}
+                  </div>
+                {/if}
+                {#if legacy.season_focus}
+                  <div class="flex items-baseline gap-2">
+                    <span class="text-[11px] uppercase tracking-wider text-dim mr-1">Season</span>
+                    <span class="text-sm text-text">{legacy.season_focus}</span>
+                    {#if legacy.season_day && legacy.season_total}
+                      <span class="text-xs text-dim">Day {legacy.season_day} of {legacy.season_total}</span>
+                    {/if}
+                  </div>
+                {/if}
+                {#if (legacy.values ?? []).length === 0 && !legacy.season_focus}
+                  <p class="text-xs text-dim italic">No values or season focus set yet.</p>
+                {/if}
+              </div>
+              <button type="button" onclick={startLegacyEdit} class="text-xs text-secondary hover:underline flex-shrink-0">edit</button>
+            </div>
           {/if}
         </section>
+      {/if}
 
-        <div class="pt-4 border-t border-surface1 flex items-center justify-between">
-          <button onclick={startEdit} class="text-xs text-dim hover:text-text">edit</button>
-          {#if vision.updated_at}
-            <span class="text-[11px] text-dim">last updated {new Date(vision.updated_at).toLocaleDateString()}</span>
+      <!-- Tab strip: one tab per vision doc, plus a "+ new" trigger.
+           Pinned doc shows a 📌 next to its label so the user can
+           see at a glance which one surfaces on today. -->
+      <div class="border-b border-surface1 mb-4 flex flex-wrap items-end gap-1">
+        {#each store.docs as d (d.key)}
+          <button
+            type="button"
+            onclick={() => (activeKey = d.key)}
+            class="px-3 py-1.5 text-sm border-b-2 -mb-px transition-colors
+              {activeKey === d.key
+                ? 'border-primary text-text font-medium'
+                : 'border-transparent text-dim hover:text-text'}"
+            title={d.pinned ? 'Currently pinned to the today view' : ''}
+          >
+            {d.label}
+            {#if d.pinned}<span class="ml-1 text-success" aria-label="pinned to today">📌</span>{/if}
+          </button>
+        {/each}
+        <span class="flex-1"></span>
+        <button
+          type="button"
+          onclick={startCreate}
+          class="px-3 py-1.5 text-xs text-secondary hover:underline"
+        >+ neuer Bereich</button>
+      </div>
+
+      <!-- Create-new-doc inline form. Sits between tabs and active
+           panel so creating a domain leaves the user looking right
+           at the spot it'll land. -->
+      {#if creatingCustom}
+        <section class="mb-4 bg-mantle border border-surface1 rounded-lg p-3 sm:p-4 space-y-3">
+          <h3 class="text-sm font-medium text-text">Neuen Vision-Bereich anlegen</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="new-key" class="block text-[11px] uppercase tracking-wider text-dim font-medium mb-1">Key (URL-safe)</label>
+              <input
+                id="new-key"
+                type="text"
+                bind:value={newKey}
+                placeholder="family"
+                class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary font-mono"
+              />
+            </div>
+            <div>
+              <label for="new-label" class="block text-[11px] uppercase tracking-wider text-dim font-medium mb-1">Label (display name)</label>
+              <input
+                id="new-label"
+                type="text"
+                bind:value={newLabel}
+                placeholder="Familie"
+                class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+              />
+            </div>
+          </div>
+          <div class="flex gap-2 justify-end">
+            <button type="button" onclick={cancelCreate} class="px-3 py-1.5 text-xs text-subtext hover:text-text">cancel</button>
+            <button type="button" onclick={submitCreate} class="px-3 py-1.5 text-xs bg-primary text-on-primary rounded font-medium">create</button>
+          </div>
+        </section>
+      {/if}
+
+      <!-- Active tab panel: read / edit / history per-doc mode. -->
+      {#if activeDoc}
+        {@const m = getMode(activeDoc.key)}
+        <section class="bg-mantle border border-surface1 rounded-lg p-4 sm:p-5">
+          <header class="flex items-baseline gap-3 mb-4 pb-3 border-b border-surface1">
+            <h2 class="text-sm uppercase tracking-wider text-dim font-medium flex-1">
+              {activeDoc.label}
+            </h2>
+            {#if m === 'read'}
+              <button type="button" onclick={() => startEdit(activeDoc)} class="text-xs text-secondary hover:underline">edit</button>
+              <button type="button" onclick={() => togglePin(activeDoc)} class="text-xs text-secondary hover:underline" disabled={activeDoc.pinned}>
+                {activeDoc.pinned ? 'pinned' : 'pin to today'}
+              </button>
+              {#if (activeDoc.history?.length ?? 0) > 0}
+                <button type="button" onclick={() => setMode(activeDoc.key, 'history')} class="text-xs text-secondary hover:underline">
+                  history ({activeDoc.history?.length})
+                </button>
+              {/if}
+            {:else}
+              <button type="button" onclick={() => setMode(activeDoc.key, 'read')} class="text-xs text-subtext hover:text-text">back</button>
+            {/if}
+          </header>
+
+          {#if m === 'edit'}
+            <div class="space-y-4">
+              <div>
+                <label for="content-area" class="block text-[11px] uppercase tracking-wider text-dim font-medium mb-1">Content (markdown)</label>
+                <textarea
+                  id="content-area"
+                  bind:value={editContent}
+                  rows="14"
+                  class="w-full px-3 py-3 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary font-mono leading-relaxed"
+                  placeholder={`Schreibe deine ${activeDoc.label.toLowerCase()}…`}
+                ></textarea>
+              </div>
+              <div>
+                <label for="reason-area" class="block text-[11px] uppercase tracking-wider text-dim font-medium mb-1">
+                  Warum änderst du das? <span class="text-error">*</span>
+                </label>
+                <textarea
+                  id="reason-area"
+                  bind:value={editReason}
+                  rows="2"
+                  class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+                  placeholder="e.g. clarified my mission after the weekly review"
+                ></textarea>
+                <p class="text-[11px] text-dim mt-1">Erscheint in der Historie. Pflichtfeld — der Sinn der Funktion.</p>
+              </div>
+              <div class="flex gap-2 justify-end">
+                <button type="button" onclick={() => cancelEdit(activeDoc)} class="px-3 py-1.5 text-xs text-subtext hover:text-text">cancel</button>
+                <button
+                  type="button"
+                  onclick={() => saveEdit(activeDoc)}
+                  disabled={saving || !editReason.trim()}
+                  class="px-4 py-1.5 text-sm bg-primary text-on-primary rounded font-medium disabled:opacity-50"
+                >{saving ? 'saving…' : 'save'}</button>
+              </div>
+            </div>
+          {:else if m === 'history'}
+            <div class="space-y-3">
+              <p class="text-xs text-dim">Newest first. Click "restore" to swap a past version back into the live doc (current text becomes the next history entry).</p>
+              {#each activeDoc.history ?? [] as h, idx (h.when + idx)}
+                <details class="border border-surface1 rounded">
+                  <summary class="flex items-baseline gap-2 px-3 py-2 cursor-pointer hover:bg-surface0">
+                    <span class="text-xs text-dim font-mono tabular-nums">{fmtDate(h.when)}</span>
+                    <span class="flex-1 text-sm text-text truncate">{h.reason || '(no reason recorded)'}</span>
+                    <button
+                      type="button"
+                      onclick={(e) => { e.preventDefault(); e.stopPropagation(); restoreHistory(activeDoc, idx); }}
+                      class="text-xs text-warning hover:underline flex-shrink-0"
+                    >restore</button>
+                  </summary>
+                  <div class="px-3 py-3 border-t border-surface1 prose-vision">
+                    {#if h.content}
+                      <MarkdownRenderer body={h.content} />
+                    {:else}
+                      <p class="text-xs text-dim italic">(previous version was empty)</p>
+                    {/if}
+                  </div>
+                </details>
+              {/each}
+            </div>
+          {:else}
+            <!-- read mode -->
+            {#if activeDoc.content}
+              <div class="prose-vision">
+                <MarkdownRenderer body={activeDoc.content} />
+              </div>
+              <p class="mt-4 pt-3 border-t border-surface1 text-[11px] text-dim">
+                Updated {fmtDate(activeDoc.updated_at)}
+              </p>
+            {:else}
+              <div class="py-8 text-center">
+                <p class="text-sm text-dim mb-3">No content yet for <em>{activeDoc.label}</em>.</p>
+                <button
+                  type="button"
+                  onclick={() => startEdit(activeDoc)}
+                  class="px-4 py-2 text-sm bg-primary text-on-primary rounded font-medium"
+                >Start writing</button>
+              </div>
+            {/if}
           {/if}
-        </div>
-      </article>
+        </section>
+      {/if}
     {/if}
-
-    <p class="text-[11px] text-dim italic mt-10">
-      Synced via <code>.granit/vision.json</code> — same file the granit TUI reads.
-    </p>
   </div>
 </div>
+
+<style>
+  /* Slightly larger leading + serif-style body for the vision read
+     view. Visions are documents the user re-reads, not lists to scan. */
+  :global(.prose-vision) {
+    line-height: 1.7;
+    font-size: 0.95rem;
+  }
+  :global(.prose-vision p) {
+    margin: 0 0 0.85em 0;
+  }
+  :global(.prose-vision h1, .prose-vision h2, .prose-vision h3) {
+    margin-top: 1em;
+    margin-bottom: 0.4em;
+  }
+</style>
