@@ -1,17 +1,22 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, type Goal, type Project, type ProjectGoal, type Task } from '$lib/api';
+  import { api, type Goal, type Project, type ProjectGoal, type Task, type VisionDoc } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import GoalEditor from './GoalEditor.svelte';
   import ProjectNotesTab from './ProjectNotesTab.svelte';
   import ProjectStarterPack from './ProjectStarterPack.svelte';
   import TaskRow from '$lib/components/TaskRow.svelte';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
+  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { rafThrottle } from '$lib/util/streamThrottle';
   import { isoWeekString, startOfIsoWeek } from '$lib/util/isoWeek';
   import { fmtDateISO as ymd } from '$lib/util/date';
   import { focusOnMount } from '$lib/util/focusOnMount';
+  import { slugifyTitle } from '$lib/util/slug';
+  import { goto } from '$app/navigation';
+  import { onWsEvent } from '$lib/ws';
+  import { errorMessage } from '$lib/util/errorMessage';
 
   let { project, onClose, onUpdated, onDeleted, onOpenDashboard }: {
     project: Project;
@@ -33,6 +38,47 @@
   let nextActionBuf = $state('');
   let editingName = $state(false);
   let nameBuf = $state('');
+
+  // Per-project vision — read-only here; edits happen on /vision (the
+  // central multi-doc editor with history + reasons). We use a
+  // 'project:<slug>' key convention so the vision lives in the same
+  // catalogue as Hauptvision/Mission/etc., not duplicated into the
+  // project record. Slug stays stable across project renames.
+  let projectVision = $state<VisionDoc | null>(null);
+  let projectVisionLoading = $state(false);
+  let projectVisionCreating = $state(false);
+  let projectVisionKey = $derived(`project:${slugifyTitle(project.name)}`);
+
+  async function loadProjectVision() {
+    projectVisionLoading = true;
+    try {
+      projectVision = await api.getVisionDoc(projectVisionKey);
+    } catch {
+      // 404 = no vision yet, render the "anlegen" CTA. Don't toast
+      // — this is the normal empty state, not an error.
+      projectVision = null;
+    } finally {
+      projectVisionLoading = false;
+    }
+  }
+
+  async function createProjectVision() {
+    projectVisionCreating = true;
+    try {
+      await api.createVisionDoc({
+        key: projectVisionKey,
+        label: project.name
+      });
+      // Jump straight to /vision opened at this tab so the user can
+      // start writing. The vision page reads ?tab=key on mount and
+      // activates the matching doc.
+      goto(`/vision?tab=${encodeURIComponent(projectVisionKey)}`);
+    } catch (e) {
+      toast.error('failed: ' + errorMessage(e));
+    } finally {
+      projectVisionCreating = false;
+    }
+  }
 
   let projectTasks = $state<Task[]>([]);
   let loadingTasks = $state(false);
@@ -79,6 +125,18 @@
     void project.name;
     loadTasks();
     loadLinkedGoals();
+    void loadProjectVision();
+  });
+
+  // Reload the project's vision when the central catalogue changes
+  // (user edited the vision on /vision and we're showing its
+  // compact read view here).
+  onMount(() => {
+    return onWsEvent((ev) => {
+      if (ev.type === 'state.changed' && ev.path === '.granit/visions.json') {
+        void loadProjectVision();
+      }
+    });
   });
 
   async function patch(p: Partial<Project>): Promise<boolean> {
@@ -950,6 +1008,45 @@
             onclick={() => { descBuf = project.description ?? ''; editingDescription = true; }}
             class="w-full text-left px-3 py-2 text-sm rounded hover:bg-surface0 {project.description ? 'text-text' : 'text-dim italic'}"
           >{project.description || 'click to add a description…'}</button>
+        {/if}
+      </section>
+
+      <!-- Vision — per-project narrative. Read view only here; edits
+           happen on /vision (the central editor with history + edit
+           reasons). The CTA on the empty state creates an empty
+           vision doc with key 'project:<slug>' and jumps to /vision
+           ?tab=… so the user can write it. -->
+      <section>
+        <div class="flex items-baseline gap-2 mb-1.5">
+          <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Vision</h3>
+          {#if projectVision && (projectVision.content?.trim() ?? '') !== ''}
+            <a
+              href={`/vision?tab=${encodeURIComponent(projectVisionKey)}`}
+              class="text-[11px] text-secondary hover:underline"
+              title="Open this project's vision in /vision for editing + history"
+            >edit →</a>
+          {/if}
+        </div>
+
+        {#if projectVisionLoading}
+          <div class="h-3 bg-surface1 rounded animate-pulse w-3/4"></div>
+        {:else if projectVision && (projectVision.content?.trim() ?? '') !== ''}
+          <div class="px-3 py-2 bg-surface0 rounded text-sm text-text project-vision-body">
+            <MarkdownRenderer body={projectVision.content ?? ''} />
+          </div>
+        {:else if projectVision}
+          <!-- Doc exists but content is empty — direct the user to fill it -->
+          <a
+            href={`/vision?tab=${encodeURIComponent(projectVisionKey)}`}
+            class="text-xs text-secondary hover:underline"
+          >Vision für dieses Projekt schreiben →</a>
+        {:else}
+          <button
+            type="button"
+            onclick={createProjectVision}
+            disabled={projectVisionCreating}
+            class="text-xs text-secondary hover:underline disabled:opacity-50"
+          >+ Vision für dieses Projekt anlegen</button>
         {/if}
       </section>
 

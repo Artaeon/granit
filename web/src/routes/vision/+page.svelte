@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
   import { auth } from '$lib/stores/auth';
   import { api, type VisionsStore, type VisionDoc, type Vision } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
@@ -108,10 +109,15 @@
       const [s, l] = await Promise.all([api.listVisions(), api.getVision()]);
       store = s;
       legacy = l;
-      // If our active tab no longer exists (deleted? renamed?), fall
-      // back to the first available doc — never render against a
-      // missing key.
-      if (!store.docs.find((d) => d.key === activeKey) && store.docs.length > 0) {
+      // ?tab= URL param wins for the initial activation — used by
+      // ProjectDetail's "Vision anlegen" CTA to jump straight to the
+      // matching tab. If the param points at an unknown key (stale
+      // link / deleted doc) we fall through to the existing activeKey,
+      // and then to the first doc if THAT is also unknown.
+      const wantedTab = $page.url.searchParams.get('tab');
+      if (wantedTab && store.docs.find((d) => d.key === wantedTab)) {
+        activeKey = wantedTab;
+      } else if (!store.docs.find((d) => d.key === activeKey) && store.docs.length > 0) {
         activeKey = store.docs[0].key;
       }
     } catch (e) {
@@ -133,6 +139,14 @@
   let activeDoc = $derived<VisionDoc | null>(
     store?.docs.find((d) => d.key === activeKey) ?? null
   );
+
+  // Split the catalogue into "top-level" docs (Hauptvision / Mission /
+  // Stoicera / etc.) and "project" docs (key starts with 'project:').
+  // The two clusters render as separate tab groups so a vault with
+  // 12 projects doesn't bury the 6 core domains under a wall of
+  // project tabs.
+  let topLevelDocs = $derived(store?.docs.filter((d) => !d.key.startsWith('project:')) ?? []);
+  let projectDocs = $derived(store?.docs.filter((d) => d.key.startsWith('project:')) ?? []);
 
   function startEdit(d: VisionDoc) {
     editContent = d.content ?? '';
@@ -284,10 +298,11 @@
       {/if}
 
       <!-- Tab strip: one tab per vision doc, plus a "+ new" trigger.
-           Pinned doc shows a 📌 next to its label so the user can
-           see at a glance which one surfaces on today. -->
+           Project visions render in a separate cluster after a
+           vertical divider so they don't crowd the core domains.
+           Pinned doc shows a 📌 next to its label. -->
       <div class="border-b border-surface1 mb-4 flex flex-wrap items-end gap-1">
-        {#each store.docs as d (d.key)}
+        {#each topLevelDocs as d (d.key)}
           <button
             type="button"
             onclick={() => (activeKey = d.key)}
@@ -301,6 +316,24 @@
             {#if d.pinned}<span class="ml-1 text-success" aria-label="pinned to today">📌</span>{/if}
           </button>
         {/each}
+        {#if projectDocs.length > 0}
+          <span class="self-stretch border-l border-surface1 mx-1.5" aria-hidden="true"></span>
+          <span class="self-end pb-1.5 pl-1 text-[11px] text-dim uppercase tracking-wider">Projekte</span>
+          {#each projectDocs as d (d.key)}
+            <button
+              type="button"
+              onclick={() => (activeKey = d.key)}
+              class="px-3 py-1.5 text-sm border-b-2 -mb-px transition-colors
+                {activeKey === d.key
+                  ? 'border-primary text-text font-medium'
+                  : 'border-transparent text-dim hover:text-text'}"
+              title={d.pinned ? 'Currently pinned to the today view' : ''}
+            >
+              {d.label}
+              {#if d.pinned}<span class="ml-1 text-success" aria-label="pinned to today">📌</span>{/if}
+            </button>
+          {/each}
+        {/if}
         <span class="flex-1"></span>
         <button
           type="button"
