@@ -17,6 +17,7 @@
   import { goto } from '$app/navigation';
   import { onWsEvent } from '$lib/ws';
   import { errorMessage } from '$lib/util/errorMessage';
+  import { loadDraft, clearDraft, makeDraftWriter } from '$lib/util/draftAutosave';
 
   let { project, onClose, onUpdated, onDeleted, onOpenDashboard }: {
     project: Project;
@@ -150,13 +151,41 @@
     }
   }
 
+  // Draft autosave for the inline-editable fields. Description +
+  // next_action use onblur to persist, which means a reload while
+  // the textarea has focus loses the typed content. The draft layer
+  // catches that — written to localStorage on every change, restored
+  // when the user re-enters edit mode, cleared on successful commit.
+  // Keyed by project.name so switching projects doesn't cross-
+  // contaminate drafts.
+  const descDraftWriter = makeDraftWriter(400);
+  const nextActionDraftWriter = makeDraftWriter(400);
+  function descDraftKey(): string {
+    return `project.description.${project.name}`;
+  }
+  function nextActionDraftKey(): string {
+    return `project.nextAction.${project.name}`;
+  }
+  $effect(() => {
+    if (editingDescription) descDraftWriter.save(descDraftKey(), descBuf);
+  });
+  $effect(() => {
+    if (editingNextAction) nextActionDraftWriter.save(nextActionDraftKey(), nextActionBuf);
+  });
+
   async function commitDescription() {
     editingDescription = false;
     if (descBuf !== (project.description ?? '')) await patch({ description: descBuf });
+    // Whether the patch fired or not, the user closed the editor —
+    // the in-buffer text is no longer "in-flight", clear the draft.
+    clearDraft(descDraftKey());
+    descDraftWriter.cancel();
   }
   async function commitNextAction() {
     editingNextAction = false;
     if (nextActionBuf !== (project.next_action ?? '')) await patch({ next_action: nextActionBuf });
+    clearDraft(nextActionDraftKey());
+    nextActionDraftWriter.cancel();
   }
   async function commitName() {
     editingName = false;
@@ -998,14 +1027,25 @@
           <textarea
             bind:value={descBuf}
             onblur={commitDescription}
-            onkeydown={(e) => { if (e.key === 'Escape') editingDescription = false; }}
+            onkeydown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                editingDescription = false;
+                clearDraft(descDraftKey());
+                descDraftWriter.cancel();
+              }
+            }}
             use:focusOnMount
             rows="3"
             class="w-full px-3 py-2 bg-surface0 border border-primary rounded text-sm text-text outline-none"
           ></textarea>
         {:else}
           <button
-            onclick={() => { descBuf = project.description ?? ''; editingDescription = true; }}
+            onclick={() => {
+              const draft = loadDraft<string | null>(descDraftKey(), null);
+              descBuf = (draft && draft !== '') ? draft : (project.description ?? '');
+              editingDescription = true;
+            }}
             class="w-full text-left px-3 py-2 text-sm rounded hover:bg-surface0 {project.description ? 'text-text' : 'text-dim italic'}"
           >{project.description || 'click to add a description…'}</button>
         {/if}
@@ -1064,13 +1104,25 @@
           <input
             bind:value={nextActionBuf}
             onblur={commitNextAction}
-            onkeydown={(e) => { if (e.key === 'Enter') commitNextAction(); else if (e.key === 'Escape') editingNextAction = false; }}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') commitNextAction();
+              else if (e.key === 'Escape') {
+                e.preventDefault();
+                editingNextAction = false;
+                clearDraft(nextActionDraftKey());
+                nextActionDraftWriter.cancel();
+              }
+            }}
             use:focusOnMount
             class="w-full px-3 py-2 bg-surface0 border border-primary rounded text-sm text-text outline-none"
           />
         {:else}
           <button
-            onclick={() => { nextActionBuf = project.next_action ?? ''; editingNextAction = true; }}
+            onclick={() => {
+              const draft = loadDraft<string | null>(nextActionDraftKey(), null);
+              nextActionBuf = (draft && draft !== '') ? draft : (project.next_action ?? '');
+              editingNextAction = true;
+            }}
             class="w-full text-left px-3 py-2.5 rounded text-sm border border-warning bg-surface0 text-warning hover:bg-surface1 {!project.next_action ? 'italic opacity-70' : 'font-medium'}"
           >→ {project.next_action || 'what\'s the next concrete step?'}</button>
         {/if}

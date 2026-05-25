@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
   import { auth } from '$lib/stores/auth';
   import { api, type VisionsStore, type VisionDoc, type Vision } from '$lib/api';
@@ -8,6 +8,7 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
+  import { loadDraft, clearDraft, makeDraftWriter, loadDraftSavedAt } from '$lib/util/draftAutosave';
 
   // /vision — multi-document vision catalogue. One tab per doc
   // (Hauptvision / Kurzversion / Mission / Stoicera / Körper /
@@ -41,6 +42,33 @@
   let editContent = $state('');
   let editReason = $state('');
   let saving = $state(false);
+  // Draft autosave — protects the in-progress edit against reload
+  // / accidental navigation. The vision PUT requires a non-empty
+  // reason so we can't auto-persist to the server; localStorage
+  // draft is the next best thing. Keyed per-doc so switching tabs
+  // while editing two surfaces in parallel doesn't clobber either.
+  let editingKey = $state<string | null>(null);
+  let draftSavedAt = $state<string | null>(null);
+  const draftWriter = makeDraftWriter(500);
+  function draftKeyFor(key: string): string {
+    return `vision.edit.${key}`;
+  }
+  // Save the in-progress edit to localStorage on every change.
+  // Only runs while a tab is actually in edit mode (editingKey set);
+  // otherwise switching tabs in read mode would write a useless
+  // empty-form draft.
+  $effect(() => {
+    if (!editingKey) return;
+    draftWriter.save(draftKeyFor(editingKey), { content: editContent, reason: editReason });
+    // Read back the timestamp so the UI can show "draft saved Xs ago".
+    // We use the timestamp from the JUST-written entry — close enough
+    // to "now" without spinning a separate clock.
+    draftSavedAt = new Date().toISOString();
+  });
+  // Flush any pending draft write before the user leaves the page
+  // (close tab, hot reload, navigation). flushNow bypasses the
+  // debounce so the last few keystrokes don't vanish.
+  onDestroy(() => draftWriter.flushNow());
 
   // "Add custom domain" dialog state. Simple inline form, not a
   // modal — appears below the tab strip when toggled.
@@ -76,15 +104,34 @@
   }
 
   // Sidecar (legacy) edit state. Toggled separately from per-doc edit.
+  // Draft-protected like the per-doc editor — losing a freshly-typed
+  // 90-day season focus to an accidental reload would be the kind
+  // of small frustration that compounds.
   let editingLegacy = $state(false);
   let legacyForm = $state({ valuesText: '', season_focus: '' });
+  const LEGACY_DRAFT_KEY = 'vision.legacy';
+  // Save the legacy form as a draft on change while editing.
+  $effect(() => {
+    if (!editingLegacy) return;
+    draftWriter.save(LEGACY_DRAFT_KEY, legacyForm);
+  });
   function startLegacyEdit() {
     if (!legacy) return;
-    legacyForm = {
-      valuesText: (legacy.values ?? []).join('\n'),
-      season_focus: legacy.season_focus ?? ''
-    };
+    const draft = loadDraft<typeof legacyForm | null>(LEGACY_DRAFT_KEY, null);
+    if (draft && (draft.valuesText !== '' || draft.season_focus !== '')) {
+      legacyForm = draft;
+    } else {
+      legacyForm = {
+        valuesText: (legacy.values ?? []).join('\n'),
+        season_focus: legacy.season_focus ?? ''
+      };
+    }
     editingLegacy = true;
+  }
+  function cancelLegacy() {
+    clearDraft(LEGACY_DRAFT_KEY);
+    draftWriter.cancel();
+    editingLegacy = false;
   }
   async function saveLegacy() {
     const values = legacyForm.valuesText.split(/[\n,]+/).map((v) => v.trim()).filter(Boolean);
@@ -95,6 +142,8 @@
         season_focus: legacyForm.season_focus.trim()
       });
       legacy = next;
+      clearDraft(LEGACY_DRAFT_KEY);
+      draftWriter.cancel();
       editingLegacy = false;
       toast.success('values + season saved');
     } catch (e) {
@@ -149,13 +198,32 @@
   let projectDocs = $derived(store?.docs.filter((d) => d.key.startsWith('project:')) ?? []);
 
   function startEdit(d: VisionDoc) {
-    editContent = d.content ?? '';
-    editReason = '';
+    // Restore a previous in-progress draft if one exists for this
+    // doc — wins over the server's saved content because it
+    // represents the user's most recent intent. Falls through to
+    // server content (or empty) when no draft is present.
+    const draft = loadDraft<{ content: string; reason: string } | null>(draftKeyFor(d.key), null);
+    if (draft && (draft.content !== '' || draft.reason !== '')) {
+      editContent = draft.content;
+      editReason = draft.reason;
+      draftSavedAt = loadDraftSavedAt(draftKeyFor(d.key));
+    } else {
+      editContent = d.content ?? '';
+      editReason = '';
+      draftSavedAt = null;
+    }
+    editingKey = d.key;
     setMode(d.key, 'edit');
   }
   function cancelEdit(d: VisionDoc) {
+    // Cancel = explicit "throw away the draft". User clicked
+    // cancel because they want the in-progress text gone.
+    clearDraft(draftKeyFor(d.key));
+    draftWriter.cancel();
     editContent = '';
     editReason = '';
+    editingKey = null;
+    draftSavedAt = null;
     setMode(d.key, 'read');
   }
   async function saveEdit(d: VisionDoc) {
@@ -167,15 +235,34 @@
     saving = true;
     try {
       await api.putVisionDoc(d.key, { content: editContent, reason });
+      // Server confirmed the change; the draft is obsolete.
+      clearDraft(draftKeyFor(d.key));
+      draftWriter.cancel();
+      editingKey = null;
+      draftSavedAt = null;
       toast.success('saved');
       setMode(d.key, 'read');
       await load();
     } catch (e) {
+      // Don't clear the draft on save failure — the user's work
+      // should survive a transient server error so they can retry.
       toast.error('failed: ' + errorMessage(e));
     } finally {
       saving = false;
     }
   }
+  // Human-readable "draft saved Xs ago" string for the form footer.
+  let draftAgo = $derived.by<string>(() => {
+    if (!draftSavedAt) return '';
+    const ms = Date.now() - new Date(draftSavedAt).getTime();
+    if (ms < 0) return 'just now';
+    const sec = Math.floor(ms / 1000);
+    if (sec < 5) return 'draft saved · just now';
+    if (sec < 60) return `draft saved · ${sec}s ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `draft saved · ${min}m ago`;
+    return 'draft saved earlier';
+  });
 
   async function togglePin(d: VisionDoc) {
     try {
@@ -262,7 +349,7 @@
                 />
               </div>
               <div class="flex gap-2 justify-end">
-                <button type="button" onclick={() => (editingLegacy = false)} class="px-3 py-1.5 text-xs text-subtext hover:text-text">cancel</button>
+                <button type="button" onclick={cancelLegacy} class="px-3 py-1.5 text-xs text-subtext hover:text-text">cancel</button>
                 <button type="button" onclick={saveLegacy} class="px-3 py-1.5 text-xs bg-primary text-on-primary rounded font-medium">save</button>
               </div>
             </div>
@@ -425,7 +512,10 @@
                 ></textarea>
                 <p class="text-[11px] text-dim mt-1">Erscheint in der Historie. Pflichtfeld — der Sinn der Funktion.</p>
               </div>
-              <div class="flex gap-2 justify-end">
+              <div class="flex items-baseline gap-2 justify-end">
+                {#if draftAgo}
+                  <span class="text-[11px] text-dim flex-1" title="Drafts are stored locally in this browser. Cleared on save or cancel.">{draftAgo}</span>
+                {/if}
                 <button type="button" onclick={() => cancelEdit(activeDoc)} class="px-3 py-1.5 text-xs text-subtext hover:text-text">cancel</button>
                 <button
                   type="button"
