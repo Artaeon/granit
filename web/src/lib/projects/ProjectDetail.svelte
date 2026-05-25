@@ -8,7 +8,7 @@
   import TaskRow from '$lib/components/TaskRow.svelte';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
-  import { openAIOverlay } from '$lib/stores/ai-overlay';
+  import { openAIOverlay, aiOverlayPinned } from '$lib/stores/ai-overlay';
   import { rafThrottle } from '$lib/util/streamThrottle';
   import { isoWeekString, startOfIsoWeek } from '$lib/util/isoWeek';
   import { fmtDateISO as ymd } from '$lib/util/date';
@@ -273,6 +273,45 @@
       lines.push(`- linked goals: ${titles}`);
     }
     lines.push('', `What would help me move this forward?`);
+    openAIOverlay({ text: lines.join('\n'), send: false });
+  }
+
+  // Research mode — same context as askAIAboutThisProject but:
+  //   1. Pins the AI overlay as a side rail so it stays visible while
+  //      the user navigates project notes, tasks, deadlines, etc.
+  //   2. Frames the seed as exploration ("explore angles") rather
+  //      than action ("move this forward"). The dialogue tone follows.
+  // No new UI surface — composes the existing AIOverlay + the pin
+  // store. Phase 2 will add an "open project's primary note in
+  // research mode" jump that also navigates the editor.
+  function openResearchMode(): void {
+    const lines = [
+      `I'm in research mode on this project:`,
+      '',
+      `- ${project.name}`
+    ];
+    if (project.status) lines.push(`- status: ${project.status}`);
+    if (project.description && project.description.trim() !== '') {
+      lines.push(`- description: ${project.description.trim()}`);
+    }
+    if (project.category) lines.push(`- category: ${project.category}`);
+    const openTasks = projectTasks.filter((t) => !t.done);
+    if (openTasks.length > 0) {
+      lines.push(`- ${openTasks.length} open task${openTasks.length === 1 ? '' : 's'}`);
+    }
+    if (linkedGoals.length > 0) {
+      const titles = linkedGoals.map((g) => g.title).join('; ');
+      lines.push(`- linked goals: ${titles}`);
+    }
+    lines.push(
+      '',
+      `Help me think about this. What angles haven't I considered? What questions should I be asking? Don't rush to recommendations — explore with me.`
+    );
+    // Pin the overlay so it stays as a side rail while the user
+    // moves through project notes / tasks / deadlines. The note
+    // editor and project view both reserve space for the pinned
+    // rail via the document.documentElement.ai-pinned class.
+    aiOverlayPinned.set(true);
     openAIOverlay({ text: lines.join('\n'), send: false });
   }
 
@@ -745,6 +784,20 @@
     >
       <span aria-hidden="true">✨</span>
       <span class="hidden sm:inline">Ask AI</span>
+    </button>
+    <!-- Research Mode — pins the AI overlay as a side rail seeded
+         with this project's context, framed as exploration rather
+         than action. Stays visible while the user moves through
+         notes / tasks / deadlines so the AI can be the running
+         thinking partner instead of a one-shot Q&A. -->
+    <button
+      onclick={openResearchMode}
+      title="open AI side-rail in research mode for this project"
+      aria-label="open research mode"
+      class="px-2.5 py-1.5 min-h-[36px] text-xs rounded border border-surface1 bg-surface0 text-subtext hover:border-primary hover:text-primary inline-flex items-center gap-1"
+    >
+      <span aria-hidden="true">🔬</span>
+      <span class="hidden sm:inline">Research Mode</span>
     </button>
     {#if onOpenDashboard}
       <button

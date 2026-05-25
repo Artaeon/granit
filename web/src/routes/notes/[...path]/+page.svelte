@@ -28,6 +28,7 @@
     recallScroll
   } from '$lib/notes/noteHistory';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
+  import { openAIOverlay, aiOverlayPinned } from '$lib/stores/ai-overlay';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import type { ExtractRequest } from '$lib/editor/extract-note';
   import PrintPreview from '$lib/notes/PrintPreview.svelte';
@@ -1385,6 +1386,34 @@
     infoDrawerOpen = false;
   }
 
+  // Research Mode — pins the AI overlay as a side rail seeded with
+  // this note's context, framed as exploration rather than action.
+  // Stays visible while the user navigates the note + backlinks +
+  // annotations so the AI is the running thinking partner. Mirrors
+  // the ProjectDetail Research Mode button; the body excerpt gives
+  // the AI enough to engage without dumping the full note unless
+  // the user asks.
+  function openResearchMode(): void {
+    if (!note) return;
+    const excerpt = (body ?? '').trim().slice(0, 800);
+    const lines = [
+      `I'm in research mode on this note:`,
+      '',
+      `- ${note.title || note.path}`
+    ];
+    const tags = (note.tags ?? []);
+    if (tags.length > 0) lines.push(`- tags: ${tags.map((t) => '#' + t).join(' ')}`);
+    if (excerpt) {
+      lines.push('', 'Excerpt:', excerpt + ((body ?? '').length > 800 ? '…' : ''));
+    }
+    lines.push(
+      '',
+      `Help me think about this. What angles haven't I considered? What questions should I be asking? Don't rush to recommendations — explore with me.`
+    );
+    aiOverlayPinned.set(true);
+    openAIOverlay({ text: lines.join('\n'), send: false });
+  }
+
   async function saveFrontmatter(next: Record<string, unknown>) {
     if (!note) return;
     try {
@@ -1928,6 +1957,22 @@
             title="AI — Cmd-/ or type /ai in the editor"
             class="w-9 h-9 flex items-center justify-center text-subtext hover:text-text hover:bg-surface0 rounded flex-shrink-0 text-[10px] font-mono uppercase tracking-wider"
           >AI</button>
+          <!-- Research Mode — pins the AI overlay as a side rail
+               seeded with this note's title + tags + leading excerpt,
+               framed as exploration. Stays open while the user
+               wanders backlinks / annotations / other notes so the
+               AI is a running thinking partner rather than a one-
+               shot Q&A. Hidden below lg because the toolbar is
+               already busy on tablet+phone. -->
+          <button
+            type="button"
+            onclick={openResearchMode}
+            title="Research Mode — pin AI side-rail with this note as context"
+            aria-label="open research mode"
+            class="hidden lg:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+          >
+            <span aria-hidden="true">🔬</span>
+          </button>
         {/if}
         <!-- Overflow trigger — collapses the secondary buttons
              (find, print, slideshow, audio, reading, focus, history,
