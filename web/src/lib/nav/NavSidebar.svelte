@@ -131,22 +131,44 @@
 </script>
 
 <div class="flex flex-col h-full">
-  <!-- Brand area collapses to icon-only in compact mode. The
-       earlier "your vault, anywhere" tagline was visual noise on a
-       surface the user looks at every minute; the wordmark + logo
-       carry the brand without it. -->
-  <div class="border-b border-surface1 {isCompact ? 'px-2 py-2.5 flex justify-center' : 'px-3 py-2.5'}">
+  <!-- Brand area + profile chip + settings shortcut. The earlier
+       layout buried profile + settings in the meta footer at the
+       bottom of the rail; user feedback (2026-05-25) wanted them
+       moved up since active workflow context belongs at the same
+       altitude as app identity, and settings is reached often
+       enough that a top-row icon beats a footer row. Compact mode
+       stacks: logo → profile chip → settings icon. -->
+  <div class="border-b border-surface1 {isCompact ? 'px-2 py-2 flex flex-col items-center gap-1.5' : 'px-3 py-2.5 flex items-center gap-2'}">
     {#if isCompact}
       <div class="w-8 h-8 rounded bg-surface1 text-primary flex items-center justify-center" aria-label="Granit">
         <Logo class="w-4 h-4" label="" />
       </div>
+      <ProfileSwitcher isCompact={true} />
+      <a
+        href="/settings"
+        onclick={navigate}
+        title="Settings"
+        aria-label="Settings"
+        class="w-7 h-7 flex items-center justify-center rounded text-dim hover:text-text hover:bg-surface0 transition-colors"
+      >
+        <NavIcon name="settings" class="w-4 h-4" />
+      </a>
     {:else}
-      <div class="flex items-center gap-2">
-        <div class="w-6 h-6 rounded bg-surface1 text-primary flex items-center justify-center flex-shrink-0">
-          <Logo class="w-3.5 h-3.5" label="" />
-        </div>
-        <div class="text-sm font-semibold text-text">Granit</div>
+      <div class="w-6 h-6 rounded bg-surface1 text-primary flex items-center justify-center flex-shrink-0">
+        <Logo class="w-3.5 h-3.5" label="" />
       </div>
+      <div class="text-sm font-semibold text-text">Granit</div>
+      <span class="flex-1"></span>
+      <ProfileSwitcher isCompact={false} />
+      <a
+        href="/settings"
+        onclick={navigate}
+        title="Settings"
+        aria-label="Settings"
+        class="w-7 h-7 flex items-center justify-center rounded text-dim hover:text-text hover:bg-surface0 transition-colors flex-shrink-0"
+      >
+        <NavIcon name="settings" class="w-4 h-4" />
+      </a>
     {/if}
   </div>
 
@@ -364,35 +386,10 @@
   <!-- Footer rail. Settings, theme, sabbath, compact toggle, sign
        out. Tightened from py-3 to py-2 and theme button shrunk —
        it's a meta surface, not a content one. -->
-  <div class="border-t border-surface1 {isCompact ? 'px-1.5 py-2 space-y-0.5' : 'px-2 py-2 space-y-0.5'}">
-    <NavItem item={settingsItem} {isCompact} onNavigate={navigate} />
-
-    <button
-      onclick={() => theme.set(nextTheme($theme))}
-      title={isCompact ? `Theme: ${themeLabel($theme)} — tap to cycle` : 'Cycle theme: system → light → dark'}
-      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1.5' : 'gap-3 px-3 py-1'} rounded text-xs text-dim hover:bg-surface0 hover:text-subtext transition-colors"
-    >
-      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        {#if $theme === 'dark'}
-          <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>
-        {:else if $theme === 'light'}
-          <circle cx="12" cy="12" r="4"/>
-          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
-        {:else}
-          <circle cx="12" cy="12" r="9"/>
-          <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>
-        {/if}
-      </svg>
-      {#if !isCompact}
-        <span class="flex-1 text-left">{themeLabel($theme)}</span>
-      {/if}
-    </button>
-
-    <!-- Profile switcher — current workflow profile + menu to swap.
-         Self-hides when only one profile exists, so a fresh vault
-         doesn't carry switcher noise until the user actually has
-         alternatives to pick from. -->
-    <ProfileSwitcher {isCompact} />
+  <div class="border-t border-surface1 {isCompact ? 'px-1.5 py-2 space-y-1' : 'px-2 py-2 space-y-1'}">
+    <!-- Settings + Profile moved up to the brand-area row on
+         2026-05-25 per user feedback. Theme also moved into the
+         icon row below to slim the footer footprint. -->
 
     <!-- Sabbath row. Mark 2:27: "the sabbath was made for man." A
          split layout: the icon+label opens the /sabbath landing
@@ -445,42 +442,85 @@
       </div>
     {/if}
 
-    <!-- Desktop-only compact toggle. Hidden on mobile because the
-         drawer is already an icon-poor experience and a compact
-         toggle in a temporary panel doesn't save anything. -->
-    <button
-      onclick={toggleSidebarCompact}
-      title={isCompact ? 'Expand sidebar' : 'Collapse to icons'}
-      class="hidden md:flex w-full items-center {isCompact ? 'justify-center px-2 py-1.5' : 'gap-3 px-3 py-1'} rounded text-xs text-dim hover:bg-surface0 hover:text-subtext transition-colors"
-    >
-      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        {#if isCompact}
+    <!-- Compact icon row: theme cycle · sidebar-collapse · sign-out
+         · live/offline pip. Was four full-width rows; now a single
+         horizontal strip so the footer reads as a meta utility bar
+         rather than a continuation of the nav. Compact mode keeps
+         the icons centred vertically (one per row) since the rail
+         is too narrow for a horizontal strip. -->
+    {#if isCompact}
+      <button
+        onclick={() => theme.set(nextTheme($theme))}
+        title={`Theme: ${themeLabel($theme)} — tap to cycle`}
+        aria-label="Cycle theme"
+        class="w-full flex justify-center items-center px-2 py-1.5 rounded text-dim hover:bg-surface0 hover:text-text transition-colors"
+      >
+        <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          {#if $theme === 'dark'}
+            <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>
+          {:else if $theme === 'light'}
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          {:else}
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>
+          {/if}
+        </svg>
+      </button>
+      <button
+        onclick={toggleSidebarCompact}
+        title="Expand sidebar"
+        aria-label="Expand sidebar"
+        class="hidden md:flex w-full justify-center items-center px-2 py-1.5 rounded text-dim hover:bg-surface0 hover:text-text transition-colors"
+      >
+        <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="9 18 15 12 9 6" />
-        {:else}
-          <polyline points="15 18 9 12 15 6" />
-        {/if}
-      </svg>
-      {#if !isCompact}<span class="flex-1 text-left">Collapse</span>{/if}
-    </button>
-
-    {#if !isCompact}
-      <div class="flex items-center justify-between px-3 pt-1">
-        <button
-          onclick={async () => { try { await api.authLogout(); } catch {} auth.clear(); }}
-          class="text-xs text-dim hover:text-error transition-colors"
-        >
-          sign out
-        </button>
-        <div class="flex items-center gap-1.5" title={$wsConnected ? 'live' : 'offline'}>
-          <span class="w-2 h-2 rounded-full {$wsConnected ? 'bg-success' : 'bg-dim'}"></span>
-          <span class="text-[10px] text-dim font-mono">v0.0.1</span>
-        </div>
+        </svg>
+      </button>
+      <div class="flex justify-center pt-0.5" title={$wsConnected ? 'live' : 'offline'}>
+        <span class="w-2 h-2 rounded-full {$wsConnected ? 'bg-success' : 'bg-dim'}"></span>
       </div>
     {:else}
-      <!-- Compact connection pip lives at the very bottom, on its
-           own line, so the rail still surfaces live/offline state. -->
-      <div class="flex justify-center pt-1" title={$wsConnected ? 'live' : 'offline'}>
-        <span class="w-2 h-2 rounded-full {$wsConnected ? 'bg-success' : 'bg-dim'}"></span>
+      <div class="flex items-center gap-1 px-1">
+        <button
+          onclick={() => theme.set(nextTheme($theme))}
+          title={`Theme: ${themeLabel($theme)} — tap to cycle`}
+          aria-label="Cycle theme"
+          class="w-8 h-8 flex items-center justify-center rounded text-dim hover:bg-surface0 hover:text-text transition-colors"
+        >
+          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            {#if $theme === 'dark'}
+              <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>
+            {:else if $theme === 'light'}
+              <circle cx="12" cy="12" r="4"/>
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+            {:else}
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>
+            {/if}
+          </svg>
+        </button>
+        <button
+          onclick={toggleSidebarCompact}
+          title="Collapse to icons"
+          aria-label="Collapse sidebar"
+          class="hidden md:flex w-8 h-8 items-center justify-center rounded text-dim hover:bg-surface0 hover:text-text transition-colors"
+        >
+          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+        <span class="flex-1"></span>
+        <button
+          onclick={async () => { try { await api.authLogout(); } catch {} auth.clear(); }}
+          title="Sign out"
+          class="text-[11px] text-dim hover:text-error transition-colors px-2 py-1"
+        >sign out</button>
+        <span
+          class="ml-1 w-2 h-2 rounded-full flex-shrink-0 {$wsConnected ? 'bg-success' : 'bg-dim'}"
+          title={$wsConnected ? 'live' : 'offline'}
+          aria-label={$wsConnected ? 'live' : 'offline'}
+        ></span>
       </div>
     {/if}
   </div>
