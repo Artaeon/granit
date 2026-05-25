@@ -24,6 +24,7 @@
   import Logo from '$lib/components/Logo.svelte';
   import NavIcon from '$lib/components/NavIcon.svelte';
   import NavItem from './NavItem.svelte';
+  import ProfileSwitcher from './ProfileSwitcher.svelte';
   import {
     sections,
     today,
@@ -358,6 +359,12 @@
         <span class="flex-1 text-left">{themeLabel($theme)}</span>
       {/if}
     </button>
+
+    <!-- Profile switcher — current workflow profile + menu to swap.
+         Self-hides when only one profile exists, so a fresh vault
+         doesn't carry switcher noise until the user actually has
+         alternatives to pick from. -->
+    <ProfileSwitcher {isCompact} />
 
     <!-- Sabbath row. Mark 2:27: "the sabbath was made for man." A
          split layout: the icon+label opens the /sabbath landing

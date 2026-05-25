@@ -24,6 +24,7 @@ import (
 	"github.com/artaeon/granit/internal/autocommit"
 	"github.com/artaeon/granit/internal/daily"
 	"github.com/artaeon/granit/internal/modules"
+	"github.com/artaeon/granit/internal/profiles"
 	"github.com/artaeon/granit/internal/push"
 	"github.com/artaeon/granit/internal/tasks"
 	"github.com/artaeon/granit/internal/vault"
@@ -87,6 +88,13 @@ type Server struct {
 	// NewServer on a unit test that exercises a single handler.
 	modulesMu  sync.Mutex
 	modulesReg *modules.Registry
+	// profiles is the shared profile registry (Classic / Daily
+	// Operator / Researcher / Builder + any user-authored profiles
+	// under ~/.config/granit/profiles or <vault>/.granit/profiles).
+	// Lazy-booted the same way as modulesReg so a missing-vault path
+	// doesn't crash NewServer in tests.
+	profilesMu  sync.Mutex
+	profilesReg *profiles.ProfileRegistry
 	// webhook is the outbound dispatcher that pings the configured
 	// intranet receiver after task / project / deadline mutations.
 	// Nil until NewServer runs; safe to call .notify() on either way
@@ -185,6 +193,32 @@ func (s *Server) modulesRegistry() *modules.Registry {
 		}
 	}
 	s.modulesReg = reg
+	return reg
+}
+
+// profilesRegistry returns the shared profile registry, constructing
+// it on first use. Built-ins (Classic / Daily Operator / Researcher /
+// Builder) register first; Load then walks the disk layers and
+// resolves the active pointer at <vault>/.granit/active-profile.
+// Failure to load disk profiles falls back to in-memory built-ins so
+// the settings page still renders with a usable profile list.
+func (s *Server) profilesRegistry() *profiles.ProfileRegistry {
+	s.profilesMu.Lock()
+	defer s.profilesMu.Unlock()
+	if s.profilesReg != nil {
+		return s.profilesReg
+	}
+	reg := profiles.New(s.cfg.Vault.Root)
+	if err := profiles.RegisterBuiltins(reg); err != nil {
+		// Programmer error — dup-register of a built-in ID. Log
+		// and continue with the partially-registered set; the UI
+		// will show whatever made it in.
+		s.cfg.Logger.Warn("profiles: registering builtins failed", "err", err)
+	}
+	if err := reg.Load(); err != nil {
+		s.cfg.Logger.Warn("profiles: loading disk layers failed, builtins only", "err", err)
+	}
+	s.profilesReg = reg
 	return reg
 }
 
@@ -704,6 +738,14 @@ func (s *Server) Handler() http.Handler {
 		// always-on so the UI can render them with a lock icon.
 		r.Get("/api/v1/modules", s.handleListModules)
 		r.Put("/api/v1/modules", s.handlePutModules)
+
+		// Profiles — Classic / Daily Operator / Researcher / Builder
+		// + any user-authored profile under ~/.config/granit/profiles
+		// or <vault>/.granit/profiles. Phase 1 surface: list + activate.
+		// Activation applies the profile's EnabledModules to the
+		// modules registry as a side effect.
+		r.Get("/api/v1/profiles", s.handleListProfiles)
+		r.Post("/api/v1/profiles/{id}/activate", s.handleActivateProfile)
 
 		// Agents — read-only catalog + run history. Reuses internal/agents
 		// and the vault index, so this stays in lockstep with what the

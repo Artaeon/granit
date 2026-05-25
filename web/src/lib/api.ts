@@ -1405,6 +1405,24 @@ export interface ModulesResponse {
   coreIds: CoreModuleEntry[];
 }
 
+// Profile — workflow-context bundle (modules + dashboard + layout +
+// keybinds). Switchable from the nav profile-chip; activating one
+// PUTs the new active pointer AND applies the profile's enabled-
+// modules set as a side-effect.
+export interface ProfileEntry {
+  id: string;
+  name: string;
+  description?: string;
+  builtIn: boolean;
+  enabledModules?: string[]; // empty = "all modules" (Classic semantics)
+  defaultLayout?: string;
+  hasDashboard?: boolean;
+}
+export interface ProfilesResponse {
+  profiles: ProfileEntry[];
+  activeId: string;
+}
+
 // ---- endpoints ----
 
 export const api = {
@@ -2943,7 +2961,14 @@ export const api = {
   // settings UI can render a unified list.
   listModules: () => req<ModulesResponse>('/modules'),
   setModules: (patch: Record<string, boolean>) =>
-    req<ModulesResponse>('/modules', { method: 'PUT', body: JSON.stringify({ enabled: patch }) })
+    req<ModulesResponse>('/modules', { method: 'PUT', body: JSON.stringify({ enabled: patch }) }),
+
+  // Profiles — workflow-context bundles. Activating one persists the
+  // active-profile pointer server-side AND applies the profile's
+  // EnabledModules to the modules registry as a side effect.
+  listProfiles: () => req<ProfilesResponse>('/profiles'),
+  activateProfile: (id: string) =>
+    req<ProfilesResponse>(`/profiles/${encodeURIComponent(id)}/activate`, { method: 'POST' })
 };
 
 export interface ObjectTypeProperty {

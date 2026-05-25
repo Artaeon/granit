@@ -39,6 +39,9 @@ export type WsEvent =
   // Modules — fired after a successful PUT /api/v1/modules so connected
   // clients refresh their cached enable-state without polling.
   | { type: 'modules.changed' }
+  // Profile — fired after a successful POST /api/v1/profiles/{id}/activate
+  // so the nav switcher + settings page refresh without polling.
+  | { type: 'profile.changed' }
   // Hub tools — fired after any CRUD on .granit/hub-tools.json so the
   // hub page refreshes its tool catalogue without polling.
   | { type: 'hub.tools.changed'; path?: string };
