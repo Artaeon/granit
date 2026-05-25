@@ -130,6 +130,16 @@ export function makeDraftWriter(debounceMs = 500): {
 
   return {
     save(key, value) {
+      // If a different key is pending, flush it FIRST before rescheduling
+      // for the new key. Without this, switching contexts within the
+      // debounce window (user types in tab A, switches to tab B before
+      // 400ms is up) would lose A's pending write — pendingKey would be
+      // overwritten without ever firing for A. The flush is synchronous,
+      // so by the time we exit this branch, A's draft is on disk.
+      if (pendingKey !== null && pendingKey !== key) {
+        if (timer) clearTimeout(timer);
+        saveDraft(pendingKey, pendingValue);
+      }
       pendingKey = key;
       pendingValue = value;
       if (timer) clearTimeout(timer);

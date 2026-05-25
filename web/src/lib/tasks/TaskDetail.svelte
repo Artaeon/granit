@@ -419,11 +419,19 @@
   function notesDraftKey() { return task ? `task.notes.${task.id}` : ''; }
   function titleDraftKey() { return task ? `task.title.${task.id}` : ''; }
 
+  // Notes textarea is always rendered (no edit toggle) so we gate the
+  // draft write on "actually differs from server state" instead of
+  // an editing flag. Without this gate every task open would write
+  // a stale-equal draft, accumulating localStorage entries forever.
   $effect(() => {
-    if (task && notesDraftKey()) notesDraftWriter.save(notesDraftKey(), notesBuf);
+    if (!task || !notesDraftKey()) return;
+    if (notesBuf === (task.notes ?? '')) return;
+    notesDraftWriter.save(notesDraftKey(), notesBuf);
   });
   $effect(() => {
-    if (task && titleEditing && titleDraftKey()) titleDraftWriter.save(titleDraftKey(), titleBuf);
+    if (!task || !titleEditing || !titleDraftKey()) return;
+    if (titleBuf === cleanTaskText(task.text)) return;
+    titleDraftWriter.save(titleDraftKey(), titleBuf);
   });
 
   async function commitNotes() {

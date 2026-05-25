@@ -28,6 +28,12 @@
 
   // Per-tab UI mode: read | edit | history. Tracked per-key so
   // switching tabs doesn't reset edit-in-progress on another tab.
+  // BUT: we only carry ONE form buffer at a time (editContent /
+  // editReason are single values, not per-tab maps), so switching
+  // AWAY from an edit-mode tab implicitly drops it back to read —
+  // the draft survives in localStorage and re-entry restores it.
+  // Without this rule we'd hit the bug where coming back to a
+  // previously-edited tab shows the other tab's buffer content.
   type Mode = 'read' | 'edit' | 'history';
   let mode = $state<Record<string, Mode>>({});
   function setMode(key: string, m: Mode) {
@@ -35,6 +41,17 @@
   }
   function getMode(key: string): Mode {
     return mode[key] ?? 'read';
+  }
+  function switchActiveKey(next: string) {
+    if (editingKey && editingKey !== next) {
+      // Flush any pending debounced draft write before we drop the
+      // edit-mode flag — the user's last keystrokes need to land in
+      // localStorage so re-entering edit mode restores them.
+      draftWriter.flushNow();
+      setMode(editingKey, 'read');
+      editingKey = null;
+    }
+    activeKey = next;
   }
 
   // Edit-form state. Bound to whichever tab is currently in edit
@@ -392,7 +409,7 @@
         {#each topLevelDocs as d (d.key)}
           <button
             type="button"
-            onclick={() => (activeKey = d.key)}
+            onclick={() => switchActiveKey(d.key)}
             class="px-3 py-1.5 text-sm border-b-2 -mb-px transition-colors
               {activeKey === d.key
                 ? 'border-primary text-text font-medium'
@@ -409,7 +426,7 @@
           {#each projectDocs as d (d.key)}
             <button
               type="button"
-              onclick={() => (activeKey = d.key)}
+              onclick={() => switchActiveKey(d.key)}
               class="px-3 py-1.5 text-sm border-b-2 -mb-px transition-colors
                 {activeKey === d.key
                   ? 'border-primary text-text font-medium'
