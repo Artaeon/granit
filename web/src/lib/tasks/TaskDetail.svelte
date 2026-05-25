@@ -6,6 +6,7 @@
   import Drawer from '$lib/components/Drawer.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { rafThrottle } from '$lib/util/streamThrottle';
+  import { loadDraft, clearDraft, makeDraftWriter } from '$lib/util/draftAutosave';
 
   // TaskDetail is the side-drawer that pops open when the user clicks
   // a task card. Editable fields not already inline-editable on the card:
@@ -370,7 +371,12 @@
     }
     if (task.id === lastInitialisedTaskId) return;
     lastInitialisedTaskId = task.id;
-    notesBuf = task.notes ?? '';
+    // Prefer a saved draft for notes — that's the most recent intent.
+    // Title draft is loaded only when the user actually opens the
+    // title editor (titleEditing toggle); otherwise the displayed
+    // title comes from the canonical task.text.
+    const notesDraft = loadDraft<string | null>(`task.notes.${task.id}`, null);
+    notesBuf = (notesDraft !== null && notesDraft !== '') ? notesDraft : (task.notes ?? '');
     recurrenceBuf = task.recurrence ?? '';
     dueBuf = task.dueDate ?? '';
     schedDateBuf = task.scheduledStart ? task.scheduledStart.slice(0, 10) : '';
@@ -402,10 +408,36 @@
     }
   }
 
+  // Draft autosave for the two long-form buffers in this drawer
+  // (notes + title). The other buffers — due, scheduled date/time,
+  // recurrence — are short controls that commit on change; their
+  // loss-on-reload exposure is bounded to "the keystroke you just
+  // typed", not paragraphs of work. Keep the drafts per-task-id so
+  // switching tasks doesn't cross-contaminate.
+  const notesDraftWriter = makeDraftWriter(400);
+  const titleDraftWriter = makeDraftWriter(400);
+  function notesDraftKey() { return task ? `task.notes.${task.id}` : ''; }
+  function titleDraftKey() { return task ? `task.title.${task.id}` : ''; }
+
+  $effect(() => {
+    if (task && notesDraftKey()) notesDraftWriter.save(notesDraftKey(), notesBuf);
+  });
+  $effect(() => {
+    if (task && titleEditing && titleDraftKey()) titleDraftWriter.save(titleDraftKey(), titleBuf);
+  });
+
   async function commitNotes() {
     if (!task) return;
-    if (notesBuf === (task.notes ?? '')) return;
+    if (notesBuf === (task.notes ?? '')) {
+      // No change to persist — but drop the draft so it doesn't
+      // resurrect on next mount with stale-equal content.
+      clearDraft(notesDraftKey());
+      notesDraftWriter.cancel();
+      return;
+    }
     await patch({ notes: notesBuf });
+    clearDraft(notesDraftKey());
+    notesDraftWriter.cancel();
   }
 
   async function setRecurrence(r: string) {
@@ -427,13 +459,31 @@
   async function commitTitle() {
     if (!task) { titleEditing = false; return; }
     const next = titleBuf.trim();
-    if (!next || next === cleanTaskText(task.text)) { titleEditing = false; return; }
+    if (!next || next === cleanTaskText(task.text)) {
+      titleEditing = false;
+      clearDraft(titleDraftKey());
+      titleDraftWriter.cancel();
+      return;
+    }
     titleEditing = false;
     await patch({ text: next });
+    clearDraft(titleDraftKey());
+    titleDraftWriter.cancel();
   }
   function cancelTitleEdit() {
     if (task) titleBuf = cleanTaskText(task.text);
     titleEditing = false;
+    clearDraft(titleDraftKey());
+    titleDraftWriter.cancel();
+  }
+  // When the user opens the title editor, prefer a stale draft over
+  // the canonical title text. Called from the onclick that flips
+  // titleEditing → true.
+  function startTitleEdit() {
+    if (!task) return;
+    const draft = loadDraft<string | null>(titleDraftKey(), null);
+    titleBuf = (draft !== null && draft !== '') ? draft : cleanTaskText(task.text);
+    titleEditing = true;
   }
 
   // Date / time edits. The backend accepts dueDate as 'YYYY-MM-DD' or
@@ -567,7 +617,7 @@
             {:else}
               <button
                 type="button"
-                onclick={() => { titleEditing = true; }}
+                onclick={startTitleEdit}
                 class="text-base font-medium text-text break-words text-left w-full hover:bg-surface1 rounded px-2 py-1 -mx-2 -my-1 transition-colors {task.done ? 'line-through text-dim' : ''}"
                 title="click to rename"
               >{cleanTaskText(task.text)}</button>
