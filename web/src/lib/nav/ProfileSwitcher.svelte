@@ -85,7 +85,7 @@
 </script>
 
 {#if shouldShow}
-  <div bind:this={rootEl} class="relative">
+  <div bind:this={rootEl} class="relative {isCompact ? '' : 'min-w-0 flex-shrink'}">
     {#if isCompact}
       <button
         bind:this={triggerEl}
@@ -96,7 +96,7 @@
         aria-expanded={menuOpen}
         aria-haspopup="menu"
         aria-controls="profile-switcher-menu"
-        class="w-full flex justify-center items-center px-2 py-2 rounded text-sm font-mono text-primary hover:bg-surface0 transition-colors"
+        class="flex justify-center items-center w-7 h-7 rounded text-sm font-mono text-primary hover:bg-surface0 transition-colors flex-shrink-0"
       >
         <span class="w-5 h-5 inline-flex items-center justify-center rounded-full border border-primary text-[11px]">{activeInitial}</span>
       </button>
@@ -108,13 +108,11 @@
         aria-expanded={menuOpen}
         aria-haspopup="menu"
         aria-controls="profile-switcher-menu"
-        class="w-full flex items-center gap-3 px-3 py-1.5 rounded text-xs text-dim hover:bg-surface0 hover:text-subtext transition-colors"
+        title={active ? `Profile: ${active.name} — tap to switch` : 'Switch profile'}
+        class="flex items-center gap-1.5 px-1.5 h-7 rounded text-[11px] text-dim hover:bg-surface0 hover:text-subtext transition-colors min-w-0"
       >
         <span class="w-4 h-4 inline-flex items-center justify-center rounded-full border border-dim text-[10px] font-mono flex-shrink-0">{activeInitial}</span>
-        <span class="flex-1 text-left">
-          <span class="block text-[10px] uppercase tracking-wider text-dim/70 leading-none">Profile</span>
-          <span class="block text-sm text-subtext leading-tight truncate">{active?.name ?? '—'}</span>
-        </span>
+        <span class="text-text font-medium truncate min-w-0">{active?.name ?? '—'}</span>
         <svg viewBox="0 0 24 24" class="w-3 h-3 flex-shrink-0 transition-transform {menuOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
@@ -122,12 +120,17 @@
     {/if}
 
     {#if menuOpen}
-      <!-- Popover. Positioned absolutely so it doesn't push the rest of
-           the nav around when it opens. Right-side anchored in compact
-           mode so it doesn't clip off the left edge. -->
+      <!-- Popover opens DOWN since the switcher now lives in the
+           top brand row. Compact mode opens to the right of the
+           rail (outside the 56px column) so the menu doesn't
+           collide with the nav items below. Expanded mode opens
+           right-anchored so the menu stays inside the sidebar
+           width (the trigger is on the RIGHT side of the brand
+           row; a left-anchored menu would overflow the sidebar's
+           right edge). -->
       <div
         id="profile-switcher-menu"
-        class="absolute bottom-full mb-1 {isCompact ? 'left-full ml-2' : 'left-0 right-0'} bg-mantle border border-surface1 rounded-lg shadow-xl z-50 overflow-hidden"
+        class="absolute top-full mt-1 {isCompact ? 'left-full ml-2' : 'right-0'} min-w-[14rem] max-w-[20rem] bg-mantle border border-surface1 rounded-lg shadow-xl z-50 overflow-hidden"
         role="menu"
         aria-label="profiles"
       >
