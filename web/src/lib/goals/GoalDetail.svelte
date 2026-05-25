@@ -7,6 +7,7 @@
   import { inlineMd } from '$lib/util/inlineMd';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
   import { focusOnMount } from '$lib/util/focusOnMount';
+  import { loadDraft, clearDraft, makeDraftWriter } from '$lib/util/draftAutosave';
 
   // Detail-and-edit drawer for a single goal. Mirrors ProjectDetail's
   // approach: every field commits via PATCH on blur / explicit toggle so
@@ -460,17 +461,45 @@
     }
   }
 
+  // Draft autosave for the three inline-editable fields. Same pattern
+  // as ProjectDetail — buffer-to-localStorage on change, restore on
+  // re-entry to edit, clear on successful commit. Keyed per-goal so
+  // switching goals in the drawer doesn't cross-contaminate. Notes
+  // field is the longest-form of the three and the highest loss risk.
+  const titleDraftWriter = makeDraftWriter(400);
+  const descDraftWriter = makeDraftWriter(400);
+  const notesDraftWriter = makeDraftWriter(400);
+  function titleDraftKey() { return goal ? `goal.title.${goal.id}` : ''; }
+  function descDraftKey() { return goal ? `goal.description.${goal.id}` : ''; }
+  function notesDraftKey() { return goal ? `goal.notes.${goal.id}` : ''; }
+
+  $effect(() => {
+    if (editingTitle && titleDraftKey()) titleDraftWriter.save(titleDraftKey(), titleBuf);
+  });
+  $effect(() => {
+    if (editingDesc && descDraftKey()) descDraftWriter.save(descDraftKey(), descBuf);
+  });
+  $effect(() => {
+    if (editingNotes && notesDraftKey()) notesDraftWriter.save(notesDraftKey(), notesBuf);
+  });
+
   async function commitTitle() {
     editingTitle = false;
     if (goal && titleBuf.trim() && titleBuf !== goal.title) await patch({ title: titleBuf.trim() });
+    clearDraft(titleDraftKey());
+    titleDraftWriter.cancel();
   }
   async function commitDesc() {
     editingDesc = false;
     if (goal && descBuf !== (goal.description ?? '')) await patch({ description: descBuf });
+    clearDraft(descDraftKey());
+    descDraftWriter.cancel();
   }
   async function commitNotes() {
     editingNotes = false;
     if (goal && notesBuf !== (goal.notes ?? '')) await patch({ notes: notesBuf });
+    clearDraft(notesDraftKey());
+    notesDraftWriter.cancel();
   }
 
   async function setStatus(s: Goal['status']) { await patch({ status: s }); }
@@ -643,7 +672,11 @@
           />
         {:else}
           <button
-            onclick={() => { titleBuf = goal.title; editingTitle = true; }}
+            onclick={() => {
+              const draft = loadDraft<string | null>(titleDraftKey(), null);
+              titleBuf = (draft && draft !== '') ? draft : goal.title;
+              editingTitle = true;
+            }}
             class="text-base font-semibold text-text flex-1 text-left truncate hover:text-primary"
             title="click to rename"
           >{goal.title}</button>
@@ -796,7 +829,11 @@
             ></textarea>
           {:else}
             <button
-              onclick={() => { descBuf = goal.description ?? ''; editingDesc = true; }}
+              onclick={() => {
+                const draft = loadDraft<string | null>(descDraftKey(), null);
+                descBuf = (draft && draft !== '') ? draft : (goal.description ?? '');
+                editingDesc = true;
+              }}
               class="w-full text-left px-3 py-2 text-sm rounded hover:bg-surface0 {goal.description ? 'text-text' : 'text-dim italic'}"
             >{#if goal.description}{@html inlineMd(goal.description)}{:else}click to add a description…{/if}</button>
           {/if}
@@ -1122,7 +1159,11 @@
             ></textarea>
           {:else}
             <button
-              onclick={() => { notesBuf = goal.notes ?? ''; editingNotes = true; }}
+              onclick={() => {
+                const draft = loadDraft<string | null>(notesDraftKey(), null);
+                notesBuf = (draft && draft !== '') ? draft : (goal.notes ?? '');
+                editingNotes = true;
+              }}
               class="w-full text-left px-3 py-2 text-sm rounded hover:bg-surface0 whitespace-pre-wrap {goal.notes ? 'text-text' : 'text-dim italic'}"
             >{goal.notes || 'click to add notes…'}</button>
           {/if}
