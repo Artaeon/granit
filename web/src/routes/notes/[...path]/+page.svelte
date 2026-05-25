@@ -1905,49 +1905,17 @@
         >
           {viewMode === 'preview' ? '✎' : '👁'}
         </button>
-        <!-- Keyboard shortcut cheat sheet — also bound to "?" on
-             anywhere outside an editable surface. Hidden on phones
-             where the help is less useful (no physical keyboard). -->
-        <button
-          onclick={() => (helpOpen = true)}
-          title="Keyboard shortcuts (?)"
-          aria-label="Keyboard shortcuts"
-          class="hidden lg:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
-        >
-          <span class="font-mono text-sm">?</span>
-        </button>
-        <!-- Export PDF — opens a fullscreen print preview with
-             configurable header/footer and three layout modes
-             (standard / certificate / report). Hidden on the very
-             narrowest viewports because the toolbar is already busy
-             on phone; tablet+ shows it. -->
-        <button
-          onclick={() => (printOpen = true)}
-          title="Export as PDF (header + footer)"
-          aria-label="Export as PDF"
-          class="hidden lg:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
-            <path d="M6 9V4h12v5"/>
-            <rect x="6" y="14" width="12" height="6" rx="1"/>
-            <path d="M6 17H4a2 2 0 01-2-2v-3a2 2 0 012-2h16a2 2 0 012 2v3a2 2 0 01-2 2h-2"/>
-          </svg>
-        </button>
-        <!-- Find / replace — opens CodeMirror's built-in search
-             panel. Mod-F triggers the same panel via the keymap;
-             this button surfaces the feature for users who don't
-             know the shortcut. -->
-        <button
-          onclick={() => editor?.openFind()}
-          title="Find / replace (Mod-F)"
-          aria-label="Find in note"
-          class="hidden lg:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
-        >
-          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8">
-            <circle cx="11" cy="11" r="7"/>
-            <path d="M21 21l-4.5-4.5" stroke-linecap="round"/>
-          </svg>
-        </button>
+        <!-- 2026-05-25 toolbar redesign: secondary actions (find,
+             history, PDF, slideshow, audio, reading mode, focus
+             mode, help) ALL live in the overflow menu now — at
+             every breakpoint, not just below lg. The header was
+             carrying ~17 buttons on desktop, which pushed the
+             title row into a hard-to-scan strip. Primary tier
+             (view-mode, AI, Research, overflow) stays in the
+             rail; the rest collapses behind ⋯ even on wide
+             monitors. Faster scan, cleaner rhythm, single home
+             for "everything else". -->
+
         <!-- AI affordance: open the InlineAIMenu at the editor's
              cursor. Cmd-/ from inside the editor does the same thing
              with a keystroke; this button is for click-first users
@@ -1980,15 +1948,12 @@
             <span aria-hidden="true">🔬</span>
           </button>
         {/if}
-        <!-- Overflow trigger — collapses the secondary buttons
-             (find, print, slideshow, audio, reading, focus, history,
-             help) into one menu on every viewport below lg. The
-             header used to ungate all 8 at sm and force-cram them
-             onto 700-1000px tablets; the result was a row that
-             pushed the breadcrumbs off the right edge. Hiding the
-             buttons at sm and lifting the threshold to lg is the
-             responsive fix — desktop unchanged, everything below
-             gets one predictable affordance. -->
+        <!-- Overflow trigger — single home for all secondary actions
+             (find, history, PDF, slideshow, audio, reading mode,
+             focus mode, keyboard shortcuts, flashcards). Visible at
+             every breakpoint so the toolbar has one consistent
+             "more actions" affordance and the wide-viewport row
+             doesn't carry 17 buttons. -->
         <button
           bind:this={overflowTriggerEl}
           onclick={() => (overflowOpen = !overflowOpen)}
@@ -1996,102 +1961,10 @@
           aria-haspopup="menu"
           aria-expanded={overflowOpen}
           title="More actions"
-          class="lg:hidden w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-lg leading-none"
+          class="w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-lg leading-none"
         >⋯</button>
-        <!-- Slideshow — open the note as a fullscreen deck split
-             on H2 boundaries. Mod-Shift-P also opens it. Hidden on
-             phones because driving a deck on a 4" screen is
-             pointless. -->
-        <button
-          onclick={() => (presentationOpen = true)}
-          title="Slideshow (Mod-Shift-P)"
-          aria-label="Open slideshow presentation"
-          class="hidden lg:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base text-subtext hover:text-primary hover:bg-surface0"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
-            <rect x="3" y="4" width="18" height="13" rx="1.5"/>
-            <path d="M8 21h8M12 17v4" stroke-linecap="round"/>
-          </svg>
-        </button>
-        <!-- Audio mode — TTS read-aloud via the browser's Speech-
-             Synthesis API. No backend, no AI cost. Walk-and-listen
-             to your own notes. The button is a toggle: opens the
-             player strip above the editor; the player has its own
-             close button too. -->
-        <button
-          onclick={() => (audioOpen = !audioOpen)}
-          title={audioOpen ? 'Close read-aloud player' : 'Read this note aloud (browser TTS)'}
-          aria-label={audioOpen ? 'Close audio player' : 'Open audio player'}
-          aria-pressed={audioOpen}
-          class="hidden lg:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
-            {audioOpen ? 'bg-surface1 text-secondary' : 'text-subtext hover:text-secondary hover:bg-surface0'}"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
-            <path d="M11 5L6 9H2v6h4l5 4V5z" stroke-linejoin="round"/>
-            <path d="M15.5 8.5a5 5 0 010 7" stroke-linecap="round"/>
-            <path d="M19 5a9 9 0 010 14" stroke-linecap="round"/>
-          </svg>
-        </button>
-        <!-- Reading mode (Mod-Shift-R) — combo toggle: preview +
-             focus + serif typography. Restores the user's prior
-             view + focus state on toggle off. The button reads as
-             a separate affordance from focus mode because it's a
-             different commitment (no editing, full reading
-             posture). -->
-        <button
-          onclick={toggleReadingMode}
-          title={readingMode ? 'Exit reading mode (Mod-Shift-R)' : 'Reading mode (Mod-Shift-R)'}
-          aria-label={readingMode ? 'Exit reading mode' : 'Enter reading mode'}
-          aria-pressed={readingMode}
-          class="hidden lg:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
-            {readingMode ? 'bg-surface1 text-primary' : 'text-subtext hover:text-primary hover:bg-surface0'}"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
-            <path d="M2 5h7a3 3 0 013 3v11a2 2 0 00-2-2H2V5z"/>
-            <path d="M22 5h-7a3 3 0 00-3 3v11a2 2 0 012-2h8V5z"/>
-          </svg>
-        </button>
-        <!-- Focus mode (Mod-Shift-Z) — hides the tree + info panel
-             so the editor fills the viewport. Persists across page
-             loads. The button shows the current state with a
-             tinted background so the user can see they're in focus
-             mode at a glance. -->
-        <button
-          onclick={() => (focusMode = !focusMode)}
-          title={focusMode ? 'Exit focus mode (Mod-Shift-Z)' : 'Focus mode (Mod-Shift-Z)'}
-          aria-label={focusMode ? 'Exit focus mode' : 'Enter focus mode'}
-          aria-pressed={focusMode}
-          class="hidden lg:flex w-9 h-9 items-center justify-center rounded flex-shrink-0 text-base
-            {focusMode ? 'bg-surface1 text-primary' : 'text-subtext hover:text-primary hover:bg-surface0'}"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
-            {#if focusMode}
-              <path d="M9 4v4H5M15 4v4h4M9 20v-4H5M15 20v-4h4" stroke-linecap="round" stroke-linejoin="round"/>
-            {:else}
-              <path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4" stroke-linecap="round" stroke-linejoin="round"/>
-            {/if}
-          </svg>
-        </button>
-        <!-- Version history — opens a fullscreen panel showing all
-             prior saved versions of this note with one-click
-             restore. Snapshot is taken automatically on every save
-             (with content-hash dedup, so autosave bursts don't
-             pollute the list). The promise: nothing is ever lost.
-             Hidden on phones to keep the header tight; surfaced via
-             the mobile overflow menu instead. -->
-        <button
-          onclick={() => (historyOpen = true)}
-          title="Version history — every save creates a backup. Nothing is ever lost."
-          aria-label="Version history"
-          class="hidden lg:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
-            <circle cx="12" cy="12" r="9"/>
-            <path d="M12 7v5l3 2" stroke-linecap="round"/>
-            <path d="M3 12a9 9 0 0114-7.5l1 1" stroke-linecap="round"/>
-            <path d="M3 4v4h4" stroke-linecap="round"/>
-          </svg>
-        </button>
+        <!-- Save button. Stays primary — it's the always-on signal of
+             whether the buffer is dirty, saving, or saved cleanly. -->
         <button
           onclick={() => save()}
           disabled={(!dirty && !saveFailed) || saving}
