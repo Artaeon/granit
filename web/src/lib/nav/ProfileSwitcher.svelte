@@ -52,16 +52,31 @@
     }
   }
 
-  // Click-outside handler. Inlined so the component doesn't need a
-  // separate util import — single use case here.
+  // Click-outside + Escape handlers. Inlined so the component doesn't
+  // need a separate util import — single use case here.
   let rootEl: HTMLDivElement | undefined = $state();
+  let triggerEl: HTMLButtonElement | undefined = $state();
   function onDocClick(e: MouseEvent) {
     if (!menuOpen) return;
     if (rootEl && !rootEl.contains(e.target as Node)) menuOpen = false;
   }
+  function onDocKeydown(e: KeyboardEvent) {
+    if (!menuOpen) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      menuOpen = false;
+      // Return focus to the trigger so keyboard users land back where
+      // they opened the menu from.
+      triggerEl?.focus();
+    }
+  }
   onMount(() => {
     document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onDocKeydown);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onDocKeydown);
+    };
   });
 
   // Active profile initial — first letter of the profile name, used in
@@ -73,20 +88,26 @@
   <div bind:this={rootEl} class="relative">
     {#if isCompact}
       <button
+        bind:this={triggerEl}
         type="button"
         onclick={() => (menuOpen = !menuOpen)}
         title={active ? `Profile: ${active.name} — tap to switch` : 'Switch profile'}
         aria-label="switch profile"
         aria-expanded={menuOpen}
+        aria-haspopup="menu"
+        aria-controls="profile-switcher-menu"
         class="w-full flex justify-center items-center px-2 py-2 rounded text-sm font-mono text-primary hover:bg-surface0 transition-colors"
       >
         <span class="w-5 h-5 inline-flex items-center justify-center rounded-full border border-primary text-[11px]">{activeInitial}</span>
       </button>
     {:else}
       <button
+        bind:this={triggerEl}
         type="button"
         onclick={() => (menuOpen = !menuOpen)}
         aria-expanded={menuOpen}
+        aria-haspopup="menu"
+        aria-controls="profile-switcher-menu"
         class="w-full flex items-center gap-3 px-3 py-1.5 rounded text-xs text-dim hover:bg-surface0 hover:text-subtext transition-colors"
       >
         <span class="w-4 h-4 inline-flex items-center justify-center rounded-full border border-dim text-[10px] font-mono flex-shrink-0">{activeInitial}</span>
@@ -105,6 +126,7 @@
            the nav around when it opens. Right-side anchored in compact
            mode so it doesn't clip off the left edge. -->
       <div
+        id="profile-switcher-menu"
         class="absolute bottom-full mb-1 {isCompact ? 'left-full ml-2' : 'left-0 right-0'} bg-mantle border border-surface1 rounded-lg shadow-xl z-50 overflow-hidden"
         role="menu"
         aria-label="profiles"

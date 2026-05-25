@@ -92,6 +92,16 @@ func (s *Server) handleActivateProfile(w http.ResponseWriter, r *http.Request) {
 	// exactly those IDs.
 	active := preg.Active()
 	mreg := s.modulesRegistry()
+	// Surface profile entries that reference unknown module IDs in the
+	// server log. They're silently dropped by desiredModulesFor (the
+	// iteration only visits registry-known IDs) but a typo in a user-
+	// authored profile under ~/.config/granit/profiles/ shouldn't be
+	// invisible — log it so the user can find it via journalctl when
+	// the profile feels like it's not applying what they expect.
+	if unknown := unknownModuleIDs(active, mreg); len(unknown) > 0 {
+		s.cfg.Logger.Warn("profiles: profile references unknown module IDs",
+			"profile", id, "unknown", unknown)
+	}
 	desired := desiredModulesFor(active, mreg)
 	if len(desired) > 0 {
 		if err := mreg.SetEnabledBatch(desired); err != nil {
@@ -142,4 +152,32 @@ func desiredModulesFor(p *profiles.Profile, mreg *modules.Registry) map[string]b
 		out[id] = want[id]
 	}
 	return out
+}
+
+// unknownModuleIDs returns the subset of p.EnabledModules that the
+// modules registry doesn't know about. desiredModulesFor silently
+// drops these (the iteration only visits registry-known IDs), so
+// without this surfacing a profile typo would be invisible. Returns
+// an empty slice when everything checks out.
+func unknownModuleIDs(p *profiles.Profile, mreg *modules.Registry) []string {
+	if len(p.EnabledModules) == 0 {
+		return nil
+	}
+	known := map[string]bool{}
+	for _, m := range mreg.All() {
+		known[m.ID()] = true
+	}
+	// Core IDs aren't registered as toggleable modules but are also
+	// not "unknown" — a profile listing them isn't a typo, just a
+	// no-op since they're always-on.
+	for _, id := range modules.CoreIDs {
+		known[id] = true
+	}
+	var unknown []string
+	for _, id := range p.EnabledModules {
+		if !known[id] {
+			unknown = append(unknown, id)
+		}
+	}
+	return unknown
 }

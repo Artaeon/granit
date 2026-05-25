@@ -1395,7 +1395,13 @@
   // the user asks.
   function openResearchMode(): void {
     if (!note) return;
-    const excerpt = (body ?? '').trim().slice(0, 800);
+    // Trim first, then measure + slice the trimmed text. The ellipsis
+    // marker should reflect whether content was actually truncated,
+    // not whether the raw body (which may include leading/trailing
+    // whitespace) crosses the cap.
+    const trimmed = (body ?? '').trim();
+    const excerpt = trimmed.slice(0, 800);
+    const truncated = trimmed.length > 800;
     const lines = [
       `I'm in research mode on this note:`,
       '',
@@ -1404,7 +1410,7 @@
     const tags = (note.tags ?? []);
     if (tags.length > 0) lines.push(`- tags: ${tags.map((t) => '#' + t).join(' ')}`);
     if (excerpt) {
-      lines.push('', 'Excerpt:', excerpt + ((body ?? '').length > 800 ? '…' : ''));
+      lines.push('', 'Excerpt:', excerpt + (truncated ? '…' : ''));
     }
     lines.push(
       '',
