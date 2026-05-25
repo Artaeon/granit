@@ -309,20 +309,42 @@
           <NavItem {item} isCompact={true} onNavigate={navigate} />
         {/each}
       {:else}
-        <div>
+        <div class="mt-1">
+          <!-- Section header: now a real-button-shaped affordance with
+               an always-visible chevron + item count. Previously the
+               chevron was opacity-0 group-hover:opacity-100 — invisible
+               unless the user happened to mouse over the row, which
+               failed the discoverability test ("can you tell sections
+               collapse without being told?"). The header is also
+               taller (py-1.5) and the label larger (text-[11px]
+               font-medium) so layer-2 reads as a distinct tier of
+               navigation, not as decoration. -->
           <button
             type="button"
             onclick={() => toggleSection(section.id)}
             aria-expanded={!isCollapsed}
-            class="w-full flex items-center gap-1 px-3 pt-2 pb-0.5 text-[10px] uppercase tracking-wider text-dim hover:text-subtext transition-colors"
+            class="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] uppercase tracking-wider font-medium text-dim hover:text-subtext hover:bg-surface0 rounded transition-colors"
           >
-            <span class="flex-1 text-left">{section.label}</span>
-            <svg viewBox="0 0 24 24" class="w-3 h-3 opacity-0 group-hover:opacity-100 transition-transform {isCollapsed ? '-rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg
+              viewBox="0 0 24 24"
+              class="w-3 h-3 flex-shrink-0 transition-transform {isCollapsed ? '-rotate-90' : ''}"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
               <polyline points="6 9 12 15 18 9" />
             </svg>
+            <span class="flex-1 text-left">{section.label}</span>
+            <span class="text-[10px] text-dim/70 tabular-nums normal-case tracking-normal" aria-hidden="true">{section.items.length}</span>
           </button>
           {#if !isCollapsed}
-            <div class="space-y-0">
+            <!-- Layer-2 items indented relative to the header so the
+                 nesting reads at a glance, not just from the chevron
+                 state. -->
+            <div class="space-y-0 ml-2 mt-0.5 border-l border-surface1 pl-1">
               {#each section.items as item}
                 <NavItem {item} isCompact={false} onNavigate={navigate} />
               {/each}

@@ -74,6 +74,16 @@ export const sections: NavSection[] = [
     ]
   },
   {
+    id: 'spiritual',
+    label: 'Spiritual',
+    items: [
+      { href: '/scripture', label: 'Scripture', icon: 'scripture', moduleId: 'scripture' },
+      { href: '/scripture/plans', label: 'Plans', icon: 'plans', moduleId: 'scripture' },
+      { href: '/prayer', label: 'Prayer', icon: 'prayer', moduleId: 'prayer' },
+      { href: '/roots', label: 'Roots', icon: 'roots', moduleId: 'roots' }
+    ]
+  },
+  {
     id: 'life',
     label: 'Life',
     items: [
@@ -81,11 +91,7 @@ export const sections: NavSection[] = [
       { href: '/shopping', label: 'Shopping', icon: 'shopping', moduleId: 'shopping' },
       { href: '/hub', label: 'Hub', icon: 'hub', moduleId: 'hub' },
       { href: '/people', label: 'People', icon: 'people', moduleId: 'people' },
-      { href: '/measurements', label: 'Metrics', icon: 'measurements', moduleId: 'measurements' },
-      { href: '/prayer', label: 'Prayer', icon: 'prayer', moduleId: 'prayer' },
-      { href: '/scripture', label: 'Scripture', icon: 'scripture', moduleId: 'scripture' },
-      { href: '/scripture/plans', label: 'Plans', icon: 'plans', moduleId: 'scripture' },
-      { href: '/roots', label: 'Roots', icon: 'roots', moduleId: 'roots' }
+      { href: '/measurements', label: 'Metrics', icon: 'measurements', moduleId: 'measurements' }
     ]
   },
   {

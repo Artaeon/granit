@@ -26,6 +26,7 @@ const COMPACT_KEY = 'granit.sidebar.compact';
 
 const DEFAULT_COLLAPSED: Record<string, boolean> = {
   plan: true,
+  spiritual: true,
   life: true,
   knowledge: true,
   ai: true
