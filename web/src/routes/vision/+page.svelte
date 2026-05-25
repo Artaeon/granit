@@ -66,20 +66,31 @@
   // while editing two surfaces in parallel doesn't clobber either.
   let editingKey = $state<string | null>(null);
   let draftSavedAt = $state<string | null>(null);
+  // Snapshot of the form state at startEdit time. Used by the
+  // save-$effect below to:
+  //  1. Skip writes when the user hasn't actually touched the form
+  //     yet (otherwise an opened-but-untouched tab leaves a same-
+  //     as-server draft in localStorage forever — wasteful noise).
+  //  2. Preserve the previously-loaded draftSavedAt timestamp
+  //     until the first real keystroke. Without this, re-entering
+  //     a 12-minute-old draft would immediately overwrite the
+  //     indicator with "just now" — defeating the whole point of
+  //     showing the user when the safety net last fired.
+  let editEntryContent = $state('');
+  let editEntryReason = $state('');
   const draftWriter = makeDraftWriter(500);
   function draftKeyFor(key: string): string {
     return `vision.edit.${key}`;
   }
-  // Save the in-progress edit to localStorage on every change.
-  // Only runs while a tab is actually in edit mode (editingKey set);
-  // otherwise switching tabs in read mode would write a useless
-  // empty-form draft.
   $effect(() => {
     if (!editingKey) return;
+    // Untouched entry — content + reason match the snapshot recorded
+    // at startEdit. Don't write a draft yet; the user hasn't done
+    // anything to capture.
+    if (editContent === editEntryContent && editReason === editEntryReason) return;
     draftWriter.save(draftKeyFor(editingKey), { content: editContent, reason: editReason });
-    // Read back the timestamp so the UI can show "draft saved Xs ago".
-    // We use the timestamp from the JUST-written entry — close enough
-    // to "now" without spinning a separate clock.
+    // Bump the visible "draft saved · Xs ago" timestamp only on
+    // genuine changes, not on entry-snapshot equality.
     draftSavedAt = new Date().toISOString();
   });
   // Flush any pending draft write before the user leaves the page
@@ -229,6 +240,11 @@
       editReason = '';
       draftSavedAt = null;
     }
+    // Snapshot the entry state so the save-$effect can skip writes
+    // until the user actually changes something. Also preserves
+    // the loaded draftSavedAt indicator until the first real edit.
+    editEntryContent = editContent;
+    editEntryReason = editReason;
     editingKey = d.key;
     setMode(d.key, 'edit');
   }

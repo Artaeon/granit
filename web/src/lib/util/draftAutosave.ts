@@ -48,8 +48,17 @@ export function loadDraft<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(storageKey(key));
     if (raw === null) return fallback;
-    const parsed = JSON.parse(raw) as DraftCache;
-    return parsed.value as T;
+    const parsed = JSON.parse(raw);
+    // Runtime-validate the shape — old builds (or a future
+    // build that changes the schema) may have stored a raw string
+    // or a different envelope. Without this guard, parsed.value
+    // would be undefined and slip past callers that test
+    // `!== null && !== ''` (undefined passes both). Treat any
+    // non-conforming entry as if no draft existed.
+    if (parsed && typeof parsed === 'object' && 'value' in parsed) {
+      return (parsed as DraftCache).value as T;
+    }
+    return fallback;
   } catch {
     return fallback;
   }

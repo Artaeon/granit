@@ -156,9 +156,24 @@
       goalTasks = [];
     }
   }
+  // Last goal id we initialised buffers for. Parent swaps the goal
+  // prop on list-click without unmounting, so we need to close any
+  // open inline editors — titleBuf/descBuf/notesBuf still hold the
+  // OLD goal's text otherwise and the draft-save $effects would
+  // write that text under the NEW goal's draft key.
+  let lastGoalId = '';
   $effect(() => {
     void goal?.id;
     if (goal) loadGoalTasks();
+    if (goal && lastGoalId && lastGoalId !== goal.id) {
+      editingTitle = false;
+      editingDesc = false;
+      editingNotes = false;
+      titleDraftWriter.cancel();
+      descDraftWriter.cancel();
+      notesDraftWriter.cancel();
+    }
+    if (goal) lastGoalId = goal.id;
   });
 
   const BURNUP_WEEKS = 8;

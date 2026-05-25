@@ -122,11 +122,30 @@
     }
   }
 
+  // Last project name we initialised buffers for. When the parent
+  // swaps the project prop without unmounting (master-detail list-
+  // click), we need to close any open inline editors — descBuf etc.
+  // still hold the OLD project's text, and the draft-save $effects
+  // would otherwise write that text under the NEW project's key.
+  let lastProjectName = '';
   $effect(() => {
     void project.name;
     loadTasks();
     loadLinkedGoals();
     void loadProjectVision();
+    // Project-switch reset: drop edit state + cancel pending draft
+    // writers so the prior project's buffers don't bleed into the
+    // new project's localStorage key.
+    if (lastProjectName && lastProjectName !== project.name) {
+      editingDescription = false;
+      editingNextAction = false;
+      editingName = false;
+      cancellingDesc = false;
+      cancellingNextAction = false;
+      descDraftWriter.cancel();
+      nextActionDraftWriter.cancel();
+    }
+    lastProjectName = project.name;
   });
 
   // Reload the project's vision when the central catalogue changes
@@ -160,6 +179,14 @@
   // contaminate drafts.
   const descDraftWriter = makeDraftWriter(400);
   const nextActionDraftWriter = makeDraftWriter(400);
+  // Cancel flags — set by Escape handlers before flipping editing=false,
+  // checked by commit functions so the blur event that fires when the
+  // textarea unmounts doesn't silently persist text the user just
+  // tried to discard. Without these, Esc → editingDescription=false →
+  // DOM unmount → browser fires blur → commitDescription runs → typed
+  // text patched to server. Cancel-then-save bug.
+  let cancellingDesc = $state(false);
+  let cancellingNextAction = $state(false);
   function descDraftKey(): string {
     return `project.description.${project.name}`;
   }
@@ -174,6 +201,7 @@
   });
 
   async function commitDescription() {
+    if (cancellingDesc) { cancellingDesc = false; return; }
     editingDescription = false;
     if (descBuf !== (project.description ?? '')) await patch({ description: descBuf });
     // Whether the patch fired or not, the user closed the editor —
@@ -182,6 +210,7 @@
     descDraftWriter.cancel();
   }
   async function commitNextAction() {
+    if (cancellingNextAction) { cancellingNextAction = false; return; }
     editingNextAction = false;
     if (nextActionBuf !== (project.next_action ?? '')) await patch({ next_action: nextActionBuf });
     clearDraft(nextActionDraftKey());
@@ -1030,6 +1059,10 @@
             onkeydown={(e) => {
               if (e.key === 'Escape') {
                 e.preventDefault();
+                // Set the cancel flag BEFORE flipping editingDescription
+                // so the blur-on-unmount that follows can short-circuit
+                // commitDescription instead of silently persisting.
+                cancellingDesc = true;
                 editingDescription = false;
                 clearDraft(descDraftKey());
                 descDraftWriter.cancel();
@@ -1108,6 +1141,7 @@
               if (e.key === 'Enter') commitNextAction();
               else if (e.key === 'Escape') {
                 e.preventDefault();
+                cancellingNextAction = true;
                 editingNextAction = false;
                 clearDraft(nextActionDraftKey());
                 nextActionDraftWriter.cancel();
