@@ -164,11 +164,10 @@
             </li>
           {/each}
         </ul>
-        <a
-          href="/settings"
-          onclick={() => (menuOpen = false)}
-          class="block px-3 py-1.5 text-[11px] text-secondary hover:bg-surface0 border-t border-surface1"
-        >Manage profiles in Settings →</a>
+        <p class="px-3 py-1.5 text-[10px] text-dim leading-snug border-t border-surface1">
+          Activating only changes the active pointer. Module visibility
+          stays where you set it in <a href="/settings/features" onclick={() => (menuOpen = false)} class="text-secondary hover:underline">Settings → Features</a>.
+        </p>
       </div>
     {/if}
   </div>
