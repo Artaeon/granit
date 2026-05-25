@@ -38,7 +38,8 @@
     collapsedSections,
     toggleSection,
     sidebarCompact,
-    toggleSidebarCompact
+    toggleSidebarCompact,
+    hiddenSections
   } from '$lib/stores/sidebar-ui';
   import { sabbath, SABBATH_HIDE_MODULES } from '$lib/stores/sabbath';
   import { modulesStore } from '$lib/stores/modules';
@@ -111,7 +112,12 @@
   let visibleSections = $derived.by(() => {
     void $modulesStore;
     void $sabbath;
+    void $hiddenSections;
     return sections
+      // Drop the whole section if the user hid it via Settings →
+      // Sidebar Views. Runs before item filtering so we don't even
+      // touch the children when the parent is invisible.
+      .filter((s) => !$hiddenSections[s.id])
       .map((s) => ({
         ...s,
         items: s.items.filter((item) => {

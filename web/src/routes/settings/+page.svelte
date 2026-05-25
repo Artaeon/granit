@@ -12,6 +12,9 @@
   import { relativeTime } from '$lib/util/relativeTime';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import { trayEnabled, clearOpenNote, pinnedTrayNotes } from '$lib/stores/open-note';
+  import { profilesStore } from '$lib/stores/profiles';
+  import { hiddenSections, setSectionHidden } from '$lib/stores/sidebar-ui';
+  import { sections as navSections } from '$lib/nav/config';
 
   // Curated OpenAI model picker — refreshed against
   // developers.openai.com/api/docs/pricing periodically. Server is the
@@ -232,8 +235,34 @@
       pwError = errorMessage(e);
     }
   }
+  // Activate a profile from the Settings → Profile picker. The store
+  // owns the API call + WS-triggered refresh; the wrapper just keeps
+  // the toast + busy-state local to the settings UI.
+  let profileBusyId = $state<string | null>(null);
+  // Count of hidden nav sections — surfaced as a small "(N hidden)"
+  // hint in the Sidebar Views header. Computed in the script because
+  // {@const} can only nest inside the listed flow tags, not <header>.
+  let hiddenSectionsCount = $derived.by(() => {
+    void $hiddenSections;
+    return Object.values($hiddenSections).filter(Boolean).length;
+  });
+  async function activateProfile(id: string) {
+    if (id === $profilesStore.activeId) return;
+    profileBusyId = id;
+    try {
+      await profilesStore.activate(id);
+      const name = $profilesStore.profiles.find((p) => p.id === id)?.name ?? id;
+      toast.success(`Profile switched to ${name}`);
+    } catch (e) {
+      toast.error('Couldn\'t switch profile: ' + errorMessage(e));
+    } finally {
+      profileBusyId = null;
+    }
+  }
+
   onMount(() => {
     load();
+    void profilesStore.ensureLoaded();
     void loadCalSources();
     void loadAutocommit();
     void loadStoiceraSettings();
@@ -811,6 +840,99 @@
       </div>
       <p class="text-xs text-dim mt-2 leading-relaxed">
         System follows your OS setting and updates live.
+      </p>
+    </section>
+
+    <!-- Profile — list all profiles, show active, activate inline.
+         Phase 1 web: activation only flips the active pointer (it
+         doesn't touch modules because the built-in profile manifests
+         are TUI-shaped and would catastrophically narrow the web
+         registry — see commit 77436215). Custom user-authored
+         profiles get a "custom" tag so the user can spot which
+         survive a granit-update vs which are built-in. -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <header class="flex items-baseline gap-2 mb-2">
+        <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Profile</h2>
+        {#if $profilesStore.loaded && $profilesStore.activeId}
+          <span class="text-[11px] text-dim">active:</span>
+          <span class="text-[11px] text-primary font-medium">{$profilesStore.profiles.find((p) => p.id === $profilesStore.activeId)?.name ?? $profilesStore.activeId}</span>
+        {/if}
+      </header>
+      {#if !$profilesStore.loaded}
+        <Skeleton class="h-4 w-1/2 mb-1" />
+        <Skeleton class="h-4 w-1/3" />
+      {:else if $profilesStore.profiles.length === 0}
+        <p class="text-xs text-dim italic">No profiles registered.</p>
+      {:else}
+        <ul class="space-y-1">
+          {#each $profilesStore.profiles as p (p.id)}
+            {@const isActive = p.id === $profilesStore.activeId}
+            <li>
+              <button
+                type="button"
+                onclick={() => activateProfile(p.id)}
+                disabled={profileBusyId === p.id || isActive}
+                class="w-full text-left px-2.5 py-2 rounded transition-colors flex items-start gap-2.5 {isActive ? 'bg-surface1 border border-surface2' : 'border border-transparent hover:bg-surface0 hover:border-surface1'}"
+              >
+                <span class="w-0.5 self-stretch rounded {isActive ? 'bg-primary' : 'bg-transparent'} flex-shrink-0"></span>
+                <span class="flex-1 min-w-0">
+                  <span class="block text-sm font-medium text-text">
+                    {p.name}
+                    {#if isActive}<span class="ml-1.5 text-[10px] uppercase tracking-wider text-primary">active</span>{/if}
+                    {#if !p.builtIn}<span class="ml-1.5 text-[10px] text-dim">custom</span>{/if}
+                  </span>
+                  {#if p.description}
+                    <span class="block text-[11px] text-dim mt-0.5 leading-snug">{p.description}</span>
+                  {/if}
+                </span>
+                {#if profileBusyId === p.id}
+                  <span class="text-[11px] text-dim flex-shrink-0">…</span>
+                {:else if !isActive}
+                  <span class="text-[11px] text-secondary flex-shrink-0">activate →</span>
+                {/if}
+              </button>
+            </li>
+          {/each}
+        </ul>
+        <p class="text-[11px] text-dim mt-2 leading-relaxed">
+          Activating changes the active pointer only. Module visibility stays where you set it in Features below.
+        </p>
+      {/if}
+    </section>
+
+    <!-- Sidebar Views — hide entire nav sections from the rail.
+         Distinct from "Features" (which toggles individual modules).
+         A section hidden here disappears entirely (header + items);
+         the routes still work via URL / command palette / AI agent
+         navigation, just not in the sidebar. Per-device via
+         localStorage so phone + desktop can differ. -->
+    <section class="bg-surface0 border border-surface1 rounded-lg p-3 mb-2.5">
+      <header class="flex items-baseline gap-2 mb-2">
+        <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Sidebar Views</h2>
+        {#if hiddenSectionsCount > 0}
+          <span class="text-[11px] text-dim">{hiddenSectionsCount} hidden</span>
+        {/if}
+      </header>
+      <ul class="space-y-0.5">
+        {#each navSections as section (section.id)}
+          {@const visible = !$hiddenSections[section.id]}
+          <li class="flex items-center gap-2 px-1 py-1">
+            <button
+              type="button"
+              onclick={() => setSectionHidden(section.id, visible)}
+              aria-pressed={visible}
+              aria-label="{visible ? 'hide' : 'show'} {section.label}"
+              class="w-9 h-5 rounded-full relative transition-colors flex-shrink-0 {visible ? 'bg-primary' : 'bg-surface1'}"
+            >
+              <span class="absolute top-0.5 w-4 h-4 rounded-full bg-base transition-all {visible ? 'left-4' : 'left-0.5'}"></span>
+            </button>
+            <span class="flex-1 text-sm text-text">{section.label}</span>
+            <span class="text-[10px] text-dim tabular-nums">{section.items.length} item{section.items.length === 1 ? '' : 's'}</span>
+          </li>
+        {/each}
+      </ul>
+      <p class="text-[11px] text-dim mt-2 leading-relaxed">
+        Routes still work via the command palette + direct URLs. This only affects the sidebar rail.
       </p>
     </section>
 

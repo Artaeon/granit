@@ -1,15 +1,24 @@
-// Per-device sidebar layout preferences. Two pieces of state:
+// Per-device sidebar layout preferences. Three pieces of state:
 //
 //   compact          — icon-only rail vs expanded rail (md+ only;
 //                      mobile drawer always renders full mode)
 //   collapsedSections — record of section.id → true so the wire
 //                      format stays tiny (only collapsed sections
 //                      are stored)
+//   hiddenSections    — record of section.id → true. Distinct from
+//                      collapsed: a hidden section disappears from
+//                      the sidebar entirely (no header, no items),
+//                      not just folded shut. Used by the Settings
+//                      "Sidebar Views" panel for the user who wants
+//                      to drop a whole pillar (e.g. "I don't want
+//                      AI in my nav at all"). Empty record = nothing
+//                      hidden, all sections visible.
 //
-// Both used to live as $state inside +layout.svelte. Pulled into a
-// shared store so the aside (which sets the width class) and the
-// nav sidebar component (which renders the rows) consume the same
-// source instead of passing state down and toggles back up.
+// All three used to live as $state inside +layout.svelte. Pulled
+// into a shared store so the aside (which sets the width class)
+// and the nav sidebar component (which renders the rows) consume
+// the same source instead of passing state down and toggles back
+// up.
 //
 // Default-collapse everything except Daily. The original default
 // was "all expanded", which surfaced 25+ items at once and made
@@ -23,6 +32,7 @@ import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib
 
 const COLLAPSED_KEY = 'granit.sidebar.collapsed';
 const COMPACT_KEY = 'granit.sidebar.compact';
+const HIDDEN_KEY = 'granit.sidebar.hidden';
 
 const DEFAULT_COLLAPSED: Record<string, boolean> = {
   plan: true,
@@ -66,6 +76,26 @@ export function toggleSidebarCompact(): void {
   sidebarCompact.update((cur) => {
     const next = !cur;
     saveStoredString(COMPACT_KEY, next ? '1' : '0');
+    return next;
+  });
+}
+
+// Hidden sections — set by the Settings "Sidebar Views" panel. Empty
+// record by default (everything visible). Same shape as collapsed
+// but a different semantic — hidden = "don't render at all in the
+// rail", whereas collapsed = "render the header, just fold items".
+function loadHidden(): Record<string, boolean> {
+  return loadStored<Record<string, boolean>>(HIDDEN_KEY, {});
+}
+
+export const hiddenSections = writable<Record<string, boolean>>(loadHidden());
+
+export function setSectionHidden(id: string, hidden: boolean): void {
+  hiddenSections.update((cur) => {
+    const next = { ...cur };
+    if (hidden) next[id] = true;
+    else delete next[id];
+    saveStored(HIDDEN_KEY, next);
     return next;
   });
 }
