@@ -4,6 +4,7 @@
   import { onWsEvent } from '$lib/ws';
   import { glyphForKind } from '$lib/calendar/eventTypes';
   import { createCoalescedReload } from '$lib/util/coalesce';
+  import { onLocalMidnight } from '$lib/util/midnightTick';
 
   // TodayStreamWidget — single span-2 widget that answers "what's
   // happening today" in one chronological feed. Today's events,
@@ -42,13 +43,23 @@
   let tasks = $state<Task[]>([]);
   let deadlines = $state<Deadline[]>([]);
   let loaded = $state(false);
+  // True when the last load() saw every source fail. Keeps the stream
+  // from rendering as "Nothing scheduled today" (a misleading green
+  // light) when really the server just went away. Tracked per-source
+  // so a single endpoint glitch doesn't pessimise the whole tile.
+  let allFailed = $state(false);
 
   // Live "now" — refreshes once a minute so the past/future split
   // updates without a page reload. Cleared on destroy.
   let now = $state(new Date());
   let nowTick: ReturnType<typeof setInterval> | null = null;
 
-  const today = todayISO();
+  // `today` is reactive — at local midnight we roll the date forward
+  // so the filters (today's events, tasks due today, ...) re-evaluate
+  // against the new day without the user reloading. Without this, a
+  // dashboard left open overnight kept showing yesterday's stream
+  // until manual refresh.
+  let today = $state(todayISO());
 
   function startOfDay(d: Date): Date {
     const x = new Date(d); x.setHours(0, 0, 0, 0); return x;
@@ -67,9 +78,15 @@
       api.listTasks({ status: 'open' }),
       api.tryListDeadlines()
     ]);
-    events = c.status === 'fulfilled' ? c.value.events : [];
-    tasks = t.status === 'fulfilled' ? t.value.tasks : [];
-    deadlines = d.status === 'fulfilled' ? (d.value ?? []) : [];
+    // Per-source assignment with last-good fallback: a transient
+    // failure on one endpoint shouldn't blank the rows from the
+    // healthy ones. allFailed gates the visible "couldn't load"
+    // hint below the stream so the user can distinguish "nothing
+    // scheduled" from "network gone".
+    if (c.status === 'fulfilled') events = c.value.events;
+    if (t.status === 'fulfilled') tasks = t.value.tasks;
+    if (d.status === 'fulfilled') deadlines = d.value ?? [];
+    allFailed = c.status === 'rejected' && t.status === 'rejected' && d.status === 'rejected';
     loaded = true;
   }
 
@@ -80,9 +97,15 @@
   // server cost by N widgets that follow the same pattern.
   const reload = createCoalescedReload(load, 600);
 
+  let stopMidnight: (() => void) | null = null;
   onMount(() => {
     load();
     nowTick = setInterval(() => { now = new Date(); }, 60_000);
+    stopMidnight = onLocalMidnight(() => {
+      today = todayISO();
+      now = new Date();
+      void load();
+    });
     return onWsEvent((ev) => {
       if (ev.type === 'task.changed') reload.trigger();
       else if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
@@ -93,6 +116,7 @@
   onDestroy(() => {
     reload.cancel();
     if (nowTick) clearInterval(nowTick);
+    if (stopMidnight) stopMidnight();
   });
 
   // ICS events come down the wire in two shapes:
@@ -373,6 +397,11 @@
         </li>
       {/each}
     </ul>
+  {:else if allFailed}
+    <p class="text-sm text-warning">
+      Couldn't load today's stream.
+      <button type="button" class="text-secondary hover:underline ml-1" onclick={() => void load()}>Retry</button>
+    </p>
   {:else if stream.length === 0}
     <p class="text-sm text-dim italic">
       Nothing scheduled today. Wide open.

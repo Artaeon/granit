@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, type Scripture } from '$lib/api';
+  import { onLocalMidnight } from '$lib/util/midnightTick';
 
   // Verse-of-the-day card on the dashboard. Server-side rotation is
   // deterministic by date so a refresh shows the same verse all day —
@@ -28,7 +29,15 @@
     }
   }
 
-  onMount(load);
+  let stopMidnight: (() => void) | null = null;
+  onMount(() => {
+    void load();
+    // Server rotates the verse deterministically by date — refetch
+    // at local midnight so the dashboard shows the new day's verse
+    // without a manual reload.
+    stopMidnight = onLocalMidnight(() => { void load(); });
+  });
+  onDestroy(() => { if (stopMidnight) stopMidnight(); });
 </script>
 
 <section class="bg-surface0 border border-surface1 rounded-lg p-3">

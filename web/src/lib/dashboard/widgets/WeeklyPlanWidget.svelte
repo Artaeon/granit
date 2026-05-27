@@ -19,9 +19,12 @@
   import { onWsEvent } from '$lib/ws';
   import { isoWeekString, planNotePath } from '$lib/util/isoWeek';
   import { createCoalescedReload } from '$lib/util/coalesce';
+  import { onLocalMidnight } from '$lib/util/midnightTick';
 
-  const weekISO = isoWeekString();
-  const planPath = planNotePath();
+  // Reactive so a dashboard left open across Sunday-into-Monday picks
+  // up the new ISO week's plan note without a manual reload.
+  let weekISO = $state(isoWeekString());
+  let planPath = $state(planNotePath());
 
   let tasks = $state<Task[]>([]);
   let buckets = $state<{ venture: string; total: number; done: number }[]>([]);
@@ -95,8 +98,19 @@
   }
 
   const reload = createCoalescedReload(load, 600);
+  let stopMidnight: (() => void) | null = null;
   onMount(() => {
     void load();
+    // At midnight, recompute the ISO week + plan path so the widget
+    // jumps to next week's commitments on the day the week rolls.
+    stopMidnight = onLocalMidnight(() => {
+      const nextWeek = isoWeekString();
+      if (nextWeek !== weekISO) {
+        weekISO = nextWeek;
+        planPath = planNotePath();
+      }
+      void load();
+    });
     // Reload on task changes targeting this plan note (someone ticked
     // a task elsewhere) or on note edits to the plan itself.
     return onWsEvent((ev) => {
@@ -105,7 +119,10 @@
       }
     });
   });
-  onDestroy(() => reload.cancel());
+  onDestroy(() => {
+    reload.cancel();
+    if (stopMidnight) stopMidnight();
+  });
 
   let totalDone = $derived(buckets.reduce((s, b) => s + b.done, 0));
   let totalTotal = $derived(buckets.reduce((s, b) => s + b.total, 0));

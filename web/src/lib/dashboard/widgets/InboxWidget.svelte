@@ -4,6 +4,7 @@
   import { onWsEvent } from '$lib/ws';
   import TaskRow from '$lib/components/TaskRow.svelte';
   import { createCoalescedReload } from '$lib/util/coalesce';
+  import { onLocalMidnight } from '$lib/util/midnightTick';
 
   // InboxWidget is the "what's slipping?" surface. Today / overdue
   // live in TodayTasksWidget; this one owns the buckets that AREN'T
@@ -39,17 +40,27 @@
   }
 
   const reload = createCoalescedReload(load, 600);
+  // `today` reactive so quick-wins / stale derive against the live day
+  // even on a dashboard left open past midnight.
+  let today = $state(todayISO());
+  let stopMidnight: (() => void) | null = null;
   onMount(() => {
     load();
+    stopMidnight = onLocalMidnight(() => {
+      today = todayISO();
+      void load();
+    });
     return onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
     });
   });
-  onDestroy(() => reload.cancel());
+  onDestroy(() => {
+    reload.cancel();
+    if (stopMidnight) stopMidnight();
+  });
 
   const STALE_DAYS = 7;
   const QUICK_MAX_MIN = 30;
-  const today = todayISO();
 
   function priCmp(a: Task, b: Task): number {
     const ap = a.priority || 99;

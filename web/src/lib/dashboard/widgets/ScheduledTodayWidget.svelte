@@ -5,6 +5,7 @@
   import { inlineMd } from '$lib/util/inlineMd';
   import { cleanTaskText } from '$lib/util/taskParse';
   import { createCoalescedReload } from '$lib/util/coalesce';
+  import { onLocalMidnight } from '$lib/util/midnightTick';
 
   let tasks = $state<Task[]>([]);
 
@@ -13,15 +14,22 @@
     tasks = list.tasks;
   }
   const reload = createCoalescedReload(load, 600);
+  let today = $state(todayISO());
+  let stopMidnight: (() => void) | null = null;
   onMount(() => {
     load();
+    stopMidnight = onLocalMidnight(() => {
+      today = todayISO();
+      void load();
+    });
     return onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
     });
   });
-  onDestroy(() => reload.cancel());
-
-  const today = todayISO();
+  onDestroy(() => {
+    reload.cancel();
+    if (stopMidnight) stopMidnight();
+  });
   let scheduled = $derived(
     tasks
       .filter((t) => t.scheduledStart && t.scheduledStart.slice(0, 10) === today)

@@ -3,6 +3,7 @@
   import { api, todayISO, type Goal } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { createCoalescedReload } from '$lib/util/coalesce';
+  import { onLocalMidnight } from '$lib/util/midnightTick';
   import { inlineMd } from '$lib/util/inlineMd';
 
   // Goals progress — top 3 active goals with a progress bar +
@@ -17,7 +18,9 @@
 
   let goals = $state<Goal[]>([]);
   let loading = $state(false);
-  const today = todayISO();
+  // Reactive `today` — daysToTarget compares against this; without
+  // re-evaluating past midnight the "in 3d" pills lie by a day.
+  let today = $state(todayISO());
 
   async function load() {
     loading = true;
@@ -42,13 +45,21 @@
   }
 
   const reload = createCoalescedReload(load, 600);
+  let stopMidnight: (() => void) | null = null;
   onMount(() => {
     void load();
+    stopMidnight = onLocalMidnight(() => {
+      today = todayISO();
+      void load();
+    });
     return onWsEvent((ev) => {
       if (ev.type === 'state.changed' && ev.path === '.granit/goals.json') reload.trigger();
     });
   });
-  onDestroy(reload.cancel);
+  onDestroy(() => {
+    reload.cancel();
+    if (stopMidnight) stopMidnight();
+  });
 
   function progress(g: Goal): number {
     const ms = g.milestones ?? [];

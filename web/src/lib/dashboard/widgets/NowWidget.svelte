@@ -4,6 +4,7 @@
   import { onWsEvent } from '$lib/ws';
   import { glyphForKind } from '$lib/calendar/eventTypes';
   import { createCoalescedReload } from '$lib/util/coalesce';
+  import { onLocalMidnight } from '$lib/util/midnightTick';
 
   // NowWidget answers "what's happening right now?" — current local
   // time + the upcoming event/scheduled task. Big and quiet so it sits
@@ -13,15 +14,23 @@
   let events = $state<CalendarEvent[]>([]);
 
   const reload = createCoalescedReload(load, 600);
+  let stopMidnight: (() => void) | null = null;
   onMount(() => {
     const tick = setInterval(() => (now = new Date()), 30_000);
     load();
+    // The 7-day window slides daily — refetch at local midnight so
+    // events past the original end-date don't fall off after a
+    // long-lived dashboard.
+    stopMidnight = onLocalMidnight(() => { void load(); });
     const unsub = onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed' || ev.type === 'event.changed') reload.trigger();
     });
     return () => { clearInterval(tick); unsub(); };
   });
-  onDestroy(() => reload.cancel());
+  onDestroy(() => {
+    reload.cancel();
+    if (stopMidnight) stopMidnight();
+  });
 
   async function load() {
     try {

@@ -3,6 +3,7 @@
   import { api, todayISO, type Note } from '$lib/api';
   import { parseTaskInput } from '$lib/util/taskParse';
   import { slugifyTitle } from '$lib/util/slug';
+  import { onLocalMidnight } from '$lib/util/midnightTick';
   import {
     createSpeechRecognition,
     isSpeechRecognitionSupported,
@@ -46,12 +47,19 @@
 
   // Persist last-used mode so the user's preferred default sticks.
   const MODE_KEY = 'granit.dashboard.qc.mode';
+  let stopMidnight: (() => void) | null = null;
   onMount(() => {
     const v = loadStoredString(MODE_KEY, '');
     if (v === 'task' || v === 'jot' || v === 'note') mode = v;
     void loadDaily();
     voiceSupported = isSpeechRecognitionSupported();
+    // Re-pull the daily reference at midnight so the next capture
+    // goes to the new day's daily note. Otherwise a dashboard left
+    // open overnight would dump tomorrow morning's first task into
+    // yesterday's note.
+    stopMidnight = onLocalMidnight(() => { void loadDaily(); });
   });
+  onDestroy(() => { if (stopMidnight) stopMidnight(); });
   $effect(() => saveStoredString(MODE_KEY, mode));
 
   async function loadDaily() {
@@ -287,6 +295,22 @@
       <kbd class="hidden sm:inline text-[10px] opacity-70">↵</kbd>
     </button>
   </form>
+
+  <!-- Daily-note load failure inline notice. Without this, the submit
+       button silently disables and the user has no idea why their
+       capture isn't accepting input. The retry pulls the note again;
+       most failures here are transient (server warming up, ws
+       reconnecting). -->
+  {#if dailyError}
+    <div class="flex items-center gap-2 mt-1.5 text-[11px] text-warning">
+      <span>Today's daily note didn't load — capture is paused.</span>
+      <button
+        type="button"
+        onclick={loadDaily}
+        class="text-secondary hover:underline"
+      >Retry</button>
+    </div>
+  {/if}
 
   <!-- Parsed-chips strip. Renders only when the task parser actually
        extracted something — empty input or jot/note mode collapses

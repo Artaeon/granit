@@ -3,6 +3,7 @@
   import { api, todayISO, type HabitInfo } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { createCoalescedReload } from '$lib/util/coalesce';
+  import { onLocalMidnight } from '$lib/util/midnightTick';
 
   // StreaksWidget — top habits by current streak with a 14-day mini
   // strip per habit (today's cell highlighted). The user reads
@@ -15,7 +16,9 @@
 
   let habits = $state<HabitInfo[]>([]);
   let loading = $state(false);
-  const today = todayISO();
+  // Reactive so the "today" cell in the 14-day strip migrates forward
+  // when the dashboard's been open over a day-boundary.
+  let today = $state(todayISO());
 
   async function load() {
     loading = true;
@@ -37,13 +40,21 @@
   }
 
   const reload = createCoalescedReload(load, 600);
+  let stopMidnight: (() => void) | null = null;
   onMount(() => {
     void load();
+    stopMidnight = onLocalMidnight(() => {
+      today = todayISO();
+      void load();
+    });
     return onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
     });
   });
-  onDestroy(reload.cancel);
+  onDestroy(() => {
+    reload.cancel();
+    if (stopMidnight) stopMidnight();
+  });
 
   function fireGlyph(streak: number): { glyph: string; tone: string } {
     if (streak >= 30) return { glyph: '🔥', tone: 'text-warning' };

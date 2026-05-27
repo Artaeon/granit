@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { inlineMd } from '$lib/util/inlineMd';
+  import { onLocalMidnight } from '$lib/util/midnightTick';
 
   // TodayFocusWidget surfaces the user's "what would make today a win"
   // commitment from the daily note. We look for a `## Plan` (or
@@ -23,12 +24,18 @@
       loading = false;
     }
   }
+  let stopMidnight: (() => void) | null = null;
   onMount(() => {
     load();
+    // Switch to the new day's daily note at local midnight so the
+    // focus statement refreshes with the user's new morning plan
+    // (or empties out for a freshly-rolled day).
+    stopMidnight = onLocalMidnight(() => { void load(); });
     return onWsEvent((ev) => {
       if (ev.type === 'note.changed' && daily && ev.path === daily.path) load();
     });
   });
+  onDestroy(() => { if (stopMidnight) stopMidnight(); });
 
   // Pull lines from the first matching `## Plan` / `## Daily Plan` /
   // `## Today's Plan` heading until the next `## ` heading. Returns the

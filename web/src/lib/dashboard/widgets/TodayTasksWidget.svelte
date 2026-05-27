@@ -3,6 +3,7 @@
   import { api, todayISO, type Task } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { createCoalescedReload } from '$lib/util/coalesce';
+  import { onLocalMidnight } from '$lib/util/midnightTick';
   import TaskRow from '$lib/components/TaskRow.svelte';
 
   // Today's tasks — three buckets: overdue (urgent, error tone),
@@ -34,17 +35,26 @@
   }
 
   const reload = createCoalescedReload(load, 600);
+  // `today` is reactive so the buckets re-derive past midnight without
+  // the user reloading the page.
+  let today = $state(todayISO());
+  let stopMidnight: (() => void) | null = null;
   onMount(() => {
     void load();
+    stopMidnight = onLocalMidnight(() => {
+      today = todayISO();
+      void load();
+    });
     return onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed' || ev.type === 'task.changed') {
         reload.trigger();
       }
     });
   });
-  onDestroy(reload.cancel);
-
-  const today = todayISO();
+  onDestroy(() => {
+    reload.cancel();
+    if (stopMidnight) stopMidnight();
+  });
   let overdue = $derived(
     tasks
       .filter((t) => t.dueDate && t.dueDate < today)

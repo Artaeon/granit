@@ -3,6 +3,7 @@
   import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { createCoalescedReload } from '$lib/util/coalesce';
+  import { onLocalMidnight } from '$lib/util/midnightTick';
 
   // Daily note widget — opens the day's daily, surfaces a body
   // preview (first 3 non-heading lines) plus a footer of ambient
@@ -25,13 +26,20 @@
   }
 
   const reload = createCoalescedReload(load, 600);
+  let stopMidnight: (() => void) | null = null;
   onMount(() => {
     void load();
+    // Re-load at local midnight so the widget switches to the new
+    // day's daily note instead of staying on yesterday's body.
+    stopMidnight = onLocalMidnight(() => { void load(); });
     return onWsEvent((ev) => {
       if (ev.type === 'note.changed' && daily && ev.path === daily.path) reload.trigger();
     });
   });
-  onDestroy(reload.cancel);
+  onDestroy(() => {
+    reload.cancel();
+    if (stopMidnight) stopMidnight();
+  });
 
   // Stripped body (no frontmatter, no headings) for stats + preview.
   let strippedBody = $derived.by(() => {
