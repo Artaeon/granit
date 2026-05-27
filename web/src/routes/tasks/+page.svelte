@@ -1841,6 +1841,38 @@
     sourceFilter = 'all';
     smartFilter = '';
   }
+
+  // Adaptive subtitle for the "no matches" empty state. Mirrors the
+  // active-filter set so the user gets a meaningful read instead of a
+  // generic "nothing to see here". Order matches user intent: tag /
+  // project / goal / search before generic fallback.
+  let emptyStateSubtitle = $derived.by((): string => {
+    if (tagFilters.length === 1) return `No tasks tagged #${tagFilters[0]}.`;
+    if (tagFilters.length > 1) return `No tasks tagged ${tagFilters.map((t) => '#' + t).join(' + ')}.`;
+    if (projectFilter) return `No tasks in project "${projectFilter}".`;
+    if (goalFilter) {
+      const g = goals.find((x) => x.id === goalFilter);
+      return `No tasks linked to goal "${g?.title ?? goalFilter}".`;
+    }
+    if (priorityFilter !== '') return `No P${priorityFilter} tasks here.`;
+    if (q.trim()) return `No tasks match "${q.trim()}".`;
+    return 'Nothing to do right now.';
+  });
+
+  // Trigger the global QuickCaptureFab (Mod-Shift-N opens it). We
+  // dispatch a synthetic keystroke rather than expose a new global
+  // store, so the existing handler in QuickCaptureFab.svelte owns
+  // open-state. Falls through gracefully if the fab isn't mounted.
+  function openQuickCapture() {
+    const evt = new KeyboardEvent('keydown', {
+      key: 'N',
+      code: 'KeyN',
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true
+    });
+    window.dispatchEvent(evt);
+  }
 </script>
 
 {#snippet filterContent()}
@@ -2024,6 +2056,51 @@
   </Drawer>
 
   <div class="flex-1 flex flex-col min-w-0">
+    <!-- Slim PageHeader-style top bar. Lives above the existing tasks
+         toolbar (which keeps owning view tabs + search) so the route
+         picks up the canonical title + count + global actions surface
+         that every other route already shows. Visually matches
+         PageHeader.svelte but stays slim so it doesn't push the tab
+         bar below the fold on short viewports. Count reads
+         "N tasks · M filtered" so the user can always parse what
+         they're looking at without scanning the toolbar count. -->
+    <div class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 flex-wrap">
+      <h1 class="text-lg sm:text-xl font-semibold text-text">Tasks</h1>
+      <span class="inline-flex items-center gap-1.5 text-xs text-dim font-mono tabular-nums">
+        <span class="px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">
+          <span class="text-text font-semibold">{tasks.length}</span> total
+        </span>
+        {#if filtered.length !== tasks.length}
+          <span class="px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">
+            <span class="text-primary font-semibold">{filtered.length}</span> filtered
+          </span>
+        {/if}
+      </span>
+      <span class="flex-1"></span>
+      <!-- Density toggle surfaced at route level so it's reachable
+           from every view (was buried in the list-only sub-toolbar).
+           Same compact / comfortable semantics; persists to the
+           existing DENSITY_KEY. -->
+      <button
+        type="button"
+        onclick={() => (density = density === 'compact' ? 'normal' : 'compact')}
+        aria-pressed={density === 'compact'}
+        title={density === 'compact' ? 'Compact density — click for comfortable spacing' : 'Comfortable density — click for compact rows'}
+        class="px-2 py-1 text-xs font-mono {density === 'compact' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'} border border-surface1 rounded"
+      >{density === 'compact' ? '≡' : '≣'}</button>
+      <!-- Quick capture — kicks the global QuickCaptureFab (the same
+           Mod-Shift-N modal used everywhere else in the app). One
+           keystroke per task, opens above any view. -->
+      <button
+        type="button"
+        onclick={openQuickCapture}
+        title="Quick capture (Cmd-Shift-N)"
+        class="px-2 py-1 text-xs bg-surface0 border border-surface1 hover:border-primary text-subtext hover:text-text rounded inline-flex items-center gap-1"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        <span class="hidden sm:inline">Quick capture</span>
+      </button>
+    </div>
     <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 flex-wrap">
       <button
         onclick={() => (filterDrawerOpen = true)}
@@ -2037,7 +2114,6 @@
           <span class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-on-primary text-[10px] rounded-full flex items-center justify-center">{activeFilterCount}</span>
         {/if}
       </button>
-      <h1 class="text-base sm:text-lg font-semibold text-text">Tasks</h1>
       <span class="text-xs text-dim">{filtered.length}/{tasks.length}</span>
       <input
         bind:value={q}
@@ -2606,21 +2682,38 @@
           </ul>
         </div>
       {:else if filtered.length === 0}
-        <!-- Tasks exist but the active filter masks them all. Offer
-             a "Clear filters" reset so the user isn't stuck. -->
-        <div class="max-w-md mx-auto py-6 text-center">
-          <div class="text-4xl mb-3 opacity-30">🔍</div>
-          <h2 class="text-base font-medium text-text mb-2">No tasks match these filters</h2>
-          <p class="text-sm text-dim mb-3">
-            {tasks.length} {tasks.length === 1 ? 'task is' : 'tasks are'} hidden by the current filters.
-          </p>
-          <button
-            onclick={() => {
-              q = ''; tagFilters = []; projectFilter = ''; priorityFilter = '';
-              goalFilter = ''; deadlineFilter = ''; status = 'open';
-            }}
-            class="px-3 py-1.5 bg-surface0 border border-surface1 hover:border-primary rounded text-sm text-subtext"
-          >Clear filters</button>
+        <!-- Tasks exist but the active filter masks them all. The
+             subtitle adapts to which filter is the dominant signal
+             (tag / project / goal / priority / search) so the user
+             reads "No tasks tagged #X" instead of a generic "no
+             matches". Two CTAs: Quick capture for fast entry and
+             Clear filters for the reset path. min-w-0 keeps the
+             card from overrunning the sidebar on narrow viewports. -->
+        <div class="min-w-0">
+          <div class="max-w-md mx-auto py-6 text-center">
+            <div class="text-4xl mb-3 opacity-30">🔍</div>
+            <h2 class="text-base font-medium text-text mb-2">No tasks here</h2>
+            <p class="text-sm text-dim mb-1">{emptyStateSubtitle}</p>
+            <p class="text-xs text-dim mb-4">
+              {tasks.length} {tasks.length === 1 ? 'task is' : 'tasks are'} hidden by the current filters.
+            </p>
+            <div class="flex items-center justify-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onclick={openQuickCapture}
+                class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 inline-flex items-center gap-1.5"
+                title="Open the global capture modal (Cmd-Shift-N)"
+              >
+                <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                Quick capture
+              </button>
+              <button
+                type="button"
+                onclick={clearAllFilters}
+                class="px-3 py-1.5 bg-surface0 border border-surface1 hover:border-primary rounded text-sm text-subtext"
+              >Clear filters</button>
+            </div>
+          </div>
         </div>
       {:else if view === 'week'}
         <!-- Week view — 8 columns: Unscheduled + 7 rolling days from

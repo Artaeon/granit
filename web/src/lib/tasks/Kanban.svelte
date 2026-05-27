@@ -480,6 +480,103 @@
     } catch {}
   }
 
+  // ── In-column quick-add ───────────────────────────────────────────
+  // Click the "+ Add task" affordance at the bottom of a column to
+  // surface a one-line input + submit/cancel buttons. Submit creates
+  // a task pre-stamped with that column's defining property (priority,
+  // due bucket, triage state) so it lands in the SAME column the user
+  // added it from — no scattering. Config mode is skipped because its
+  // columns route by inline-tag tokens, which we can't safely round-
+  // trip through the create endpoint without rewriting text rules.
+  let addColKey = $state<string | null>(null); // null = no input open
+  let addText = $state('');
+  let addBusy = $state(false);
+  let addInputEl: HTMLInputElement | undefined = $state();
+
+  function openColAdd(colKey: string) {
+    addColKey = colKey;
+    addText = '';
+    // Focus on the next tick — input only exists after render.
+    setTimeout(() => addInputEl?.focus(), 0);
+  }
+  function cancelColAdd() {
+    addColKey = null;
+    addText = '';
+  }
+
+  // Map a column key to the create-task body for that bucket. Mirrors
+  // patchForColumn but for creation (no id yet — projectId/text/etc.).
+  // Returns null for columns we don't quick-add into (e.g. dropped /
+  // snoozed — those are end-states, not entry points).
+  function createBodyForColumn(col: Column): Partial<Parameters<typeof api.createTask>[0]> | null {
+    if (mode === 'priority') {
+      if (col.key === 'done') return null;
+      const p = Number(col.key);
+      return { priority: p };
+    }
+    if (mode === 'due') {
+      if (col.key === 'done') return null;
+      if (col.key === 'no_date') return {};
+      if (col.key === 'today') return { dueDate: todayISO() };
+      if (col.key === 'overdue') {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        return { dueDate: fmtDateISO(d) };
+      }
+      if (col.key === 'upcoming') {
+        const d = new Date();
+        d.setDate(d.getDate() + 7);
+        return { dueDate: fmtDateISO(d) };
+      }
+      return {};
+    }
+    if (mode === 'triage') {
+      if (col.key === 'done' || col.key === 'dropped' || col.key === 'snoozed') return null;
+      // The triage state itself isn't a create-time field, so the new
+      // task lands as `inbox` and the user (or an upstream rule) moves
+      // it. Acceptable trade — most quick-adds happen from the inbox
+      // column anyway.
+      return {};
+    }
+    if (mode === 'config') {
+      // Config columns route by tag tokens we'd have to splice into
+      // task.text. Out of scope for the quick-add affordance — the
+      // column hides its add button in this mode.
+      return null;
+    }
+    return null;
+  }
+
+  async function submitColAdd(col: Column) {
+    const text = addText.trim();
+    if (!text || addBusy) return;
+    const extra = createBodyForColumn(col);
+    if (!extra) return;
+    addBusy = true;
+    try {
+      // Same notePath fallback the parent page uses for its quick-add
+      // bar: today's daily note. Avoids a separate "where do I land?"
+      // decision for the user.
+      let notePath = '';
+      try {
+        const daily = await api.daily('today');
+        notePath = daily.path;
+      } catch {
+        notePath = `${todayISO()}.md`;
+      }
+      await api.createTask({ notePath, text, ...extra });
+      addText = '';
+      onChanged?.();
+      // Keep focus in the input so the user can rapid-fire more tasks
+      // into the same bucket. Esc dismisses.
+      setTimeout(() => addInputEl?.focus(), 0);
+    } catch (e) {
+      toast.error('add failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      addBusy = false;
+    }
+  }
+
   onMount(() => {
     const handler = makeKanbanKeyHandler({
       taskById: (id) => taskById(id) ?? null,
@@ -605,6 +702,47 @@
                   />
                 </div>
               {/each}
+            {/if}
+            <!-- Per-column quick-add. Lives at the bottom of the column
+                 so the affordance is consistent with Trello / Linear /
+                 GitHub Projects. Only renders for the first swimlane
+                 (we don't want N adders per task per lane); hides for
+                 columns where the create body is undefined (e.g.
+                 done/dropped/snoozed, config mode). -->
+            {#if lane.key === lanes[0].key && createBodyForColumn(col) !== null}
+              {#if addColKey === col.key}
+                <form
+                  onsubmit={(e) => { e.preventDefault(); void submitColAdd(col); }}
+                  class="flex flex-col gap-1 mt-1"
+                >
+                  <input
+                    bind:this={addInputEl}
+                    bind:value={addText}
+                    onkeydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); cancelColAdd(); } }}
+                    placeholder="New task — Enter to add"
+                    disabled={addBusy}
+                    class="w-full px-2 py-1.5 bg-surface0 border border-surface1 rounded text-xs text-text placeholder-dim focus:outline-none focus:border-primary disabled:opacity-50"
+                  />
+                  <div class="flex items-center gap-1">
+                    <button
+                      type="submit"
+                      disabled={!addText.trim() || addBusy}
+                      class="text-xs px-2 py-1 bg-primary text-on-primary rounded disabled:opacity-50"
+                    >{addBusy ? '…' : 'Add'}</button>
+                    <button
+                      type="button"
+                      onclick={cancelColAdd}
+                      class="text-xs px-2 py-1 text-dim hover:text-text"
+                    >Cancel</button>
+                  </div>
+                </form>
+              {:else}
+                <button
+                  type="button"
+                  onclick={() => openColAdd(col.key)}
+                  class="text-xs text-dim hover:text-text px-2 py-1 border border-dashed border-surface1 hover:border-primary rounded w-full text-left mt-1"
+                >+ Add task</button>
+              {/if}
             {/if}
           </div>
         {/if}
