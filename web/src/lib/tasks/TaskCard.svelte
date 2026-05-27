@@ -245,13 +245,21 @@
     return true;
   });
 
-  function priorityBadge(p: number): { label: string; cls: string } | null {
+  // Single priority badge for every value (including 0). Stream H
+  // unified the two-state P0 vs P1-3 affordance: previously P0 was
+  // a hover-revealed "+ P" chip while P1-3 was an always-visible
+  // tinted badge — different visual treatment for the same control
+  // confused power users scanning a list. Now the badge is ALWAYS
+  // visible in the same slot, the cycle (P0 → P1 → P2 → P3 → P0)
+  // works from any state, and only the colour shifts: dim for P0,
+  // priority-toned for P1-3.
+  function priorityBadge(p: number): { label: string; cls: string } {
     const tone = priorityTone(p);
-    if (tone === 'dim') return null;
     const cls =
       tone === 'error' ? 'bg-surface0 text-error'
       : tone === 'warning' ? 'bg-surface0 text-warning'
-      : 'bg-surface0 text-info';
+      : tone === 'info' ? 'bg-surface0 text-info'
+      : 'bg-surface0 text-dim border border-surface2';
     return { label: `P${p}`, cls };
   }
 
@@ -709,31 +717,22 @@
               <span class="ml-1 text-[10px] text-dim font-mono">+{childCount}</span>
             {/if}
           </button>
-          <!-- Priority badge — clickable to cycle none→P1→P2→P3→none
-               so users don't open the detail drawer just to bump
-               priority. At priority 0 the button stays visible as a
-               "+ P" affordance so there's a way back from a clear.
-               Stops click propagation so the surrounding card click
-               (which opens detail) doesn't fire. -->
-          {#if badge}
-            <button
-              type="button"
-              onclick={cyclePriority}
-              disabled={busy}
-              title="Cycle priority (P0 → P1 → P2 → P3)"
-              aria-label="Priority {badge.label}, click to cycle"
-              class="text-[10px] font-mono px-1.5 rounded {badge.cls} flex-shrink-0 hover:brightness-110 disabled:opacity-50 cursor-pointer"
-            >{badge.label}</button>
-          {:else}
-            <button
-              type="button"
-              onclick={cyclePriority}
-              disabled={busy}
-              title="Set priority (P0 → P1)"
-              aria-label="Set priority"
-              class="text-[10px] font-mono px-1.5 rounded text-dim opacity-0 group-hover:opacity-100 hover:text-text hover:bg-surface1 border border-surface2 flex-shrink-0 disabled:opacity-50 cursor-pointer transition-opacity"
-            >+ P</button>
-          {/if}
+          <!-- Priority badge — Stream H unified the dual-state chip
+               into a single always-visible badge. Click cycles
+               P0 → P1 → P2 → P3 → P0; tone is dim at P0, tinted at
+               P1-3 (error/warning/info). Always-visible means power
+               users scanning a list never lose the priority signal,
+               and the same control reaches every value. Stops click
+               propagation so the surrounding card click (which opens
+               detail) doesn't fire. -->
+          <button
+            type="button"
+            onclick={cyclePriority}
+            disabled={busy}
+            title="Cycle priority (P0 → P1 → P2 → P3)"
+            aria-label="Priority {badge.label}, click to cycle"
+            class="text-[10px] font-mono px-1.5 rounded {badge.cls} flex-shrink-0 hover:brightness-110 disabled:opacity-50 cursor-pointer"
+          >{badge.label}</button>
           {#if task.estimatedMinutes}
             <span class="text-[10px] font-mono text-dim flex-shrink-0" title="estimate">{task.estimatedMinutes}m</span>
           {/if}

@@ -73,6 +73,53 @@
   let kanbanMode = $state<'priority' | 'due' | 'triage' | 'config'>('priority');
   let kanbanSwimlane = $state<'none' | 'project' | 'tag' | 'priority'>('none');
   let helpOpen = $state(false);
+  // Overflow dropdown for the secondary view-mode cluster. Stream H
+  // collapsed 11 tabs into 5 primary (Today/List/Kanban/Matrix/Week)
+  // plus a "More views" dropdown for Triage/Inbox/Stale/Duplicates/
+  // Quick wins/Review so the strip stops scrolling sideways at narrow
+  // viewports. The actual View identifiers are unchanged — the `[`/
+  // `]` cycle and URL hydration still see all 11.
+  let moreViewsOpen = $state(false);
+  // Labels for the overflow set — shared between the dropdown items
+  // AND the "More: <label>" button text so the user can see which
+  // overflow view is currently active without opening the menu.
+  const OVERFLOW_VIEWS: { key: View; label: string; title: string }[] = [
+    { key: 'triage', label: 'Triage', title: 'AI-driven inbox triage proposals' },
+    { key: 'inbox', label: 'Inbox', title: 'untriaged tasks awaiting categorisation' },
+    { key: 'stale', label: 'Stale', title: 'not touched in 7+ days — needs a decision' },
+    { key: 'duplicates', label: 'Duplicates', title: 'near-duplicate task pairs by text similarity — deterministic scan, no AI' },
+    { key: 'quickwins', label: 'Quick wins', title: 'high priority + ≤30 min — tackle a few before lunch' },
+    { key: 'review', label: 'Review', title: 'completed in the last 7 days — celebrate the wins' }
+  ];
+  let activeOverflowLabel = $derived(
+    OVERFLOW_VIEWS.find((v) => v.key === view)?.label ?? ''
+  );
+  function pickOverflowView(v: View) {
+    view = v;
+    moreViewsOpen = false;
+  }
+  function onMoreViewsKey(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      moreViewsOpen = false;
+      e.stopPropagation();
+    }
+  }
+  // Click-outside dismiss for the overflow menu. We install a
+  // window-level listener only while the menu is open so the rest
+  // of the page doesn't pay for it. The menu+button live inside an
+  // element marked with data-more-views; any click outside that
+  // subtree closes the menu. Keep the install/teardown inside an
+  // $effect so Svelte handles cleanup across HMR + unmount.
+  $effect(() => {
+    if (!moreViewsOpen) return;
+    function onDocClick(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('[data-more-views]')) return;
+      moreViewsOpen = false;
+    }
+    window.addEventListener('mousedown', onDocClick);
+    return () => window.removeEventListener('mousedown', onDocClick);
+  });
   let status = $state<'open' | 'done' | 'all'>('open');
   let q = $state('');
   // tagFilters — multi-tag filter with AND semantics. Clicking a tag
@@ -987,17 +1034,20 @@
     'today', 'list', 'week', 'kanban', 'eisenhower',
     'inbox', 'quickwins', 'stale', 'duplicates', 'review', 'triage'
   ];
-  // Numeric direct-jump map — Stream F shortcuts `1`/`2`/`3`/`4`.
-  // Same five primary shapes as the first segmented pill: today /
-  // list / kanban / matrix. Number-to-view chosen by the order the
-  // segmented buttons render top-of-page (Today, List, Kanban, Matrix
-  // are the four most-used; Week intentionally not on a number key
-  // since `[` / `]` already cover it).
+  // Numeric direct-jump map — Stream F shortcuts `1`-`5`.
+  // Maps to the primary tab cluster (Today / List / Kanban / Matrix /
+  // Week) in the same left-to-right order the segmented pill renders
+  // after Stream H consolidated 11 view modes into 5 primary + 6
+  // overflow. Overflow views (Triage / Inbox / Stale / Duplicates /
+  // Quick wins / Review) are still reachable via the "More views"
+  // dropdown and the `[` / `]` cycle — no digit binding so power
+  // users learn to thumb the primary cluster by number.
   const VIEW_DIGIT_MAP: Record<string, View> = {
     '1': 'today',
     '2': 'list',
     '3': 'kanban',
-    '4': 'eisenhower'
+    '4': 'eisenhower',
+    '5': 'week'
   };
 
   // Trigger the in-card snooze picker for the cursor task. The picker
@@ -2277,19 +2327,22 @@
         data-page-search="1"
         class="flex-1 min-w-0 px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
       />
-      <!-- View tabs split into two clusters: primary (Today / List /
-           Kanban) renders as one segmented pill so the user always
-           sees the three main shapes; smart-filter views (Inbox,
-           Stale, Quick wins, Review) sit in a second pill with
-           live count badges so the user knows which ones are
-           worth visiting at a glance. Tabs with zero count read
-           as muted so they don't pull attention. -->
+      <!-- View tabs — five primary shapes (Today / List / Kanban /
+           Matrix / Week) always visible as one segmented pill plus a
+           "More views" dropdown for the six secondary shapes (Triage,
+           Inbox, Stale, Duplicates, Quick wins, Review). Stream H
+           collapsed the previous two-pill / 11-button layout so the
+           strip no longer wraps at narrow viewports. The dropdown
+           label flips to "More: <label>" when an overflow view is
+           selected, so the user can see at a glance which one is
+           active. Inbox keeps its live count badge in the dropdown
+           label too. -->
       <div class="flex items-center gap-1.5 flex-wrap">
         <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm">
           <button
             class="px-2 sm:px-3 py-1.5 inline-flex items-center gap-1 {view === 'today' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
             onclick={() => (view = 'today')}
-            title="overdue + due today + scheduled today"
+            title="overdue + due today + scheduled today (1)"
           >
             Today
             {#if stats.overdue + stats.todayCount > 0 && view !== 'today'}
@@ -2299,73 +2352,69 @@
           <button
             class="px-2 sm:px-3 py-1.5 {view === 'list' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
             onclick={() => (view = 'list')}
+            title="flat list (2)"
           >List</button>
-          <button
-            class="px-2 sm:px-3 py-1.5 {view === 'week' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-            onclick={() => (view = 'week')}
-            title="7-day grid — see what's scheduled or due each day this week"
-          >Week</button>
           <button
             class="px-2 sm:px-3 py-1.5 {view === 'kanban' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
             onclick={() => (view = 'kanban')}
+            title="kanban board (3)"
           >Kanban</button>
           <button
             class="px-2 sm:px-3 py-1.5 {view === 'eisenhower' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
             onclick={() => (view = 'eisenhower')}
-            title="2×2 matrix: urgent × important — Covey / GTD style prioritisation"
+            title="2×2 matrix: urgent × important — Covey / GTD style prioritisation (4)"
           >Matrix</button>
-        </div>
-        <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm">
           <button
-            class="px-2 sm:px-3 py-1.5 inline-flex items-center gap-1 {view === 'inbox' ? 'bg-primary text-on-primary' : viewCounts.inbox > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface2'}"
-            onclick={() => (view = 'inbox')}
-            title="untriaged tasks awaiting categorisation"
+            class="px-2 sm:px-3 py-1.5 {view === 'week' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+            onclick={() => (view = 'week')}
+            title="7-day grid — see what's scheduled or due each day this week (5)"
+          >Week</button>
+        </div>
+        <!-- Overflow dropdown — relatively positioned wrapper so the
+             absolute panel anchors to the button. Click toggles, Esc
+             closes (window-level handler via onMoreViewsKey when
+             open), click-outside dismiss via the $effect-installed
+             window listener that checks for the data-more-views
+             marker before closing. -->
+        <div class="relative" data-more-views>
+          <button
+            class="px-2 sm:px-3 py-1.5 inline-flex items-center gap-1 bg-surface0 border border-surface1 rounded text-xs sm:text-sm {activeOverflowLabel ? 'text-primary' : 'text-subtext'} hover:bg-surface1"
+            aria-haspopup="true"
+            aria-expanded={moreViewsOpen}
+            onclick={() => (moreViewsOpen = !moreViewsOpen)}
+            title="More views"
           >
-            Inbox
-            {#if viewCounts.inbox > 0 && view !== 'inbox'}
+            {activeOverflowLabel ? `More: ${activeOverflowLabel}` : 'More views'}
+            {#if !activeOverflowLabel && viewCounts.inbox > 0}
               <span class="text-[10px] tabular-nums text-secondary font-mono">{viewCounts.inbox}</span>
             {/if}
+            <span class="text-[10px] opacity-70" aria-hidden="true">▾</span>
           </button>
-          <button
-            class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'quickwins' ? 'bg-primary text-on-primary' : viewCounts.quickwins > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface2'}"
-            onclick={() => (view = 'quickwins')}
-            title="high priority + ≤30 min — tackle a few before lunch"
-          >
-            Quick wins
-            {#if viewCounts.quickwins > 0 && view !== 'quickwins'}
-              <span class="text-[10px] tabular-nums text-success font-mono">{viewCounts.quickwins}</span>
-            {/if}
-          </button>
-          <button
-            class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'stale' ? 'bg-primary text-on-primary' : viewCounts.stale > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface2'}"
-            onclick={() => (view = 'stale')}
-            title="not touched in 7+ days — needs a decision"
-          >
-            Stale
-            {#if viewCounts.stale > 0 && view !== 'stale'}
-              <span class="text-[10px] tabular-nums text-warning font-mono">{viewCounts.stale}</span>
-            {/if}
-          </button>
-          <button
-            class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'duplicates' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-            onclick={() => (view = 'duplicates')}
-            title="near-duplicate task pairs by text similarity — deterministic scan, no AI"
-          >Duplicates</button>
-          <button
-            class="px-2 sm:px-3 py-1.5 hidden sm:inline-flex items-center gap-1 {view === 'review' ? 'bg-primary text-on-primary' : viewCounts.review > 0 ? 'text-text hover:bg-surface1' : 'text-dim hover:bg-surface2'}"
-            onclick={() => (view = 'review')}
-            title="completed in the last 7 days — celebrate the wins"
-          >
-            Review
-            {#if viewCounts.review > 0 && view !== 'review'}
-              <span class="text-[10px] tabular-nums text-success font-mono">{viewCounts.review}</span>
-            {/if}
-          </button>
-          <button
-            class="px-2 sm:px-3 py-1.5 hidden sm:inline-block {view === 'triage' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-            onclick={() => (view = 'triage')}
-            title="AI-driven inbox triage proposals"
-          >Triage</button>
+          {#if moreViewsOpen}
+            <div
+              role="menu"
+              class="absolute right-0 top-full mt-1 z-30 min-w-[10rem] bg-surface0 border border-surface1 rounded shadow-lg py-1 text-xs sm:text-sm"
+              onkeydown={onMoreViewsKey}
+              use:focusOnMount
+              tabindex="-1"
+            >
+              {#each OVERFLOW_VIEWS as ov (ov.key)}
+                {@const c = ov.key === 'inbox' ? viewCounts.inbox : ov.key === 'quickwins' ? viewCounts.quickwins : ov.key === 'stale' ? viewCounts.stale : ov.key === 'review' ? viewCounts.review : 0}
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="w-full text-left px-3 py-1.5 inline-flex items-center justify-between gap-3 {view === ov.key ? 'bg-surface1 text-primary' : 'text-subtext hover:bg-surface1 hover:text-text'}"
+                  onclick={() => pickOverflowView(ov.key)}
+                  title={ov.title}
+                >
+                  <span>{ov.label}</span>
+                  {#if c > 0}
+                    <span class="text-[10px] tabular-nums font-mono {ov.key === 'inbox' ? 'text-secondary' : ov.key === 'stale' ? 'text-warning' : 'text-success'}">{c}</span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
         </div>
       </div>
       <!-- Task Agent button removed from the page header — the

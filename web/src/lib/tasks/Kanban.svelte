@@ -594,7 +594,13 @@
   });
 </script>
 
-<!-- Top toolbar: swimlane selector + mode-aware hints -->
+<!-- Top toolbar: kanban-wide controls. The swimlane selector groups
+     the columns into horizontal rows by project / tag / priority; the
+     label reads "Group rows by:" instead of the previous "swimlanes"
+     jargon so new users understand what the control does without
+     hovering. A small × button appears when a swimlane is active so
+     resetting back to "none" is one click instead of "open the select,
+     scroll up, click none". -->
 <div class="flex items-center gap-3 mb-3 text-xs text-dim flex-wrap">
   {#if hasConfigMode}
     <button
@@ -603,16 +609,27 @@
       title="use {config!.kanban_columns?.length ?? 0} columns from .granit.json"
     >config columns</button>
   {/if}
-  <span>swimlanes</span>
-  <select
-    bind:value={swimlane}
-    class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text"
-  >
-    <option value="none">none</option>
-    <option value="project">project</option>
-    <option value="tag">tag</option>
-    <option value="priority">priority</option>
-  </select>
+  <label class="inline-flex items-center gap-2" title="Slice the board into horizontal rows grouped by the selected field">
+    <span>Group rows by:</span>
+    <select
+      bind:value={swimlane}
+      class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text"
+    >
+      <option value="none">none</option>
+      <option value="project">project</option>
+      <option value="tag">tag</option>
+      <option value="priority">priority</option>
+    </select>
+  </label>
+  {#if swimlane !== 'none'}
+    <button
+      type="button"
+      onclick={() => (swimlane = 'none')}
+      title="Clear swimlane grouping"
+      aria-label="Clear swimlane"
+      class="inline-flex items-center justify-center w-5 h-5 rounded text-dim hover:text-text hover:bg-surface1 leading-none"
+    >×</button>
+  {/if}
 </div>
 
 {#each lanes as lane (lane.key)}
