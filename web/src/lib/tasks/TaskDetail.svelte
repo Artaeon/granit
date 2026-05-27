@@ -582,10 +582,18 @@
   const triageStates: NonNullable<Task['triage']>[] = ['inbox', 'triaged', 'scheduled', 'done', 'dropped', 'snoozed'];
 </script>
 
+<div class="task-detail-shell">
 <Drawer bind:open side="right" responsive width="w-full sm:w-96 md:w-[28rem]">
   {#if task}
     <div class="h-full flex flex-col overflow-hidden">
-      <header class="px-3 py-2 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
+      <!-- Mobile-only drag handle. Purely cosmetic affordance —
+           tells the user this is a bottom-sheet on phones. Real
+           drag-to-dismiss is out of scope for this stream; the
+           backdrop tap + close button still own dismissal. -->
+      <div class="sm:hidden flex justify-center pt-2 pb-1 flex-shrink-0" aria-hidden="true">
+        <span class="block w-10 h-1 bg-surface2 rounded-full"></span>
+      </div>
+      <header class="sticky top-0 z-10 bg-mantle px-3 py-2 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
         <h2 class="text-sm font-semibold text-text flex-1 truncate">Task details</h2>
         {#if busy}
           <span class="text-[10px] text-dim italic" aria-live="polite">saving…</span>
@@ -1061,3 +1069,38 @@
     </div>
   {/if}
 </Drawer>
+</div>
+
+<style>
+  /* Mobile bottom-sheet override. Drawer.svelte hard-codes the
+     aside as a right-edge slide-in (inset-y-0 + right-0 +
+     translate-x-full). On phones a bottom-sheet feels native —
+     overrides re-anchor the same aside to the bottom edge and
+     swap the X-axis translate for a Y-axis one. Desktop layout
+     stays untouched. The `:global` selector reaches into the
+     child Drawer's <aside> through this wrapper.
+
+     Drag-to-dismiss isn't wired here — purely a visual / layout
+     pass. The existing close-on-escape + backdrop-tap dismissal
+     paths still work because they live on the Drawer component
+     itself, untouched. */
+  @media (max-width: 639px) {
+    .task-detail-shell :global(aside) {
+      top: auto !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      max-height: 90vh;
+      border-left: 0 !important;
+      border-top: 1px solid var(--color-surface1);
+      border-top-left-radius: 0.75rem;
+      border-top-right-radius: 0.75rem;
+      transform: translateY(100%);
+    }
+    .task-detail-shell :global(aside[aria-hidden='false']) {
+      transform: translateY(0);
+    }
+  }
+</style>

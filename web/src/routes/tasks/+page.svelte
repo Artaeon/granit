@@ -716,6 +716,45 @@
   let selectedIds = $state<Set<string>>(new Set());
   let detailTask = $state<Task | null>(null);
   let detailOpen = $state(false);
+
+  // Swipe-hint dismissal. The first time a touch-device user lands
+  // on the list view, show a small "‹ swipe ›" banner above the first
+  // card so they know snooze (left) / done (right) gestures exist.
+  // Dismiss on tap or after 8 seconds — pick the simpler path rather
+  // than wiring "swipe detected" back from TaskCard. Once dismissed,
+  // localStorage holds the flag so the hint never reappears.
+  const SWIPE_HINT_KEY = 'granit.tasks.swipe-hint-dismissed';
+  let swipeHintDismissed = $state(
+    typeof window !== 'undefined' && window.localStorage.getItem(SWIPE_HINT_KEY) === '1'
+  );
+  // Only show on touch devices. The matchMedia probe is best-effort —
+  // if the API isn't available (very old browser) we err on the side
+  // of NOT showing the hint, which is the conservative path.
+  let isTouchDevice = $state(false);
+  onMount(() => {
+    try {
+      isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    } catch {
+      isTouchDevice = false;
+    }
+    // Auto-dismiss after 8 seconds — the hint is meant as a one-time
+    // nudge, not a permanent fixture. Saves a write to localStorage so
+    // the dismissal sticks across the next refresh too.
+    if (!swipeHintDismissed && isTouchDevice) {
+      const handle = setTimeout(() => dismissSwipeHint(), 8000);
+      return () => clearTimeout(handle);
+    }
+  });
+  function dismissSwipeHint() {
+    swipeHintDismissed = true;
+    try { window.localStorage.setItem(SWIPE_HINT_KEY, '1'); } catch {}
+  }
+  // The `showSwipeHint` derived value reads `filtered`, which is
+  // declared later in the file (the page's main filter pipeline).
+  // Hoisting THAT declaration up is invasive; we instead lazy-evaluate
+  // the gate by declaring `showSwipeHint` after `filtered` near the
+  // bottom of the script. See the matching $derived below the
+  // `filtered` derivation.
   // Context menu state — driven by TaskCard's onContextMenu hook.
   // The menu mounts at the click position with {ctxTask, ctxX, ctxY}.
   let ctxTask = $state<Task | null>(null);
@@ -1112,6 +1151,13 @@
     }
     return out;
   });
+
+  // Swipe-hint visibility — derived here (after `filtered`) so the
+  // reactive read order is valid. State (dismissed flag + touch
+  // probe) lives near the top of the script with the other UI state.
+  let showSwipeHint = $derived(
+    isTouchDevice && !swipeHintDismissed && view === 'list' && filtered.length > 0
+  );
 
   // Week-view columns. 7 day columns rolling from today + an
   // "unscheduled" column on the left for open tasks with no date
@@ -2982,6 +3028,24 @@
         </div>
       {:else}
         <div class="space-y-4 max-w-3xl">
+          {#if showSwipeHint}
+            <!-- One-time swipe-affordance hint. Tap to dismiss; also
+                 auto-dismisses after 8 s via the setTimeout in
+                 onMount. localStorage flag stops it returning. -->
+            <button
+              type="button"
+              onclick={dismissSwipeHint}
+              class="w-full text-center text-[11px] text-dim bg-surface0 border border-surface1 rounded py-2 px-3 flex items-center justify-center gap-2 active:bg-surface1"
+              aria-label="Dismiss swipe hint"
+            >
+              <span class="text-warning" aria-hidden="true">‹</span>
+              <span>swipe left to snooze</span>
+              <span class="text-dim">·</span>
+              <span>swipe right for done</span>
+              <span class="text-success" aria-hidden="true">›</span>
+              <span class="text-dim ml-1">(tap to dismiss)</span>
+            </button>
+          {/if}
           {#each listGroups as g (g.key)}
             {@const dotColor = (
               g.key === 'overdue' ? 'bg-error' :

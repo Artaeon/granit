@@ -157,6 +157,17 @@ input[type='datetime-local'] {
   }
 }
 
+/* Touch devices don't fire :hover, so every `opacity-0 group-hover:
+   opacity-100` affordance is effectively invisible on phones. The
+   `.touch-reveal` opt-in class on a parent .group flips those
+   affordances visible on hoverless / coarse-pointer devices. Scoped
+   to opt-in (rather than blanket) because some group-hover patterns
+   elsewhere in the app are intentionally desktop-only (e.g. hover-
+   preview tooltips that would clutter a touch UI). */
+@media (hover: none) and (pointer: coarse) {
+  .touch-reveal .group-hover\:opacity-100 { opacity: 1 !important; }
+}
+
 @supports (padding: env(safe-area-inset-bottom)) {
   .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
   .pt-safe { padding-top: env(safe-area-inset-top); }

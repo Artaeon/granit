@@ -693,7 +693,7 @@
     </div>
   {/if}
 <div
-  class="task-card bg-surface0 border-l-2 {priorityClass(task.priority)} border border-surface1 rounded p-2 transition-all group relative
+  class="task-card touch-reveal bg-surface0 border-l-2 {priorityClass(task.priority)} border border-surface1 rounded p-2 transition-all group relative
     {isSelected ? 'ring-1 ring-primary' : 'hover:border-primary hover:bg-surface0'}
     {isOverdue ? 'task-card--overdue' : ''}
     {isDueToday ? 'task-card--today' : ''}
@@ -838,8 +838,10 @@
                    soon, but not right now"). Specific-date edits
                    still go through the detail drawer or inline-edit
                    form. Hidden until group-hover so quiet rows
-                   don't get noisy. -->
-              <div class="hidden sm:inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                   don't get noisy. On touch devices the .touch-reveal
+                   class on the parent .group reveals the row by force
+                   so users on phones still get the affordance. -->
+              <div class="inline-flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <span class="text-[10px] text-dim">due:</span>
                 <button
                   type="button"
