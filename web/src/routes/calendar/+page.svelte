@@ -1603,9 +1603,24 @@
         <!-- Agenda is the flat 30-day next-up list. Scoped to
              `agendaEvents` (rolling cursor → +30d) so prev/next
              walks weeks of agenda content without re-fetching the
-             whole feed. -->
+             whole feed. The onCreate hook fires from the empty-state
+             "+ Create event" CTA so a wide-open week is one click
+             from filling the first slot. -->
         <div class="overflow-y-auto h-full">
-          <AgendaView events={agendaEvents} onClickEvent={clickEvent} />
+          <AgendaView
+            events={agendaEvents}
+            onClickEvent={clickEvent}
+            onCreate={() => {
+              const s = new Date();
+              s.setMinutes(0, 0, 0);
+              s.setHours(s.getHours() + 1);
+              const e = new Date(s.getTime() + 60 * 60 * 1000);
+              unifiedStart = s;
+              unifiedEnd = e;
+              unifiedKind = 'event';
+              unifiedOpen = true;
+            }}
+          />
         </div>
       {/if}
     </div>

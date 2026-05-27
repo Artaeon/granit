@@ -1072,6 +1072,7 @@
               }
             }}
             placeholder="search jots…  /"
+            data-page-search="1"
             class="flex-1 bg-mantle border border-surface1 rounded px-1.5 py-0.5 text-[11px] text-text placeholder-dim focus:outline-none focus:border-primary"
           />
           {#if searchText}

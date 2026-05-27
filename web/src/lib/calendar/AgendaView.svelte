@@ -2,7 +2,15 @@
   import type { CalendarEvent } from '$lib/api';
   import { eventStartDate, eventTypeColor, fmtDateISO, fmtTime } from './utils';
 
-  let { events, onClickEvent }: { events: CalendarEvent[]; onClickEvent: (ev: CalendarEvent) => void } = $props();
+  let {
+    events,
+    onClickEvent,
+    onCreate
+  }: {
+    events: CalendarEvent[];
+    onClickEvent: (ev: CalendarEvent) => void;
+    onCreate?: () => void;
+  } = $props();
 
   let groups = $derived.by(() => {
     const m = new Map<string, CalendarEvent[]>();
@@ -57,8 +65,15 @@
         <rect x="10" y="14" width="44" height="42" rx="3"/>
         <path d="M10 24h44M22 8v10M42 8v10" stroke-linecap="round"/>
       </svg>
-      <p class="text-sm text-subtext mb-1">No events in this range</p>
-      <p class="text-xs text-dim">Click + drag on the day/week grid to create one, or use the <span class="text-text font-medium">+ New</span> button.</p>
+      <p class="text-sm text-subtext mb-1">No events</p>
+      <p class="text-xs text-dim mb-4">Your week is open. Click + drag on the day/week grid to create one, or use the button below.</p>
+      {#if onCreate}
+        <button
+          type="button"
+          onclick={onCreate}
+          class="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-primary text-on-primary font-medium hover:opacity-90"
+        >+ Create event</button>
+      {/if}
     </div>
   {/if}
   {#each groups as [iso, evs]}

@@ -896,6 +896,7 @@
         onfocus={() => { if (q.trim()) view = 'search'; }}
         oninput={() => { if (q.trim()) view = 'search'; }}
         placeholder="Search notes (full-text)…"
+        data-page-search="1"
         class="flex-1 px-3 py-2 bg-surface0 border border-surface1 rounded text-sm sm:text-base text-text placeholder-dim focus:outline-none focus:border-primary"
       />
       {#if view === 'search' && q.trim()}

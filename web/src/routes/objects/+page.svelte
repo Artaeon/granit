@@ -184,6 +184,7 @@
         <input
           bind:value={filterText}
           placeholder="filter…"
+          data-page-search="1"
           class="w-32 sm:w-48 bg-mantle border border-surface1 rounded px-2 py-1 text-xs text-text placeholder-dim focus:outline-none focus:border-primary"
         />
         <select

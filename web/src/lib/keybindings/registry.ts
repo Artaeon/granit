@@ -93,6 +93,20 @@ export const KEYBINDINGS: KeyBinding[] = [
     description: 'Pop the cheat sheet overlay listing every shortcut the app knows about.'
   },
   {
+    id: 'focus-page-search',
+    label: 'Focus page search',
+    keys: '/',
+    scope: 'app',
+    description: 'Focus the current page\'s primary search/filter input. Pauses on pages without one.'
+  },
+  {
+    id: 'go-to-today',
+    label: 'Go to today\'s daily note',
+    keys: 'g d',
+    scope: 'app',
+    description: 'Two-key chord — press g then d within 350ms to jump straight to today\'s Daily note.'
+  },
+  {
     id: 'print-preview',
     label: 'Print preview',
     keys: 'Mod+P',

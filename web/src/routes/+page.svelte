@@ -4,6 +4,7 @@
   import { api, ApiError, type DashboardConfig, type DashboardWidget, type VaultInfo } from '$lib/api';
   import { widgetRegistry, widgetMeta } from '$lib/dashboard/registry';
   import AuthScreen from '$lib/components/AuthScreen.svelte';
+  import EmptyState from '$lib/components/EmptyState.svelte';
   import { toast } from '$lib/components/toast';
   import { sabbath, SABBATH_HIDE_WIDGET_TYPES } from '$lib/stores/sabbath';
 
@@ -232,6 +233,20 @@
     config = {
       ...config,
       widgets: config.widgets.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w))
+    };
+    persist();
+  }
+
+  // Re-enable every widget in the saved config. Used by the
+  // "Reset to defaults" affordance on the empty-dashboard state —
+  // simpler than a true server-side reset (which would discard the
+  // user's ordering + presets) while still solving the "I disabled
+  // them all and now the page is blank" trap.
+  function resetToDefaults() {
+    if (!config) return;
+    config = {
+      ...config,
+      widgets: config.widgets.map((w) => ({ ...w, enabled: true }))
     };
     persist();
   }
@@ -603,6 +618,31 @@
             <button onclick={toggleFocus} class="px-3 py-1.5 text-xs rounded bg-primary text-on-primary font-medium">Turn off focus</button>
             <button onclick={() => (editing = true)} class="px-3 py-1.5 text-xs rounded bg-surface0 border border-surface1 text-subtext hover:border-primary">Customize widgets</button>
           </div>
+        </div>
+      {/if}
+      {#if config && !focus && activeWidgets.length === 0}
+        <!-- Dashboard is empty because every widget is disabled (or
+             retired). Surface a clear "what now" rather than rendering
+             a void grid. Focus-mode has its own message above so we
+             skip this branch when focus is on. -->
+        <div class="bg-mantle border border-surface1 rounded-lg">
+          <EmptyState
+            title="Your dashboard is empty"
+            description="Add widgets in customize mode or click Reset to load the default set."
+          >
+            {#snippet action()}
+              <div class="flex items-center gap-2">
+                <button
+                  onclick={() => (editing = true)}
+                  class="px-3 py-1.5 text-xs rounded bg-primary text-on-primary font-medium"
+                >Customize</button>
+                <button
+                  onclick={resetToDefaults}
+                  class="px-3 py-1.5 text-xs rounded bg-surface0 border border-surface1 text-subtext hover:border-primary"
+                >Reset to defaults</button>
+              </div>
+            {/snippet}
+          </EmptyState>
         </div>
       {/if}
       {#if config}

@@ -946,6 +946,7 @@
             bind:value={q}
             type="text"
             placeholder="Search title… (/)"
+            data-page-search="1"
             class="w-full pl-7 pr-2 py-1.5 bg-surface0 border border-surface1 rounded text-xs text-text focus:outline-none focus:border-primary"
             onkeydown={(e) => { if (e.key === 'Escape') { (e.target as HTMLInputElement).blur(); q = ''; } }}
           />

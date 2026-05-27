@@ -33,6 +33,8 @@
   import { toast } from '$lib/components/toast';
   import { findBinding, matchesKey } from '$lib/keybindings/registry';
   import { isMobile, isMobileNow } from '$lib/util/breakpoint';
+  import { isTypingTarget } from '$lib/util/isTypingTarget';
+  import { todayISO } from '$lib/util/date';
 
   let palette: { show: () => void } | undefined = $state();
   let shortcutsOpen = $state(false);
@@ -160,6 +162,82 @@
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  });
+
+  // focus-page-search — `/` from anywhere outside a text input focuses
+  // the current page's primary search/filter input (the one tagged
+  // with data-page-search="1"). Pages without such an input silently
+  // no-op so the keystroke isn't "stolen" with nothing visible to show
+  // for it. Some routes (deadlines, jots) still wire their own `/`
+  // handler that targets the same input — both fire, both focus the
+  // same element, harmless.
+  //
+  // go-to-today — `g` then `d` within 350ms jumps to today's Daily
+  // note. Two-key chord from the vim / Gmail tradition. State lives in
+  // closure-local vars (NOT $state) since this listener doesn't render
+  // anything. A timer clears the pending `g` so an idle `g` doesn't
+  // hijack a later `d` press. Any non-`d` key during the window also
+  // cancels — so `g` then `e` doesn't accidentally feel jumpy.
+  onMount(() => {
+    let gPending = false;
+    let gTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearG = () => {
+      gPending = false;
+      if (gTimer) {
+        clearTimeout(gTimer);
+        gTimer = null;
+      }
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) {
+        clearG();
+        return;
+      }
+      if (isTypingTarget(e.target)) {
+        clearG();
+        return;
+      }
+
+      // `/` — focus page search
+      if (e.key === '/') {
+        clearG();
+        const el = document.querySelector(
+          '[data-page-search="1"]'
+        ) as HTMLInputElement | null;
+        if (el) {
+          e.preventDefault();
+          el.focus();
+          el.select?.();
+        }
+        return;
+      }
+
+      // `g d` — go to today's daily note
+      if (gPending && e.key === 'd') {
+        clearG();
+        e.preventDefault();
+        goto('/notes/' + encodeURIComponent(`Daily/${todayISO()}.md`));
+        return;
+      }
+      if (e.key === 'g') {
+        gPending = true;
+        if (gTimer) clearTimeout(gTimer);
+        gTimer = setTimeout(() => {
+          gPending = false;
+          gTimer = null;
+        }, 350);
+        return;
+      }
+      // Any other key inside the window cancels the pending `g`.
+      if (gPending) clearG();
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      if (gTimer) clearTimeout(gTimer);
+    };
   });
 
   // Global mobile-keyboard awareness. Two detection paths fold into a

@@ -122,6 +122,7 @@
         type="search"
         bind:value={q}
         placeholder="Search title or author"
+        data-page-search="1"
         class="text-sm px-3 py-1.5 bg-surface0 border border-surface1 rounded text-text placeholder:text-dim focus:outline-none focus:border-primary w-44 sm:w-56"
       />
       <div class="flex rounded border border-surface1 overflow-hidden">

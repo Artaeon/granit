@@ -2118,6 +2118,7 @@
       <input
         bind:value={q}
         placeholder="search…"
+        data-page-search="1"
         class="flex-1 min-w-0 px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
       />
       <!-- View tabs split into two clusters: primary (Today / List /

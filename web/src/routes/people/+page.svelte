@@ -411,6 +411,7 @@
       <input
         bind:value={q}
         placeholder="search name, email, tags, notes…"
+        data-page-search="1"
         class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
       />
       {#if relationships.length > 0 || people.some((p) => p.archived)}
