@@ -24,17 +24,13 @@
   import TaskDuplicates from '$lib/tasks/TaskDuplicates.svelte';
   import { isTypingTarget } from '$lib/util/isTypingTarget';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
-  import { rafThrottle } from '$lib/util/streamThrottle';
-  import { saveProposals, loadProposals } from '$lib/util/proposalCache';
-  import { extractJsonBlock } from '$lib/util/jsonExtract';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { applyNextPriority, toggleDoneOf } from '$lib/tasks/taskActions';
   import {
-    buildPlanDayPrompt,
-    roundUpTo15Min,
-    validatePlanItems,
-    type PlanItem
-  } from '$lib/tasks/aiPrompts';
+    createTriageStore,
+    createDeadlineStore,
+    createFocusPlanStore
+  } from '$lib/tasks/aiAgentStore';
 
   type View = 'list' | 'kanban' | 'today' | 'week' | 'triage' | 'inbox' | 'stale' | 'duplicates' | 'quickwins' | 'review' | 'eisenhower';
   type Group = 'due' | 'priority' | 'note' | 'project' | 'tag' | 'goal' | 'deadline';
@@ -396,313 +392,30 @@
   }
   let filterDrawerOpen = $state(false);
 
-  // AI inbox-triage state. The button on the inbox view kicks off
-  // /api/v1/ai/inbox-triage; the response is a list of proposals
-  // {id, priority, schedule, rationale} that render as accept/skip
-  // chips. Accept applies the suggested priority + a derived
-  // scheduledStart based on the schedule keyword.
-  let aiTriageBusy = $state(false);
-  let aiTriageProposals = $state<{
-    id: string;
-    priority: number;
-    schedule: string;
-    rationale: string;
-  }[]>([]);
-  // One controller per in-flight triage call. Holding a reference
-  // lets the Cancel button abort the fetch (which the server picks
-  // up via r.Context() and short-circuits before billing tokens).
-  let aiTriageAbort: AbortController | null = null;
-
-  // Cached AI proposals — see $lib/util/proposalCache. Stored under
-  // these feature keys with a 24 h TTL so a refresh / SW update
-  // doesn't lose the suggestions the user already paid tokens for.
-  const TRIAGE_KEY = 'granit.ai.triage.proposals';
-  const DEADLINE_KEY = 'granit.ai.deadlines.proposals';
-
-  // ── AI Plan-my-day ───────────────────────────────────────────────
-  // Different agent than triage: triage processes UNTRIAGED tasks;
-  // this one looks across the WHOLE open task set and produces a
-  // sequenced plan of 3-7 tasks for TODAY, gated by the user's
-  // declared focus hours. Returns strict JSON so each row gets an
-  // "accept" button that pins the task into a time slot
-  // (scheduledStart = now + cumulative minutes, dueDate = today).
-  // Falls back to the streamed text if JSON parse fails — old
-  // text-only display remains available so a malformed model reply
-  // never leaves the user with nothing visible.
+  // AI orchestration stores — busy / proposals / abort state for
+  // inbox-triage, deadline-detect, and plan-my-day all live in
+  // $lib/tasks/aiAgentStore. The page subscribes via $triage /
+  // $deadline / $focusPlan auto-stores and calls the methods on
+  // each. The page-local hydrate-from-cache happens in onMount.
   //
-  // Goes through chatStream so it joins the audit rollup, sabbath
-  // gate, redaction, cost tracking. NEVER bypass.
-  let aiFocusBusy = $state(false);
-  let aiFocusError = $state('');
-  let aiFocusResponse = $state('');
-  let aiFocusPlan = $state<PlanItem[]>([]);
-  let aiFocusSkipped = $state('');
-  let aiFocusAbort: AbortController | null = null;
-  // Persist the user's typical focus-hours so they don't retype "4"
-  // every morning. localStorage-backed; defaults to 4 (a realistic
-  // deep-work day for most knowledge workers).
+  // The AI Stale-task verdict surface (✨ AI verdicts button + the
+  // accept/defer/archive panel) is its own component
+  // ($lib/tasks/AIStaleVerdicts.svelte) and owns its own state;
+  // the page just passes candidates + onReload.
+  const triage = createTriageStore();
+  const deadline = createDeadlineStore();
+  const focusPlan = createFocusPlanStore();
+
+  // Focus-hours input lives on the page (it's a single
+  // localStorage-persisted number bound to the toolbar's <input>),
+  // and gets passed into focusPlan.run() at call-time so the
+  // store snapshots it at start, not per-render. Defaults to 4
+  // (a realistic deep-work day for most knowledge workers).
   const FOCUS_HOURS_KEY = 'granit.tasks.focusHours';
   let aiFocusHours = $state<number>(
     Number(loadStoredString(FOCUS_HOURS_KEY, '4')) || 4
   );
   $effect(() => saveStoredString(FOCUS_HOURS_KEY, String(aiFocusHours)));
-
-  async function runAIFocus() {
-    if (aiFocusBusy) return;
-    aiFocusBusy = true;
-    aiFocusError = '';
-    aiFocusResponse = '';
-    aiFocusPlan = [];
-    aiFocusSkipped = '';
-    aiFocusAbort = new AbortController();
-    const { system, user: userMessage } = buildPlanDayPrompt(tasks, todayISO(), aiFocusHours);
-    // rAF throttle — aiFocusResponse is rendered live through
-    // MarkdownRenderer in the streaming branch (1871). Pre-fix this
-    // re-parsed the whole growing buffer per chunk → main thread
-    // choke. Throttle commits the latest buffer + tries the JSON
-    // parse at most once per frame.
-    const t = rafThrottle((full) => {
-      aiFocusResponse = full;
-      const block = extractJsonBlock(full);
-      if (!block) return;
-      try {
-        const parsed = JSON.parse(block) as { plan?: PlanItem[]; skipped_reasons?: string };
-        if (Array.isArray(parsed.plan)) {
-          aiFocusPlan = validatePlanItems(parsed.plan, tasks);
-          aiFocusSkipped = typeof parsed.skipped_reasons === 'string' ? parsed.skipped_reasons : '';
-        }
-      } catch {
-        // Partial JSON — wait for more chunks.
-      }
-    });
-    try {
-      await api.chatStream(
-        [
-          { role: 'system', content: system },
-          { role: 'user', content: userMessage }
-        ],
-        undefined,
-        {
-          onChunk: t.onChunk,
-          onDone: () => { t.flush(); },
-          onError: (err) => { t.flush(); aiFocusError = err.message; }
-        },
-        aiFocusAbort.signal
-      );
-    } finally {
-      aiFocusBusy = false;
-      aiFocusAbort = null;
-    }
-  }
-  function cancelAIFocus() { aiFocusAbort?.abort(); }
-  function dismissAIFocus() {
-    aiFocusResponse = '';
-    aiFocusError = '';
-    aiFocusPlan = [];
-    aiFocusSkipped = '';
-  }
-
-  // Accept a single plan item: schedule the task into a time slot
-  // starting from now + the cumulative estimate of all previously
-  // accepted slots. We can't know which OTHER plan items the user
-  // already accepted from a previous session, so we anchor the
-  // first accept at "now rounded up to the next 15 min" and lay
-  // subsequent accepts back-to-back. dueDate set to today so the
-  // task surfaces in the Today view.
-  async function acceptPlanItem(p: PlanItem) {
-    const t = tasks.find((x) => x.id === p.taskId);
-    if (!t) return;
-    // Find the cumulative offset for this item: sum estimateMinutes
-    // of preceding plan items (by .order). We don't know which the
-    // user already pinned, so we treat the FULL plan as the schedule
-    // skeleton — accepting #2 alone still places it after #1's slot
-    // (so the day reads coherently if the user accepts more later).
-    const earlier = aiFocusPlan
-      .filter((x) => (x.order ?? 99) < (p.order ?? 99))
-      .reduce((sum, x) => sum + Math.max(15, x.estimateMinutes || 30), 0);
-    const start = roundUpTo15Min(new Date());
-    start.setMinutes(start.getMinutes() + earlier);
-    const today = todayISO();
-    try {
-      await api.patchTask(p.taskId, {
-        scheduledStart: start.toISOString(),
-        dueDate: t.dueDate ?? today,
-        durationMinutes: Math.max(15, p.estimateMinutes || 30)
-      });
-      // Drop the accepted item so the panel reflects what's left.
-      aiFocusPlan = aiFocusPlan.filter((x) => x.taskId !== p.taskId);
-      await load();
-      toast.success(`Pinned: ${t.text.slice(0, 40)}${t.text.length > 40 ? '…' : ''}`);
-    } catch (e) {
-      toast.error('Pin failed: ' + (errorMessage(e)));
-    }
-  }
-  function skipPlanItem(taskId: string) {
-    aiFocusPlan = aiFocusPlan.filter((x) => x.taskId !== taskId);
-  }
-  // Accept all remaining plan items in order. Pins them back-to-back
-  // starting from "now rounded to next 15 min". Useful when the user
-  // trusts the plan and just wants to commit.
-  async function acceptAllPlanItems() {
-    const items = [...aiFocusPlan].sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
-    for (const p of items) {
-      await acceptPlanItem(p);
-    }
-  }
-
-  async function runAITriage() {
-    aiTriageBusy = true;
-    aiTriageAbort = new AbortController();
-    try {
-      const r = await api.aiInboxTriage(aiTriageAbort.signal);
-      aiTriageProposals = r.proposals ?? [];
-      saveProposals(TRIAGE_KEY, aiTriageProposals);
-      if ((r.proposals?.length ?? 0) === 0) {
-        if (r.warning) toast.warning(r.warning);
-        else toast.info('No suggestions returned.');
-      }
-    } catch (err) {
-      const msg = errorMessage(err);
-      // AbortError surfaces as a DOMException with name "AbortError";
-      // when fetch is aborted on Chromium-based engines the message
-      // can also be "BodyStreamBuffer was aborted" — match both.
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        toast.info('Triage cancelled.');
-      } else {
-        toast.error(/disabled in AI preferences/i.test(msg)
-          ? 'Enable "Inbox triage" in Settings → AI features first.'
-          : 'AI triage failed: ' + msg);
-      }
-    } finally {
-      aiTriageBusy = false;
-      aiTriageAbort = null;
-    }
-  }
-  function cancelAITriage() { aiTriageAbort?.abort(); }
-
-  function skipTriageProposal(id: string) {
-    aiTriageProposals = aiTriageProposals.filter((p) => p.id !== id);
-    saveProposals(TRIAGE_KEY, aiTriageProposals);
-  }
-  function discardTriageProposals() {
-    aiTriageProposals = [];
-    saveProposals(TRIAGE_KEY, []);
-  }
-
-  // The AI Stale-task verdict surface (✨ AI verdicts button + the
-  // accept/defer/archive panel) lives in $lib/tasks/AIStaleVerdicts.svelte.
-  // The parent passes the candidate set + the full task list and reloads
-  // when a verdict is applied.
-
-  // AI deadline-detect — sister feature to triage. Scans every open
-  // task with no due_date and proposes one (or stays silent) based on
-  // title/note context. Lower-pressure than triage: blanks are
-  // filtered server-side so the UI only shows confident proposals.
-  let aiDeadlineBusy = $state(false);
-  let aiDeadlineProposals = $state<{ id: string; due_date: string; rationale: string }[]>([]);
-  let aiDeadlineAbort: AbortController | null = null;
-  async function runAIDeadlineDetect() {
-    aiDeadlineBusy = true;
-    aiDeadlineAbort = new AbortController();
-    try {
-      const r = await api.aiDeadlineDetect(aiDeadlineAbort.signal);
-      aiDeadlineProposals = r.proposals ?? [];
-      saveProposals(DEADLINE_KEY, aiDeadlineProposals);
-      if ((r.proposals?.length ?? 0) === 0) {
-        if (r.warning) toast.warning(r.warning);
-        else toast.info('No clear deadlines detected.');
-      }
-    } catch (err) {
-      const msg = errorMessage(err);
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        toast.info('Detect cancelled.');
-      } else {
-        toast.error(/disabled in AI preferences/i.test(msg)
-          ? 'Enable "Deadline detect" in Settings → AI features first.'
-          : 'Detect failed: ' + msg);
-      }
-    } finally {
-      aiDeadlineBusy = false;
-      aiDeadlineAbort = null;
-    }
-  }
-  function cancelAIDeadline() { aiDeadlineAbort?.abort(); }
-  function skipDeadlineProposal(id: string) {
-    aiDeadlineProposals = aiDeadlineProposals.filter((p) => p.id !== id);
-    saveProposals(DEADLINE_KEY, aiDeadlineProposals);
-  }
-  function discardDeadlineProposals() {
-    aiDeadlineProposals = [];
-    saveProposals(DEADLINE_KEY, []);
-  }
-  async function applyDeadlineProposal(p: { id: string; due_date: string }) {
-    aiDeadlineBusy = true;
-    try {
-      await api.patchTask(p.id, { dueDate: p.due_date });
-      aiDeadlineProposals = aiDeadlineProposals.filter((x) => x.id !== p.id);
-      saveProposals(DEADLINE_KEY, aiDeadlineProposals);
-      await load();
-    } catch (err) {
-      toast.error('Apply failed: ' + (errorMessage(err)));
-    } finally {
-      aiDeadlineBusy = false;
-    }
-  }
-
-  // Apply a proposal: patch priority + (when applicable) compute a
-  // dueDate from the schedule keyword. "drop" sets done = true.
-  // Move triage state out of "inbox" so the same task doesn't keep
-  // showing up.
-  async function applyTriageProposal(p: { id: string; priority: number; schedule: string }) {
-    aiTriageBusy = true;
-    try {
-      const patch: Parameters<typeof api.patchTask>[1] = {};
-      if (p.priority === 0) {
-        patch.done = true;
-        patch.triage = 'dropped';
-      } else {
-        patch.priority = p.priority;
-        patch.triage = 'triaged';
-      }
-      const today = new Date();
-      switch (p.schedule) {
-        case 'today': {
-          patch.dueDate = fmtDateISO(today);
-          break;
-        }
-        case 'tomorrow': {
-          const t = new Date(today);
-          t.setDate(t.getDate() + 1);
-          patch.dueDate = fmtDateISO(t);
-          break;
-        }
-        case 'this_week': {
-          // End of week — Sunday — at the latest.
-          const t = new Date(today);
-          const dow = t.getDay();
-          const daysToSun = (7 - dow) % 7;
-          t.setDate(t.getDate() + daysToSun);
-          patch.dueDate = fmtDateISO(t);
-          break;
-        }
-        case 'next_week': {
-          const t = new Date(today);
-          t.setDate(t.getDate() + 7);
-          patch.dueDate = fmtDateISO(t);
-          break;
-        }
-        // 'no_date' or anything else → leave dueDate alone.
-      }
-      await api.patchTask(p.id, patch);
-      aiTriageProposals = aiTriageProposals.filter((x) => x.id !== p.id);
-      saveProposals(TRIAGE_KEY, aiTriageProposals);
-      await load();
-    } catch (err) {
-      toast.error('Apply failed: ' + (errorMessage(err)));
-    } finally {
-      aiTriageBusy = false;
-    }
-  }
 
   // Quick-add bar at the top of the page. The user types a single
   // line in the syntax granit's parser understands ("buy milk !2
@@ -938,9 +651,9 @@
     hydrateFromUrl();
     // Rehydrate any unprocessed AI proposals so a refresh / nav-away
     // doesn't burn the call. TTL-stale entries are dropped silently
-    // by loadProposals.
-    aiTriageProposals = loadProposals(TRIAGE_KEY);
-    aiDeadlineProposals = loadProposals(DEADLINE_KEY);
+    // inside each store's hydrate().
+    triage.hydrate();
+    deadline.hydrate();
   });
 
   // Coalesced reload — bulk operations (multi-select triage, plan
@@ -2443,33 +2156,33 @@
            to streamed prose if JSON parse fails. Always-visible
            regardless of view so it's reachable from any task
            context. -->
-      {#if aiFocusBusy || aiFocusResponse || aiFocusError || aiFocusPlan.length > 0}
+      {#if $focusPlan.busy || $focusPlan.response || $focusPlan.error || $focusPlan.plan.length > 0}
         <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-surface1">
           <div class="flex items-baseline gap-2 mb-2 flex-wrap">
             <span class="text-xs uppercase tracking-wider text-secondary font-semibold">Plan my day</span>
-            {#if aiFocusPlan.length > 0 && !aiFocusBusy}
-              {@const totalEst = aiFocusPlan.reduce((s, p) => s + Math.max(15, p.estimateMinutes || 30), 0)}
-              <span class="text-[11px] text-dim font-mono tabular-nums">{aiFocusPlan.length} task{aiFocusPlan.length === 1 ? '' : 's'} · {totalEst}m</span>
+            {#if $focusPlan.plan.length > 0 && !$focusPlan.busy}
+              {@const totalEst = $focusPlan.plan.reduce((s, p) => s + Math.max(15, p.estimateMinutes || 30), 0)}
+              <span class="text-[11px] text-dim font-mono tabular-nums">{$focusPlan.plan.length} task{$focusPlan.plan.length === 1 ? '' : 's'} · {totalEst}m</span>
             {/if}
             <span class="flex-1"></span>
-            {#if aiFocusBusy}
-              <button onclick={cancelAIFocus} class="text-[11px] text-warning hover:underline">cancel</button>
+            {#if $focusPlan.busy}
+              <button onclick={() => focusPlan.cancel()} class="text-[11px] text-warning hover:underline">cancel</button>
             {:else}
-              {#if aiFocusPlan.length > 0}
-                <button onclick={() => void acceptAllPlanItems()} class="text-[11px] text-success hover:underline" title="Pin every remaining plan item back-to-back starting now">accept all</button>
+              {#if $focusPlan.plan.length > 0}
+                <button onclick={() => void focusPlan.acceptAll(tasks, load)} class="text-[11px] text-success hover:underline" title="Pin every remaining plan item back-to-back starting now">accept all</button>
               {/if}
-              <button onclick={() => void runAIFocus()} class="text-[11px] text-secondary hover:underline">↻ regenerate</button>
-              <button onclick={dismissAIFocus} class="text-[11px] text-dim hover:text-error">dismiss</button>
+              <button onclick={() => void focusPlan.run(tasks, aiFocusHours)} class="text-[11px] text-secondary hover:underline">↻ regenerate</button>
+              <button onclick={() => focusPlan.dismiss()} class="text-[11px] text-dim hover:text-error">dismiss</button>
             {/if}
           </div>
-          {#if aiFocusError}
-            <div class="text-xs text-error">{aiFocusError}</div>
-          {:else if aiFocusPlan.length > 0}
+          {#if $focusPlan.error}
+            <div class="text-xs text-error">{$focusPlan.error}</div>
+          {:else if $focusPlan.plan.length > 0}
             <!-- Structured plan view. Each row has its own accept/skip,
                  so the user can take 4 of 5 suggestions without burning
                  the call. -->
             <ol class="space-y-1.5">
-              {#each aiFocusPlan as p (p.taskId)}
+              {#each $focusPlan.plan as p (p.taskId)}
                 {@const t = tasks.find((x) => x.id === p.taskId)}
                 {#if t}
                   <li class="flex items-start gap-2 text-xs">
@@ -2484,27 +2197,27 @@
                       {/if}
                     </div>
                     <button
-                      onclick={() => void acceptPlanItem(p)}
+                      onclick={() => void focusPlan.acceptItem(p, tasks, load)}
                       class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface1 flex-shrink-0"
                       title="Pin this task into a time slot today"
                     >accept</button>
                     <button
-                      onclick={() => skipPlanItem(p.taskId)}
+                      onclick={() => focusPlan.skipItem(p.taskId)}
                       class="px-2 py-0.5 text-dim hover:text-text flex-shrink-0"
                     >skip</button>
                   </li>
                 {/if}
               {/each}
             </ol>
-            {#if aiFocusSkipped}
-              <p class="text-[11px] text-dim italic mt-2 pt-2 border-t border-surface1">Skipped: {aiFocusSkipped}</p>
+            {#if $focusPlan.skipped}
+              <p class="text-[11px] text-dim italic mt-2 pt-2 border-t border-surface1">Skipped: {$focusPlan.skipped}</p>
             {/if}
             <p class="text-[10px] text-dim mt-2">Context: {tasks.filter((t) => !t.done).slice(0, 30).length} open tasks shown · {aiFocusHours}h focus budget</p>
           {:else}
             <!-- Streaming/fallback view: show the raw model output while
                  we wait for the JSON to close, OR if parsing fails. -->
             <div class="prose prose-sm max-w-none text-sm">
-              <MarkdownRenderer body={aiFocusResponse || '_thinking…_'} />
+              <MarkdownRenderer body={$focusPlan.response || '_thinking…_'} />
             </div>
           {/if}
         </div>
@@ -2554,15 +2267,15 @@
           <span>h</span>
         </label>
         <button
-          onclick={() => void runAIFocus()}
-          disabled={aiFocusBusy || tasks.filter((t) => !t.done).length === 0}
+          onclick={() => void focusPlan.run(tasks, aiFocusHours)}
+          disabled={$focusPlan.busy || tasks.filter((t) => !t.done).length === 0}
           title="AI builds a sequenced day-plan budgeted to your focus hours"
           class="hidden sm:inline-flex px-3 py-2 text-sm bg-surface1 border border-surface2 text-primary rounded hover:border-primary disabled:opacity-50 flex-shrink-0 items-center gap-1.5"
         >
           <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/>
           </svg>
-          <span>{aiFocusBusy ? 'planning…' : 'Plan day'}</span>
+          <span>{$focusPlan.busy ? 'planning…' : 'Plan day'}</span>
         </button>
         <!-- Ask Tasks — opens a Q&A panel above the list. The model
              answers from the loaded task set as context. No mutations
@@ -3023,51 +2736,51 @@
             <p class="text-sm text-dim flex-1">
               Untriaged tasks. Decide for each: schedule, prioritize, drop, or snooze.
             </p>
-            {#if aiTriageBusy}
+            {#if $triage.busy}
               <button
-                onclick={cancelAITriage}
+                onclick={() => triage.cancel()}
                 class="px-3 py-1.5 text-xs bg-surface0 text-warning rounded hover:bg-surface1 flex-shrink-0"
                 title="Cancel the in-flight triage call"
               >✨ thinking… cancel</button>
             {:else}
               <button
-                onclick={() => void runAITriage()}
+                onclick={() => void triage.run()}
                 disabled={filtered.length === 0}
                 class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface2 disabled:opacity-50 flex-shrink-0"
                 title="Ask AI to suggest priority + schedule for each untriaged task"
               >✨ AI triage</button>
             {/if}
-            {#if aiDeadlineBusy}
+            {#if $deadline.busy}
               <button
-                onclick={cancelAIDeadline}
+                onclick={() => deadline.cancel()}
                 class="px-3 py-1.5 text-xs bg-surface0 text-warning rounded hover:bg-surface1 flex-shrink-0"
                 title="Cancel the in-flight deadline scan"
               >✨ thinking… cancel</button>
             {:else}
               <button
-                onclick={() => void runAIDeadlineDetect()}
+                onclick={() => void deadline.run()}
                 class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface2 disabled:opacity-50 flex-shrink-0"
                 title="Scan all open tasks without a due date — propose ones whose title implies a clear deadline"
               >✨ Detect deadlines</button>
             {/if}
           </div>
 
-          {#if aiDeadlineProposals.length > 0}
+          {#if $deadline.proposals.length > 0}
             <!-- Deadline proposals — operates across ALL open tasks
                  without a due_date, not just inbox. Server already
                  filtered out blanks, so every row is a confident
                  suggestion. Apply patches dueDate; skip just dismisses. -->
             <div class="mb-5 p-3 bg-surface0 border border-warning rounded">
               <div class="flex items-center mb-2">
-                <div class="text-xs uppercase tracking-wider text-warning font-semibold flex-1">Detected deadlines ({aiDeadlineProposals.length})</div>
+                <div class="text-xs uppercase tracking-wider text-warning font-semibold flex-1">Detected deadlines ({$deadline.proposals.length})</div>
                 <button
-                  onclick={discardDeadlineProposals}
+                  onclick={() => deadline.discard()}
                   class="text-[10px] text-dim hover:text-error"
                   title="Drop all proposals without applying any"
                 >discard</button>
               </div>
               <ul class="space-y-2">
-                {#each aiDeadlineProposals as p (p.id)}
+                {#each $deadline.proposals as p (p.id)}
                   {@const t = tasks.find((x) => x.id === p.id)}
                   {#if t}
                     <li class="flex items-start gap-2 text-xs">
@@ -3079,12 +2792,12 @@
                         </div>
                       </div>
                       <button
-                        onclick={() => void applyDeadlineProposal(p)}
-                        disabled={aiDeadlineBusy}
+                        onclick={() => void deadline.apply(p, load)}
+                        disabled={$deadline.busy}
                         class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface1"
                       >accept</button>
                       <button
-                        onclick={() => skipDeadlineProposal(p.id)}
+                        onclick={() => deadline.skip(p.id)}
                         class="px-2 py-0.5 text-dim hover:text-text"
                       >skip</button>
                     </li>
@@ -3094,21 +2807,21 @@
             </div>
           {/if}
 
-          {#if aiTriageProposals.length > 0}
+          {#if $triage.proposals.length > 0}
             <!-- AI suggestions panel. Each proposal has Accept /
                  Skip; accepting applies the suggested priority +
                  schedule to the matching task. -->
             <div class="mb-5 p-3 bg-surface1 border border-surface2 rounded">
               <div class="flex items-center mb-2">
-                <div class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">AI suggestions ({aiTriageProposals.length})</div>
+                <div class="text-xs uppercase tracking-wider text-secondary font-semibold flex-1">AI suggestions ({$triage.proposals.length})</div>
                 <button
-                  onclick={discardTriageProposals}
+                  onclick={() => triage.discard()}
                   class="text-[10px] text-dim hover:text-error"
                   title="Drop all proposals without applying any"
                 >discard</button>
               </div>
               <ul class="space-y-2">
-                {#each aiTriageProposals as p (p.id)}
+                {#each $triage.proposals as p (p.id)}
                   {@const t = tasks.find((x) => x.id === p.id)}
                   {#if t}
                     <li class="flex items-start gap-2 text-xs">
@@ -3120,12 +2833,12 @@
                         </div>
                       </div>
                       <button
-                        onclick={() => void applyTriageProposal(p)}
-                        disabled={aiTriageBusy}
+                        onclick={() => void triage.apply(p, load)}
+                        disabled={$triage.busy}
                         class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface1"
                       >accept</button>
                       <button
-                        onclick={() => skipTriageProposal(p.id)}
+                        onclick={() => triage.skip(p.id)}
                         class="px-2 py-0.5 text-dim hover:text-text"
                       >skip</button>
                     </li>
