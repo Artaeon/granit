@@ -4,6 +4,7 @@
   import { mediaQuery } from '$lib/util/mediaQuery';
   import { toast } from '$lib/components/toast';
   import TaskCard from './TaskCard.svelte';
+  import { applyNextPriority, toggleDoneOf } from './taskActions';
   import { makeKanbanKeyHandler, type KanbanCol } from './useKanbanKeyboard';
 
   // mode='config' means "render columns from KanbanColumns + KanbanColumnTags
@@ -468,14 +469,13 @@
 
   async function toggleDone(t: Task) {
     try {
-      await api.patchTask(t.id, { done: !t.done });
+      await toggleDoneOf(t);
       onChanged?.();
     } catch {}
   }
   async function cyclePriority(t: Task) {
-    const next = ((t.priority || 0) + 1) % 4;
     try {
-      await api.patchTask(t.id, { priority: next });
+      await applyNextPriority(t);
       onChanged?.();
     } catch {}
   }

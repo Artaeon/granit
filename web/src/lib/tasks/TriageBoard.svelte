@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, type Task } from '$lib/api';
+  import type { Task } from '$lib/api';
   import TaskCard from './TaskCard.svelte';
+  import { applyNextPriority, toggleDoneOf } from './taskActions';
   import { makeKanbanKeyHandler, type KanbanCol } from './useKanbanKeyboard';
 
   let {
@@ -58,14 +59,13 @@
 
   async function toggleDone(t: Task) {
     try {
-      await api.patchTask(t.id, { done: !t.done });
+      await toggleDoneOf(t);
       await onChanged?.();
     } catch {}
   }
   async function cyclePriority(t: Task) {
-    const next = ((t.priority || 0) + 1) % 4;
     try {
-      await api.patchTask(t.id, { priority: next });
+      await applyNextPriority(t);
       await onChanged?.();
     } catch {}
   }

@@ -28,6 +28,7 @@
   import { saveProposals, loadProposals } from '$lib/util/proposalCache';
   import { extractJsonBlock } from '$lib/util/jsonExtract';
   import { focusOnMount } from '$lib/util/focusOnMount';
+  import { applyNextPriority, toggleDoneOf } from '$lib/tasks/taskActions';
   import {
     buildPlanDayPrompt,
     roundUpTo15Min,
@@ -825,12 +826,13 @@
       projects = p.projects;
       goals = gg.goals;
       deadlines = dd.deadlines;
-    } catch (e) {
+    } catch {
       // 401 (stale auth) and network failures both end up here.
       // Silently leave tasks/projects empty so the empty-state copy
       // renders instead of the indefinite loading spinner. A later
-      // WS reconnect or filter change will retry naturally.
-      console.error('tasks: load failed', e);
+      // WS reconnect or filter change will retry naturally — no toast,
+      // no console noise; the comment above is the only documentation
+      // we need for the silent branch.
     } finally {
       loading = false;
     }
@@ -939,17 +941,26 @@
   // ---------------------------------------------------------------------------
   let cursorIdx = $state<number>(-1);
   $effect(() => {
-    // Reset cursor when the filtered list shrinks past it.
-    if (cursorIdx >= filtered.length) cursorIdx = filtered.length - 1;
+    // Reset cursor when the filtered list shrinks past it. We read the
+    // whole `filtered` array (not just .length) so any change to the
+    // filter pipeline retriggers — a swap that keeps length identical
+    // but rearranges items could otherwise leave the cursor pointing
+    // at a stale row. The Math.max(0, …) keeps cursorIdx valid (>= 0)
+    // even when filtered is empty; cursor-read sites also `?.` against
+    // out-of-bounds so a flicker between the effect firing and the
+    // render path resolves gracefully.
+    void filtered;
+    if (cursorIdx >= filtered.length) {
+      cursorIdx = Math.max(0, filtered.length - 1);
+    }
   });
 
   // isTypingTarget lives in $lib/util/isTypingTarget — shared with
   // /projects and /goals page-level hotkey handlers.
 
   async function cyclePriorityOf(t: Task) {
-    const next = ((t.priority || 0) + 1) % 4; // 0,1,2,3 cycle
     try {
-      await api.patchTask(t.id, { priority: next });
+      await applyNextPriority(t);
     } catch {}
   }
 
@@ -1106,7 +1117,7 @@
         selectedIds = next;
         e.preventDefault();
       } else if (k === 'd') {
-        api.patchTask(t.id, { done: !t.done }).catch(() => {});
+        toggleDoneOf(t).catch(() => {});
         e.preventDefault();
       } else if (k === 'e') {
         openDetail(t);

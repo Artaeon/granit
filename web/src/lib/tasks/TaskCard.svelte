@@ -4,6 +4,10 @@
   import { inlineMd } from '$lib/util/inlineMd';
   import { cleanTaskText } from '$lib/util/taskParse';
   import { priorityBorderClass, priorityTone } from '$lib/util/priority';
+  import { dueClass, dueLabel, dueIcon } from '$lib/util/dueDateFormatter';
+  import { nextTriage, triageTone } from '$lib/util/triageState';
+  import { relSnooze } from '$lib/util/dateFormatters';
+  import { applyNextPriority, toggleDoneOf } from './taskActions';
   import { toast } from '$lib/components/toast';
   import SnoozePicker from './SnoozePicker.svelte';
   import { activeTimer, minutesByTaskId, fmtDuration } from '$lib/stores/timer';
@@ -259,34 +263,8 @@
     return sn.getTime() > Date.now();
   }
 
-  function relSnooze(iso: string): string {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return iso;
-    const diff = d.getTime() - Date.now();
-    const mins = Math.round(diff / 60_000);
-    if (mins < 60) return `${mins}m`;
-    const hrs = Math.round(mins / 60);
-    if (hrs < 24) return `${hrs}h`;
-    const days = Math.round(hrs / 24);
-    if (days < 7) return `${days}d`;
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  }
-
-  // Triage cycle order matches granit's UX: inbox → triaged → scheduled → done → dropped → snoozed → inbox
-  const triageOrder: Array<NonNullable<Task['triage']>> = ['inbox', 'triaged', 'scheduled', 'done', 'dropped', 'snoozed'];
-  function nextTriage(cur?: string): NonNullable<Task['triage']> {
-    const i = triageOrder.indexOf((cur as NonNullable<Task['triage']>) || 'inbox');
-    return triageOrder[(i + 1) % triageOrder.length];
-  }
-  function triageTone(t?: string): string {
-    if (t === 'inbox') return 'subtext';
-    if (t === 'triaged') return 'info';
-    if (t === 'scheduled') return 'primary';
-    if (t === 'done') return 'success';
-    if (t === 'dropped') return 'dim';
-    if (t === 'snoozed') return 'warning';
-    return 'subtext';
-  }
+  // relSnooze / triageOrder / nextTriage / triageTone moved to
+  // $lib/util/dateFormatters + $lib/util/triageState — see imports.
 
   // Optimistic local update — flip the field immediately so the UI
   // doesn't sit waiting on a 100-400ms round-trip + parent refetch
@@ -302,7 +280,9 @@
     task = { ...task, done: !task.done };
     busy = true;
     try {
-      const updated = await api.patchTask(task.id, { done: task.done });
+      // toggleDoneOf reads from `prev` (pre-flip) so it sends the new
+      // state — calling it on the optimistic `task` would re-flip back.
+      const updated = await toggleDoneOf(prev);
       task = updated;
       onChanged?.(updated);
     } catch (err) {
@@ -409,10 +389,9 @@
   async function cyclePriority(e: Event) {
     e.stopPropagation();
     if (busy) return;
-    const next = ((task.priority || 0) + 1) % 4; // 0..3
     busy = true;
     try {
-      const updated = await api.patchTask(task.id, { priority: next });
+      const updated = await applyNextPriority(task);
       task = updated;
       onChanged?.(updated);
     } finally {
@@ -595,42 +574,8 @@
     goto(`/notes/${encodeURIComponent(task.notePath)}`);
   }
 
-  let dueClass = $derived.by(() => {
-    if (!task.dueDate) return 'text-dim';
-    const today = todayISO();
-    if (task.dueDate < today) return 'text-error';
-    if (task.dueDate === today) return 'text-warning';
-    return 'text-dim';
-  });
-
-  // Relative-aware due-date label. Reads naturally — "today", "tomorrow",
-  // "yesterday", "in 3 days", "+2w", or a localised date for far-out
-  // dates. Matches what users expect from Things / Reminders / Todoist
-  // and keeps the task row uncluttered (was rendering raw "2026-05-15"
-  // even for tomorrow).
-  function dueLabel(due: string): string {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const [y, m, d] = due.split('-').map(Number);
-    const date = new Date(y, m - 1, d);
-    const days = Math.round((date.getTime() - today.getTime()) / 86_400_000);
-    if (days === 0) return 'today';
-    if (days === 1) return 'tomorrow';
-    if (days === -1) return 'yesterday';
-    if (days < 0 && days >= -6) return `${-days}d ago`;
-    if (days > 0 && days <= 6) return `in ${days}d`;
-    if (days < 0 && days >= -28) return `${Math.round(-days / 7)}w ago`;
-    if (days > 0 && days <= 28) return `in ${Math.round(days / 7)}w`;
-    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  }
-  // Icon char per due-state — nothing fancy, just enough to let the eye
-  // distinguish "overdue" (⚠) from "soon" (📅) at a glance.
-  function dueIcon(due: string): string {
-    const today = todayISO();
-    if (due < today) return '⚠';
-    if (due === today) return '⏰';
-    return '📅';
-  }
+  // dueClass / dueLabel / dueIcon live in $lib/util/dueDateFormatter
+  // — see imports.
 
   let badge = $derived(priorityBadge(task.priority));
   let isSelected = $derived(selectedIds.has(task.id));
@@ -660,8 +605,11 @@
      backing layer behind the card. Position is relative so the
      backing can overlay full-bleed; overflow hidden so a swipe
      past the edge doesn't bleed past the card border. -->
+<!-- Fix (A3): scope overflow-visible to popover-open AND not-swiping so
+     the popover panels can render past the card edge without the
+     translated swipe-card visibly bleeding past the wrap. -->
 <div
-  class="task-card-wrap relative rounded {openPopover ? 'overflow-visible' : 'overflow-hidden'}"
+  class="task-card-wrap relative rounded {openPopover && !swipeActive ? 'overflow-visible' : 'overflow-hidden'}"
   style="margin-left: {indentPx}px;"
   ontouchstart={onTouchStart}
   ontouchmove={onTouchMove}
@@ -818,7 +766,7 @@
                    what it'd do would be a footgun — keep cycle + set
                    verbs explicit. -->
               <span
-                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] {dueClass} bg-surface1"
+                class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] {dueClass(task.dueDate)} bg-surface1"
                 title="due {task.dueDate}"
               >
                 <span class="text-[9px]" aria-hidden="true">{dueIcon(task.dueDate)}</span>

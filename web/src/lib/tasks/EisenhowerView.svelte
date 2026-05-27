@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Task } from '$lib/api';
-  import { api, todayISO } from '$lib/api';
+  import { todayISO } from '$lib/api';
   import TaskCard from '$lib/tasks/TaskCard.svelte';
+  import { applyNextPriority, toggleDoneOf } from '$lib/tasks/taskActions';
   import { makeKanbanKeyHandler, type KanbanCol } from '$lib/tasks/useKanbanKeyboard';
 
   // Eisenhower matrix view — the classic 2×2 of urgent × important
@@ -148,14 +149,13 @@
 
   async function toggleDone(t: Task) {
     try {
-      const updated = await api.patchTask(t.id, { done: !t.done });
+      const updated = await toggleDoneOf(t);
       onChanged?.(updated);
     } catch {}
   }
   async function cyclePriorityFn(t: Task) {
-    const next = ((t.priority || 0) + 1) % 4;
     try {
-      const updated = await api.patchTask(t.id, { priority: next });
+      const updated = await applyNextPriority(t);
       onChanged?.(updated);
     } catch {}
   }
