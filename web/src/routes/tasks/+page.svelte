@@ -965,17 +965,76 @@
     });
   }
 
+  // View-mode cycle order. Mirrors the visible-tab order in the
+  // segmented pills (primary cluster then smart-filter cluster) so
+  // `[` / `]` walks the user through the same tabs their eye sees,
+  // left-to-right. Includes every shape so the cycle is exhaustive;
+  // narrow-viewport users still hit hidden tabs (stale / quickwins /
+  // duplicates / review / triage) via the chord even when the buttons
+  // are visually hidden — which is the point of having a chord.
+  const VIEW_CYCLE: View[] = [
+    'today', 'list', 'week', 'kanban', 'eisenhower',
+    'inbox', 'quickwins', 'stale', 'duplicates', 'review', 'triage'
+  ];
+  // Numeric direct-jump map — Stream F shortcuts `1`/`2`/`3`/`4`.
+  // Same five primary shapes as the first segmented pill: today /
+  // list / kanban / matrix. Number-to-view chosen by the order the
+  // segmented buttons render top-of-page (Today, List, Kanban, Matrix
+  // are the four most-used; Week intentionally not on a number key
+  // since `[` / `]` already cover it).
+  const VIEW_DIGIT_MAP: Record<string, View> = {
+    '1': 'today',
+    '2': 'list',
+    '3': 'kanban',
+    '4': 'eisenhower'
+  };
+
+  // Trigger the in-card snooze picker for the cursor task. The picker
+  // is owned by TaskCard and anchored to its own snooze button (so the
+  // popover positions correctly), so the cleanest cross-component
+  // invocation is to .click() the button via the data-task-id wrapper.
+  // Falls back silently if the row hasn't rendered yet — the keydown
+  // handler's early-return already guarded against an empty filter.
+  function openSnoozePickerForCursor() {
+    const t = cursorIdx >= 0 ? filtered[cursorIdx] : null;
+    if (!t) return;
+    const row = document.querySelector(`[data-task-id="${t.id}"]`);
+    if (!row) return;
+    const btn = row.querySelector('button[aria-label="snooze"]') as HTMLButtonElement | null;
+    if (btn) btn.click();
+  }
+
+  // Bulk select-all toggle. Distinct from BulkBar's checkbox: this
+  // operates on every item in the currently-filtered list (including
+  // groups collapsed by the user — selection IS the union). Re-firing
+  // with everything already selected clears, so the chord doubles as
+  // an escape hatch without needing a separate Esc press.
+  function selectAllOrClear() {
+    if (filtered.length === 0) return;
+    const allSelected = filtered.every((t) => selectedIds.has(t.id));
+    if (allSelected) {
+      selectedIds = new Set();
+      toast.info('Selection cleared');
+      return;
+    }
+    selectedIds = new Set(filtered.map((t) => t.id));
+    toast.success(`Selected ${filtered.length} task${filtered.length === 1 ? '' : 's'}`);
+  }
+
+  function cycleView(direction: 1 | -1) {
+    const i = VIEW_CYCLE.indexOf(view);
+    const base = i >= 0 ? i : 0;
+    const next = (base + direction + VIEW_CYCLE.length) % VIEW_CYCLE.length;
+    view = VIEW_CYCLE[next];
+  }
+
   onMount(() => {
     function onKey(e: KeyboardEvent) {
       if (isTypingTarget(e.target)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      // Kanban / TriageBoard / EisenhowerView each install their own
-      // window-level handler with a column-aware cursor. Suppressing
-      // the page-level handler in those views avoids double-firing
-      // j/k/x/d/e/p (which would move two cursors and patch twice).
-      if (view === 'kanban' || view === 'triage' || view === 'eisenhower') return;
       const k = e.key;
-      // Help overlay
+      // Help overlay — works on every view (including kanban/triage/
+      // eisenhower, which otherwise short-circuit below).
       if (k === '?') {
         helpOpen = !helpOpen;
         e.preventDefault();
@@ -985,6 +1044,29 @@
         helpOpen = false;
         return;
       }
+      // View cycling + direct-jump work on EVERY view (so the user can
+      // bounce out of kanban → list with `]`, then back with `[`).
+      // Must run before the kanban/triage/eisenhower early-return.
+      if (k === '[') {
+        cycleView(-1);
+        e.preventDefault();
+        return;
+      }
+      if (k === ']') {
+        cycleView(1);
+        e.preventDefault();
+        return;
+      }
+      if (k in VIEW_DIGIT_MAP) {
+        view = VIEW_DIGIT_MAP[k];
+        e.preventDefault();
+        return;
+      }
+      // Kanban / TriageBoard / EisenhowerView each install their own
+      // window-level handler with a column-aware cursor. Suppressing
+      // the page-level handler in those views avoids double-firing
+      // j/k/x/d/e/p (which would move two cursors and patch twice).
+      if (view === 'kanban' || view === 'triage' || view === 'eisenhower') return;
       // j/k navigation
       if (k === 'j') {
         focusCursor((cursorIdx < 0 ? 0 : cursorIdx + 1));
@@ -1001,6 +1083,16 @@
       // filtered list (or the bulk-selection if one is active).
       if (k === 'a') {
         agentOpen = true;
+        e.preventDefault();
+        return;
+      }
+      // Shift+A — bulk select-all / clear toggle. Different from `a`
+      // (which opens the agent) because of the explicit modifier;
+      // event.key on Shift+A reports "A" uppercase, which is what we
+      // match here. e.shiftKey check disambiguates from the unlikely
+      // case of a hardware-locked caps-lock typist hitting plain "A".
+      if (k === 'A' && e.shiftKey) {
+        selectAllOrClear();
         e.preventDefault();
         return;
       }
@@ -1021,6 +1113,13 @@
         e.preventDefault();
       } else if (k === 'p') {
         cyclePriorityOf(t);
+        e.preventDefault();
+      } else if (k === 's') {
+        // Open the snooze popover on the cursor task. The popover
+        // owns the date picker; this just triggers the in-card
+        // button so positioning + outside-click dismiss behave the
+        // same as a mouse click.
+        openSnoozePickerForCursor();
         e.preventDefault();
       } else if (k === 'Escape') {
         if (selectedIds.size > 0) {
@@ -3179,16 +3278,24 @@
         <span class="text-subtext">navigate up / down</span>
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">x</kbd>
         <span class="text-subtext">toggle bulk-select</span>
+        <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">Shift+A</kbd>
+        <span class="text-subtext">select / clear all filtered</span>
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">e</kbd>
         <span class="text-subtext">open task detail</span>
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">d</kbd>
         <span class="text-subtext">toggle done</span>
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">p</kbd>
         <span class="text-subtext">cycle priority (P0→P3)</span>
+        <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">s</kbd>
+        <span class="text-subtext">snooze cursor task</span>
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">esc</kbd>
         <span class="text-subtext">clear selection</span>
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">a</kbd>
         <span class="text-subtext">open AI agent (operates on filtered list or bulk-selection)</span>
+        <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">[ / ]</kbd>
+        <span class="text-subtext">previous / next view mode</span>
+        <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">1‥4</kbd>
+        <span class="text-subtext">jump to today / list / kanban / matrix</span>
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">?</kbd>
         <span class="text-subtext">toggle this overlay</span>
       </div>

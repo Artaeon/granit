@@ -37,6 +37,14 @@ export interface KeyBinding {
   keys: string;
   scope: BindingScope;
   description?: string;
+  // Route(s) on which this shortcut is active. Used by the
+  // ShortcutsOverlay to surface a "Current page" section at the
+  // top of the cheat sheet so the user sees the page-relevant
+  // chords without scrolling through global bindings. String =
+  // prefix match on pathname; RegExp = test against pathname;
+  // array = any-match across the entries. Bindings without a
+  // route apply everywhere their scope covers.
+  route?: string | RegExp | Array<string | RegExp>;
 }
 
 // Single source of truth for the global + app-wide shortcuts. Route-
@@ -112,8 +120,156 @@ export const KEYBINDINGS: KeyBinding[] = [
     keys: 'Mod+P',
     scope: 'app',
     description: 'Open the branded print/PDF preview for the current note (browser print stays available via the OS shortcut menu).'
+  },
+  // ── /tasks page-scoped bindings ──────────────────────────────────
+  // These ship as part of Stream F (power-user efficiency). The
+  // handler still lives in /tasks/+page.svelte's onKey listener —
+  // registering here is what makes the ?-overlay's "Current page"
+  // section surface them. `scope: 'tasks'` keeps them out of the
+  // generic Global/App groups so the overlay's render path can
+  // bucket them into the per-page section instead.
+  {
+    id: 'tasks-nav-down',
+    label: 'Cursor down',
+    keys: 'j',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Move the keyboard cursor to the next task in the filtered list.'
+  },
+  {
+    id: 'tasks-nav-up',
+    label: 'Cursor up',
+    keys: 'k',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Move the keyboard cursor to the previous task in the filtered list.'
+  },
+  {
+    id: 'tasks-toggle-select',
+    label: 'Toggle bulk-select on cursor task',
+    keys: 'x',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Add or remove the cursor task from the bulk selection.'
+  },
+  {
+    id: 'tasks-toggle-done',
+    label: 'Toggle done on cursor task',
+    keys: 'd',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Mark the cursor task done — or undo it if it was already done.'
+  },
+  {
+    id: 'tasks-open-detail',
+    label: 'Open task detail',
+    keys: 'e',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Open the right-hand TaskDetail drawer for the cursor task.'
+  },
+  {
+    id: 'tasks-cycle-priority',
+    label: 'Cycle priority',
+    keys: 'p',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Cycle the cursor task through P0 → P1 → P2 → P3 → P0.'
+  },
+  {
+    id: 'tasks-agent',
+    label: 'Open Task Agent',
+    keys: 'a',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Open the conversational AI agent scoped to the filtered list (or current bulk-selection).'
+  },
+  {
+    id: 'tasks-snooze',
+    label: 'Snooze cursor task',
+    keys: 's',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Open the snooze picker for the cursor task — pick a wake date and the task hides until then.'
+  },
+  {
+    id: 'tasks-select-all',
+    label: 'Select / clear all filtered',
+    keys: 'Shift+A',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Bulk-select every task in the current filtered list. Press again with everything selected to clear.'
+  },
+  {
+    id: 'tasks-view-prev',
+    label: 'Previous view mode',
+    keys: '[',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Cycle backward through the visible view-mode tabs (Today / List / Week / Kanban / Matrix …).'
+  },
+  {
+    id: 'tasks-view-next',
+    label: 'Next view mode',
+    keys: ']',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Cycle forward through the visible view-mode tabs.'
+  },
+  {
+    id: 'tasks-view-1',
+    label: 'Jump to Today view',
+    keys: '1',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Jump directly to the Today view (overdue + due today + scheduled today).'
+  },
+  {
+    id: 'tasks-view-2',
+    label: 'Jump to List view',
+    keys: '2',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Jump directly to the grouped List view.'
+  },
+  {
+    id: 'tasks-view-3',
+    label: 'Jump to Kanban view',
+    keys: '3',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Jump directly to the Kanban view.'
+  },
+  {
+    id: 'tasks-view-4',
+    label: 'Jump to Matrix view',
+    keys: '4',
+    scope: 'tasks',
+    route: '/tasks',
+    description: 'Jump directly to the Eisenhower matrix view.'
   }
 ];
+
+// Test whether a binding's route filter matches the given pathname.
+// Bindings without a route always match (i.e. apply everywhere).
+export function bindingMatchesRoute(binding: KeyBinding, pathname: string): boolean {
+  if (!binding.route) return true;
+  const entries = Array.isArray(binding.route) ? binding.route : [binding.route];
+  for (const r of entries) {
+    if (typeof r === 'string') {
+      if (pathname === r || pathname.startsWith(r + '/') || pathname.startsWith(r + '?')) return true;
+      // Bare prefix match too (e.g. route='/tasks' matches '/tasks/123').
+      if (r.endsWith('/')) {
+        if (pathname.startsWith(r)) return true;
+      } else if (pathname === r || pathname.startsWith(r + '/')) {
+        return true;
+      }
+    } else if (r instanceof RegExp) {
+      if (r.test(pathname)) return true;
+    }
+  }
+  return false;
+}
 
 export function findBinding(id: string): KeyBinding | undefined {
   return KEYBINDINGS.find((b) => b.id === id);

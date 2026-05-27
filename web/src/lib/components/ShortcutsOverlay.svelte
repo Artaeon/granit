@@ -12,7 +12,8 @@
   // the overlay (the layout's keydown handler is what enforces
   // that — this component just reacts to its `open` prop).
 
-  import { KEYBINDINGS, type KeyBinding } from '$lib/keybindings/registry';
+  import { KEYBINDINGS, bindingMatchesRoute, type KeyBinding } from '$lib/keybindings/registry';
+  import { page } from '$app/stores';
   import { fly, fade } from 'svelte/transition';
 
   interface Props {
@@ -40,16 +41,27 @@
     });
   }
 
-  // Group bindings by scope so the overlay reads as "everywhere" vs
-  // "while the app surface is focused but not inside an input."
+  // Group bindings into three buckets: per-page (matches active
+  // route), global (fires everywhere including inputs), and app-shell
+  // (everywhere except inside text inputs). Bindings with a `route`
+  // filter only ever appear in the "Current page" section so a chord
+  // like `s` (snooze cursor task on /tasks) doesn't confuse the user
+  // when they're on /notes.
+  let pathname = $derived($page.url.pathname);
   let groups = $derived(() => {
+    const pageRows: KeyBinding[] = [];
     const global: KeyBinding[] = [];
     const app: KeyBinding[] = [];
     for (const b of KEYBINDINGS) {
+      if (b.route) {
+        if (bindingMatchesRoute(b, pathname)) pageRows.push(b);
+        continue;
+      }
       if (b.scope === 'global') global.push(b);
       else app.push(b);
     }
     return [
+      { title: 'Current page', rows: pageRows },
       { title: 'Global · works while typing too', rows: global },
       { title: 'App-shell · pauses while inside an input', rows: app }
     ];
