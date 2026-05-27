@@ -584,7 +584,7 @@
           {/if}
           <button
             onclick={onTitleClick}
-            class="text-sm text-left flex-1 min-w-0 break-words {task.done ? 'line-through text-dim' : 'text-text'}"
+            class="text-sm text-left flex-1 min-w-0 break-words [overflow-wrap:anywhere] {task.done ? 'line-through text-dim' : 'text-text'}"
             title="click to edit · cmd/ctrl-click to open details · right-click for actions"
           >
             {#if (task.indent ?? 0) > 0}

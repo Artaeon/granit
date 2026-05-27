@@ -272,23 +272,35 @@
   // OUR lineNum. The list is small (single note's worth) so we just
   // do a fresh fetch on open rather than wiring an upstream prop.
   // Refreshed after any add / toggle so the user sees the result.
+  //
+  // subtasksGen is a generation counter — every loadSubtasks call
+  // bumps it, and the in-flight response only commits if its
+  // captured generation still matches. Without this, closing or
+  // re-targeting the drawer mid-fetch lets a stale response land
+  // and overwrite the new task's subtask list (or call onChanged on
+  // an unmounted drawer).
   let subtasks = $state<Task[]>([]);
   let subtasksLoaded = $state(false);
+  let subtasksGen = 0;
   async function loadSubtasks() {
+    const gen = ++subtasksGen;
     if (!task) {
       subtasks = [];
       subtasksLoaded = true;
       return;
     }
+    const pinnedTask = task;
     try {
-      const r = await api.listTasks({ note: task.notePath });
+      const r = await api.listTasks({ note: pinnedTask.notePath });
+      if (gen !== subtasksGen) return; // superseded — drop the response
       // Match by parentLine — that's what the parser computes for
       // every indented task it parses. Also exclude the parent itself.
       subtasks = r.tasks
-        .filter((t) => t.id !== task.id && t.parentLine === task.lineNum)
+        .filter((t) => t.id !== pinnedTask.id && t.parentLine === pinnedTask.lineNum)
         .sort((a, b) => a.lineNum - b.lineNum);
       subtasksLoaded = true;
     } catch {
+      if (gen !== subtasksGen) return;
       subtasks = [];
       subtasksLoaded = true;
     }

@@ -930,6 +930,11 @@
     function onKey(e: KeyboardEvent) {
       if (isTypingTarget(e.target)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Kanban / TriageBoard / EisenhowerView each install their own
+      // window-level handler with a column-aware cursor. Suppressing
+      // the page-level handler in those views avoids double-firing
+      // j/k/x/d/e/p (which would move two cursors and patch twice).
+      if (view === 'kanban' || view === 'triage' || view === 'eisenhower') return;
       const k = e.key;
       // Help overlay
       if (k === '?') {

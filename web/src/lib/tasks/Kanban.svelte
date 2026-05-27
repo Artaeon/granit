@@ -4,6 +4,7 @@
   import { mediaQuery } from '$lib/util/mediaQuery';
   import { toast } from '$lib/components/toast';
   import TaskCard from './TaskCard.svelte';
+  import { makeKanbanKeyHandler, type KanbanCol } from './useKanbanKeyboard';
 
   // mode='config' means "render columns from KanbanColumns + KanbanColumnTags
   // in the user's config". The other three modes mirror the TUI's view modes:
@@ -355,15 +356,17 @@
     const ids = selectedIds.has(id) && selectedIds.size > 1 ? Array.from(selectedIds) : [id];
     const patch = patchForColumn(col);
     if (!patch) return;
+    // Fire all patches in parallel. With a 50-task bulk move the
+    // sequential await chain previously cost 50 round-trips end-to-
+    // end; allSettled lets the server pipeline them. The per-task
+    // toast still reports the failure count so partial failures stay
+    // visible.
+    const results = await Promise.allSettled(ids.map((tid) => api.patchTask(tid, patch)));
     let ok = 0;
     let fail = 0;
-    for (const tid of ids) {
-      try {
-        await api.patchTask(tid, patch);
-        ok++;
-      } catch {
-        fail++;
-      }
+    for (const r of results) {
+      if (r.status === 'fulfilled') ok++;
+      else fail++;
     }
     if (ids.length > 1) {
       if (fail === 0) toast.success(`moved ${ok} tasks`);
@@ -428,6 +431,70 @@
     const m = total % 60;
     return m === 0 ? h + 'h' : h + 'h ' + m + 'm';
   }
+
+  // ── Keyboard navigation ───────────────────────────────────────────
+  // Cursor walks the columns × lanes flattened in render order so
+  // j/k matches what the user sees. h/l hops column boundaries.
+  // See useKanbanKeyboard.ts for the shared shape used by TriageBoard
+  // + EisenhowerView as well.
+  let cursorIdx = $state<number>(-1);
+
+  // Flatten in the same order as the render loop: lanes-major,
+  // columns-major. Each lane × column produces one KanbanCol of
+  // (col.key + ':' + lane.key) so navigation respects swimlanes
+  // when active.
+  let navCols = $derived.by((): KanbanCol[] => {
+    const out: KanbanCol[] = [];
+    for (const lane of lanes) {
+      for (const col of columns) {
+        const items = tasksFor(col, lane);
+        out.push({ key: col.key + ':' + lane.key, ids: items.map((t) => t.id) });
+      }
+    }
+    return out;
+  });
+
+  let cursorTaskId = $derived.by((): string | null => {
+    if (cursorIdx < 0) return null;
+    let n = cursorIdx;
+    for (const c of navCols) {
+      if (n < c.ids.length) return c.ids[n];
+      n -= c.ids.length;
+    }
+    return null;
+  });
+
+  const taskById = (id: string): Task | undefined => tasks.find((t) => t.id === id);
+
+  async function toggleDone(t: Task) {
+    try {
+      await api.patchTask(t.id, { done: !t.done });
+      onChanged?.();
+    } catch {}
+  }
+  async function cyclePriority(t: Task) {
+    const next = ((t.priority || 0) + 1) % 4;
+    try {
+      await api.patchTask(t.id, { priority: next });
+      onChanged?.();
+    } catch {}
+  }
+
+  onMount(() => {
+    const handler = makeKanbanKeyHandler({
+      taskById: (id) => taskById(id) ?? null,
+      getCursorIdx: () => cursorIdx,
+      setCursorIdx: (n) => (cursorIdx = n),
+      getColumns: () => navCols,
+      selectedIds: () => selectedIds,
+      setSelectedIds: (s) => (selectedIds = s),
+      onOpenDetail: onOpenDetail ? (t) => onOpenDetail(t) : undefined,
+      onToggleDone: (t) => void toggleDone(t),
+      onCyclePriority: (t) => void cyclePriority(t)
+    });
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  });
 </script>
 
 <!-- Top toolbar: swimlane selector + mode-aware hints -->
@@ -525,7 +592,8 @@
                   ondragstart={(e) => onDragStart(t, e)}
                   ondragend={onDragEnd}
                   role="listitem"
-                  class="cursor-move {draggingId === t.id ? 'opacity-50' : ''}"
+                  data-kanban-task-id={t.id}
+                  class="cursor-move rounded {draggingId === t.id ? 'opacity-50' : ''} {cursorTaskId === t.id ? 'outline outline-1 outline-secondary outline-offset-1' : ''}"
                 >
                   <TaskCard
                     task={t}

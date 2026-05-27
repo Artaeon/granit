@@ -1,8 +1,22 @@
 <script lang="ts">
-  import type { Task } from '$lib/api';
+  import { onMount } from 'svelte';
+  import { api, type Task } from '$lib/api';
   import TaskCard from './TaskCard.svelte';
+  import { makeKanbanKeyHandler, type KanbanCol } from './useKanbanKeyboard';
 
-  let { tasks, onChanged }: { tasks: Task[]; onChanged: () => void | Promise<void> } = $props();
+  let {
+    tasks,
+    onChanged,
+    selectedIds = $bindable(new Set<string>()),
+    onOpenDetail,
+    onContextMenu
+  }: {
+    tasks: Task[];
+    onChanged: () => void | Promise<void>;
+    selectedIds?: Set<string>;
+    onOpenDetail?: (t: Task) => void;
+    onContextMenu?: (t: Task, x: number, y: number) => void;
+  } = $props();
 
   // Six columns mirroring TUI's TriageState. Order matches the user's
   // mental model of triage flow: anything new lands in inbox; the user
@@ -25,6 +39,52 @@
     }
     return m;
   });
+
+  // ── Keyboard navigation (shared with Kanban / Eisenhower) ─────────
+  let cursorIdx = $state<number>(-1);
+  let navCols = $derived.by((): KanbanCol[] =>
+    cols.map((c) => ({ key: c.key, ids: (grouped[c.key] ?? []).map((t) => t.id) }))
+  );
+  let cursorTaskId = $derived.by((): string | null => {
+    if (cursorIdx < 0) return null;
+    let n = cursorIdx;
+    for (const c of navCols) {
+      if (n < c.ids.length) return c.ids[n];
+      n -= c.ids.length;
+    }
+    return null;
+  });
+  const taskById = (id: string) => tasks.find((t) => t.id === id);
+
+  async function toggleDone(t: Task) {
+    try {
+      await api.patchTask(t.id, { done: !t.done });
+      await onChanged?.();
+    } catch {}
+  }
+  async function cyclePriority(t: Task) {
+    const next = ((t.priority || 0) + 1) % 4;
+    try {
+      await api.patchTask(t.id, { priority: next });
+      await onChanged?.();
+    } catch {}
+  }
+
+  onMount(() => {
+    const handler = makeKanbanKeyHandler({
+      taskById: (id) => taskById(id) ?? null,
+      getCursorIdx: () => cursorIdx,
+      setCursorIdx: (n) => (cursorIdx = n),
+      getColumns: () => navCols,
+      selectedIds: () => selectedIds,
+      setSelectedIds: (s) => (selectedIds = s),
+      onOpenDetail: onOpenDetail ? (t) => onOpenDetail(t) : undefined,
+      onToggleDone: (t) => void toggleDone(t),
+      onCyclePriority: (t) => void cyclePriority(t)
+    });
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  });
 </script>
 
 <div class="flex gap-3 overflow-x-auto pb-3 h-full">
@@ -38,7 +98,19 @@
       </header>
       <div class="flex-1 overflow-y-auto p-2 space-y-2 min-h-[8rem]">
         {#each list as t (t.id)}
-          <TaskCard task={t} compact onChanged={onChanged} />
+          <div
+            data-kanban-task-id={t.id}
+            class="rounded {cursorTaskId === t.id ? 'outline outline-1 outline-secondary outline-offset-1' : ''}"
+          >
+            <TaskCard
+              task={t}
+              compact
+              onChanged={onChanged}
+              bind:selectedIds
+              onOpenDetail={onOpenDetail}
+              onContextMenu={onContextMenu}
+            />
+          </div>
         {/each}
         {#if list.length === 0}
           <div class="text-[11px] text-dim/60 text-center py-6 border border-dashed border-surface1 rounded">drop tasks here</div>

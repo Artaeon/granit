@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { Task } from '$lib/api';
-  import { todayISO } from '$lib/api';
+  import { api, todayISO } from '$lib/api';
   import TaskCard from '$lib/tasks/TaskCard.svelte';
+  import { makeKanbanKeyHandler, type KanbanCol } from '$lib/tasks/useKanbanKeyboard';
 
   // Eisenhower matrix view — the classic 2×2 of urgent × important
   // attributed to Dwight Eisenhower and popularised by Stephen Covey.
@@ -35,8 +37,9 @@
     onOpenDetail?: (t: Task) => void;
     onContextMenu?: (t: Task, x: number, y: number) => void;
     onChanged?: (t: Task) => void;
+    selectedIds?: Set<string>;
   };
-  let { tasks, onOpenDetail, onContextMenu, onChanged }: Props = $props();
+  let { tasks, onOpenDetail, onContextMenu, onChanged, selectedIds = $bindable(new Set<string>()) }: Props = $props();
 
   function isImportant(t: Task): boolean {
     return t.priority === 1 || t.priority === 2;
@@ -123,6 +126,55 @@
   // "not urgent" — matches the Covey / classic textbook layout so
   // users coming from Getting Things Done find what they expect.
   const LAYOUT: Quadrant[] = ['do', 'plan', 'delegate', 'drop'];
+
+  // ── Keyboard navigation (shared with Kanban / TriageBoard) ────────
+  // Cursor walks the four quadrants in LAYOUT order so h/l hops
+  // quadrant boundaries (do → plan → delegate → drop) and j/k
+  // walks within each in turn.
+  let cursorIdx = $state<number>(-1);
+  let navCols = $derived.by((): KanbanCol[] =>
+    LAYOUT.map((q) => ({ key: q, ids: quadrants[q].map((t) => t.id) }))
+  );
+  let cursorTaskId = $derived.by((): string | null => {
+    if (cursorIdx < 0) return null;
+    let n = cursorIdx;
+    for (const c of navCols) {
+      if (n < c.ids.length) return c.ids[n];
+      n -= c.ids.length;
+    }
+    return null;
+  });
+  const taskById = (id: string) => tasks.find((t) => t.id === id);
+
+  async function toggleDone(t: Task) {
+    try {
+      const updated = await api.patchTask(t.id, { done: !t.done });
+      onChanged?.(updated);
+    } catch {}
+  }
+  async function cyclePriorityFn(t: Task) {
+    const next = ((t.priority || 0) + 1) % 4;
+    try {
+      const updated = await api.patchTask(t.id, { priority: next });
+      onChanged?.(updated);
+    } catch {}
+  }
+
+  onMount(() => {
+    const handler = makeKanbanKeyHandler({
+      taskById: (id) => taskById(id) ?? null,
+      getCursorIdx: () => cursorIdx,
+      setCursorIdx: (n) => (cursorIdx = n),
+      getColumns: () => navCols,
+      selectedIds: () => selectedIds,
+      setSelectedIds: (s) => (selectedIds = s),
+      onOpenDetail: onOpenDetail ? (t) => onOpenDetail(t) : undefined,
+      onToggleDone: (t) => void toggleDone(t),
+      onCyclePriority: (t) => void cyclePriorityFn(t)
+    });
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  });
 </script>
 
 <!-- Two columns × two rows on desktop; collapses to a single column
@@ -158,13 +210,19 @@
           </p>
         {:else}
           {#each list as t (t.id)}
-            <TaskCard
-              task={t}
-              compact
-              onOpenDetail={onOpenDetail}
-              onContextMenu={onContextMenu}
-              onChanged={onChanged}
-            />
+            <div
+              data-kanban-task-id={t.id}
+              class="rounded {cursorTaskId === t.id ? 'outline outline-1 outline-secondary outline-offset-1' : ''}"
+            >
+              <TaskCard
+                task={t}
+                compact
+                onOpenDetail={onOpenDetail}
+                onContextMenu={onContextMenu}
+                onChanged={onChanged}
+                bind:selectedIds
+              />
+            </div>
           {/each}
         {/if}
       </div>
