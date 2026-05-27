@@ -225,6 +225,34 @@
     { id: 'jot', label: 'Jot', hint: '4' }
   ];
 
+  // Date preset chips — pre-computed ISO strings so the click handler
+  // is a one-liner. Recomputed on each open via $derived so a modal
+  // left mounted overnight doesn't keep yesterday's "Today" value.
+  // Empty string === "no date" (the field allows it).
+  let datePresets = $derived.by(() => {
+    const today = new Date();
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const offset = (d: number) => {
+      const x = new Date(today);
+      x.setDate(x.getDate() + d);
+      return iso(x);
+    };
+    return [
+      { label: 'Today', value: iso(today) },
+      { label: 'Tomorrow', value: offset(1) },
+      { label: '+3d', value: offset(3) },
+      { label: '+7d', value: offset(7) },
+      { label: 'No date', value: '' }
+    ];
+  });
+
+  const PRIORITY_PRESETS: { label: string; value: number }[] = [
+    { label: 'P1', value: 1 },
+    { label: 'P2', value: 2 },
+    { label: 'P3', value: 3 },
+    { label: '—', value: 0 }
+  ];
+
   const PLACEHOLDERS: Record<CaptureMode, string> = {
     task: 'what needs doing?',
     note: 'note title',
@@ -289,9 +317,13 @@
             onclick={() => { mode = t.id; queueMicrotask(() => inputEl?.focus()); }}
             class="flex-1 px-3 py-2.5 text-sm font-medium transition-colors {mode === t.id ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface0 hover:text-text'}"
             aria-pressed={mode === t.id}
+            title="Switch to {t.label} (key {t.hint})"
           >
             <span>{t.label}</span>
-            <span class="ml-1.5 text-[10px] {mode === t.id ? 'opacity-80' : 'text-dim'}">{t.hint}</span>
+            <!-- The number is the literal 1/2/3/4 shortcut key. The
+                 monospace + 9px keeps it visible-but-quiet so it
+                 reads as a key-hint, not part of the label. -->
+            <span class="ml-1 text-[9px] font-mono {mode === t.id ? 'opacity-70' : 'text-dim'}">{t.hint}</span>
           </button>
         {/each}
         <button
@@ -337,6 +369,31 @@
             </label>
           </div>
         {:else if mode === 'task'}
+          <!-- Quick chips — common date offsets + priority in one row
+               so the user can capture a fully-formed task with the
+               mouse without ever opening the date picker. The full
+               <input type="date"> + priority <select> stay below for
+               edge cases (specific date, no preset matches). -->
+          <div class="flex flex-wrap items-center gap-1">
+            <span class="text-[10px] text-dim font-mono mr-1">due</span>
+            {#each datePresets as p (p.label)}
+              <button
+                type="button"
+                onclick={() => (dueDate = p.value)}
+                class="text-[11px] px-2 py-0.5 rounded transition-colors {dueDate === p.value ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+                aria-pressed={dueDate === p.value}
+              >{p.label}</button>
+            {/each}
+            <span class="text-[10px] text-dim font-mono ml-2 mr-1">pri</span>
+            {#each PRIORITY_PRESETS as p (p.label)}
+              <button
+                type="button"
+                onclick={() => (priority = p.value)}
+                class="text-[11px] px-2 py-0.5 rounded transition-colors {priority === p.value ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+                aria-pressed={priority === p.value}
+              >{p.label}</button>
+            {/each}
+          </div>
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
             <select
               bind:value={priority}
@@ -383,6 +440,19 @@
             />
           </div>
         {:else if mode === 'event'}
+          <!-- Same date-preset row as Task mode — "No date" omitted
+               (events always have one). Sets eventDate, not dueDate. -->
+          <div class="flex flex-wrap items-center gap-1">
+            <span class="text-[10px] text-dim font-mono mr-1">on</span>
+            {#each datePresets.filter((p) => p.value) as p (p.label)}
+              <button
+                type="button"
+                onclick={() => (eventDate = p.value)}
+                class="text-[11px] px-2 py-0.5 rounded transition-colors {eventDate === p.value ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+                aria-pressed={eventDate === p.value}
+              >{p.label}</button>
+            {/each}
+          </div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs items-center">
             <input
               type="date"

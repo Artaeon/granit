@@ -832,8 +832,22 @@
     persistModeId(id);
     const m = findMode(id);
     rag = m.ragDefault;
+    // Remember the last persona the user actively chose so the
+    // inline persona chip can keep showing it even when the mode
+    // is currently posture-only (Coach, Research, ...).
+    if (m.kind === 'persona') lastPersonaId = id;
     announce(`Mode: ${m.label}. ${m.tagline}`);
   }
+  // Persistent "last persona" so the inline persona chip above the
+  // composer keeps showing a meaningful label even when the active
+  // mode is a generic posture. Seeded from the loaded mode if it's
+  // already a persona; otherwise the first persona in PERSONAS.
+  let lastPersonaId = $state<string>(
+    findMode(loadModeId()).kind === 'persona'
+      ? loadModeId()
+      : (PERSONAS[0]?.id ?? '')
+  );
+  let lastPersona = $derived(lastPersonaId ? findMode(lastPersonaId) : null);
   // Initial seed: read the loaded mode's RAG default. We use the
   // module helper rather than `modeId` (which Svelte's analyzer
   // flags as a non-reactive read) so the warning stays clean. The
@@ -3231,6 +3245,73 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
         {/each}
       </div>
     {/if}
+
+    <!-- Inline mode + persona chips above the composer. The full
+         picker still lives in the header dropdown; these chips
+         expose the live state so the user reads "what mode am I in
+         and which persona is loaded" without opening a menu.
+         Click either chip to toggle the mode picker. The picker
+         already groups Modes + Personas so one entry-point is
+         enough — duplicating the picker would only add weight. -->
+    <div class="border-t border-surface1 px-3 pt-2 pb-1 flex items-center gap-1.5 flex-shrink-0 flex-wrap">
+      <button
+        type="button"
+        onclick={() => (modePickerOpen = !modePickerOpen)}
+        class="inline-flex items-center gap-1 text-[11px] text-dim hover:text-text px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 transition-colors max-w-[10rem]"
+        title="Active mode — click to change ({mode.tagline})"
+        aria-haspopup="listbox"
+        aria-expanded={modePickerOpen}
+      >
+        <span class="{mode.kind === 'persona' ? 'text-secondary' : mode.kind === 'contextual' ? 'text-primary' : 'text-subtext'}">●</span>
+        <span class="truncate">{mode.label}</span>
+      </button>
+      {#if lastPersona}
+        <button
+          type="button"
+          onclick={() => (modePickerOpen = !modePickerOpen)}
+          class="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded transition-colors max-w-[10rem] {modeId === lastPersona.id ? 'bg-secondary text-on-primary' : 'text-dim hover:text-text bg-surface0 hover:bg-surface1'}"
+          title="Persona — {modeId === lastPersona.id ? 'active' : 'last used'}. Click to open picker."
+        >
+          <span class="text-[9px] font-mono">{lastPersona.glyph}</span>
+          <span class="truncate">{lastPersona.label}</span>
+        </button>
+      {/if}
+      <span class="flex-1"></span>
+      <!-- Quick-action strip — collapses the most-used slash commands
+           into one-tap chips so the user doesn't have to type
+           '/briefing' or remember /clear lives behind a slash.
+           These funnel into the same handlers (runBriefing,
+           runTriage, clearChat, startNewThread) the slash router
+           already calls, so behaviour stays consistent. -->
+      <button
+        type="button"
+        onclick={() => { void runBriefing(); }}
+        disabled={busy || $sabbath}
+        class="text-[11px] text-dim hover:text-text px-2 py-0.5 rounded hover:bg-surface1 transition-colors disabled:opacity-40"
+        title="Run daily briefing (/briefing)"
+      >Briefing</button>
+      <button
+        type="button"
+        onclick={() => { void runTriage(); }}
+        disabled={busy || $sabbath}
+        class="text-[11px] text-dim hover:text-text px-2 py-0.5 rounded hover:bg-surface1 transition-colors disabled:opacity-40"
+        title="Triage open tasks (/triage)"
+      >Triage</button>
+      <button
+        type="button"
+        onclick={() => { void runDeadlines(); }}
+        disabled={busy || $sabbath}
+        class="text-[11px] text-dim hover:text-text px-2 py-0.5 rounded hover:bg-surface1 transition-colors disabled:opacity-40"
+        title="Surface upcoming deadlines (/deadlines)"
+      >Deadlines</button>
+      <button
+        type="button"
+        onclick={() => { startNewThread(); }}
+        disabled={busy}
+        class="text-[11px] text-dim hover:text-error px-2 py-0.5 rounded hover:bg-surface1 transition-colors disabled:opacity-40"
+        title="Start a new thread (/new) — current thread is auto-saved to history"
+      >Clear</button>
+    </div>
 
     <!-- Chat input. ChatGPT-style composer: textarea wraps the full
          width, mic + send sit as icon buttons inside the bottom-right

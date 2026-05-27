@@ -436,6 +436,31 @@
         invoke(items[selected]);
         return;
       }
+      // Tab / Shift-Tab — jump to the first item of the next /
+      // previous group. Power gesture for hopping past a long
+      // Pages list into Tasks or Content without arrow-spamming.
+      // Without modifiers so it never collides with browser tab-
+      // navigation (the palette swallows focus while open).
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        if (grouped.length === 0) return;
+        // Find the current group index from `selected`.
+        let acc = 0;
+        let curGroup = 0;
+        for (let i = 0; i < grouped.length; i++) {
+          const end = acc + grouped[i].items.length;
+          if (selected < end) { curGroup = i; break; }
+          acc = end;
+        }
+        const dir = e.shiftKey ? -1 : 1;
+        const nextGroup = (curGroup + dir + grouped.length) % grouped.length;
+        // Flat index of the first item in `nextGroup`.
+        let offset = 0;
+        for (let i = 0; i < nextGroup; i++) offset += grouped[i].items.length;
+        selected = offset;
+        scrollSelectedIntoView();
+        return;
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -839,7 +864,13 @@
       {:else}
         {@const offset = (gIdx: number) => grouped.slice(0, gIdx).reduce((s, g) => s + g.items.length, 0)}
         {#each grouped as g, gIdx (g.group)}
-          <div class="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-dim">{g.group}</div>
+          <div class="px-4 pt-2 pb-0.5 text-[10px] uppercase tracking-wider text-dim flex items-center gap-1.5">
+            <span>{g.group}</span>
+            <!-- Hit count — at-a-glance density signal. The user
+                 reads "PAGES 32 · CONTENT 8" and knows whether to
+                 keep typing or Tab into a denser bucket. -->
+            <span class="text-dim/70 font-mono normal-case">({g.items.length})</span>
+          </div>
           <ul>
             {#each g.items as it, iIdx (it.id)}
               {@const flat = offset(gIdx) + iIdx}
@@ -848,12 +879,12 @@
                   data-cmd-idx={flat}
                   onclick={() => invoke(it)}
                   onmouseenter={() => (selected = flat)}
-                  class="w-full text-left px-4 py-2 flex items-baseline gap-3 {selected === flat ? 'bg-surface1' : ''}"
+                  class="w-full text-left px-4 py-1.5 flex items-baseline gap-2.5 {selected === flat ? 'bg-surface1' : ''}"
                 >
-                  <span class="w-5 flex items-center justify-center text-dim">
+                  <span class="w-5 h-5 flex items-center justify-center text-dim flex-shrink-0">
                     <NavIcon name={it.icon} class="w-4 h-4" />
                   </span>
-                  <span class="flex-1 min-w-0 truncate text-text">{it.label}</span>
+                  <span class="flex-1 min-w-0 truncate text-text text-sm">{it.label}</span>
                   {#if it.hint}
                     <kbd class="text-[10px] text-dim font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded flex-shrink-0">{it.hint}</kbd>
                   {/if}
@@ -868,9 +899,13 @@
       {/if}
     </div>
 
-    <div class="px-4 py-2 text-[10px] text-dim border-t border-surface1 flex items-center justify-between flex-shrink-0">
-      <span>↑↓ navigate · ↵ select · esc close</span>
-      <span class="font-mono">{items.length}</span>
+    <!-- Slim cheat-sheet footer — keyboard hints for the four
+         in-palette gestures. Power users learn them once;
+         beginners pick up Tab + ? on accident. font-mono so the
+         glyph row reads as keys, not prose. -->
+    <div class="px-3 py-1.5 text-[10px] text-dim font-mono border-t border-surface1 flex items-center justify-between flex-shrink-0">
+      <span>↑↓ navigate · ⇥ group · ↵ open · esc close · ? shortcuts</span>
+      <span>{items.length}</span>
     </div>
   </div>
 {/if}
