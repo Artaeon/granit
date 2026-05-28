@@ -14,6 +14,7 @@
   import RunningTimer from '$lib/components/RunningTimer.svelte';
   import NavSidebar from '$lib/nav/NavSidebar.svelte';
   import MobileTopBar from '$lib/nav/MobileTopBar.svelte';
+  import RightPane from '$lib/nav/RightPane.svelte';
   import SabbathRibbon from '$lib/components/SabbathRibbon.svelte';
   import UpdateAvailableBanner from '$lib/components/UpdateAvailableBanner.svelte';
   import MobileAIFab from '$lib/components/MobileAIFab.svelte';
@@ -30,6 +31,12 @@
   import { sabbath, SABBATH_HIDE_MODULES } from '$lib/stores/sabbath';
   import { startNavBadges } from '$lib/stores/nav-badges';
   import { expandSectionTransient, sidebarCompact } from '$lib/stores/sidebar-ui';
+  import {
+    rightPaneStore,
+    toggleRightPane,
+    setRightPaneContent,
+    type RightPaneContent
+  } from '$lib/stores/rightPane';
   import { toast } from '$lib/components/toast';
   import { findBinding, matchesKey } from '$lib/keybindings/registry';
   import { isMobile, isMobileNow } from '$lib/util/breakpoint';
@@ -354,6 +361,44 @@
     };
   });
 
+  // Right-pane global shortcuts. Mod+\ toggles the companion pane;
+  // Mod+Shift+1..5 jump to a content option. Both fire from
+  // anywhere — including text inputs — because they're app-shell
+  // moves, not text edits. Bindings are read from the registry so
+  // the cheat sheet stays in sync. The numeric leaf-key compare in
+  // matchesKey handles 'Mod+Shift+1'..'Mod+Shift+5' via the single-
+  // char path (event.key for digit keys is the digit itself).
+  onMount(() => {
+    const toggleBinding = findBinding('right-pane-toggle');
+    const contentBindings: Array<{ id: string; content: RightPaneContent }> = [
+      { id: 'right-pane-calendar', content: 'calendar' },
+      { id: 'right-pane-notes', content: 'notes' },
+      { id: 'right-pane-ai', content: 'ai' },
+      { id: 'right-pane-vision', content: 'vision' },
+      { id: 'right-pane-widgets', content: 'widgets' }
+    ];
+    const contentChords = contentBindings
+      .map((b) => ({ ...b, binding: findBinding(b.id) }))
+      .filter((b): b is typeof b & { binding: NonNullable<ReturnType<typeof findBinding>> } => !!b.binding);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (toggleBinding && matchesKey(e, toggleBinding.keys)) {
+        e.preventDefault();
+        toggleRightPane();
+        return;
+      }
+      for (const c of contentChords) {
+        if (matchesKey(e, c.binding.keys)) {
+          e.preventDefault();
+          setRightPaneContent(c.content);
+          return;
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   // Browser tab title. Empty home stays as just 'Granit'; deep
   // pages get 'Granit · Pagename' so multiple open tabs are
   // distinguishable. Single source of truth (the same activeNav
@@ -421,6 +466,14 @@
       {@render children()}
     </div>
   </main>
+
+  {#if $auth && $rightPaneStore.open}
+    <!-- Right pane companion column. Hidden on mobile (the component
+         itself carries `hidden md:flex`) so the soft keyboard +
+         bottom nav don't compete with it. Auth-gated since none of
+         its content (events, notes, vision) is reachable pre-login. -->
+    <RightPane />
+  {/if}
 
   {#if $auth}
     <BottomNav onMore={() => (drawerOpen = true)} />

@@ -121,6 +121,54 @@ export const KEYBINDINGS: KeyBinding[] = [
     scope: 'app',
     description: 'Open the branded print/PDF preview for the current note (browser print stays available via the OS shortcut menu).'
   },
+  // ── Right pane (companion sidebar) ──────────────────────────────
+  // Phase 1 of the multi-pane workspace. Mod+\ toggles the pane;
+  // Mod+Shift+1..5 jump straight to a content option (calendar /
+  // notes / AI / vision / widgets). Listener lives in +layout.svelte
+  // so the shortcuts fire from anywhere — they're app-shell moves,
+  // not text edits.
+  {
+    id: 'right-pane-toggle',
+    label: 'Toggle right pane',
+    keys: 'Mod+\\',
+    scope: 'global',
+    description: 'Show or hide the companion right pane. Width and last content choice persist across reloads.'
+  },
+  {
+    id: 'right-pane-calendar',
+    label: 'Right pane: Calendar',
+    keys: 'Mod+Shift+1',
+    scope: 'global',
+    description: 'Switch the right pane to the Calendar view (today + tomorrow).'
+  },
+  {
+    id: 'right-pane-notes',
+    label: 'Right pane: Notes',
+    keys: 'Mod+Shift+2',
+    scope: 'global',
+    description: 'Switch the right pane to the Notes view (15 most-recent).'
+  },
+  {
+    id: 'right-pane-ai',
+    label: 'Right pane: AI',
+    keys: 'Mod+Shift+3',
+    scope: 'global',
+    description: 'Switch the right pane to the AI launcher card.'
+  },
+  {
+    id: 'right-pane-vision',
+    label: 'Right pane: Vision',
+    keys: 'Mod+Shift+4',
+    scope: 'global',
+    description: 'Switch the right pane to the pinned Vision doc.'
+  },
+  {
+    id: 'right-pane-widgets',
+    label: 'Right pane: Widgets',
+    keys: 'Mod+Shift+5',
+    scope: 'global',
+    description: 'Switch the right pane to a vertical strip of dashboard widgets.'
+  },
   // ── /tasks page-scoped bindings ──────────────────────────────────
   // These ship as part of Stream F (power-user efficiency). The
   // handler still lives in /tasks/+page.svelte's onKey listener —
