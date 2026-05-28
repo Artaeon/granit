@@ -22,6 +22,13 @@
   import AIStaleVerdicts from '$lib/tasks/AIStaleVerdicts.svelte';
   import AskTasks from '$lib/tasks/AskTasks.svelte';
   import TaskDuplicates from '$lib/tasks/TaskDuplicates.svelte';
+  // Stream N — slim page chrome split into three small sub-components
+  // so this file doesn't re-grow into a god-template after the recent
+  // AI-store extraction. Header + chips + sections all live as their
+  // own files; this page wires them together and owns the state.
+  import TasksPageHeader from '$lib/tasks/TasksPageHeader.svelte';
+  import QuickFilterChips from '$lib/tasks/QuickFilterChips.svelte';
+  import SectionList from '$lib/tasks/SectionList.svelte';
   import { isTypingTarget } from '$lib/util/isTypingTarget';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { focusOnMount } from '$lib/util/focusOnMount';
@@ -390,7 +397,33 @@
     // search box adding to browser history.
     void goto(next, { replaceState: true, noScroll: true, keepFocus: true });
   }
-  let filterDrawerOpen = $state(false);
+  // Stream N — slide-out filter panel. Replaces the always-on desktop
+  // sidebar so the default page is cleaner; one click opens advanced
+  // filtering. Persists nothing — open-state is session-only so the
+  // panel doesn't pop open on every reload.
+  let filterPanelOpen = $state(false);
+
+  // Stream N — per-section collapse state for the smart-section list.
+  // Keyed by section key ('overdue' / 'today' / 'tomorrow' / 'this_week'
+  // / 'later' / 'no_date' / 'done'). Value 'true' = collapsed, 'false'
+  // = explicitly expanded; missing keys fall through to the per-section
+  // default (later/no_date/done collapsed; everything else open).
+  const SECTION_COLLAPSE_KEY = 'granit.tasks.collapsedSections';
+  let collapsedSections = $state<Record<string, boolean>>(
+    loadStored<Record<string, boolean>>(SECTION_COLLAPSE_KEY, {})
+  );
+  $effect(() => saveStored(SECTION_COLLAPSE_KEY, collapsedSections));
+  function toggleSection(key: string) {
+    // Read the same per-section default the SectionList uses so the
+    // toggle flips against the effective state (a 'later' section that
+    // looks collapsed because of the default but has no explicit entry
+    // should record 'false' on first toggle, not 'true').
+    const defaultCollapsed =
+      key === 'later' || key === 'no_date' || key === 'done';
+    const current = collapsedSections[key];
+    const effective = current === undefined ? defaultCollapsed : current;
+    collapsedSections = { ...collapsedSections, [key]: !effective };
+  }
 
   // AI orchestration stores — busy / proposals / abort state for
   // inbox-triage, deadline-detect, and plan-my-day all live in
@@ -816,6 +849,24 @@
       }
       if (helpOpen && k === 'Escape') {
         helpOpen = false;
+        return;
+      }
+      // Stream N — `/` opens the slide-out filter panel so the global
+      // page-search handler in +layout.svelte finds the embedded
+      // search input visible. The panel's content renders in DOM at
+      // all times (Drawer translates off-screen), so the global
+      // focus() call still works; without opening the panel the user
+      // would type into an invisible field. We DON'T preventDefault —
+      // the global handler still runs and focuses the input.
+      if (k === '/' && !filterPanelOpen) {
+        filterPanelOpen = true;
+        // Fall through; the layout's onKey will focus the input next.
+      }
+      // Esc closes the filter panel before falling through to the
+      // selection-clear branch lower down.
+      if (k === 'Escape' && filterPanelOpen) {
+        filterPanelOpen = false;
+        e.preventDefault();
         return;
       }
       // View cycling + direct-jump work on EVERY view (so the user can
@@ -1505,10 +1556,20 @@
       const wk = new Date(now);
       wk.setDate(wk.getDate() + 7);
       const weekEnd = fmtDateISO(wk);
+      // Stream N — added a 'done' bucket so completed tasks visible
+      // via status='done' or status='all' land in their own dedicated
+      // section (collapsible, success-tinted) instead of sharing
+      // 'today'/'overdue' bins with open tasks. SectionList renders
+      // empty buckets as muted single-line headers so the user still
+      // sees the structure even when a bucket has zero items.
       const b: Record<string, Task[]> = {
-        overdue: [], today: [], tomorrow: [], this_week: [], later: [], no_date: []
+        overdue: [], today: [], tomorrow: [], this_week: [], later: [], no_date: [], done: []
       };
       for (const t of filtered) {
+        if (t.done) {
+          b.done.push(t);
+          continue;
+        }
         if (!t.dueDate && !t.scheduledStart) {
           b.no_date.push(t);
           continue;
@@ -1529,9 +1590,10 @@
         { key: 'overdue',   label: 'Overdue',   tasks: b.overdue },
         { key: 'today',     label: 'Today',     tasks: b.today },
         { key: 'tomorrow',  label: 'Tomorrow',  tasks: b.tomorrow },
-        { key: 'this_week', label: 'This Week', tasks: b.this_week },
+        { key: 'this_week', label: 'This week', tasks: b.this_week },
         { key: 'later',     label: 'Later',     tasks: b.later },
-        { key: 'no_date',   label: 'No date',   tasks: b.no_date }
+        { key: 'no_date',   label: 'No date',   tasks: b.no_date },
+        { key: 'done',      label: 'Done',      tasks: b.done }
       ].filter((g) => g.tasks.length > 0);
     }
     if (groupBy === 'priority') {
@@ -1761,6 +1823,15 @@
     smartFilter = '';
   }
 
+  // Stream N — primary view selection from the new TasksPageHeader.
+  // Wraps the bare `view = v` assignment so any future view-change
+  // side effects (e.g. resetting cursor, closing the More-views menu)
+  // route through one place.
+  function selectView(v: View) {
+    view = v;
+    moreViewsOpen = false;
+  }
+
   // Adaptive subtitle for the "no matches" empty state. Mirrors the
   // active-filter set so the user gets a meaningful read instead of a
   // generic "nothing to see here". Order matches user intent: tag /
@@ -1796,6 +1867,35 @@
 
 {#snippet filterContent()}
   <div class="p-4 space-y-4">
+    <!-- Stream N — slide-out filter panel header. Title + close hint
+         so the user knows this is the same surface they opened from
+         the toolbar's Filter button. -->
+    <div class="flex items-center justify-between border-b border-surface1 pb-2 -mt-1">
+      <h2 class="text-sm font-semibold text-text">Filters</h2>
+      <button
+        type="button"
+        onclick={() => (filterPanelOpen = false)}
+        aria-label="close filter panel"
+        title="Close (Esc)"
+        class="text-dim hover:text-text text-xs px-1.5 py-0.5"
+      >esc</button>
+    </div>
+
+    <!-- Search. data-page-search="1" lets the global `/` shortcut
+         focus this input — the slide-out panel renders its content
+         in DOM at all times (translated off-screen when closed), so
+         the global handler can still find + focus it. -->
+    <div>
+      <label class="text-xs uppercase tracking-wider text-dim mb-1 block" for="tasks-search">Search</label>
+      <input
+        id="tasks-search"
+        bind:value={q}
+        placeholder="search task text or path…"
+        data-page-search="1"
+        class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
+      />
+    </div>
+
     <div>
       <div class="text-xs uppercase tracking-wider text-dim mb-2">Status</div>
       <div class="flex flex-col gap-1 text-sm">
@@ -1960,190 +2060,118 @@
     >
       reset filters
     </button>
+
+    <!-- Stream N — passive stats at the bottom of the panel. The
+         previous always-on stat row is gone; advanced users who want
+         these live numbers find them here. avgPriority / noEstCount
+         / snoozed all live here so the main chrome stays calm. -->
+    <div class="border-t border-surface1 pt-3">
+      <div class="text-xs uppercase tracking-wider text-dim mb-2">Stats</div>
+      <div class="grid grid-cols-2 gap-1.5 text-xs">
+        <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums">
+          <span class="text-dim">open</span>
+          <span class="text-text font-semibold">{stats.open}</span>
+        </div>
+        {#if stats.snoozed > 0}
+          <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Currently snoozed">
+            <span class="text-dim">snoozed</span>
+            <span class="text-dim font-semibold">{stats.snoozed}</span>
+          </div>
+        {/if}
+        {#if stats.doneToday > 0}
+          <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Completed today">
+            <span class="text-dim">done today</span>
+            <span class="text-success font-semibold">{stats.doneToday}</span>
+          </div>
+        {/if}
+        {#if stats.doneWeek > 0}
+          <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Completed in the last 7 days — rolling weekly velocity">
+            <span class="text-dim">done · 7d</span>
+            <span class="text-success font-semibold">{stats.doneWeek}</span>
+          </div>
+        {/if}
+        {#if stats.sumEstMin > 0}
+          <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Total estimated minutes across open non-snoozed tasks. 8h = one day-block.">
+            <span class="text-dim">Σ est</span>
+            <span class="text-secondary font-semibold">{fmtEstBudget(stats.sumEstMin)}</span>
+          </div>
+        {/if}
+        {#if stats.noEstCount > 0}
+          <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Open tasks with no time estimate — add est:30m to make Σ accurate">
+            <span class="text-dim">no estimate</span>
+            <span class="text-dim font-semibold">{stats.noEstCount}</span>
+          </div>
+        {/if}
+        {#if stats.avgPriority > 0}
+          {@const ap = stats.avgPriority}
+          {@const apTone = ap < 1.5 ? 'text-error' : ap < 2.5 ? 'text-warning' : 'text-info'}
+          <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Average priority across prioritised open tasks (1=high, 3=low)">
+            <span class="text-dim">avg pri</span>
+            <span class="{apTone} font-semibold">P{ap.toFixed(1)}</span>
+          </div>
+        {/if}
+      </div>
+    </div>
   </div>
 {/snippet}
 
 <div class="flex h-full">
-  <!-- Desktop sidebar -->
-  <aside class="hidden md:block md:w-56 lg:w-64 border-r border-surface1 bg-mantle flex-shrink-0 overflow-y-auto">
-    {@render filterContent()}
-  </aside>
-
-  <!-- Mobile drawer -->
-  <Drawer bind:open={filterDrawerOpen} side="left">
+  <!-- Stream N — slide-out filter panel (right side, responsive). The
+       previous always-on desktop sidebar is gone; advanced filtering
+       is one click away from the header's Filter button. The drawer
+       renders its content in the DOM at all times (just translated
+       off-screen) so global `/` page-search can still focus the
+       embedded search input. -->
+  <Drawer bind:open={filterPanelOpen} side="right" responsive={true} width="w-80 sm:w-96">
     {@render filterContent()}
   </Drawer>
 
   <div class="flex-1 flex flex-col min-w-0">
-    <!-- Slim PageHeader-style top bar. Lives above the existing tasks
-         toolbar (which keeps owning view tabs + search) so the route
-         picks up the canonical title + count + global actions surface
-         that every other route already shows. Visually matches
-         PageHeader.svelte but stays slim so it doesn't push the tab
-         bar below the fold on short viewports. Count reads
-         "N tasks · M filtered" so the user can always parse what
-         they're looking at without scanning the toolbar count. -->
-    <div class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 flex-wrap">
-      <h1 class="text-lg sm:text-xl font-semibold text-text">Tasks</h1>
-      <span class="inline-flex items-center gap-1.5 text-xs text-dim font-mono tabular-nums">
-        <span class="px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">
-          <span class="text-text font-semibold">{tasks.length}</span> total
-        </span>
-        {#if filtered.length !== tasks.length}
-          <span class="px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">
-            <span class="text-primary font-semibold">{filtered.length}</span> filtered
-          </span>
-        {/if}
-      </span>
-      <span class="flex-1"></span>
-      <!-- Density toggle surfaced at route level so it's reachable
-           from every view (was buried in the list-only sub-toolbar).
-           Same compact / comfortable semantics; persists to the
-           existing DENSITY_KEY. -->
-      <button
-        type="button"
-        onclick={() => (density = density === 'compact' ? 'normal' : 'compact')}
-        aria-pressed={density === 'compact'}
-        title={density === 'compact' ? 'Compact density — click for comfortable spacing' : 'Comfortable density — click for compact rows'}
-        class="px-2 py-1 text-xs font-mono {density === 'compact' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'} border border-surface1 rounded"
-      >{density === 'compact' ? '≡' : '≣'}</button>
-      <!-- Quick capture — kicks the global QuickCaptureFab (the same
-           Mod-Shift-N modal used everywhere else in the app). One
-           keystroke per task, opens above any view. -->
-      <button
-        type="button"
-        onclick={openQuickCapture}
-        title="Quick capture (Cmd-Shift-N)"
-        class="px-2 py-1 text-xs bg-surface0 border border-surface1 hover:border-primary text-subtext hover:text-text rounded inline-flex items-center gap-1"
-      >
-        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        <span class="hidden sm:inline">Quick capture</span>
-      </button>
-    </div>
-    <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 flex-wrap">
-      <button
-        onclick={() => (filterDrawerOpen = true)}
-        aria-label="filters"
-        class="md:hidden w-9 h-9 flex items-center justify-center text-subtext hover:bg-surface0 rounded relative"
-      >
-        <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M3 6h18M6 12h12M9 18h6" stroke-linecap="round" />
-        </svg>
-        {#if activeFilterCount > 0}
-          <span class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-on-primary text-[10px] rounded-full flex items-center justify-center">{activeFilterCount}</span>
-        {/if}
-      </button>
-      <span class="text-xs text-dim">{filtered.length}/{tasks.length}</span>
-      <input
-        bind:value={q}
-        placeholder="search…"
-        data-page-search="1"
-        class="flex-1 min-w-0 px-3 py-2 bg-surface0 border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
-      />
-      <!-- View tabs — five primary shapes (Today / List / Kanban /
-           Matrix / Week) always visible as one segmented pill plus a
-           "More views" dropdown for the six secondary shapes (Triage,
-           Inbox, Stale, Duplicates, Quick wins, Review). Stream H
-           collapsed the previous two-pill / 11-button layout so the
-           strip no longer wraps at narrow viewports. The dropdown
-           label flips to "More: <label>" when an overflow view is
-           selected, so the user can see at a glance which one is
-           active. Inbox keeps its live count badge in the dropdown
-           label too. -->
-      <div class="flex items-center gap-1.5 flex-wrap">
-        <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs sm:text-sm">
-          <button
-            class="px-2 sm:px-3 py-1.5 inline-flex items-center gap-1 {view === 'today' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-            onclick={() => (view = 'today')}
-            title="overdue + due today + scheduled today (1)"
-          >
-            Today
-            {#if stats.overdue + stats.todayCount > 0 && view !== 'today'}
-              <span class="text-[10px] tabular-nums {stats.overdue > 0 ? 'text-error' : 'text-warning'}">{stats.overdue + stats.todayCount}</span>
-            {/if}
-          </button>
-          <button
-            class="px-2 sm:px-3 py-1.5 {view === 'list' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-            onclick={() => (view = 'list')}
-            title="flat list (2)"
-          >List</button>
-          <button
-            class="px-2 sm:px-3 py-1.5 {view === 'kanban' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-            onclick={() => (view = 'kanban')}
-            title="kanban board (3)"
-          >Kanban</button>
-          <button
-            class="px-2 sm:px-3 py-1.5 {view === 'eisenhower' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-            onclick={() => (view = 'eisenhower')}
-            title="2×2 matrix: urgent × important — Covey / GTD style prioritisation (4)"
-          >Matrix</button>
-          <button
-            class="px-2 sm:px-3 py-1.5 {view === 'week' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-            onclick={() => (view = 'week')}
-            title="7-day grid — see what's scheduled or due each day this week (5)"
-          >Week</button>
-        </div>
-        <!-- Overflow dropdown — relatively positioned wrapper so the
-             absolute panel anchors to the button. Click toggles, Esc
-             closes (window-level handler via onMoreViewsKey when
-             open), click-outside dismiss via the $effect-installed
-             window listener that checks for the data-more-views
-             marker before closing. -->
-        <div class="relative" data-more-views>
-          <button
-            class="px-2 sm:px-3 py-1.5 inline-flex items-center gap-1 bg-surface0 border border-surface1 rounded text-xs sm:text-sm {activeOverflowLabel ? 'text-primary' : 'text-subtext'} hover:bg-surface1"
-            aria-haspopup="true"
-            aria-expanded={moreViewsOpen}
-            onclick={() => (moreViewsOpen = !moreViewsOpen)}
-            title="More views"
-          >
-            {activeOverflowLabel ? `More: ${activeOverflowLabel}` : 'More views'}
-            {#if !activeOverflowLabel && viewCounts.inbox > 0}
-              <span class="text-[10px] tabular-nums text-secondary font-mono">{viewCounts.inbox}</span>
-            {/if}
-            <span class="text-[10px] opacity-70" aria-hidden="true">▾</span>
-          </button>
-          {#if moreViewsOpen}
-            <div
-              role="menu"
-              class="absolute right-0 top-full mt-1 z-30 min-w-[10rem] bg-surface0 border border-surface1 rounded shadow-lg py-1 text-xs sm:text-sm"
-              onkeydown={onMoreViewsKey}
-              use:focusOnMount
-              tabindex="-1"
-            >
-              {#each OVERFLOW_VIEWS as ov (ov.key)}
-                {@const c = ov.key === 'inbox' ? viewCounts.inbox : ov.key === 'quickwins' ? viewCounts.quickwins : ov.key === 'stale' ? viewCounts.stale : ov.key === 'review' ? viewCounts.review : 0}
-                <button
-                  type="button"
-                  role="menuitem"
-                  class="w-full text-left px-3 py-1.5 inline-flex items-center justify-between gap-3 {view === ov.key ? 'bg-surface1 text-primary' : 'text-subtext hover:bg-surface1 hover:text-text'}"
-                  onclick={() => pickOverflowView(ov.key)}
-                  title={ov.title}
-                >
-                  <span>{ov.label}</span>
-                  {#if c > 0}
-                    <span class="text-[10px] tabular-nums font-mono {ov.key === 'inbox' ? 'text-secondary' : ov.key === 'stale' ? 'text-warning' : 'text-success'}">{c}</span>
-                  {/if}
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
-      </div>
-      <!-- Task Agent button removed from the page header — the
-           agent now launches from the chat sidebar (Cmd+J →
-           "Run Task Agent" chip) so AI work has one consistent
-           entry point across the app. The dialog component still
-           lives here and opens via ?agent=1 URL param from the
-           sidebar's nav-and-open shim. -->
+    <!-- Stream N — single-row slim page header. Title + counts on the
+         left, view-switcher segmented control + More-views dropdown
+         + density + filter + capture + help on the right. Saves ~50%
+         vertical space vs the previous two-row layout. -->
+    <TasksPageHeader
+      view={view}
+      totalCount={tasks.length}
+      filteredCount={filtered.length}
+      activeFilterCount={activeFilterCount}
+      density={density}
+      todayLoad={stats.overdue + stats.todayCount}
+      todayOverdue={stats.overdue}
+      inboxLoad={viewCounts.inbox}
+      moreViewsOpen={moreViewsOpen}
+      activeOverflowLabel={activeOverflowLabel}
+      onSelectView={selectView}
+      onToggleMoreViews={() => (moreViewsOpen = !moreViewsOpen)}
+      onPickOverflowView={pickOverflowView}
+      onMoreViewsKey={onMoreViewsKey}
+      onToggleDensity={() => (density = density === 'compact' ? 'normal' : 'compact')}
+      onToggleFilterPanel={() => (filterPanelOpen = !filterPanelOpen)}
+      onQuickCapture={openQuickCapture}
+      onToggleHelp={() => (helpOpen = !helpOpen)}
+    />
 
-      <button
-        onclick={() => (helpOpen = !helpOpen)}
-        aria-label="keyboard shortcuts"
-        title="keyboard shortcuts (?)"
-        class="hidden sm:flex w-7 h-7 items-center justify-center text-dim hover:text-text border border-surface1 rounded text-sm"
-      >?</button>
-    </header>
+    <!-- Stream N — quick-filter chip row, always visible. 6 chips
+         (All · Today · Overdue · P1 · No date · Done) — the
+         single-click smart filters that let the user re-shape the
+         list without opening the filter panel. Horizontal scroll on
+         mobile (no wrap) so the row stays one line. -->
+    <QuickFilterChips
+      smartFilter={smartFilter}
+      status={status}
+      counts={{
+        overdue: smartCounts.overdue,
+        today: smartCounts.today,
+        noDue: smartCounts.noDue,
+        highPriority: smartCounts.highPriority
+      }}
+      doneCount={countDone}
+      activeFilterCount={activeFilterCount}
+      onSetSmart={(s) => (smartFilter = s)}
+      onSetStatus={(s) => (status = s)}
+      onClearAll={clearAllFilters}
+    />
 
     {#if view === 'list' || view === 'kanban' || view === 'today'}
       <!-- AI Plan-my-day. Different agent from triage/
@@ -2366,171 +2394,69 @@
           <span class="text-[10px] text-dim font-mono tabular-nums select-none">{filtered.length} match{filtered.length === 1 ? '' : 'es'}</span>
         </div>
       {/if}
-      <!-- Smart filter chip bar — every chip is a one-click filter
-           that narrows the list to its predicate. The chip lights up
-           when active; clicking again clears (toggle). Counts are
-           live across the loaded tasks so the user always sees how
-           many would be revealed before clicking. The done/velocity
-           chips remain passive (no filter behaviour — they're
-           informational) but live in the same row for a single
-           "at-a-glance" surface. -->
-      <div class="px-3 py-2 border-b border-surface1 flex items-center gap-1.5 text-xs flex-shrink-0 flex-wrap">
-        <span class="px-2 py-1 rounded bg-surface0 text-subtext font-mono tabular-nums">
-          <span class="text-text font-semibold">{stats.open}</span> open
-        </span>
-        {#if smartCounts.overdue > 0}
-          <button
-            type="button"
-            onclick={() => (smartFilter = smartFilter === 'overdue' ? '' : 'overdue')}
-            aria-pressed={smartFilter === 'overdue'}
-            title="Tasks past their due date — click to filter"
-            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'overdue' ? 'bg-error text-on-primary' : 'bg-surface0 text-error hover:bg-surface1'}"
-          ><span class="font-semibold">{smartCounts.overdue}</span> overdue</button>
-        {/if}
-        {#if smartCounts.today > 0}
-          <button
-            type="button"
-            onclick={() => (smartFilter = smartFilter === 'today' ? '' : 'today')}
-            aria-pressed={smartFilter === 'today'}
-            title="Due or scheduled today — click to filter"
-            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'today' ? 'bg-warning text-on-primary' : 'bg-surface0 text-warning hover:bg-surface1'}"
-          ><span class="font-semibold">{smartCounts.today}</span> today</button>
-        {/if}
-        {#if smartCounts.tomorrow > 0}
-          <button
-            type="button"
-            onclick={() => (smartFilter = smartFilter === 'tomorrow' ? '' : 'tomorrow')}
-            aria-pressed={smartFilter === 'tomorrow'}
-            title="Due or scheduled tomorrow — click to filter"
-            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'tomorrow' ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
-          ><span class="font-semibold">{smartCounts.tomorrow}</span> tmrw</button>
-        {/if}
-        {#if smartCounts.thisWeek > 0}
-          <button
-            type="button"
-            onclick={() => (smartFilter = smartFilter === 'thisWeek' ? '' : 'thisWeek')}
-            aria-pressed={smartFilter === 'thisWeek'}
-            title="Due or scheduled in the next 7 days — click to filter"
-            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'thisWeek' ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
-          ><span class="font-semibold">{smartCounts.thisWeek}</span> 7d</button>
-        {/if}
-        {#if smartCounts.noDue > 0}
-          <button
-            type="button"
-            onclick={() => (smartFilter = smartFilter === 'noDue' ? '' : 'noDue')}
-            aria-pressed={smartFilter === 'noDue'}
-            title="No due date and no scheduled time — click to filter and prioritize"
-            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'noDue' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
-          ><span class="font-semibold">{smartCounts.noDue}</span> no-date</button>
-        {/if}
-        {#if smartCounts.highPriority > 0}
-          <button
-            type="button"
-            onclick={() => (smartFilter = smartFilter === 'highPriority' ? '' : 'highPriority')}
-            aria-pressed={smartFilter === 'highPriority'}
-            title="P1 (highest priority) tasks — click to filter"
-            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'highPriority' ? 'bg-primary text-on-primary' : 'bg-surface0 text-text hover:bg-surface1'}"
-          >!<span class="font-semibold">{smartCounts.highPriority}</span></button>
-        {/if}
-        {#if smartCounts.noPriority > 0}
-          <button
-            type="button"
-            onclick={() => (smartFilter = smartFilter === 'noPriority' ? '' : 'noPriority')}
-            aria-pressed={smartFilter === 'noPriority'}
-            title="No priority set — click to filter and triage"
-            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'noPriority' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
-          ><span class="font-semibold">{smartCounts.noPriority}</span> no-pri</button>
-        {/if}
-        {#if smartCounts.hasSubtasks > 0}
-          <button
-            type="button"
-            onclick={() => (smartFilter = smartFilter === 'hasSubtasks' ? '' : 'hasSubtasks')}
-            aria-pressed={smartFilter === 'hasSubtasks'}
-            title="Tasks with children — click to filter to parent-only"
-            class="px-2 py-1 rounded font-mono tabular-nums {smartFilter === 'hasSubtasks' ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
-          >⫶<span class="font-semibold">{smartCounts.hasSubtasks}</span></button>
-        {/if}
-        {#if stats.doneToday > 0}
-          <span class="px-2 py-1 rounded bg-surface0 text-success font-mono tabular-nums" title="Completed today">
-            ✓ <span class="font-semibold">{stats.doneToday}</span> today
-          </span>
-        {/if}
-        {#if stats.doneWeek > 0}
-          <span class="px-2 py-1 rounded bg-surface0 text-success font-mono tabular-nums" title="Completed in the last 7 days — rolling weekly velocity">
-            ✓ <span class="font-semibold">{stats.doneWeek}</span> 7d
-          </span>
-        {/if}
-        {#if stats.sumEstMin > 0}
-          <span class="px-2 py-1 rounded bg-surface0 text-secondary font-mono tabular-nums" title="Total estimated minutes across open, non-snoozed tasks ({stats.sumEstMin}m). 8h = one day-block.">
-            Σ <span class="font-semibold">{fmtEstBudget(stats.sumEstMin)}</span>
-          </span>
-        {/if}
-        {#if stats.noEstCount > 0}
-          <span class="px-2 py-1 rounded bg-surface0 text-dim font-mono tabular-nums" title="Open tasks with no time estimate — add `est:30m` so the total chip becomes accurate">
-            ? <span class="font-semibold">{stats.noEstCount}</span>
-          </span>
-        {/if}
-        {#if stats.avgPriority > 0}
-          {@const ap = stats.avgPriority}
-          {@const apTone = ap < 1.5 ? 'text-error' : ap < 2.5 ? 'text-warning' : 'text-info'}
-          <span class="px-2 py-1 rounded bg-surface0 font-mono tabular-nums {apTone}" title="Average priority across prioritised open tasks (1=high, 3=low). Lower = more urgent overall load.">
-            avg P<span class="font-semibold">{ap.toFixed(1)}</span>
-          </span>
-        {/if}
-        {#if stats.snoozed > 0}
-          <span class="px-2 py-1 rounded bg-surface0 text-dim font-mono tabular-nums" title="Currently snoozed">
-            zZ {stats.snoozed}
-          </span>
-        {/if}
-        <span class="flex-1"></span>
-        {#if view === 'list'}
-          <span class="text-dim select-none">group</span>
-          <select
-            bind:value={groupBy}
-            title="How to split the list into groups"
-            class="bg-surface0 border border-surface1 px-2 py-1 text-text"
-          >
-            <option value="due">due date</option>
-            <option value="priority">priority</option>
-            <option value="tag">tag</option>
-            <option value="project">project</option>
-            <option value="goal">goal</option>
-            <option value="deadline">deadline</option>
-            <option value="note">note</option>
-          </select>
-          <span class="text-dim select-none">sort</span>
-          <select
-            bind:value={sortBy}
-            title="How to order tasks inside each group. 'auto' uses due-then-priority (the historical default); other choices apply the same rule across every group."
-            class="bg-surface0 border border-surface1 px-2 py-1 text-text"
-          >
-            <option value="auto">auto</option>
-            <option value="priority">priority</option>
-            <option value="due">due</option>
-            <option value="age">age (oldest first)</option>
-            <option value="alpha">A → Z</option>
-            <option value="estimate">estimate (smallest)</option>
-          </select>
-          <!-- Density toggle — compact mode strips visual breathing
-               room from every TaskCard so power users see ~40% more
-               rows above the fold. Persisted to localStorage. -->
-          <button
-            type="button"
-            onclick={() => (density = density === 'compact' ? 'normal' : 'compact')}
-            aria-pressed={density === 'compact'}
-            title={density === 'compact' ? 'Compact density — click for comfortable spacing' : 'Comfortable density — click for compact rows'}
-            class="px-1.5 py-1 text-[10px] uppercase tracking-wider font-mono {density === 'compact' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'} border border-surface1 rounded"
-          >{density === 'compact' ? '≡' : '≣'}</button>
-        {:else}
-          <span class="text-dim">columns</span>
-          <select bind:value={kanbanMode} class="bg-surface0 border border-surface1 rounded px-2 py-1 text-text">
-            <option value="priority">priority</option>
-            <option value="due">due</option>
-            <option value="triage">triage (granit)</option>
-            <option value="config">config</option>
-          </select>
-        {/if}
-      </div>
+      <!-- Stream N — slim contextual sub-toolbar. Only shown for list
+           and kanban views. The visual noise of the previous always-
+           on smartCounts row is gone; key counts (done today / week /
+           estimate budget / avg priority) live in the slide-out
+           filter panel as informational chips. Group/sort/columns
+           selectors stay here because they reshape the visible list
+           and the user reaches for them frequently. -->
+      {#if view === 'list' || view === 'kanban'}
+        <div class="px-3 py-1.5 border-b border-surface1 flex items-center gap-2 text-xs flex-shrink-0 flex-wrap bg-mantle">
+          {#if view === 'list'}
+            <span class="text-dim font-mono uppercase tracking-wider select-none">group</span>
+            <select
+              bind:value={groupBy}
+              title="How to split the list into sections"
+              class="bg-surface0 border border-surface1 rounded px-2 py-0.5 text-text"
+            >
+              <option value="due">due date</option>
+              <option value="priority">priority</option>
+              <option value="tag">tag</option>
+              <option value="project">project</option>
+              <option value="goal">goal</option>
+              <option value="deadline">deadline</option>
+              <option value="note">note</option>
+            </select>
+            <span class="text-dim font-mono uppercase tracking-wider select-none">sort</span>
+            <select
+              bind:value={sortBy}
+              title="How to order tasks inside each group"
+              class="bg-surface0 border border-surface1 rounded px-2 py-0.5 text-text"
+            >
+              <option value="auto">auto</option>
+              <option value="priority">priority</option>
+              <option value="due">due</option>
+              <option value="age">age (oldest first)</option>
+              <option value="alpha">A → Z</option>
+              <option value="estimate">estimate (smallest)</option>
+            </select>
+          {:else}
+            <span class="text-dim font-mono uppercase tracking-wider select-none">columns</span>
+            <select bind:value={kanbanMode} class="bg-surface0 border border-surface1 rounded px-2 py-0.5 text-text">
+              <option value="priority">priority</option>
+              <option value="due">due</option>
+              <option value="triage">triage (granit)</option>
+              <option value="config">config</option>
+            </select>
+          {/if}
+          <span class="flex-1"></span>
+          <!-- Tiny passive stats — done today / done 7d / est budget.
+               Live next to the group/sort selectors so the user has
+               a one-line at-a-glance signal without the previous
+               14-chip stat row. Other stats (noEstCount, avgPriority,
+               snoozed) moved to the filter panel. -->
+          {#if stats.doneToday > 0}
+            <span class="text-success font-mono tabular-nums select-none" title="Completed today">✓ {stats.doneToday}</span>
+          {/if}
+          {#if stats.doneWeek > 0}
+            <span class="text-success/80 font-mono tabular-nums select-none" title="Completed in the last 7 days">7d ✓ {stats.doneWeek}</span>
+          {/if}
+          {#if stats.sumEstMin > 0}
+            <span class="text-secondary font-mono tabular-nums select-none" title="Total estimated minutes across open non-snoozed tasks. 8h = one day-block.">Σ {fmtEstBudget(stats.sumEstMin)}</span>
+          {/if}
+        </div>
+      {/if}
     {/if}
 
     {#if selectedIds.size > 0}
@@ -2899,106 +2825,50 @@
           </div>
         </div>
       {:else}
-        <div class="space-y-4 max-w-3xl">
-          {#if showSwipeHint}
-            <!-- One-time swipe-affordance hint. Tap to dismiss; also
-                 auto-dismisses after 8 s via the setTimeout in
-                 onMount. localStorage flag stops it returning. -->
-            <button
-              type="button"
-              onclick={dismissSwipeHint}
-              class="w-full text-center text-[11px] text-dim bg-surface0 border border-surface1 rounded py-2 px-3 flex items-center justify-center gap-2 active:bg-surface1"
-              aria-label="Dismiss swipe hint"
-            >
-              <span class="text-warning" aria-hidden="true">‹</span>
-              <span>swipe left to snooze</span>
-              <span class="text-dim">·</span>
-              <span>swipe right for done</span>
-              <span class="text-success" aria-hidden="true">›</span>
-              <span class="text-dim ml-1">(tap to dismiss)</span>
-            </button>
-          {/if}
-          {#each listGroups as g (g.key)}
-            {@const dotColor = (
-              g.key === 'overdue' ? 'bg-error' :
-              g.key === 'today' ? 'bg-warning' :
-              g.key === 'tomorrow' ? 'bg-secondary' :
-              g.key === 'this_week' ? 'bg-success' :
-              'bg-surface2'
-            )}
-            {@const labelColor = (
-              g.key === 'overdue' ? 'text-error' :
-              g.key === 'today' ? 'text-warning' :
-              'text-text'
-            )}
-            <section>
-              <h2 class="text-xs uppercase tracking-wider mb-2 font-semibold border-b border-surface1 pb-1.5 flex items-center gap-2">
-                <!-- Color dot keyed to urgency tone: overdue red,
-                     today amber, tomorrow blue, this-week green,
-                     anything else muted. Quick scan signal. -->
-                <span class="w-2 h-2 rounded-full {dotColor}" aria-hidden="true"></span>
-                <span class={labelColor}>{g.label}</span>
-                <span class="text-dim font-mono tabular-nums text-[11px]">{g.tasks.length}</span>
-                {#if g.key === 'overdue' && g.tasks.length > 0}
-                  <span class="ml-1 px-1.5 py-0.5 bg-surface0 text-error text-[10px] tracking-wider rounded uppercase font-bold animate-pulse" title="These tasks are past their due date">
-                    overdue
-                  </span>
-                {/if}
-                {#if g.deepLink}
-                  <a
-                    href={g.deepLink}
-                    class="text-[10px] text-secondary hover:underline normal-case tracking-normal"
-                    title="open {g.label}"
-                  >open ↗</a>
-                {/if}
-                <!-- Per-group quick-add. Opens an inline input that
-                     applies the group's defaults (due/priority/tag/
-                     project/goal/deadline) to the new task. -->
-                <button
-                  type="button"
-                  onclick={() => { groupAddKey = groupAddKey === g.key ? null : g.key; groupAddText = ''; }}
-                  class="ml-auto text-[10px] text-dim hover:text-text normal-case tracking-normal font-mono"
-                  title="add a task to this group ({g.label})"
-                >+ add</button>
-              </h2>
-              {#if groupAddKey === g.key}
-                <!-- Pre-render the inline input above the group's
-                     task list so the new row appears right where the
-                     user expects it. Input auto-focuses; Enter saves,
-                     Esc dismisses. The input stays open after save so
-                     the user can keep capturing without re-opening. -->
-                <div class="mb-1.5 flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    bind:value={groupAddText}
-                    onkeydown={(e) => {
-                      if (e.key === 'Enter') { e.preventDefault(); submitGroupAdd(g.key); }
-                      else if (e.key === 'Escape') { e.preventDefault(); cancelGroupAdd(); }
-                    }}
-                    onblur={() => { if (!groupAddText.trim() && !groupAddBusy) cancelGroupAdd(); }}
-                    placeholder="new task in {g.label}…"
-                    use:focusOnMount
-                    disabled={groupAddBusy}
-                    class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1 text-sm text-text placeholder-dim focus:outline-none focus:border-primary disabled:opacity-50"
-                  />
-                  <button
-                    type="button"
-                    onclick={() => submitGroupAdd(g.key)}
-                    disabled={groupAddBusy || !groupAddText.trim()}
-                    class="text-[11px] px-2 py-1 rounded bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-40"
-                  >{groupAddBusy ? '…' : 'add'}</button>
-                </div>
-              {/if}
-              <div class="space-y-1.5">
-                {#each g.tasks.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
-                  <div data-task-id={t.id} class={cursorIdx >= 0 && filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                    <TaskCard task={t} compact={compactCards} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
-                  </div>
-                {/each}
-              </div>
-            </section>
-          {/each}
-        </div>
+        <!-- Stream N — smart-section grouped list. Sections (overdue /
+             today / tomorrow / this week / later / no date / done)
+             carry visual weight via tinted backgrounds and border-l-2
+             on the loudest two. Collapse state per section persists.
+             SectionList owns rendering; this page owns the data + the
+             callbacks. -->
+        {#if showSwipeHint}
+          <button
+            type="button"
+            onclick={dismissSwipeHint}
+            class="w-full max-w-3xl text-center text-[11px] text-dim bg-surface0 border border-surface1 rounded py-2 px-3 flex items-center justify-center gap-2 active:bg-surface1 mb-3"
+            aria-label="Dismiss swipe hint"
+          >
+            <span class="text-warning" aria-hidden="true">‹</span>
+            <span>swipe left to snooze</span>
+            <span class="text-dim">·</span>
+            <span>swipe right for done</span>
+            <span class="text-success" aria-hidden="true">›</span>
+            <span class="text-dim ml-1">(tap to dismiss)</span>
+          </button>
+        {/if}
+        <SectionList
+          groups={listGroups}
+          filtered={filtered}
+          cursorIdx={cursorIdx}
+          compactCards={compactCards}
+          childCount={childCount}
+          collapsedIds={collapsedIds}
+          collapsedSections={collapsedSections}
+          groupAddKey={groupAddKey}
+          bind:groupAddText
+          groupAddBusy={groupAddBusy}
+          bind:selectedIds
+          isHiddenByCollapse={isHiddenByCollapse}
+          onToggleSection={toggleSection}
+          onToggleCollapse={toggleCollapsed}
+          onChanged={load}
+          onOpenDetail={openDetail}
+          onContextMenu={openContext}
+          onStartGroupAdd={(key) => { groupAddKey = groupAddKey === key ? null : key; groupAddText = ''; }}
+          onCancelGroupAdd={cancelGroupAdd}
+          onSubmitGroupAdd={submitGroupAdd}
+          onGroupAddTextChange={(v) => (groupAddText = v)}
+        />
       {/if}
     </div>
   </div>
