@@ -30,6 +30,8 @@
   import UnifiedCreate from '$lib/calendar/UnifiedCreate.svelte';
   import FindTime from '$lib/calendar/FindTime.svelte';
   import HeaderToolbar from '$lib/calendar/HeaderToolbar.svelte';
+  import CalendarFilterChips from '$lib/calendar/CalendarFilterChips.svelte';
+  import RecurringScopePicker from '$lib/calendar/RecurringScopePicker.svelte';
   import { parseEventInput, type ParseResult } from '$lib/calendar/quickCreate';
   import TaskBacklog from '$lib/calendar/TaskBacklog.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
@@ -151,6 +153,47 @@
   // for a chosen duration. Picking a gap seeds UnifiedCreate so the
   // user can lock in a title without re-typing the time.
   let findTimeOpen = $state(false);
+
+  // Recurring-scope prompt — replaces the stacked native confirm()
+  // dialogs the drag-move + resize flows used to fire. The prompt is
+  // a presentational pill row (RecurringScopePicker) instead of a
+  // browser modal, so it doesn't block the event loop and obeys our
+  // theme. Wrapped in a Promise (askRecurringScope) so the calling
+  // flow can `await` a user choice. null = cancel; the caller is
+  // responsible for reverting the visual drag state.
+  let recurringScopePrompt = $state<{
+    open: boolean;
+    title: string;
+    action: 'move' | 'resize';
+    seriesTone: 'error' | 'warning' | 'subtext';
+    onChoose: (scope: 'this' | 'series') => void;
+    onCancel: () => void;
+  } | null>(null);
+
+  function askRecurringScope(
+    title: string,
+    action: 'move' | 'resize'
+  ): Promise<'this' | 'series' | null> {
+    return new Promise((resolve) => {
+      recurringScopePrompt = {
+        open: true,
+        title,
+        action,
+        // Move/resize are less destructive than delete — the series
+        // button stays warning (orange) not error (red). The picker
+        // already special-cases this via the seriesTone prop.
+        seriesTone: 'warning',
+        onChoose: (s) => {
+          recurringScopePrompt = null;
+          resolve(s);
+        },
+        onCancel: () => {
+          recurringScopePrompt = null;
+          resolve(null);
+        }
+      };
+    });
+  }
   function onFindTimePick(start: Date, durationMinutes: number) {
     unifiedStart = start;
     unifiedEnd = new Date(start.getTime() + durationMinutes * 60_000);
@@ -781,47 +824,24 @@
       }
       // Recurring-series UX: a recurring event has TWO valid drag
       // semantics — "this occurrence only" (per-instance override) or
-      // "the whole series" (rewrite the base). Native browser dialogs
-      // only expose two-choice yes/no, so we flip the question to a
-      // confirm: OK = just this one (the friendly default that won't
-      // surprise the user with calendar-wide cascading changes),
-      // Cancel-bypass = whole series after a second confirm. ICS
-      // events take the series-only path because their patch endpoint
-      // doesn't support overrides today.
+      // "the whole series" (rewrite the base). Stream R replaced the
+      // stacked native confirm() dialogs (where Esc-to-abort silently
+      // triggered the destructive series path) with an explicit
+      // RecurringScopePicker rendered inline on the page. The picker
+      // resolves to 'this' | 'series' | null; null = user cancelled,
+      // so we abort and let the drag visually revert via load().
       let recurringMode: 'series' | 'instance' | null = null;
       if (ev.rrule && ev.eventId) {
-        if (ev.type === 'event') {
-          const justThisOne = confirm(
-            `"${ev.title}" is a recurring event.\n\nOK: Move just this occurrence\nCancel: Move the entire series (every occurrence shifts by the same delta)\n\nClose this dialog to abort.`
-          );
-          if (justThisOne) {
-            recurringMode = 'instance';
-          } else {
-            const confirmSeries = confirm(
-              `Move ALL occurrences of "${ev.title}"? This rewrites the series base — every past and future instance shifts.`
-            );
-            if (!confirmSeries) return;
-            recurringMode = 'series';
-          }
-        } else {
-          // ICS branch — same scope picker as native events. The
-          // backend grew skip + create-standalone primitives so we
-          // can now offer "just this one" for ICS too. EventDetail
-          // already uses the same pattern; this is the drag-move
-          // counterpart so the UX stays consistent across surfaces.
-          const justThisOne = confirm(
-            `"${ev.title}" is a recurring ICS event.\n\nOK: Move just this occurrence (the original date is EXDATE'd; a standalone VEVENT lands at the new time)\nCancel: Move the entire series (every occurrence shifts by the same delta)\n\nClose this dialog to abort.`
-          );
-          if (justThisOne) {
-            recurringMode = 'instance';
-          } else {
-            const confirmSeries = confirm(
-              `Move ALL occurrences of "${ev.title}"? This rewrites the series base — every past and future instance shifts.`
-            );
-            if (!confirmSeries) return;
-            recurringMode = 'series';
-          }
+        const scope = await askRecurringScope(ev.title ?? 'this event', 'move');
+        if (!scope) {
+          // User cancelled — re-fetch so the optimistic drag visual
+          // snaps back to the original slot. Without this, the ghost
+          // releases at the new spot but the underlying event hasn't
+          // moved, leaving the UI confused until the next refresh.
+          await load();
+          return;
         }
+        recurringMode = scope === 'this' ? 'instance' : 'series';
       }
       // ICS "just this one" — fire skip + create-standalone in the
       // same order EventDetail uses. Falls through on failure with a
@@ -954,39 +974,17 @@
   // start/end as full timestamps not separate date+time fields.
   async function resizeEvent(ev: CalendarEvent, durationMinutes: number) {
     try {
-      // Mirrors moveEvent's recurring chooser: this-one vs whole-series.
+      // Mirrors moveEvent's recurring chooser via the in-page picker
+      // (Stream R). null = user cancelled — load() snaps the resize
+      // visual back to its original duration.
       let recurringMode: 'series' | 'instance' | null = null;
       if (ev.rrule && !ev.taskId && ev.eventId) {
-        if (ev.type === 'event') {
-          const justThisOne = confirm(
-            `"${ev.title}" is a recurring event.\n\nOK: Resize just this occurrence\nCancel: Resize the entire series\n\nClose this dialog to abort.`
-          );
-          if (justThisOne) {
-            recurringMode = 'instance';
-          } else {
-            const confirmSeries = confirm(
-              `Resize ALL occurrences of "${ev.title}"?`
-            );
-            if (!confirmSeries) return;
-            recurringMode = 'series';
-          }
-        } else {
-          // ICS: same skip + create-standalone pattern as moveEvent.
-          // Resize-just-this is detach the occurrence and write a
-          // replacement VEVENT with the new end time.
-          const justThisOne = confirm(
-            `"${ev.title}" is a recurring ICS event.\n\nOK: Resize just this occurrence (the original date is EXDATE'd; a standalone VEVENT lands with the new duration)\nCancel: Resize the entire series\n\nClose this dialog to abort.`
-          );
-          if (justThisOne) {
-            recurringMode = 'instance';
-          } else {
-            const confirmSeries = confirm(
-              `Resize ALL occurrences of "${ev.title}"?`
-            );
-            if (!confirmSeries) return;
-            recurringMode = 'series';
-          }
+        const scope = await askRecurringScope(ev.title ?? 'this event', 'resize');
+        if (!scope) {
+          await load();
+          return;
         }
+        recurringMode = scope === 'this' ? 'instance' : 'series';
       }
       // ICS "just this one" resize — skip + create-standalone with the
       // edited duration. Same failure ordering as moveEvent.
@@ -1247,25 +1245,46 @@
           {@const tone = sourceColorToken(s.source)}
           {@const customTone = $sourceColors[s.source] ?? ''}
           {@const displayTone = customTone || tone}
-          <div class="flex items-center gap-1 px-1 group">
+          {@const srcCount = typeCounts['ics_event'] !== undefined
+            ? allEvents.filter((e) => e.type === 'ics_event' && e.source === s.source).length
+            : 0}
+          <!-- Stream R: always-visible color dot at the LEFT of the
+               row so the user can read "blue dot = training.ics" at
+               a glance. Toggle check moved to a small box on the
+               far right; color-picker swatches still surface on
+               hover only so the row stays visually quiet. -->
+          <div class="flex items-center gap-1.5 px-1 group">
+            <!-- Always-visible color dot. Dim when the source is
+                 disabled so the row still tells the truth about
+                 visibility without burying the colour cue. -->
+            <span
+              class="w-2.5 h-2.5 rounded-full flex-shrink-0 {s.enabled ? '' : 'opacity-40'}"
+              style="background: var(--color-{displayTone})"
+              aria-hidden="true"
+            ></span>
             <button
               onclick={() => toggleSource(s)}
               disabled={savingSources}
-              class="flex items-center gap-2 px-2 py-1 rounded hover:bg-surface0 flex-1 min-w-0 {s.enabled ? '' : 'opacity-40'}"
+              class="flex items-center gap-2 px-1 py-1 rounded hover:bg-surface0 flex-1 min-w-0 {s.enabled ? '' : 'opacity-40'}"
               title="{s.path}{s.enabled ? '' : ' (disabled)'}"
             >
+              <span class="text-subtext flex-1 text-left truncate">{s.source}</span>
+              {#if srcCount > 0}
+                <span class="text-dim font-mono tabular-nums text-[10px]">{srcCount}</span>
+              {/if}
+              {#if s.folder}<span class="text-dim text-[10px]">{s.folder}</span>{/if}
+              <!-- Visibility checkbox shifted to the right edge so the
+                   colour dot can own the leftmost column. Mirrors the
+                   sidebar Filters row shape. -->
               <span class="w-3 h-3 rounded-sm border flex items-center justify-center flex-shrink-0"
                 style="border-color: var(--color-{displayTone}); background: {s.enabled ? `var(--color-${displayTone})` : 'transparent'}">
                 {#if s.enabled}
                   <svg viewBox="0 0 12 12" class="w-2.5 h-2.5 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
                 {/if}
               </span>
-              <span class="text-subtext flex-1 text-left truncate">{s.source}</span>
-              {#if s.folder}<span class="text-dim text-[10px]">{s.folder}</span>{/if}
             </button>
-            <!-- Per-source color picker. Hidden until hover so the
-                 row stays visually quiet, then a small swatch row
-                 appears with all tone options. Empty swatch resets
+            <!-- Per-source color picker — hover-only swatch row so the
+                 default state stays uncluttered. Empty swatch resets
                  to the auto-rotation default. -->
             <div class="hidden group-hover:flex items-center gap-0.5 flex-shrink-0">
               {#each ['', 'red', 'yellow', 'orange', 'green', 'blue', 'purple', 'cyan', 'pink'] as t}
@@ -1281,7 +1300,7 @@
             </div>
           </div>
         {/each}
-        <p class="text-[10px] text-dim italic px-2 pt-1">hover a row to recolour · colours sync per device · toggles sync with granit TUI's <code>disabled_calendars</code></p>
+        <p class="text-[10px] text-dim italic px-2 pt-1">colour dot = source legend · hover to recolour · toggles sync with granit TUI's <code>disabled_calendars</code></p>
       </div>
     {/if}
 
@@ -1333,6 +1352,19 @@
       onFindTime={() => (findTimeOpen = true)}
       onShowShortcuts={() => (showShortcutHelp = true)}
       onOpenFilterDrawer={() => (filterDrawerOpen = true)}
+      onCapture={() => {
+        // Seed UnifiedCreate with the next round hour so the user
+        // doesn't have to re-type the time. Same default the sidebar
+        // "+ New task or event" button uses.
+        const s = new Date();
+        s.setMinutes(0, 0, 0);
+        s.setHours(s.getHours() + 1);
+        const e = new Date(s.getTime() + 60 * 60 * 1000);
+        unifiedStart = s;
+        unifiedEnd = e;
+        unifiedKind = 'event';
+        unifiedOpen = true;
+      }}
     />
 
     <!-- AI inline panels (Find Free Time / Day Insight / Plan My Week)
@@ -1375,42 +1407,18 @@
       {/if}
     </form>
 
-    <!-- Type filter strip — dense always-visible pill row that mirrors
-         the sidebar Filters section. One tap toggles a type in/out of
-         the visible set. Count chip shows how many of each type are in
-         the loaded window so empty buckets are obvious (and the user
-         doesn't waste a tap toggling something that has nothing to
-         show anyway). Active = filled with the type's tone; inactive
-         = dim outline. Counts pull from typeCounts which spans the
-         whole loaded window (NOT the post-filter view) so toggling a
-         type back on shows what it would surface. -->
-    <div class="flex items-center gap-1 px-2 sm:px-3 py-1 border-b border-surface1 flex-shrink-0 overflow-x-auto">
-      {#each FILTER_CHIPS as f (f.key)}
-        {@const visible = !hidden.has(f.key)}
-        {@const count = typeCounts[f.key] ?? 0}
-        <button
-          type="button"
-          onclick={() => toggleType(f.key)}
-          aria-pressed={visible}
-          title="{visible ? 'Hide' : 'Show'} {f.label} ({count} in window)"
-          class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded border whitespace-nowrap transition-colors {visible
-            ? 'border-transparent text-on-primary'
-            : 'bg-surface0 border-surface1 text-dim hover:text-text hover:border-primary'} {count === 0 && visible ? 'opacity-50' : ''}"
-          style:background={visible ? `var(--color-${f.tone})` : undefined}
-        >
-          {f.label}
-          <span class="font-mono tabular-nums opacity-80">{count}</span>
-        </button>
-      {/each}
-      {#if hidden.size > 0}
-        <button
-          type="button"
-          onclick={() => (hidden = new Set())}
-          class="ml-1 px-1.5 py-0.5 text-[10px] text-warning hover:text-error whitespace-nowrap"
-          title="Show all hidden types"
-        >clear ({hidden.size})</button>
-      {/if}
-    </div>
+    <!-- Quick-filter chips — extracted to CalendarFilterChips so the
+         row matches the Tasks page's QuickFilterChips shape (Stream R).
+         Drives the same `hidden` Set<EventFilterKey> the sidebar
+         Filters section uses, so a type toggled here is also toggled
+         in the sidebar. -->
+    <CalendarFilterChips
+      chips={FILTER_CHIPS}
+      hidden={hidden}
+      typeCounts={typeCounts}
+      onToggle={toggleType}
+      onClearAll={() => (hidden = new Set())}
+    />
 
     <div
       class="flex-1 overflow-hidden p-2 sm:p-3"
@@ -1524,6 +1532,49 @@
         onclick={() => (showShortcutHelp = false)}
         class="mt-4 px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded hover:border-primary"
       >close</button>
+    </div>
+  </div>
+{/if}
+
+<!-- Recurring-scope picker — modal-like overlay shown when a drag-
+     move or resize hits a recurring event. Replaces the stacked
+     native confirm() chain that previously blocked the event loop
+     and ignored our theme. The picker resolves the async
+     askRecurringScope() Promise via its onChoose / onCancel hooks. -->
+{#if recurringScopePrompt?.open}
+  <div
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="recurring-scope-title"
+    class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+    onclick={(e) => {
+      if (e.target === e.currentTarget && recurringScopePrompt) recurringScopePrompt.onCancel();
+    }}
+    onkeydown={(e) => {
+      if (e.key === 'Escape' && recurringScopePrompt) recurringScopePrompt.onCancel();
+    }}
+    tabindex="-1"
+  >
+    <div class="bg-mantle border border-surface1 rounded-lg p-4 max-w-md w-full shadow-xl">
+      <h3 id="recurring-scope-title" class="text-sm font-semibold text-text mb-1">
+        {recurringScopePrompt.action === 'move' ? 'Move' : 'Resize'} recurring event
+      </h3>
+      <p class="text-xs text-dim italic mb-2">
+        Pick a scope. "Just this occurrence" keeps the rest of the series in place.
+      </p>
+      <RecurringScopePicker
+        eventTitle={recurringScopePrompt.title}
+        action={recurringScopePrompt.action}
+        seriesTone={recurringScopePrompt.seriesTone}
+        onChoose={(s) => {
+          // The picker emits 'this' | 'future' | 'series'. We only
+          // surface this / series for move + resize; future is not
+          // a supported recurring-edit semantic for drag yet.
+          if (s === 'future') return;
+          recurringScopePrompt?.onChoose(s);
+        }}
+        onCancel={() => recurringScopePrompt?.onCancel()}
+      />
     </div>
   </div>
 {/if}

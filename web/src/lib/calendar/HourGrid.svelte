@@ -549,7 +549,10 @@
           {@const dayKey = fmtDateISO(d)}
           {@const dayList = eventsByDay.get(dayKey) ?? []}
           {@const dayCount = dayList.length}
-          <div class="px-1 py-2 border-l border-surface1 text-center">
+          <!-- Stream R: today's column header gets a stronger
+               primary tint so the user can find "today" without
+               scanning. Pairs with the column-body tint below. -->
+          <div class="px-1 py-2 border-l border-surface1 text-center {isToday ? 'bg-primary/10' : ''}">
             <div class="text-[10px] {isToday ? 'text-primary' : 'text-dim'} uppercase tracking-wider">{d.toLocaleDateString(undefined, { weekday: 'short' })}</div>
             {#if isToday}
               <div class="mt-0.5 inline-flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary text-on-primary font-semibold text-base sm:text-lg">{d.getDate()}</div>
@@ -687,7 +690,7 @@
           {@const dayEvents = (eventsByDay.get(fmtDateISO(d)) ?? []).filter((e) => !isAllDay(e))}
           {@const layout = layoutDay(dayEvents)}
           <div
-            class="relative border-l border-surface1 cursor-cell {isToday ? 'bg-surface0' : ''}"
+            class="relative border-l border-surface1 cursor-cell"
             role="button"
             tabindex="0"
             data-day-idx={dayIdx}
@@ -697,7 +700,7 @@
             onpointercancel={onSlotPointerCancel}
             onclick={(e) => { if (!onSlotRange) slotClick(d, e); }}
             onkeydown={(e) => { if (e.key === 'Enter') slotClick(d, e as unknown as MouseEvent); }}
-            style="touch-action: none;"
+            style="touch-action: none; {isToday ? 'background: color-mix(in srgb, var(--color-primary) 4%, transparent);' : ''}"
           >
             {#each HOURS as h}
               <div class="border-b border-surface1 absolute left-0 right-0 pointer-events-none" style="top: {h * HOUR_PX}px; height: {HOUR_PX}px"></div>
@@ -706,9 +709,26 @@
 
             {#if isToday}
               {@const top = nowMinutes() * (HOUR_PX / 60)}
+              {@const nowHH = String(now.getHours()).padStart(2, '0')}
+              {@const nowMM = String(now.getMinutes()).padStart(2, '0')}
+              <!-- Stream R: thicker now-line (3px) + bigger anchor dot
+                   so a glance at the grid lands on the "right now"
+                   slot. The HH:MM pill on the left edge gives an
+                   explicit time stamp without the user having to
+                   sight-line against the hour rail. -->
               <div class="absolute left-0 right-0 z-20 pointer-events-none" style="top: {top}px">
-                <div class="h-px bg-error"></div>
-                <div class="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-error"></div>
+                <div class="h-[3px] -translate-y-px" style="background: var(--color-error); box-shadow: 0 0 6px color-mix(in srgb, var(--color-error) 70%, transparent);"></div>
+                <div class="absolute -left-1.5 -top-1.5 w-3 h-3 rounded-full" style="background: var(--color-error); box-shadow: 0 0 4px color-mix(in srgb, var(--color-error) 60%, transparent);"></div>
+                <!-- HH:MM pill on the today column's left edge.
+                     Only one today-column exists in any view so we
+                     render unconditionally inside the isToday block.
+                     The negative margin pulls it slightly above the
+                     line so the pill and the bar don't visually
+                     collide. -->
+                <div
+                  class="absolute left-1 -top-2 px-1 py-0 rounded text-[9px] font-mono leading-none tabular-nums text-mantle"
+                  style="background: var(--color-error);"
+                >{nowHH}:{nowMM}</div>
               </div>
             {/if}
 
