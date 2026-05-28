@@ -1,0 +1,885 @@
+/* PrintPreview styles — extracted from the PrintPreview.svelte
+   component into a side-effect CSS module so the main file can
+   stay focused on wiring + state. Imported from PrintPreview.svelte
+   via `import './printpreview/print.css'`.
+
+   All selectors here are global by virtue of being a plain .css
+   file processed by Vite — no Svelte scoping is applied, so the
+   subcomponents (PrintToolbar, PrintConfigPanel, PrintRenderPane,
+   SignatureFooter) can use unqualified class names and still pick
+   these rules up.
+
+   The @media print block at the bottom is the load-bearing piece:
+   it tells the browser to hide every body child except .print-overlay
+   and lets the .print-page paginate naturally. */
+
+/* Overlay container — full viewport, dark wash background so the
+   "page" inside reads like a real document. */
+.print-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--color-mantle);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ----- Slim top toolbar ----- */
+/* Single row mirroring HeaderToolbar (calendar) chrome. Sticky so
+   the user can hit Print after scrolling through a long document.
+   Hidden in print via @media print at the bottom of this stylesheet. */
+.print-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--color-base);
+  border-bottom: 1px solid var(--color-surface1);
+  min-height: 44px;
+  flex-wrap: wrap;
+}
+.print-toolbar .tb-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1;
+  margin: 0;
+  flex-shrink: 0;
+}
+.print-toolbar .tb-icon-btn {
+  width: 1.75rem;
+  height: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface0);
+  color: var(--color-subtext);
+  border: 1px solid var(--color-surface1);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.print-toolbar .tb-icon-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text);
+}
+.print-toolbar .tb-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+.print-toolbar .tb-modes {
+  display: inline-flex;
+  background: var(--color-surface0);
+  border: 1px solid var(--color-surface1);
+  border-radius: 0.25rem;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.print-toolbar .tb-mode {
+  padding: 0.3rem 0.7rem;
+  background: transparent;
+  color: var(--color-subtext);
+  font-size: 0.8125rem;
+  border: none;
+  border-right: 1px solid var(--color-surface1);
+  cursor: pointer;
+  line-height: 1.15;
+}
+.print-toolbar .tb-mode:last-child { border-right: none; }
+.print-toolbar .tb-mode:hover {
+  background: var(--color-surface1);
+  color: var(--color-text);
+}
+.print-toolbar .tb-chip {
+  padding: 0.3rem 0.7rem;
+  background: var(--color-surface0);
+  color: var(--color-subtext);
+  border: 1px solid var(--color-surface1);
+  border-radius: 0.25rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.print-toolbar .tb-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text);
+}
+.print-toolbar .tb-active {
+  background: var(--color-primary) !important;
+  color: var(--color-on-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+.print-toolbar .tb-spacer { flex: 1; }
+.print-toolbar .tb-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.print-toolbar .tb-primary:hover { opacity: 0.9; }
+
+/* ----- More dropdown ----- */
+.print-toolbar .tb-more-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.print-toolbar .tb-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 30;
+  min-width: 15rem;
+  background: var(--color-surface0);
+  border: 1px solid var(--color-surface1);
+  border-radius: 0.25rem;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  padding: 0.25rem 0;
+  font-size: 0.8125rem;
+}
+.print-toolbar .tb-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.4rem 0.75rem;
+  background: transparent;
+  color: var(--color-subtext);
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.8125rem;
+}
+.print-toolbar .tb-menu-item:hover:not(:disabled) {
+  background: var(--color-surface1);
+  color: var(--color-text);
+}
+.print-toolbar .tb-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.print-toolbar .tb-menu-state {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  color: var(--color-dim);
+}
+.print-toolbar .tb-menu-section {
+  padding: 0.4rem 0.75rem 0.2rem;
+  font-size: 0.625rem;
+  color: var(--color-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.print-toolbar .tb-menu-radio {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0 0.75rem 0.35rem;
+}
+.print-toolbar .tb-menu-pill {
+  flex: 1;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  background: var(--color-surface0);
+  color: var(--color-subtext);
+  border: 1px solid var(--color-surface1);
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+.print-toolbar .tb-menu-pill:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text);
+}
+.print-toolbar .tb-menu-sep {
+  height: 1px;
+  background: var(--color-surface1);
+  margin: 0.25rem 0;
+}
+
+/* ----- Collapsible Document settings panel ----- */
+.config-panel {
+  padding: 0.75rem 1rem;
+  background: var(--color-surface0);
+  border-bottom: 1px solid var(--color-surface1);
+}
+.config-row {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.config-row label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-dim);
+}
+.config-input {
+  padding: 0.375rem 0.625rem;
+  background: var(--color-base);
+  border: 1px solid var(--color-surface1);
+  border-radius: 0.25rem;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-family: inherit;
+}
+.config-input:focus { outline: none; border-color: var(--color-primary); }
+.config-textarea {
+  font-family: inherit;
+  resize: vertical;
+  min-height: 4.5rem;
+  line-height: 1.4;
+}
+.config-hint {
+  font-size: 0.6875rem;
+  color: var(--color-dim);
+  line-height: 1.5;
+  flex: 1;
+}
+.config-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.config-save {
+  flex-shrink: 0;
+  padding: 0.25rem 0.75rem;
+  background: var(--color-secondary);
+  color: var(--color-mantle);
+  border: none;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.config-save:hover { opacity: 0.9; }
+.config-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* The page itself — A4-shaped on screen so the user sees what
+   prints. White background with shadow to feel like paper.
+   Critically, the layout is BLOCK, not flex column. The previous
+   flex layout combined with `.print-body { flex: 1 }` caused
+   long notes to overflow the white box: the article got
+   stretched to "one page minus header minus footer", and any
+   content past that escaped into the dark overlay backdrop —
+   dark text on dark background, unreadable. Block flow grows
+   naturally with content; the white surface always wraps
+   everything the printer will lay down. Faint dashed bands
+   mark where pages will break on print so the user has a
+   visual cue without us trying to teleport content into
+   multiple discrete page elements. */
+.print-page {
+  width: 21cm;
+  min-height: 29.7cm;
+  margin: 2rem auto;
+  padding: 2cm 1.5cm;
+  /* Color + image as separate longhands so the @media print
+     block below can drop the page-break gradient without
+     touching the white. The shorthand `background: white <grad>`
+     was non-conformant (color must be last in the shorthand)
+     and tied the two together — ungainly to override. */
+  background-color: white;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(29.7cm - 1px),
+    rgba(0, 0, 0, 0.08) calc(29.7cm - 1px),
+    rgba(0, 0, 0, 0.08) 29.7cm
+  );
+  color: #1a1a1a;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 11pt;
+  line-height: 1.55;
+}
+.print-page[data-mode="report"] {
+  font-size: 10.5pt;
+  padding: 2.5cm 2cm;
+}
+.print-page[data-mode="letterhead"] {
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: 11pt;
+  padding: 1.8cm 2cm;
+  line-height: 1.6;
+}
+.print-page[data-mode="memo"] {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 11pt;
+  padding: 2cm 2cm;
+  line-height: 1.55;
+}
+
+/* ----- Letterhead template ----- */
+/* Top sender block (multi-line) → narrow body → contact strip
+   footer. Mimics the corporate-letter feel of a printed cover
+   sheet. The sender block accepts newlines in the header field
+   so the user gets a 3-line address without resorting to HTML. */
+.lh-header {
+  margin-bottom: 1.5rem;
+}
+.lh-sender {
+  font-size: 10pt;
+  color: #2a2a2a;
+  line-height: 1.4;
+}
+.lh-sender-name {
+  font-size: 16pt !important;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #1a1a1a;
+  margin-bottom: 0.25rem;
+}
+.lh-rule {
+  margin-top: 0.6rem;
+  height: 2px;
+  background: linear-gradient(to right, #1a1a1a 0%, #1a1a1a 60%, transparent 100%);
+}
+.lh-body {
+  margin-top: 0;
+}
+.lh-date {
+  font-size: 10pt;
+  color: #555;
+  margin-bottom: 1.2rem;
+}
+.lh-title {
+  font-size: 18pt;
+  font-weight: 600;
+  margin: 0 0 1rem;
+  color: #1a1a1a;
+  line-height: 1.25;
+}
+.lh-footer {
+  margin-top: 2rem;
+  text-align: center;
+}
+.lh-footer-rule {
+  height: 1px;
+  background: #c0c0c0;
+  margin-bottom: 0.5rem;
+}
+.lh-footer-text {
+  font-size: 9pt;
+  color: #666;
+  letter-spacing: 0.02em;
+}
+
+/* ----- Memo template ----- */
+/* Classic interoffice memo: large "MEMORANDUM" eyebrow, four-row
+   metadata table (TO/FROM/DATE/RE), then body. The labels are
+   bold + right-aligned in a fixed-width column for that
+   unmistakable "office memo" feel. */
+.memo-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 2px solid #1a1a1a;
+}
+.memo-eyebrow {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 22pt;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #1a1a1a;
+  margin-bottom: 1rem;
+}
+.memo-meta {
+  border-collapse: collapse;
+  width: 100%;
+}
+.memo-meta th {
+  text-align: left;
+  font-weight: 700;
+  width: 4.5rem;
+  padding: 0.15rem 0.5rem 0.15rem 0;
+  color: #1a1a1a;
+  font-size: 10.5pt;
+  vertical-align: top;
+}
+.memo-meta td {
+  padding: 0.15rem 0;
+  color: #1a1a1a;
+  font-size: 10.5pt;
+  vertical-align: top;
+}
+
+.print-header {
+  border-bottom: 1px solid #444;
+  padding-bottom: 0.5rem;
+  margin-bottom: 1.5rem;
+  font-size: 9.5pt;
+  color: #555;
+}
+.print-header-text {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.print-body {
+  flex: 1;
+}
+.doc-title {
+  font-size: 22pt;
+  font-weight: 600;
+  margin: 0 0 0.25rem 0;
+  color: #1a1a1a;
+  line-height: 1.2;
+}
+.doc-meta {
+  font-size: 9pt;
+  color: #888;
+  margin-bottom: 1.5rem;
+}
+
+.print-footer {
+  border-top: 1px solid #444;
+  padding-top: 0.5rem;
+  margin-top: 1.5rem;
+  font-size: 9pt;
+  color: #666;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.print-footer-text {
+  font-variant-numeric: tabular-nums;
+}
+
+/* MarkdownRenderer overrides for paper. The renderer's container
+   class is `.prose-note` (NOT `.prose` — earlier overrides missed
+   that and the rendered body inherited the dark-mode tokens, so
+   "white text on white paper" was the visible bug in dark mode).
+   Force light, paper-friendly styling for every element the body
+   can produce; CSS variables get re-bound to literal greys/blacks
+   so even tokens we forget to override fall back to readable
+   values. */
+.print-page {
+  --color-text: #1a1a1a;
+  --color-subtext: #404040;
+  --color-dim: #6a6a6a;
+  --color-surface0: #f6f6f6;
+  --color-surface1: #e5e5e5;
+  --color-surface2: #d0d0d0;
+  --color-base: #ffffff;
+  --color-mantle: #ffffff;
+  --color-primary: #1a4fb3;
+  --color-secondary: #1a4fb3;
+}
+.print-page .prose-note,
+.print-page .prose-note * {
+  color: #1a1a1a !important;
+  background: transparent !important;
+}
+.print-page .prose-note h1,
+.print-page .prose-note h2,
+.print-page .prose-note h3,
+.print-page .prose-note h4,
+.print-page .prose-note h5,
+.print-page .prose-note h6 {
+  color: #1a1a1a !important;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+.print-page .prose-note pre,
+.print-page .prose-note code {
+  background: #f4f4f4 !important;
+  color: #222 !important;
+  border: 1px solid #e5e5e5;
+}
+.print-page .prose-note a {
+  color: #1a4fb3 !important;
+  text-decoration: underline;
+}
+.print-page .prose-note blockquote {
+  border-left: 3px solid #888 !important;
+  color: #444 !important;
+}
+.print-page .prose-note table,
+.print-page .prose-note th,
+.print-page .prose-note td {
+  border: 1px solid #c0c0c0 !important;
+  color: #1a1a1a !important;
+}
+.print-page .prose-note th {
+  background: #f4f4f4 !important;
+}
+.print-page .prose-note hr {
+  border-color: #c0c0c0 !important;
+}
+.print-page .prose-note img {
+  /* Print images at most page-width; otherwise a 4K screenshot
+     blows out the layout. Stays !important to override any
+     dark-mode filter the screen styles apply. */
+  max-width: 100% !important;
+  filter: none !important;
+}
+
+/* ----- Document Signature footer ----- */
+/* Styled like the integrity panel a PDF reader (Acrobat,
+   Preview) shows for a signed document — not gaudy, not
+   decorative, just a clean evidentiary block: the round seal on
+   the left, hash + timestamp + provenance on the right, a
+   subtle border + tonal background that says "this is a
+   control surface, not body content". Stays attached to the
+   bottom of the printed page; renders crisply at any zoom
+   because the seal is inline SVG. */
+.doc-signature {
+  margin-top: 1cm;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+/* Compact trust-stamp: a slim two-line footer. Max-height ~3cm
+   so it sits at the bottom of any A4 page without bumping page
+   content over to a second page. The page-break-inside:avoid on
+   the parent keeps the whole stamp on one page. */
+.doc-signature__compact {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-top: 1.5px solid #5a7088;
+  border-bottom: 1.5px solid #5a7088;
+  background: #f5f8fb;
+  color: #2a3340;
+  font-size: 8.5pt;
+  line-height: 1.35;
+}
+.doc-signature__seal-sm {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+}
+.doc-signature__compact-body {
+  flex: 1;
+  min-width: 0;
+}
+.doc-signature__compact-headline {
+  font-size: 9pt;
+  color: #1a2a3a;
+  margin-bottom: 0.1rem;
+}
+.doc-signature__compact-headline strong {
+  font-weight: 700;
+  color: #2a4a6a;
+}
+.doc-signature__compact-signer {
+  font-style: italic;
+  color: #44546a;
+  font-weight: 500;
+}
+.doc-signature__compact-meta {
+  font-size: 7.5pt;
+  color: #44546a;
+  display: inline;
+  /* Wraps naturally at narrow widths because each meta span is
+     inline, not flex — so on a tight page the stamp stays on
+     two lines without overflow. */
+}
+.doc-signature__compact-meta strong {
+  color: #2a3340;
+  font-weight: 600;
+}
+.doc-signature__compact-sep {
+  color: #b9c4d0;
+  margin: 0 0.3rem;
+}
+.doc-signature__compact-hash {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 7pt;
+  color: #1a4fb3;
+  word-break: break-all;
+  margin-top: 0.15rem;
+  line-height: 1.3;
+}
+.doc-signature__compact-hash span {
+  letter-spacing: 0.02em;
+}
+.doc-signature__compact a {
+  color: #1a4fb3;
+  text-decoration: none;
+}
+.doc-signature__inner {
+  display: flex;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #b9c4d0;
+  border-radius: 0.25rem;
+  background: #f5f8fb;
+  color: #2a3340;
+}
+.doc-signature__seal {
+  flex-shrink: 0;
+  align-self: center;
+}
+.doc-signature__body {
+  flex: 1;
+  min-width: 0;
+}
+/* New layout: head is a vertical stack — eyebrow, signer row,
+   docID. The previous version was a single horizontal flex row
+   where the signer was buried in the dl below; the new layout
+   promotes the signer to a prominent, scannable header line. */
+.doc-signature__head {
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #b9c4d0;
+}
+.doc-signature__eyebrow {
+  font-size: 7.5pt;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: #8090a4;
+  margin-bottom: 0.3rem;
+}
+.doc-signature__signer-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.25rem;
+}
+.doc-signature__signer-label {
+  font-size: 8pt;
+  color: #5a7088;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.doc-signature__signer-name {
+  font-size: 13pt;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 0.01em;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+.doc-signature__signer-none {
+  font-style: italic;
+  color: #8090a4;
+  font-weight: 500;
+  font-size: 11pt;
+}
+.doc-signature__docid {
+  font-size: 8pt;
+  color: #5a7088;
+  font-variant-numeric: tabular-nums;
+}
+.doc-signature__docid-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  color: #1a4fb3;
+  letter-spacing: 0.04em;
+}
+/* Hash callout — full SHA-256 on its own row, monospace, with a
+   subtle ruled border so it reads as the load-bearing claim
+   rather than just another row in the metadata table. */
+.doc-signature__hashbox {
+  margin: 0.5rem 0;
+  padding: 0.4rem 0.6rem;
+  background: #ffffff;
+  border: 1px solid #c5d1de;
+  border-radius: 0.2rem;
+}
+.doc-signature__hashlabel {
+  font-size: 7.5pt;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #5a7088;
+  margin-bottom: 0.15rem;
+}
+.doc-signature__hashvalue {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8pt;
+  color: #1a4fb3;
+  word-break: break-all;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+.doc-signature__lead {
+  font-size: 8.5pt;
+  line-height: 1.5;
+  color: #44546a;
+  margin-bottom: 0.6rem;
+}
+.doc-signature__fields {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  column-gap: 0.75rem;
+  row-gap: 0.15rem;
+  margin: 0 0 0.6rem;
+  font-size: 8.5pt;
+  color: #2a3340;
+}
+.doc-signature__fields dt {
+  color: #5a7088;
+  font-weight: 600;
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.doc-signature__fields dd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+}
+.doc-signature__src {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.doc-signature__note {
+  font-size: 7.5pt;
+  line-height: 1.5;
+  color: #5a7088;
+  margin: 0;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #c5d1de;
+}
+/* Disclaimer is the smallest, mutest piece — sets reader
+   expectations about the integrity-vs-legal-signature distinction
+   without competing with the verification instructions above. */
+.doc-signature__disclaimer {
+  font-size: 7pt;
+  line-height: 1.5;
+  color: #8090a4;
+  margin: 0.4rem 0 0;
+  padding-top: 0.4rem;
+}
+.doc-signature__body a {
+  color: #1a4fb3;
+  text-decoration: none;
+}
+
+/* Long-content print pagination. The previous version printed
+   only the first page because:
+     1. .print-page was display:flex (column) — flex containers
+        handle overflow oddly under print, and the browser may
+        not break flex items across pages cleanly.
+     2. .print-overlay was position:fixed in screen mode, which
+        some browsers carry into print — fixed elements typically
+        render only on the first page per the CSS spec.
+   The @media print block below resets both: the overlay becomes
+   position:static, the .print-page becomes display:block, and
+   content flows naturally past the page boundary so the printer
+   auto-paginates. page-break-inside:avoid on the doc-signature
+   keeps the integrity stamp from being split across pages. */
+
+/* THE actual print rules. We hide the overlay's chrome (toolbar,
+   config panel, page shadow), reset margins so the OS @page
+   handles them, and let the .print-page content flow at native
+   dimensions onto the printer. */
+@media print {
+  html, body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  /* Print isolation. The overlay is moved to be a direct child
+     of body when open (see teleport effect in the component), so
+     we can now reliably hide every other direct body child without
+     worrying about SvelteKit wrappers in between.
+     display:none (not visibility:hidden) because we want the
+     hidden content fully removed from the layout — leaving it as
+     visibility:hidden reserves space and the overlay would render
+     after a long blank stretch. */
+  body > *:not(.print-overlay) {
+    display: none !important;
+  }
+  /* The overlay itself flows normally as a static block child of
+     body. position:static (default) means content paginates the
+     way the browser normally would — every direct block child of
+     the print-page becomes a candidate page-break point. */
+  .print-overlay {
+    position: static !important;
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+    box-shadow: none !important;
+    z-index: auto !important;
+  }
+  .print-toolbar, .config-panel { display: none !important; }
+  .print-page {
+    width: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    display: block !important;
+    overflow: visible !important;
+    /* Drop the screen-only page-break gradient — printers honor
+       their own page boundaries and faint band stripes every
+       29.7cm of paper would look like a registration error. */
+    background-image: none !important;
+  }
+  /* Reset every flex / grid container in the print tree to block
+     layout, drop fixed heights, and force overflow:visible — flex
+     chains and fixed min-heights were the cause of the multi-page
+     failure (a flex parent doesn't paginate the way a block does
+     in any current browser). */
+  .lh-body, .lh-header, .memo-body, .memo-header,
+  .print-body, .doc-signature, .doc-signature__inner,
+  .doc-signature__compact, .doc-signature__compact-body {
+    display: block !important;
+    flex: none !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  /* The compact signature stays visually flexed (seal + body side
+     by side) — but we keep its outer flex on so the layout doesn't
+     collapse to a stacked block. The block-mode reset above is
+     overridden here. */
+  .doc-signature__compact {
+    display: flex !important;
+    flex: none !important;
+  }
+  .lh-body, .memo-body, .print-body {
+    max-width: none !important;
+    margin: 0 !important;
+  }
+  /* Tighten orphan/widow control so a heading's content doesn't
+     get stranded at the bottom of one page with its subtext on
+     the next. Most browsers honor these defaults but explicit is
+     safer for print. */
+  .print-page p,
+  .print-page li,
+  .print-page blockquote {
+    orphans: 3;
+    widows: 3;
+  }
+  /* Keep code blocks and tables intact when possible — splitting
+     a code fence mid-line is unreadable; splitting a table mid-
+     row strands the header from the body. */
+  .print-page pre,
+  .print-page table {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  /* Document signature already has page-break-inside:avoid in
+     its own rule, which is the load-bearing one — the
+     authenticity stamp must NEVER be split across pages. */
+  @page {
+    size: A4;
+    margin: 2cm 1.5cm;
+  }
+}
