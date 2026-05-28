@@ -139,14 +139,18 @@
        altitude as app identity, and settings is reached often
        enough that a top-row icon beats a footer row. Compact mode
        stacks: logo → profile chip → settings icon. -->
-  <div class="border-b border-surface1 {isCompact ? 'px-2 py-2 flex flex-col items-center gap-1.5' : 'px-3 py-2.5 flex items-center gap-2'}">
+  <!-- Brand row. min-w-0 + overflow-hidden on the parent flex lets
+       shrinkable children (ProfileSwitcher chip text) collapse
+       below their natural width instead of pushing fixed icons
+       past the sidebar's right edge. The "Granit" wordmark dropped
+       in expanded mode — the logo + the aria-label carry the brand
+       identity and the wordmark was the item with the most cost
+       for the least value. See feedback 2026-05-29. -->
+  <div class="border-b border-surface1 min-w-0 overflow-hidden {isCompact ? 'px-2 py-2 flex flex-col items-center gap-1.5' : 'px-3 py-2.5 flex items-center gap-1.5'}">
     {#if isCompact}
       <div class="w-8 h-8 rounded bg-surface1 text-primary flex items-center justify-center" aria-label="Granit">
         <Logo class="w-4 h-4" label="" />
       </div>
-      <!-- Right-pane toggle — sits in the workspace-controls cluster
-           right after the brand mark. Active styling mirrors the open
-           flag; tooltip carries the keyboard chord for discovery. -->
       <button
         onclick={toggleRightPane}
         title={$rightPaneStore.open ? 'Close right pane (⌘\\)' : 'Open right pane (⌘\\)'}
@@ -170,13 +174,9 @@
         <NavIcon name="settings" class="w-4 h-4" />
       </a>
     {:else}
-      <div class="w-6 h-6 rounded bg-surface1 text-primary flex items-center justify-center flex-shrink-0">
+      <div class="w-6 h-6 rounded bg-surface1 text-primary flex items-center justify-center flex-shrink-0" aria-label="Granit">
         <Logo class="w-3.5 h-3.5" label="" />
       </div>
-      <!-- Right-pane toggle — moved to the left workspace cluster
-           after the brand. Previously sat at the rightmost slot but
-           5 items in 224px clipped the icon at the sidebar's edge,
-           making it visually unclickable. See feedback 2026-05-28. -->
       <button
         onclick={toggleRightPane}
         title={$rightPaneStore.open ? 'Close right pane (⌘\\)' : 'Open right pane (⌘\\)'}
@@ -189,9 +189,9 @@
           <line x1="15" y1="4" x2="15" y2="20"/>
         </svg>
       </button>
-      <div class="text-sm font-semibold text-text truncate min-w-0">Granit</div>
-      <span class="flex-1 min-w-0"></span>
-      <ProfileSwitcher isCompact={false} />
+      <div class="flex-1 min-w-0 flex justify-end">
+        <ProfileSwitcher isCompact={false} />
+      </div>
       <a
         href="/settings"
         onclick={navigate}
