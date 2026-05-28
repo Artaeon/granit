@@ -25,18 +25,26 @@
   let error = $state(false);
   let today = $state(todayISO());
 
+  // Gen counter guards against stale resolves after rapid content
+  // switching — see TaskDetail.svelte's loadSubtasks for the pattern.
+  let loadGen = 0;
+  let destroyed = false;
+
   async function load() {
+    const myGen = ++loadGen;
     try {
       // Pull every open task; filtering is cheap and the server's
       // shape doesn't carry a "today bucket" param. Same approach the
       // /tasks page uses for its Today view.
       const r = await api.listTasks({ status: 'open' });
+      if (destroyed || myGen !== loadGen) return;
       tasks = r.tasks ?? [];
       error = false;
     } catch {
+      if (destroyed || myGen !== loadGen) return;
       error = true;
     } finally {
-      loading = false;
+      if (!destroyed && myGen === loadGen) loading = false;
     }
   }
   const reload = createCoalescedReload(load, 600);
@@ -57,6 +65,7 @@
     });
   });
   onDestroy(() => {
+    destroyed = true;
     reload.cancel();
     if (stopMidnight) stopMidnight();
   });

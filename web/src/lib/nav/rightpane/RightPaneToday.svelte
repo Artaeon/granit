@@ -27,25 +27,39 @@
   let tasksError = $state(false);
   let today = $state(todayISO());
 
+  // Per-load gen counters guard against stale resolves after rapid
+  // content switching — separate counters so the two parallel fetches
+  // don't supersede each other. See TaskDetail.svelte's loadSubtasks.
+  let dailyGen = 0;
+  let tasksGen = 0;
+  let destroyed = false;
+
   async function loadNote() {
+    const myGen = ++dailyGen;
     try {
-      daily = await api.daily('today');
+      const result = await api.daily('today');
+      if (destroyed || myGen !== dailyGen) return;
+      daily = result;
       noteError = false;
     } catch {
+      if (destroyed || myGen !== dailyGen) return;
       noteError = true;
     } finally {
-      loadingNote = false;
+      if (!destroyed && myGen === dailyGen) loadingNote = false;
     }
   }
   async function loadTasks() {
+    const myGen = ++tasksGen;
     try {
       const r = await api.listTasks({ status: 'open' });
+      if (destroyed || myGen !== tasksGen) return;
       tasks = r.tasks ?? [];
       tasksError = false;
     } catch {
+      if (destroyed || myGen !== tasksGen) return;
       tasksError = true;
     } finally {
-      loadingTasks = false;
+      if (!destroyed && myGen === tasksGen) loadingTasks = false;
     }
   }
   const reloadNote = createCoalescedReload(loadNote, 600);
@@ -68,6 +82,7 @@
     });
   });
   onDestroy(() => {
+    destroyed = true;
     reloadNote.cancel();
     reloadTasks.cancel();
     if (stopMidnight) stopMidnight();

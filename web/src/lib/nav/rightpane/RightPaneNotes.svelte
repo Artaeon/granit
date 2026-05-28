@@ -19,15 +19,23 @@
   let loading = $state(true);
   let error = $state(false);
 
+  // Gen counter guards against stale resolves after rapid content
+  // switching — see TaskDetail.svelte's loadSubtasks for the pattern.
+  let loadGen = 0;
+  let destroyed = false;
+
   async function load() {
+    const myGen = ++loadGen;
     try {
       const list = await api.listNotes({ limit: 15 });
+      if (destroyed || myGen !== loadGen) return;
       notes = list.notes;
       error = false;
     } catch {
+      if (destroyed || myGen !== loadGen) return;
       error = true;
     } finally {
-      loading = false;
+      if (!destroyed && myGen === loadGen) loading = false;
     }
   }
   const reload = createCoalescedReload(load, 600);
@@ -38,7 +46,10 @@
       if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
     });
   });
-  onDestroy(reload.cancel);
+  onDestroy(() => {
+    destroyed = true;
+    reload.cancel();
+  });
 
   const fmtRelative = (iso: string) => relativeTime(iso, { dateThresholdDays: 7 });
 

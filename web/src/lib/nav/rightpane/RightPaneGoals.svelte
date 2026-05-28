@@ -21,9 +21,16 @@
   let error = $state(false);
   let today = $state(todayISO());
 
+  // Gen counter guards against stale resolves after rapid content
+  // switching — see TaskDetail.svelte's loadSubtasks for the pattern.
+  let loadGen = 0;
+  let destroyed = false;
+
   async function load() {
+    const myGen = ++loadGen;
     try {
       const list = await api.listGoals();
+      if (destroyed || myGen !== loadGen) return;
       const active = list.goals.filter((g) => (g.status ?? 'active') === 'active');
       active.sort((a, b) => {
         const aT = a.target_date ?? '';
@@ -36,9 +43,10 @@
       goals = active.slice(0, 10);
       error = false;
     } catch {
+      if (destroyed || myGen !== loadGen) return;
       error = true;
     } finally {
-      loading = false;
+      if (!destroyed && myGen === loadGen) loading = false;
     }
   }
   const reload = createCoalescedReload(load, 600);
@@ -57,6 +65,7 @@
     });
   });
   onDestroy(() => {
+    destroyed = true;
     reload.cancel();
     if (stopMidnight) stopMidnight();
   });

@@ -8,7 +8,7 @@
   // Footer link "Edit →" targets /vision?tab=<key> so the right pane
   // hands off to the full /vision page with the correct doc selected.
 
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, type VisionsStore, type VisionDoc } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
@@ -17,14 +17,23 @@
   let loading = $state(true);
   let error = $state(false);
 
+  // Gen counter guards against stale resolves after rapid content
+  // switching — see TaskDetail.svelte's loadSubtasks for the pattern.
+  let loadGen = 0;
+  let destroyed = false;
+
   async function load() {
+    const myGen = ++loadGen;
     try {
-      store = await api.listVisions();
+      const result = await api.listVisions();
+      if (destroyed || myGen !== loadGen) return;
+      store = result;
       error = false;
     } catch {
+      if (destroyed || myGen !== loadGen) return;
       error = true;
     } finally {
-      loading = false;
+      if (!destroyed && myGen === loadGen) loading = false;
     }
   }
 
@@ -36,6 +45,7 @@
       }
     });
   });
+  onDestroy(() => { destroyed = true; });
 
   let pinned = $derived.by<VisionDoc | null>(() => {
     if (!store) return null;

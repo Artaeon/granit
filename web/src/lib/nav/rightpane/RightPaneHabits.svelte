@@ -20,14 +20,23 @@
   let error = $state(false);
   let bulkBusy = $state(false);
 
+  // Gen counter guards against stale resolves after rapid content
+  // switching — see TaskDetail.svelte's loadSubtasks for the pattern.
+  let loadGen = 0;
+  let destroyed = false;
+
   async function load() {
+    const myGen = ++loadGen;
     try {
-      data = await api.listHabits();
+      const result = await api.listHabits();
+      if (destroyed || myGen !== loadGen) return;
+      data = result;
       error = false;
     } catch {
+      if (destroyed || myGen !== loadGen) return;
       error = true;
     } finally {
-      loading = false;
+      if (!destroyed && myGen === loadGen) loading = false;
     }
   }
   const reload = createCoalescedReload(load, 600);
@@ -39,7 +48,10 @@
       if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
     });
   });
-  onDestroy(() => reload.cancel());
+  onDestroy(() => {
+    destroyed = true;
+    reload.cancel();
+  });
 
   async function toggle(name: string, taskId: string | undefined, done: boolean) {
     if (!data || !taskId) return;

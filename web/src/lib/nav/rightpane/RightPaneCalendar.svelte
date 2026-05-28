@@ -15,7 +15,7 @@
   // Refetch on WS event-touch events so dropping an event from the
   // calendar page updates the pane without a manual reload.
 
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api, type CalendarEventEntry } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { todayISO, fmtDateISO } from '$lib/util/date';
@@ -24,15 +24,23 @@
   let loading = $state(true);
   let error = $state(false);
 
+  // Gen counter guards against stale resolves after rapid content
+  // switching — see TaskDetail.svelte's loadSubtasks for the pattern.
+  let loadGen = 0;
+  let destroyed = false;
+
   async function load() {
+    const myGen = ++loadGen;
     try {
       const r = await api.listEvents();
+      if (destroyed || myGen !== loadGen) return;
       events = r.events ?? [];
       error = false;
     } catch {
+      if (destroyed || myGen !== loadGen) return;
       error = true;
     } finally {
-      loading = false;
+      if (!destroyed && myGen === loadGen) loading = false;
     }
   }
 
@@ -44,6 +52,7 @@
       }
     });
   });
+  onDestroy(() => { destroyed = true; });
 
   // Two date strings (local time) so we can bucket events without
   // any timezone gymnastics — events store `date` as YYYY-MM-DD in
