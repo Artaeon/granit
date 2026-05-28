@@ -7,6 +7,7 @@
   import { buildTree, filterTree, ancestorFolders, type TreeNode, type TreeSort } from './treeUtils';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import TreeNodeView from './TreeNode.svelte';
+  import Skeleton from '$lib/components/Skeleton.svelte';
   import { pinnedNotes, unpinPath, ensurePinnedLoaded } from './pinnedNotes';
 
   let {
@@ -182,7 +183,27 @@
 
   <div class="flex-1 min-h-0 overflow-y-auto px-1 pb-3">
     {#if loading && notes.length === 0}
-      <div class="px-3 py-2 text-sm text-dim">loading…</div>
+      <!-- Loading skeleton — pulsing rows at the same indent rhythm
+           as real tree rows so the layout doesn't reflow when the
+           data arrives. Width varies per row so it doesn't read as
+           a barcode. -->
+      <div class="px-2 py-1 space-y-1.5" aria-hidden="true">
+        {#each [
+          { indent: 0, w: 'w-3/5' },
+          { indent: 1, w: 'w-2/5' },
+          { indent: 1, w: 'w-3/4' },
+          { indent: 2, w: 'w-2/5' },
+          { indent: 0, w: 'w-1/2' },
+          { indent: 1, w: 'w-3/5' },
+          { indent: 1, w: 'w-2/5' },
+          { indent: 2, w: 'w-1/3' }
+        ] as row}
+          <div class="flex items-center gap-1.5" style="padding-left: {row.indent * 0.875}rem">
+            <Skeleton class="h-3 w-3 rounded-sm" />
+            <Skeleton class="h-3 {row.w}" />
+          </div>
+        {/each}
+      </div>
     {:else if filtered === null}
       <div class="px-3 py-2 text-sm text-dim italic">no matches</div>
     {:else}

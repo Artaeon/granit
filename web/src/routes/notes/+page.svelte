@@ -8,6 +8,8 @@
   import { relativeTime } from '$lib/util/relativeTime';
   import { toast } from '$lib/components/toast';
   import NotesTree from '$lib/notes/NotesTree.svelte';
+  import NotesPageHeader from '$lib/notes/NotesPageHeader.svelte';
+  import NotesQuickFilters from '$lib/notes/NotesQuickFilters.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { rafThrottle } from '$lib/util/streamThrottle';
@@ -41,6 +43,50 @@
   }
   let view = $state<View>(loadInitialView());
   $effect(() => saveStoredString(VIEW_KEY, view));
+
+  // Slim-header overflow menu (mirrors /tasks). Only the 4 less-used
+  // views live in the dropdown — primary 5 sit in the segmented
+  // control. activeOverflowLabel surfaces the current overflow view
+  // back in the More button so the user has a breadcrumb without
+  // opening the menu.
+  const OVERFLOW_KEYS: ReadonlySet<View> = new Set(['alpha', 'tags', 'folders', 'collections']);
+  const OVERFLOW_LABELS: Record<string, string> = {
+    alpha: 'A–Z',
+    tags: 'Tags',
+    folders: 'Folders',
+    collections: 'Collections'
+  };
+  let moreViewsOpen = $state(false);
+  let activeOverflowLabel = $derived(OVERFLOW_KEYS.has(view) ? (OVERFLOW_LABELS[view] ?? '') : '');
+  function selectView(v: View) {
+    // Clicking the All tab directly clears any folder/tag filter —
+    // those are only set via Folders cards or a Collection; hitting
+    // the segmented "All" on its own should mean "show everything".
+    if (v === 'all' && view !== 'all') { folderFilter = ''; tagFilter = ''; }
+    view = v;
+  }
+  function pickOverflowView(v: View) {
+    view = v;
+    moreViewsOpen = false;
+  }
+  function onMoreViewsKey(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      moreViewsOpen = false;
+      e.stopPropagation();
+    }
+  }
+  // Click-outside dismiss for the overflow menu. Install only while
+  // the menu is open so the rest of the page doesn't pay for it.
+  $effect(() => {
+    if (!moreViewsOpen) return;
+    function onDocClick(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('[data-more-views]')) return;
+      moreViewsOpen = false;
+    }
+    window.addEventListener('mousedown', onDocClick);
+    return () => window.removeEventListener('mousedown', onDocClick);
+  });
 
   type SortKey = 'modified' | 'created' | 'name' | 'size';
   let sortKey = $state<SortKey>('modified');
@@ -867,150 +913,42 @@
 </script>
 
 <div class="h-full flex flex-col">
-  <header class="px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 sticky top-0 z-20 bg-mantle">
-    <div class="flex items-center justify-between gap-3 mb-3">
-      <div class="min-w-0">
-        <h1 class="text-xl sm:text-2xl font-semibold text-text truncate">Notes</h1>
-        <p class="text-xs text-dim mt-0.5">{notes.length} notes · {pinnedCount} pinned</p>
-      </div>
-      <button
-        onclick={openCapture}
-        class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90 flex items-center gap-1.5 flex-shrink-0"
-        title="Quick capture (⌘N)"
-      >
-        <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <path d="M12 5v14M5 12h14"/>
-        </svg>
-        <span class="hidden sm:inline">New</span>
-        <span class="sm:hidden">New</span>
-      </button>
-    </div>
+  <!-- Stream T — slim single-row page header. Title + count on the
+       left, search · view-switcher · More-views · New on the right.
+       Active filter pills + sort segmented sit in the QuickFilters
+       row below so the chrome stays mute. Saves ~60-70px of vertical
+       space vs the previous three-row layout. -->
+  <NotesPageHeader
+    {view}
+    bind:q
+    notesCount={notes.length}
+    pinnedCount={pinnedCount}
+    searchResultsCount={searchResults.length}
+    moreViewsOpen={moreViewsOpen}
+    activeOverflowLabel={activeOverflowLabel}
+    onSelectView={selectView}
+    onToggleMoreViews={() => (moreViewsOpen = !moreViewsOpen)}
+    onPickOverflowView={pickOverflowView}
+    onMoreViewsKey={onMoreViewsKey}
+    onQuickCapture={openCapture}
+    onSearchInput={(v) => { if (v.trim()) view = 'search'; }}
+    onSearchFocus={() => { if (q.trim()) view = 'search'; }}
+  />
 
-    <!-- Search bar — always visible. Typing here flips view to
-         'search' so the user gets the body-aware index, not just the
-         tree filter. The "save as collection" affordance appears
-         alongside when a query is active. -->
-    <div class="flex items-center gap-2">
-      <input
-        bind:value={q}
-        onfocus={() => { if (q.trim()) view = 'search'; }}
-        oninput={() => { if (q.trim()) view = 'search'; }}
-        placeholder="Search notes (full-text)…"
-        data-page-search="1"
-        class="flex-1 px-3 py-2 bg-surface0 border border-surface1 rounded text-sm sm:text-base text-text placeholder-dim focus:outline-none focus:border-primary"
-      />
-      {#if view === 'search' && q.trim()}
-        <button
-          type="button"
-          onclick={saveCurrentAsCollection}
-          class="px-2 py-2 text-xs rounded bg-surface0 border border-surface1 text-subtext hover:bg-surface1 flex-shrink-0"
-          title="Save current search as a collection"
-        >Save as collection…</button>
-      {/if}
-    </div>
-
-    <!-- View tabs. Persisted to localStorage. The strip is wrapped
-         in a relative shell so we can paint a thin gradient on the
-         right edge — a visual cue that more tabs sit beyond the
-         visible area on phones. The shell is scroll-padded + uses
-         scroll-snap so a thumbing user lands cleanly on a tab
-         instead of mid-button. -->
-    <div class="mt-3 relative">
-      <nav
-        class="flex gap-1 overflow-x-auto text-xs notes-view-strip"
-        aria-label="view"
-      >
-        {#each [
-          // Counts are cheap O(n) approximations — they intentionally
-          // do NOT consume the heavy view derivations (recent /
-          // pinnedList / alphaSections / tagSections / folderCards).
-          // Those only run when the user actually opens that view.
-          // 'Stream' walks all notes once on render; we approximate
-          // with notes.length for the badge.
-          { id: 'stream' as View, label: 'Stream', count: notes.length },
-          { id: 'recent' as View, label: 'Recent', count: Math.min(30, notes.length) },
-          { id: 'pinned' as View, label: 'Pinned', count: pinnedCount },
-          { id: 'tree' as View, label: 'Tree', count: notes.length },
-          { id: 'all' as View, label: 'All', count: notes.length },
-          { id: 'alpha' as View, label: 'A–Z', count: notes.length },
-          { id: 'tags' as View, label: 'Tags', count: tagCount },
-          { id: 'collections' as View, label: 'Collections', count: collections.length },
-          { id: 'folders' as View, label: 'Folders', count: folderCount },
-          ...(q.trim() ? [{ id: 'search' as View, label: 'Search', count: searchResults.length }] : [])
-        ] as t}
-          <button
-            onclick={() => {
-              // Clicking the All tab directly clears any folder/tag
-              // filter — those are only set via Folders cards or a
-              // Collection; hitting the tab on its own should mean
-              // "show everything".
-              if (t.id === 'all' && view !== 'all') { folderFilter = ''; tagFilter = ''; }
-              view = t.id;
-            }}
-            class="px-3 py-1.5 rounded transition-colors flex-shrink-0 snap-start
-              {view === t.id ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1 border border-surface1'}"
-          >
-            {t.label} <span class="opacity-70 ml-0.5">{t.count}</span>
-          </button>
-        {/each}
-        {#if view === 'all' && (folderFilter || tagFilter)}
-          {#if folderFilter}
-            <button
-              type="button"
-              onclick={() => (folderFilter = '')}
-              class="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded bg-surface0 text-warning hover:bg-surface1 flex-shrink-0"
-              title="Clear folder filter"
-            >
-              <span>📁</span>
-              <span class="font-medium">{folderFilter === '__root__' ? '/' : folderFilter}</span>
-              <span aria-hidden="true">×</span>
-            </button>
-          {/if}
-          {#if tagFilter}
-            <button
-              type="button"
-              onclick={() => (tagFilter = '')}
-              class="ml-1 inline-flex items-center gap-1 px-2 py-1 rounded bg-surface0 text-secondary hover:bg-surface1 flex-shrink-0"
-              title="Clear tag filter"
-            >
-              <span class="font-medium">#{tagFilter}</span>
-              <span aria-hidden="true">×</span>
-            </button>
-          {/if}
-        {/if}
-        {#if view === 'all'}
-          <!-- Sort options ride alongside the tabs in the same scroll
-               strip on mobile so they don't wrap to a second line and
-               push the list down; on sm+ they pin to the right side. -->
-          <span class="ml-auto flex items-center gap-1 text-dim flex-shrink-0">
-            <span class="hidden sm:inline">sort by</span>
-            <span class="sm:hidden text-[10px] uppercase tracking-wider">sort</span>
-            {#each [
-              { id: 'modified' as SortKey, label: 'modified' },
-              { id: 'created' as SortKey, label: 'created' },
-              { id: 'name' as SortKey, label: 'name' },
-              { id: 'size' as SortKey, label: 'size' }
-            ] as s}
-              <button
-                onclick={() => (sortKey = s.id)}
-                class="px-2 py-1 rounded flex-shrink-0 {sortKey === s.id ? 'text-primary font-medium' : 'hover:text-text'}"
-              >{s.label}</button>
-            {/each}
-          </span>
-        {/if}
-      </nav>
-      <!-- Right-edge fade — hints at off-screen tabs on the small
-           viewports where the strip overflows. Hidden on sm+ where
-           the strip typically fits. The fade uses color-mix on the
-           current theme's mantle so it works in light + dark
-           palettes without per-theme overrides. -->
-      <div
-        class="pointer-events-none absolute top-0 right-0 h-full w-6 sm:hidden"
-        style="background: linear-gradient(to left, var(--color-mantle), color-mix(in srgb, var(--color-mantle) 0%, transparent));"
-        aria-hidden="true"
-      ></div>
-    </div>
-  </header>
+  <!-- Quick-filter row. Renders only on 'all' (sort segmented +
+       folder/tag clear pills) and 'search' with an active query
+       (Save-as-collection). Self-hides on every other view. -->
+  <NotesQuickFilters
+    {view}
+    {folderFilter}
+    {tagFilter}
+    {sortKey}
+    searchActive={!!q.trim()}
+    onClearFolder={() => (folderFilter = '')}
+    onClearTag={() => (tagFilter = '')}
+    onPickSort={(s) => (sortKey = s)}
+    onSaveCollection={saveCurrentAsCollection}
+  />
 
   <div class="flex-1 min-h-0 overflow-hidden">
     {#if view === 'tree'}
@@ -1472,20 +1410,3 @@
   </div>
 {/if}
 
-<style>
-  /* Horizontally-scrolling view-tab strip on mobile. Snap so a
-     thumb-flick lands on a tab; hide the scrollbar so the right-
-     edge gradient (drawn by the sibling div) reads as the only
-     "more tabs" hint. Desktop with a wide viewport still gets the
-     scrollable strip but the gradient is hidden via sm:hidden so
-     it doesn't paint over a fully-visible toggle row. */
-  .notes-view-strip {
-    scroll-snap-type: x mandatory;
-    scroll-padding-left: 0.75rem;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .notes-view-strip::-webkit-scrollbar {
-    display: none;
-  }
-</style>
