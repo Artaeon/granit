@@ -15,7 +15,6 @@
   import GoalAgent from '$lib/goals/GoalAgent.svelte';
   import { isTypingTarget } from '$lib/util/isTypingTarget';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
-  import PageHeader from '$lib/components/PageHeader.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import {
@@ -28,6 +27,10 @@
   } from '$lib/goals/util';
   import GoalKanbanCard from '$lib/goals/GoalKanbanCard.svelte';
   import GoalCard from '$lib/goals/GoalCard.svelte';
+  import GoalsPageHeader from '$lib/goals/GoalsPageHeader.svelte';
+  import GoalsStatusChips from '$lib/goals/GoalsStatusChips.svelte';
+  import GoalsAICheckinPanel, { type CheckinEntry } from '$lib/goals/GoalsAICheckinPanel.svelte';
+  import GoalsAIAuditPanel, { type AuditFinding } from '$lib/goals/GoalsAIAuditPanel.svelte';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // View modes — `cards` is the rich card layout (the existing UI),
@@ -67,6 +70,10 @@
   let createOpen = $state(false);
   let detailOpen = $state(false);
   let selectedId = $state<string | null>(null);
+
+  // "More" dropdown — collapsed AI surface launcher. Reflects the
+  // open-state of either AI panel so the header tints the trigger.
+  let moreOpen = $state(false);
 
   // Tracks whether load() has resolved at least once. Drives the
   // skeleton vs empty-state choice — pre-resolution we render
@@ -137,11 +144,21 @@
       }
     };
     window.addEventListener('keydown', onKey);
+    // Click-outside dismiss for the More dropdown. Mirrors the
+    // /tasks page's pattern with the data-* marker on the trigger.
+    const onDocClick = (e: MouseEvent) => {
+      if (!moreOpen) return;
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest('[data-goals-more]')) return;
+      moreOpen = false;
+    };
+    document.addEventListener('click', onDocClick);
     return () => {
       unsub();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
       window.removeEventListener('keydown', onKey);
+      document.removeEventListener('click', onDocClick);
     };
   });
 
@@ -188,6 +205,10 @@
   function openDetail(g: Goal) {
     selectedId = g.id;
     detailOpen = true;
+  }
+  function openDetailById(id: string) {
+    const g = goals.find((x) => x.id === id);
+    if (g) openDetail(g);
   }
 
   let filtered = $derived.by(() => {
@@ -582,12 +603,6 @@
   // of each goal's milestones, target_date urgency, and linked-task
   // velocity (open + 4-week done count) so the model has enough to
   // tell drifting from healthy.
-  interface CheckinEntry {
-    id: string;            // matches Goal.id when the model gets it right
-    title: string;         // echoed goal title for safety in the render
-    verdict: 'on-track' | 'drifting' | 'dead' | string;
-    question: string;
-  }
   let checkinOpen = $state(false);
   let checkinBusy = $state(false);
   let checkinError = $state('');
@@ -791,6 +806,12 @@
   function checkinDismiss(e: CheckinEntry) {
     checkinHidden = new Set([...checkinHidden, e.id]);
   }
+  // Bare-rollup view for the AI checkin panel — drops the project
+  // field because the panel only reads open/done counts.
+  function checkinRollupFor(g: Goal): { open: number; done: number } {
+    const r = rollupFor(g);
+    return { open: r.open, done: r.done };
+  }
 
   // ─────────────────────────────────────────────────────────────────
   // AI "Goal alignment audit" — strategy/execution drift detector
@@ -806,13 +827,6 @@
   // family emergency). The model's job is to surface the pattern,
   // not to scold. The user can dismiss findings, mark a finding as
   // "intentional" (no action), or jump to /tasks to re-link.
-  interface AuditFinding {
-    cluster: string;        // human label, e.g. "support / maintenance"
-    count: number;          // tasks in this cluster
-    sample: string[];       // up to 3 example task texts
-    observation: string;    // one sentence — what's happening
-    question: string;       // one question — was it intentional?
-  }
   let auditOpen = $state(false);
   let auditBusy = $state(false);
   let auditError = $state('');
@@ -956,251 +970,89 @@
   function auditDismiss(f: AuditFinding) {
     auditDismissed = new Set([...auditDismissed, f.cluster]);
   }
+
+  // Header callback wiring — keeps the More dropdown closing when
+  // the user picks something inside it.
+  function onToggleMore() { moreOpen = !moreOpen; }
+  function onToggleCheckin() {
+    moreOpen = false;
+    if (checkinOpen) checkinClose();
+    else void runCheckin();
+  }
+  function onToggleAudit() {
+    moreOpen = false;
+    if (auditOpen) auditClose();
+    else void runAudit();
+  }
+
+  // Active-goals count is reused by the audit panel header.
+  let activeGoalsCount = $derived(goals.filter((g) => (g.status ?? 'active') === 'active').length);
 </script>
 
 <div class="h-full overflow-y-auto">
+  <!-- Slim page header — title, count chip, view picker, More menu,
+       primary "+ New goal" button. Replaces the prior PageHeader
+       strip + view-mode toolbar. -->
+  <GoalsPageHeader
+    view={viewMode}
+    totalCount={goals.length}
+    filteredCount={visibleGoals.length}
+    checkinOpen={checkinOpen}
+    checkinBusy={checkinBusy}
+    auditOpen={auditOpen}
+    auditBusy={auditBusy}
+    moreOpen={moreOpen}
+    onSelectView={(v) => (viewMode = v)}
+    onToggleMore={onToggleMore}
+    onToggleCheckin={onToggleCheckin}
+    onToggleAudit={onToggleAudit}
+    onCreate={() => (createOpen = true)}
+  />
+
   <!-- Container widens in kanban mode so the four columns have room
        to breathe. Cards / list stay at the original 4xl reading width
        so long titles remain comfortable. -->
   <div class="p-4 sm:p-6 lg:p-8 mx-auto {viewMode === 'kanban' ? 'max-w-7xl' : 'max-w-4xl'}">
     <VisionContextStrip />
-    <PageHeader
-      title="Goals"
-      subtitle="{goals.length} {goals.length === 1 ? 'goal' : 'goals'} · the things you're committing to in this season"
-    >
-      {#snippet actions()}
-        <button
-          type="button"
-          onclick={() => { if (checkinOpen) checkinClose(); else void runCheckin(); }}
-          disabled={checkinBusy}
-          class="px-3 py-1.5 border border-surface1 text-subtext rounded text-sm hover:border-primary hover:text-primary disabled:opacity-50"
-          title="Honest one-line verdict + a sharp question for each active goal"
-        >{checkinOpen ? '✕ check-in' : '✨ Weekly check-in'}</button>
-        <button
-          type="button"
-          onclick={() => { if (auditOpen) auditClose(); else void runAudit(); }}
-          disabled={auditBusy}
-          class="px-3 py-1.5 border border-surface1 text-subtext rounded text-sm hover:border-warning hover:text-warning disabled:opacity-50"
-          title="Surface tasks that don't advance any stated goal"
-        >{auditOpen ? '✕ audit' : '🔍 Alignment audit'}</button>
-        <!-- Goal Agent button removed; launches from the chat
-             sidebar via ?agent=1. -->
-        <button
-          onclick={() => (createOpen = true)}
-          class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
-        >+ New goal</button>
-      {/snippet}
-    </PageHeader>
 
-    <!-- Weekly check-in panel — page-level coaching surface that
-         reads every active + paused goal and proposes a one-line
-         verdict + one sharp question per goal. Streams as JSON; once
-         parsed, the user can save individual rows or the full batch
-         to today's jot, or just dismiss. -->
+    <!-- Weekly check-in + Alignment audit panels — toggled from the
+         More dropdown in the slim header. State machines stay on
+         this page; the components own the chrome. -->
     {#if checkinOpen}
-      <section class="mb-5 bg-surface0 border border-surface1 rounded-lg overflow-hidden">
-        <header class="px-4 py-2.5 border-b border-surface1 flex items-center gap-2">
-          <span class="text-sm font-medium text-text">Weekly check-in</span>
-          <span class="text-[11px] text-dim">{checkinScope.length} active/paused goal{checkinScope.length === 1 ? '' : 's'}</span>
-          <span class="flex-1"></span>
-          {#if checkinBusy}
-            <button
-              type="button"
-              onclick={() => checkinAbort?.abort()}
-              class="px-2 py-1 text-xs bg-surface1 text-subtext rounded hover:bg-surface2"
-            >Stop</button>
-          {:else}
-            {#if checkinEntries.length > 0 && checkinEntries.some((e) => !checkinHidden.has(e.id))}
-              <button
-                type="button"
-                onclick={checkinSaveAll}
-                class="px-2.5 py-1 text-xs bg-primary text-on-primary rounded hover:opacity-90"
-                title="Append all visible entries to today's jot"
-              >Save all to jot</button>
-            {/if}
-            <button
-              type="button"
-              onclick={() => void runCheckin()}
-              class="px-2 py-1 text-xs bg-surface1 text-subtext rounded hover:bg-surface2"
-              title="re-roll the check-in"
-            >↻ retry</button>
-          {/if}
-          <button
-            type="button"
-            onclick={checkinClose}
-            class="text-xs text-dim hover:text-text px-1"
-          >Dismiss</button>
-        </header>
-
-        {#if checkinError}
-          <div class="px-4 py-2 text-xs text-error bg-surface0 border-b border-error">{checkinError}</div>
-        {/if}
-
-        <div class="p-3 space-y-2">
-          {#if checkinBusy && checkinEntries.length === 0}
-            <div class="text-xs text-dim italic px-2 py-3 flex items-center gap-2">
-              <span class="inline-block w-1.5 h-3 bg-primary/60 animate-pulse rounded-sm"></span>
-              reading {checkinScope.length} goals — verdict + question coming…
-            </div>
-          {:else if checkinEntries.length === 0 && !checkinError}
-            <div class="text-xs text-dim italic px-2 py-3">No entries yet.</div>
-          {:else}
-            {#each checkinEntries as e (e.id + e.question)}
-              {#if !checkinHidden.has(e.id)}
-                {@const verdictTone = e.verdict === 'on-track' ? 'success'
-                  : e.verdict === 'drifting' ? 'warning'
-                  : e.verdict === 'dead' ? 'error'
-                  : 'subtext'}
-                <article class="p-3 bg-mantle border border-surface1 rounded">
-                  <div class="flex items-baseline gap-2 mb-1">
-                    <span class="text-sm font-medium text-text flex-1 min-w-0 break-words">{e.title}</span>
-                    <span
-                      class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium tabular-nums whitespace-nowrap"
-                      style="background: color-mix(in srgb, var(--color-{verdictTone}) 14%, transparent); color: var(--color-{verdictTone});"
-                    >{e.verdict}</span>
-                  </div>
-                  <p class="text-sm text-subtext italic leading-snug">"{e.question}"</p>
-                  <div class="flex items-center gap-2 mt-2 text-[11px]">
-                    <button
-                      type="button"
-                      onclick={() => void checkinSaveOne(e)}
-                      class="px-2 py-0.5 bg-surface1 text-primary rounded hover:bg-primary hover:text-on-primary"
-                      title="Append this entry to today's jot"
-                    >Save to jot</button>
-                    <button
-                      type="button"
-                      onclick={() => checkinDismiss(e)}
-                      class="text-dim hover:text-text"
-                    >Dismiss</button>
-                    {#if goals.some((g) => g.id === e.id)}
-                      <button
-                        type="button"
-                        onclick={() => { const g = goals.find((x) => x.id === e.id); if (g) openDetail(g); }}
-                        class="ml-auto text-secondary hover:underline"
-                      >Open goal →</button>
-                    {/if}
-                  </div>
-                </article>
-              {/if}
-            {/each}
-          {/if}
-        </div>
-
-        <!-- "What the AI saw" disclosure — keeps the design rule
-             that the user can always inspect the context. -->
-        {#if !checkinBusy && checkinEntries.length > 0}
-          <details class="px-4 py-2 border-t border-surface1 text-[11px] text-dim">
-            <summary class="cursor-pointer hover:text-text">What the AI saw</summary>
-            <ul class="mt-1.5 space-y-0.5 list-disc list-inside">
-              {#each checkinScope as g (g.id)}
-                {@const days = daysUntilTarget(g.target_date)}
-                {@const roll = rollupFor(g)}
-                {@const recent = recentDoneFor(g)}
-                <li>
-                  <span class="text-subtext">{g.title}</span>
-                  · {g.status ?? 'active'}
-                  {#if days !== null}· {days < 0 ? `${Math.abs(days)}d past` : `${days}d left`}{/if}
-                  · {(g.milestones ?? []).filter((m) => m.done).length}/{(g.milestones ?? []).length} ms
-                  · {roll.open}↗ tasks · {recent} done in 4w
-                </li>
-              {/each}
-            </ul>
-          </details>
-        {/if}
-      </section>
+      <GoalsAICheckinPanel
+        scope={checkinScope}
+        entries={checkinEntries}
+        hidden={checkinHidden}
+        busy={checkinBusy}
+        error={checkinError}
+        goals={goals}
+        rollupFor={checkinRollupFor}
+        recentDoneFor={recentDoneFor}
+        onAbort={() => checkinAbort?.abort()}
+        onRetry={() => void runCheckin()}
+        onClose={checkinClose}
+        onSaveOne={(e) => void checkinSaveOne(e)}
+        onSaveAll={checkinSaveAll}
+        onDismiss={checkinDismiss}
+        onOpenGoal={openDetailById}
+      />
     {/if}
 
-    <!-- Goal alignment audit panel — clusters of unlinked tasks that
-         aren't advancing any active goal. Each finding renders as a
-         tinted card with cluster label, count, sample tasks, an
-         observation and an "intentional?" question. The user can
-         dismiss findings, jump to /tasks to re-link, or close the
-         whole panel. -->
     {#if auditOpen}
-      <section class="mb-5 bg-surface0 border border-surface1 rounded-lg overflow-hidden">
-        <header class="px-4 py-2.5 border-b border-surface1 flex items-center gap-2 flex-wrap">
-          <span class="text-sm font-medium text-text">Alignment audit</span>
-          <span class="text-[11px] text-dim">
-            {auditScope.orphanOpen.length} unlinked open ·
-            {auditScope.orphanDoneRecent.length} unlinked done in 14d ·
-            {auditScope.linkedOpen + auditScope.linkedDone14} linked
-          </span>
-          <span class="flex-1"></span>
-          {#if auditBusy}
-            <button
-              type="button"
-              onclick={() => auditAbort?.abort()}
-              class="px-2 py-1 text-xs bg-surface1 text-subtext rounded hover:bg-surface2"
-            >Stop</button>
-          {:else}
-            <button
-              type="button"
-              onclick={() => void runAudit()}
-              class="px-2 py-1 text-xs bg-surface1 text-subtext rounded hover:bg-surface2"
-              title="re-roll the audit"
-            >↻ retry</button>
-          {/if}
-          <a
-            href="/tasks"
-            class="text-xs text-secondary hover:underline"
-            title="Open /tasks to re-link work to a goal"
-          >Open tasks →</a>
-          <button
-            type="button"
-            onclick={auditClose}
-            class="text-xs text-dim hover:text-text px-1"
-          >Dismiss</button>
-        </header>
-
-        {#if auditError}
-          <div class="px-4 py-2 text-xs text-error bg-surface0 border-b border-error">{auditError}</div>
-        {/if}
-
-        <div class="p-3 space-y-2">
-          {#if auditBusy && auditFindings.length === 0}
-            <div class="text-xs text-dim italic px-2 py-3 flex items-center gap-2">
-              <span class="inline-block w-1.5 h-3 bg-surface0 animate-pulse rounded-sm"></span>
-              clustering {auditScope.orphanOpen.length + auditScope.orphanDoneRecent.length} unlinked tasks against {goals.filter((g) => (g.status ?? 'active') === 'active').length} active goals…
-            </div>
-          {:else if auditFindings.length === 0 && !auditError}
-            <div class="text-xs text-dim italic px-2 py-3">No findings yet.</div>
-          {:else}
-            {#each auditFindings as f (f.cluster + f.observation)}
-              {#if !auditDismissed.has(f.cluster)}
-                <article class="p-3 bg-mantle border border-surface1 rounded border-l-4" style="border-left-color: var(--color-warning);">
-                  <div class="flex items-baseline gap-2 mb-1 flex-wrap">
-                    <span class="text-sm font-medium text-text flex-1 min-w-0 break-words">{f.cluster}</span>
-                    <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface0 text-warning tabular-nums">
-                      {f.count} task{f.count === 1 ? '' : 's'}
-                    </span>
-                  </div>
-                  <p class="text-sm text-subtext leading-snug">{f.observation}</p>
-                  {#if f.sample.length > 0}
-                    <ul class="mt-1.5 space-y-0.5 text-[11px] text-dim font-mono">
-                      {#each f.sample as s}
-                        <li class="truncate">— {s}</li>
-                      {/each}
-                    </ul>
-                  {/if}
-                  <p class="text-sm text-text italic mt-2">"{f.question}"</p>
-                  <div class="flex items-center gap-2 mt-2 text-[11px]">
-                    <button
-                      type="button"
-                      onclick={() => auditDismiss(f)}
-                      class="px-2 py-0.5 bg-surface1 text-subtext rounded hover:bg-surface2"
-                      title="It was intentional / I've heard you. Hide this finding."
-                    >Intentional</button>
-                    <a
-                      href="/tasks"
-                      class="ml-auto text-secondary hover:underline"
-                    >Re-link in /tasks →</a>
-                  </div>
-                </article>
-              {/if}
-            {/each}
-          {/if}
-        </div>
-      </section>
+      <GoalsAIAuditPanel
+        findings={auditFindings}
+        dismissed={auditDismissed}
+        busy={auditBusy}
+        error={auditError}
+        orphanOpenCount={auditScope.orphanOpen.length}
+        orphanDoneCount={auditScope.orphanDoneRecent.length}
+        linkedCount={auditScope.linkedOpen + auditScope.linkedDone14}
+        activeGoalsCount={activeGoalsCount}
+        onAbort={() => auditAbort?.abort()}
+        onRetry={() => void runAudit()}
+        onClose={auditClose}
+        onDismissFinding={auditDismiss}
+      />
     {/if}
 
     <!-- Hero "next target" card — surfaces the most-imminent active
@@ -1253,63 +1105,16 @@
       </button>
     {/if}
 
-    <!-- Status tabs + view-mode toggle. The view toggle is hidden in
-         the kanban layout (kanban already implies "by status" so the
-         status filter is decorative there — kept anyway so a user
-         narrowing to "active only" sees just one column without
-         switching back to cards). -->
-    <div class="flex flex-wrap items-center gap-2 mb-3">
-      <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm self-start flex-wrap">
-        {#each ['all', 'active', 'paused', 'completed', 'archived'] as s}
-          <button
-            class="px-3 py-1.5 capitalize {statusFilter === s ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-            onclick={() => (statusFilter = s as typeof statusFilter)}
-          >
-            {s} <span class="text-xs opacity-70">{counts[s as keyof typeof counts]}</span>
-          </button>
-        {/each}
-      </div>
-      <div class="ml-auto flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs">
-        <button
-          class="px-2.5 py-1.5 inline-flex items-center gap-1 {viewMode === 'cards' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-          onclick={() => (viewMode = 'cards')}
-          title="rich card layout"
-          aria-label="cards view"
-          aria-pressed={viewMode === 'cards'}
-        >
-          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="4" width="18" height="6" rx="1.5" />
-            <rect x="3" y="14" width="18" height="6" rx="1.5" />
-          </svg>
-          Cards
-        </button>
-        <button
-          class="px-2.5 py-1.5 inline-flex items-center gap-1 {viewMode === 'list' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-          onclick={() => (viewMode = 'list')}
-          title="compact list — denser, one row per goal"
-          aria-label="list view"
-          aria-pressed={viewMode === 'list'}
-        >
-          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M3 6h18" /><path d="M3 12h18" /><path d="M3 18h18" />
-          </svg>
-          List
-        </button>
-        <button
-          class="px-2.5 py-1.5 inline-flex items-center gap-1 {viewMode === 'kanban' ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-          onclick={() => (viewMode = 'kanban')}
-          title="kanban — columns by status"
-          aria-label="kanban view"
-          aria-pressed={viewMode === 'kanban'}
-        >
-          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="4" width="5" height="16" rx="1" />
-            <rect x="9.5" y="4" width="5" height="11" rx="1" />
-            <rect x="16" y="4" width="5" height="14" rx="1" />
-          </svg>
-          Kanban
-        </button>
-      </div>
+    <!-- Status quick-filter chips — replaces the old segmented pill
+         row with tone-tinted chips so the active filter reads off
+         the colour (active=primary, paused=warning, completed=
+         success, archived=dim). -->
+    <div class="mb-3">
+      <GoalsStatusChips
+        status={statusFilter}
+        counts={counts}
+        onSet={(s) => (statusFilter = s)}
+      />
     </div>
 
     <!-- Target-proximity stat strip — complements the hero card by
@@ -1333,7 +1138,9 @@
       </div>
     {/if}
 
-    <!-- Search + filter chips -->
+    <!-- Search + category/tag/venture chips. The chip row only
+         renders when at least one dimension has values; an empty
+         goals set sees just the search bar. -->
     <div class="mb-4 space-y-2">
       <input
         bind:value={q}
@@ -1469,15 +1276,18 @@
           {@const tone = goalTargetTone(g.status, g.target_date)}
           {@const roll = rollupFor(g)}
           {@const aiOpen = aiGoalId === g.id}
+          {@const isArchived = g.status === 'archived'}
+          {@const isCompleted = g.status === 'completed'}
+          {@const isStalled = stalledGoals.some((s) => s.id === g.id)}
           <article
-            class="bg-surface0 border border-surface1 rounded-lg overflow-hidden hover:border-primary transition-colors {tone ? 'border-l-4' : ''}"
+            class="bg-surface0 rounded-lg overflow-hidden transition-colors {tone ? 'border-l-4' : ''} {isArchived ? 'border border-dashed border-surface1' : 'border border-surface1 hover:border-primary'} {isStalled ? 'ring-1 ring-warning/30' : ''} {isCompleted ? 'opacity-90' : ''}"
             style={tone ? `border-left-color: var(--color-${tone});` : ''}
           >
             <GoalCard
               goal={g}
               progress={p}
               rollup={roll}
-              stalled={stalledGoals.some((s) => s.id === g.id)}
+              stalled={isStalled}
               onClick={() => openDetail(g)}
             />
 
@@ -1549,7 +1359,8 @@
            Each row: title · status pill · countdown chip · progress
            bar inline. Click anywhere on the row opens the detail
            drawer. Same urgency border-left as cards so the visual
-           language stays consistent. -->
+           language stays consistent. Completed/archived rows dim
+           to half-opacity so the eye stays on living work. -->
       <div class="bg-surface0 border border-surface1 rounded-lg overflow-hidden divide-y divide-surface1">
         {#each visibleGoals as g (g.id)}
           {@const p = progress(g)}
@@ -1557,10 +1368,11 @@
           {@const tone = goalTargetTone(g.status, g.target_date)}
           {@const chip = targetChip(g.target_date)}
           {@const roll = rollupFor(g)}
+          {@const rowDim = g.status === 'completed' ? 'opacity-70' : g.status === 'archived' ? 'opacity-55' : ''}
           <button
             type="button"
             onclick={() => openDetail(g)}
-            class="w-full text-left px-3 py-2 flex items-center gap-3 hover:bg-surface1 transition-colors {tone ? 'border-l-4' : 'border-l-4 border-l-transparent'}"
+            class="w-full text-left px-3 py-2 flex items-center gap-3 hover:bg-surface1 transition-colors {tone ? 'border-l-4' : 'border-l-4 border-l-transparent'} {rowDim}"
             style={tone ? `border-left-color: var(--color-${tone});` : ''}
           >
             <div class="flex-1 min-w-0">

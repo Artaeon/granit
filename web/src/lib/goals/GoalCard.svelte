@@ -54,12 +54,22 @@
       ? targetChip(goal.target_date)
       : null
   );
+  // Status-driven body opacity. Completed + archived goals are
+  // visually dimmed so the user's eye stays on what's still moving;
+  // active / paused / undefined render at full opacity. The dim is
+  // applied inside the card body (not on the wrapping article) so
+  // the urgency border-left + the stalled tint stay legible.
+  let bodyDim = $derived(
+    goal.status === 'completed' ? 'opacity-70'
+    : goal.status === 'archived' ? 'opacity-55'
+    : ''
+  );
 </script>
 
 <button
   type="button"
   onclick={onClick}
-  class="w-full text-left p-4 flex flex-col gap-2"
+  class="w-full text-left p-4 flex flex-col gap-2 {bodyDim}"
 >
   <div class="flex items-start gap-3">
     <div class="flex-1 min-w-0">
