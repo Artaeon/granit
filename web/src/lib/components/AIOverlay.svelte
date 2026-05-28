@@ -35,25 +35,29 @@
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import {
     AGENT_MODES,
-    GENERIC_MODES,
-    CONTEXTUAL_MODES,
     PERSONAS,
     findMode,
     loadModeId,
     persistModeId
   } from '$lib/ai/agents';
+  import { buildPrelude } from '$lib/chat/prelude';
+  import { commitParsedAction } from '$lib/chat/commitAction';
   import {
-    loadProjectContext,
-    renderProjectContext
-  } from '$lib/ai/projectManagerContext';
+    buildSaveThreadPayload,
+    buildAssistantNotePayload,
+    buildAssistantNoteRetryPath
+  } from '$lib/chat/saveToNote';
   import {
-    loadGoalContext,
-    renderGoalContext
-  } from '$lib/ai/goalManagerContext';
+    QUICK_ACTION_TITLES,
+    renderTriageProposals,
+    renderDeadlineProposals
+  } from '$lib/chat/quickActions';
+  import { suggestedModeForPath } from '$lib/chat/contextDefaults';
   import {
-    loadCalendarContext,
-    renderCalendarContext
-  } from '$lib/ai/calendarManagerContext';
+    projectContextChips,
+    CALENDAR_CONTEXT_CHIPS,
+    GOAL_CONTEXT_CHIPS
+  } from '$lib/chat/contextChips';
   import { deriveDraftTitle } from '$lib/ai/draftTitle';
   import {
     getThread,
@@ -67,7 +71,12 @@
     deriveLibraryLabel
   } from '$lib/chat/history';
   import { findPrecedingUserIndex, buildBranchTitle, pruneNumKeyedRecord } from '$lib/chat/branch';
-  import { retrieveForRag, type RagHit } from '$lib/chat/rag';
+  import type { RagHit } from '$lib/chat/rag';
+  import { loadOverlayHistory, persistOverlayHistory } from '$lib/chat/overlaySessionHistory';
+  import {
+    handleSlashCommand as runSlashCommand,
+    formatMemoryAsAssistantContent
+  } from '$lib/chat/slashCommands';
   import {
     parseFollowups,
     parseActions,
@@ -75,16 +84,12 @@
     actionKey,
     type ParsedAction
   } from '$lib/chat/actionParser';
-  import { slugifyTitle } from '$lib/util/slug';
   import { todayISO } from '$lib/util/date';
-  import {
-    createSpeechRecognition,
-    isSpeechRecognitionSupported,
-    type SpeechRecognitionLike
-  } from '$lib/util/speechRecognition';
+  import { createVoiceDictation } from '$lib/chat/voiceDictation.svelte';
   import SlashCommandPicker from '$lib/components/SlashCommandPicker.svelte';
   import MentionPicker, { type MentionRef } from '$lib/components/MentionPicker.svelte';
   import ChatHistoryRail from '$lib/components/ChatHistoryRail.svelte';
+  import ChatModePicker from '$lib/components/aioverlay/ChatModePicker.svelte';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { hasActiveEditor, insertAtCursor } from '$lib/stores/active-editor';
   import { record as recordSharedPrompt, list as listSharedPrompts, type RecentPrompt } from '$lib/ai/recentPrompts';
@@ -373,38 +378,14 @@
   // close or explicit reset. The full /chat page is still the
   // place for save-as-note and long-running multi-day threads;
   // this layer keeps a quick question alive long enough to come
-  // back to it after a tangent.
-  const HISTORY_KEY = 'granit.ai.overlay.messages';
-  function loadHistory(): ChatMessage[] {
-    if (typeof sessionStorage === 'undefined') return [];
-    try {
-      const raw = sessionStorage.getItem(HISTORY_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter(
-        (m): m is ChatMessage =>
-          m && typeof m === 'object' && typeof m.role === 'string' && typeof m.content === 'string'
-      );
-    } catch {
-      return [];
-    }
-  }
-  function persistHistory(list: ChatMessage[]) {
-    if (typeof sessionStorage === 'undefined') return;
-    try {
-      // Cap to ~30 messages to keep sessionStorage tidy. Older
-      // turns drop quietly; the user is unlikely to want a
-      // 100-turn quick-overlay thread (that's what /chat is for).
-      const trimmed = list.length > 30 ? list.slice(-30) : list;
-      sessionStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
-    } catch {}
-  }
-  let messages = $state<ChatMessage[]>(loadHistory());
+  // back to it after a tangent. The cap + key live in the
+  // overlaySessionHistory helper so any future surface that wants
+  // to share the same in-flight draft can use one definition.
+  let messages = $state<ChatMessage[]>(loadOverlayHistory());
   let input = $state('');
   $effect(() => {
     void messages.length;
-    persistHistory(messages);
+    persistOverlayHistory(messages);
   });
 
   // Cross-source recents the chat overlay surfaces above the composer
@@ -975,7 +956,7 @@
 
   function close() {
     abort?.abort();
-    if (recording) stopVoice();
+    if (voice.recording) stopVoice();
     // When pinned, the close button instead unpins (so the user
     // gets an obvious "remove this panel" action). Without this,
     // close-via-X would do nothing visible since `open` stays true
@@ -1117,36 +1098,27 @@
   // model's suggestions so the user can decide whether to navigate
   // there. Keeps the overlay simple.
   async function runBriefing() {
-    await runQuick('Daily briefing', async (s) => {
+    await runQuick(QUICK_ACTION_TITLES.briefing, async (s) => {
       const r = await api.aiDailyBriefing(s);
       return r.markdown;
     });
   }
   async function runSynopsis() {
-    await runQuick('Weekly synopsis', async (s) => {
+    await runQuick(QUICK_ACTION_TITLES.synopsis, async (s) => {
       const r = await api.aiWeeklyReview(s);
       return r.markdown;
     });
   }
   async function runTriage() {
-    await runQuick('Inbox triage', async (s) => {
+    await runQuick(QUICK_ACTION_TITLES.triage, async (s) => {
       const r = await api.aiInboxTriage(s);
-      const props = r.proposals ?? [];
-      if (props.length === 0) return '_No untriaged tasks to review._';
-      const lines = props.map(
-        (p) =>
-          `- **${p.priority === 0 ? 'drop' : `P${p.priority}`}** · ${p.schedule} · ${p.rationale} _(${p.id})_`
-      );
-      return `${lines.length} suggestion${lines.length === 1 ? '' : 's'} — open /tasks → inbox to apply:\n\n${lines.join('\n')}`;
+      return renderTriageProposals(r.proposals ?? []);
     });
   }
   async function runDeadlines() {
-    await runQuick('Detect deadlines', async (s) => {
+    await runQuick(QUICK_ACTION_TITLES.deadlines, async (s) => {
       const r = await api.aiDeadlineDetect(s);
-      const props = r.proposals ?? [];
-      if (props.length === 0) return '_No clear deadlines detected._';
-      const lines = props.map((p) => `- **${p.due_date}** · ${p.rationale} _(${p.id})_`);
-      return `${lines.length} deadline${lines.length === 1 ? '' : 's'} detected — open /tasks → inbox to apply:\n\n${lines.join('\n')}`;
+      return renderDeadlineProposals(r.proposals ?? []);
     });
   }
 
@@ -1195,79 +1167,10 @@
   // A leading slash that doesn't match falls through to normal
   // chat — so a user pasting code with a leading "/" doesn't get
   // accidentally intercepted unless the first word is a real cmd.
-  const SLASH_HELP = `**Modes** (top-left in this panel)
-
-  - **General** — balanced help across writing, planning, questions
-  - **Research** — grounded answers, named sources, no invention (RAG on)
-  - **Writer** — drafting partner, matches your voice
-  - **Coach** — Socratic, questions over answers (RAG on)
-  - **Analyst** — evidence-first, what would falsify the claim (RAG on)
-  - **Architect** — trade-offs + recommendations for system design
-
-**Personas** (sharper voices in the same picker)
-
-  - **Lewis** — C.S. Lewis-style writing critic
-  - **Aurelius** — Stoic counsel: brief, stern, kind
-  - **Socrates** — questions over answers, sharpens half-formed thoughts
-  - **Chrysostom** — scripture commentator in the classical tradition
-  - **Founder** — operator coach, ship-this-week energy
-  - **Magister** — patient tutor for technical concepts, slow and concrete
-  - **Examen** — gentle bedtime companion, soft examen-style questions
-
-  Toggle **RAG** to search the vault for relevant notes per question.
-
-**Shortcuts**
-
-  - <kbd>Mod+J</kbd> — toggle this panel
-  - <kbd>Mod+1..9</kbd> — switch agent mode/persona by position
-  - **🎤 mic** in the input row — voice dictation (browser STT)
-  - **save** in the header — write the thread to \`chat-history/\` as a note
-
-**Slash commands**
-
-  - \`/help\` — show this list
-  - \`/clear\` — reset the conversation (saves to history first)
-  - \`/new\` — start a fresh thread (current is preserved)
-  - \`/save\` — save the current thread under \`chat-history/\`
-  - \`/briefing\` — daily briefing (today's events + tasks)
-  - \`/synopsis\` — weekly synopsis (Wins / Setbacks / Learned / Next)
-  - \`/triage\` — inbox triage proposals
-  - \`/deadlines\` — detect deadlines in untimed tasks
-  - \`/mode <id>\` — switch agent mode (general/research/writer/coach/analyst/architect)
-  - \`/persona <id>\` — switch persona (lewis/aurelius/socrates/...)
-  - \`/rag\` — toggle RAG retrieval for the next turn
-  - \`/forget\` — drop snapshot/note attachment + queued @-mentions
-
-**Reference vault entities**
-
-  Type \`@\` in the composer to pop a picker for tasks, goals,
-  projects, deadlines, events, and notes. Pick → the entity's
-  fields (id, title, due date, status…) fold into a strict system
-  message so the assistant grounds its reply in real data.
-
-**Thread history**
-
-  Every thread auto-saves to local storage (last 30, oldest drop).
-  Click the clock icon in the header to browse + search your saved
-  chats and pinned replies. Click ☆ on any assistant message to
-  pin it across thread eviction. Click the fork glyph to branch
-  the thread from that message into a new conversation.
-
-**Where AI lives in granit**
-
-  - **Note editor** — \`Mod-Shift-A\` ask about selection · \`Mod-Shift-/\` ask about section · \`Mod-Alt-Space\` continue writing · link suggester in the right rail
-  - **/morning** — "Suggest from tasks" picks today's #1 focus
-  - **/tasks** — "Top 3" focus picker · inbox triage · deadline detect
-  - **/calendar** — "Plan my week" agent
-  - **/goals** — "Suggest milestones" on goal detail
-  - **/projects** — AI summary on project detail
-  - **/vision** — "Harden vision" critic
-  - **/examen** — gentle reflection prompts per section
-  - **/people** — "Suggest 3" reach-outs based on cadence + notes
-  - **/habits** — pattern insights from last 30 days
-
-  Press <kbd>Mod+J</kbd> to toggle this panel anywhere in granit.`;
-
+  // The router + SLASH_HELP text live in $lib/chat/slashCommands;
+  // this component wires it to local state via the handler closures
+  // below.
+  //
   // Slash-command picker — extracted to $lib/components/SlashCommandPicker.svelte.
   // Owns the dropdown UI, filter logic, and keyboard navigation. The
   // parent keeps the open flag so Esc-from-anywhere can dismiss it
@@ -1296,160 +1199,82 @@
   }
 
   function handleSlashCommand(raw: string): boolean {
-    const trimmed = raw.trim();
-    const parts = trimmed.split(/\s+/);
-    const cmd = parts[0].toLowerCase();
-    const arg = parts.slice(1).join(' ').trim();
-    switch (cmd) {
-      case '/help':
-        // Render help inline as an assistant message — keeps the
-        // result in the persisted thread so a follow-up ("ok now
-        // briefing") still sees the user's prior context.
+    // The router lives in $lib/chat/slashCommands; we hand it the
+    // local closures it needs and let it own the switch. The router
+    // does NOT clear `input` itself (that's a Svelte $state concern)
+    // — we do that up-front here so every path returns to a clean
+    // composer the moment we know the command was recognised.
+    const handled = runSlashCommand(raw, AGENT_MODES, {
+      appendAssistantReply: (userText, assistantContent) => {
         messages = [
           ...messages,
-          { role: 'user', content: raw },
-          { role: 'assistant', content: SLASH_HELP }
+          { role: 'user', content: userText },
+          { role: 'assistant', content: assistantContent }
         ];
-        input = '';
-        return true;
-      case '/clear':
-        clearChat();
-        input = '';
-        return true;
-      case '/new':
-        startNewThread();
-        input = '';
-        return true;
-      case '/save':
-        input = '';
-        void saveThreadAsNote();
-        return true;
-      case '/briefing':
-        input = '';
-        void runBriefing();
-        return true;
-      case '/synopsis':
-        input = '';
-        void runSynopsis();
-        return true;
-      case '/triage':
-        input = '';
-        void runTriage();
-        return true;
-      case '/deadlines':
-        input = '';
-        void runDeadlines();
-        return true;
-      case '/remember':
-        // Persist a fact to long-term memory. Same flow as a
-        // remember-this action chip but driven by the user — they
-        // can capture something the model said, or a fact they
-        // want recorded directly without an AI round-trip.
-        input = '';
-        if (!arg) {
-          toast.info('usage: /remember <fact about yourself>');
-          return true;
-        }
-        (async () => {
-          try {
-            const f = await api.addAIMemory(arg, []);
-            await loadAIMemory();
-            toast.success(`Remembered · ${f.content.slice(0, 60)}`);
-          } catch (err) {
-            toast.error('Memory add failed: ' + errorMessage(err));
-          }
-        })();
-        return true;
-      case '/memory':
-        // Surface the current memory inline so the user can audit
-        // what the model is being told about them, and copy fact
-        // IDs for /forget-fact. Renders as an assistant message so
-        // it ends up in the persisted thread.
-        input = '';
-        (async () => {
+      },
+      clearChat,
+      startNewThread,
+      saveThreadAsNote,
+      runBriefing,
+      runSynopsis,
+      runTriage,
+      runDeadlines,
+      rememberFact: async (fact) => {
+        try {
+          const f = await api.addAIMemory(fact, []);
           await loadAIMemory();
-          if (aiMemoryFacts.length === 0) {
-            messages = [
-              ...messages,
-              { role: 'user', content: raw },
-              { role: 'assistant', content: '_(no long-term memory recorded yet. Use `/remember <fact>` to add one.)_' }
-            ];
-            return;
-          }
-          const lines = aiMemoryFacts
-            .map((f, i) => `${i + 1}. ${f.content}${f.tags && f.tags.length > 0 ? ` _(${f.tags.join(', ')})_` : ''} · \`${f.id.slice(0, 6)}\``)
-            .join('\n');
-          messages = [
-            ...messages,
-            { role: 'user', content: raw },
-            {
-              role: 'assistant',
-              content: `**Long-term memory (${aiMemoryFacts.length} fact${aiMemoryFacts.length === 1 ? '' : 's'}):**\n\n${lines}\n\n_Use \`/forget-fact <id-prefix>\` to remove one._`
-            }
-          ];
-        })();
-        return true;
-      case '/forget-fact':
-        input = '';
-        if (!arg) {
-          toast.info('usage: /forget-fact <id-prefix>');
-          return true;
+          toast.success(`Remembered · ${f.content.slice(0, 60)}`);
+        } catch (err) {
+          toast.error('Memory add failed: ' + errorMessage(err));
         }
-        (async () => {
+      },
+      showMemory: async (userText) => {
+        await loadAIMemory();
+        messages = [
+          ...messages,
+          { role: 'user', content: userText },
+          { role: 'assistant', content: formatMemoryAsAssistantContent(aiMemoryFacts) }
+        ];
+      },
+      forgetFact: async (idPrefix) => {
+        await loadAIMemory();
+        const match = aiMemoryFacts.find((f) => f.id.toLowerCase().startsWith(idPrefix.toLowerCase()));
+        if (!match) {
+          toast.error(`No fact id starts with "${idPrefix}"`);
+          return;
+        }
+        try {
+          await api.deleteAIMemory(match.id);
           await loadAIMemory();
-          const match = aiMemoryFacts.find((f) => f.id.toLowerCase().startsWith(arg.toLowerCase()));
-          if (!match) {
-            toast.error(`No fact id starts with "${arg}"`);
-            return;
-          }
-          try {
-            await api.deleteAIMemory(match.id);
-            await loadAIMemory();
-            toast.success(`Forgot · ${match.content.slice(0, 50)}`);
-          } catch (err) {
-            toast.error('Forget failed: ' + errorMessage(err));
-          }
-        })();
-        return true;
-      case '/mode':
-      case '/persona': {
-        if (!arg) {
-          toast.info(`usage: ${cmd} <id>`);
-          input = '';
-          return true;
+          toast.success(`Forgot · ${match.content.slice(0, 50)}`);
+        } catch (err) {
+          toast.error('Forget failed: ' + errorMessage(err));
         }
-        const wanted = arg.toLowerCase();
-        const target = AGENT_MODES.find((m) => m.id.toLowerCase() === wanted || m.label.toLowerCase() === wanted);
-        if (!target) {
-          toast.error(`Unknown ${cmd === '/mode' ? 'mode' : 'persona'}: ${arg}`);
-          input = '';
-          return true;
-        }
-        selectMode(target.id);
-        toast.success(`${target.glyph} ${target.label} — ${target.tagline}`);
-        input = '';
-        return true;
-      }
-      case '/rag':
+      },
+      selectModeAndToast: (m) => {
+        selectMode(m.id);
+        toast.success(`${m.glyph} ${m.label} — ${m.tagline}`);
+      },
+      unknownModeOrPersona: (kind, arg) => {
+        toast.error(`Unknown ${kind}: ${arg}`);
+      },
+      toggleRag: () => {
         rag = !rag;
         toast.success(`RAG ${rag ? 'on' : 'off'} for the next turn.`);
         announce(`RAG ${rag ? 'enabled' : 'disabled'}`);
-        input = '';
-        refocusComposer();
-        return true;
-      case '/forget':
-      case '/detach':
+      },
+      detachContext: () => {
         attachNote = false;
         attachSnapshot = false;
         mentionedRefs = [];
-        input = '';
         toast.success('Context detached for the next message.');
         announce('Context detached for next message');
-        refocusComposer();
-        return true;
-      default:
-        return false;
-    }
+      },
+      usageError: (msg) => toast.info(msg),
+      refocusComposer
+    });
+    if (handled) input = '';
+    return handled;
   }
 
   // ── @-mention picker ───────────────────────────────────────────
@@ -1473,113 +1298,47 @@
   // QuickCaptureWidget — graceful fallback when unsupported
   // (Firefox desktop). Auto-restart on Chrome's silence-end so a
   // long thought continues to capture without the user re-clicking.
-  let voiceSupported = $derived(isSpeechRecognitionSupported());
-  let recording = $state(false);
-  let recognition: SpeechRecognitionLike | null = null;
-  let voiceBaseline = ''; // input value when recording started — finals append to this
-
-  function startVoice() {
-    if (recording) return;
-    const r = createSpeechRecognition();
-    if (!r) return;
-    voiceBaseline = input.endsWith(' ') || input.length === 0 ? input : input + ' ';
-    recognition = r;
-    r.continuous = true;
-    r.interimResults = true;
-    r.lang = navigator.language || 'en-US';
-    r.onresult = (ev) => {
-      let interim = '';
-      let final = '';
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const res = ev.results[i];
-        if (!res || !res[0]) continue;
-        const text = res[0].transcript;
-        if (res.isFinal) final += text + ' ';
-        else interim += text;
-      }
-      if (final) voiceBaseline += final;
-      input = (voiceBaseline + interim).replace(/\s+/g, ' ').trim();
-    };
-    r.onerror = () => {};
-    r.onend = () => {
-      // Chrome auto-ends on silence — restart while we're still
-      // in recording mode so a long thought continues.
-      if (recording && recognition) {
-        try { recognition.start(); } catch {}
-      }
-    };
-    try {
-      r.start();
-      recording = true;
-    } catch {}
-  }
-  function stopVoice() {
-    recording = false;
-    try { recognition?.stop(); } catch {}
-    recognition = null;
-  }
-  function toggleVoice() {
-    if (recording) stopVoice();
-    else startVoice();
-  }
+  // The recognition lifecycle + baseline-merge math lives in
+  // $lib/chat/voiceDictation.svelte.ts; this component just hands
+  // it accessors to the `input` $state.
+  const voice = createVoiceDictation({
+    getInput: () => input,
+    setInput: (next) => { input = next; }
+  });
+  const voiceSupported = voice.supported;
+  function toggleVoice() { voice.toggle(); }
+  function stopVoice() { voice.stop(); }
 
   // ── Save thread as note ────────────────────────────────────────
   // Persists the current overlay conversation as a markdown note
   // under chat-history/YYYY-MM-DD-HHmm-<slug>.md. Useful when a
   // chat lands on a real insight worth keeping; the dedicated
   // /chat page is for long-running threads, this is the quick
-  // 'this was a good answer, save it' move from any page.
+  // 'this was a good answer, save it' move from any page. The
+  // payload assembly (path stem, frontmatter, body lines) lives
+  // in $lib/chat/saveToNote; the createNote call + toasts stay
+  // here so the loading state + error surfaces are local.
   let saving = $state(false);
-  // Use the shared slugifier — the inline copy was slightly looser
-  // (kept underscores, capped at 60 instead of 80) but the diff is
-  // negligible for chat-thread filenames.
-  const slugify = slugifyTitle;
   async function saveThreadAsNote() {
     if (saving) return;
-    if (messages.length === 0 && !quickResult) {
+    const payload = buildSaveThreadPayload({
+      messages,
+      quickTitle,
+      quickResult,
+      modeId: mode.id,
+      modeLabel: mode.label,
+      rag,
+      lastRagHits,
+      now: new Date()
+    });
+    if (!payload) {
       toast.info('Nothing to save yet.');
       return;
     }
     saving = true;
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mi = String(now.getMinutes()).padStart(2, '0');
-    const firstUser = messages.find((m) => m.role === 'user')?.content ?? quickTitle ?? 'chat';
-    const slug = slugify(firstUser) || 'chat';
-    const path = `chat-history/${yyyy}-${mm}-${dd}-${hh}${mi}-${slug}.md`;
-    // Body: human-readable transcript with mode + RAG metadata.
-    const lines: string[] = [
-      '# ' + (firstUser.length > 80 ? firstUser.slice(0, 80) + '…' : firstUser),
-      '',
-      `> mode: **${mode.label}** · ${rag ? 'RAG on' : 'RAG off'} · captured ${now.toLocaleString()}`,
-      ''
-    ];
-    if (quickResult) {
-      lines.push('## ' + (quickTitle || 'Quick result'), '', quickResult, '');
-    }
-    for (const m of messages) {
-      lines.push(m.role === 'user' ? '## You' : '## Assistant', '', m.content, '');
-    }
-    if (lastRagHits.length > 0) {
-      lines.push('## Sources retrieved', '');
-      for (const h of lastRagHits) lines.push(`- [[${h.path}|${h.title}]]`);
-    }
     try {
-      await api.createNote({
-        path,
-        frontmatter: {
-          type: 'chat',
-          mode: mode.id,
-          rag,
-          captured_at: now.toISOString(),
-          tags: ['chat', mode.id]
-        },
-        body: lines.join('\n')
-      });
-      toast.success('Saved · ' + path);
+      await api.createNote(payload);
+      toast.success('Saved · ' + payload.path);
     } catch (e) {
       toast.error('save failed: ' + (errorMessage(e)));
     } finally {
@@ -1649,42 +1408,14 @@
     }
     savingMessageIdx = idx;
     const title = deriveDraftTitle(cleaned, todayISO());
-    // Folder picked by context. Project takes precedence (the
-    // Projects/<name> folder is where its notes tab looks);
-    // goal-mode drafts land in a goal-scoped subfolder so they're
-    // discoverable per goal; calendar drafts go to Calendar/.
-    // Everything else lands under Drafts/.
-    const folder = currentProjectName
-      ? `Projects/${slugify(currentProjectName) || currentProjectName}`
-      : currentGoalId
-      ? `Goals/${slugify(currentGoalId) || currentGoalId}`
-      : onCalendarPage
-      ? 'Calendar/Drafts'
-      : 'Drafts';
-    const baseSlug = slugify(title) || 'draft';
-    const basePath = `${folder}/${baseSlug}.md`;
-    // Auto-suffix retry on path collision so saving the same
-    // draft twice doesn't surface a scary "save failed" toast
-    // and doesn't silently overwrite the first note. The suffix
-    // is "HHmm" from the current time — short, sortable, and
-    // unique enough for a single user.
-    // Cross-link frontmatter — carries the source context so the
-    // saved note can render a "from chat about X" badge AND so
-    // the project's notes tab (or future goal/calendar notes
-    // surfaces) can list AI drafts even when they live outside
-    // the entity's natural folder. project / goal / calendar are
-    // mutually exclusive in autoMode but the user might also be
-    // in a contextual mode manually — capture what's actually
-    // in scope, not what autoMode says.
-    const frontmatter: Record<string, unknown> = {
-      type: 'ai-draft',
-      mode: mode.id,
-      captured_at: new Date().toISOString(),
-      tags: ['ai-draft', mode.id]
-    };
-    if (currentProjectName) frontmatter.project = currentProjectName;
-    if (currentGoalId) frontmatter.goal = currentGoalId;
-    if (onCalendarPage) frontmatter.calendar_window = true;
+    const { basePath, folder, baseSlug, frontmatter } = buildAssistantNotePayload({
+      cleanedContent: cleaned,
+      title,
+      modeId: mode.id,
+      currentProjectName,
+      currentGoalId,
+      onCalendarPage
+    });
     try {
       let finalPath = basePath;
       try {
@@ -1694,9 +1425,7 @@
         // Any other error rethrows to the outer toast handler.
         const msg = errorMessage(err);
         if (!/already exists|409/i.test(msg)) throw err;
-        const now = new Date();
-        const suffix = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-        finalPath = `${folder}/${baseSlug}-${suffix}.md`;
+        finalPath = buildAssistantNoteRetryPath(folder, baseSlug, new Date());
         await api.createNote({ path: finalPath, frontmatter, body: cleaned });
       }
       toast.success(`Saved · ${finalPath}`, {
@@ -1742,42 +1471,10 @@
   });
 
   // ── Agent-capabilities system instruction ──────────────────────
-  // One system message describing the structured-output channels
-  // (follow-ups + action chips). Injected on the FIRST turn of every
-  // new thread, like the vault snapshot — re-injecting on every turn
-  // burns tokens for instructions the model has already internalised.
-  //
-  // Kept terse: each shape gets a one-line example, no prose
-  // elaboration. The shorter this block, the lower the token cost
-  // per new thread.
-  const AGENT_CAPABILITIES_SYSTEM = `Granit gives you two structured-output channels that turn parts of your reply into one-tap UI in the user's chat overlay. Use them when they would help the user act on your answer — not speculatively.
-
-FOLLOW-UPS — at the very end of your reply (no other text after), append a single <followups>...</followups> block with up to 3 short prompts the user might naturally want next, one per line. Skip entirely when nothing useful comes to mind.
-
-<followups>
-Want me to break this into subtasks?
-Should I draft the email reply?
-</followups>
-
-VAULT ACTIONS — when you propose creating something in the user's vault, emit a fenced "granit-action" JSON block:
-
-\`\`\`granit-action
-{"type":"task","text":"Call Anna about the contract","dueDate":"2026-05-12","priority":2}
-\`\`\`
-
-\`\`\`granit-action
-{"type":"event","title":"Lunch with Sarah","start":"2026-05-12T13:00:00","end":"2026-05-12T14:00:00","location":"Centro"}
-\`\`\`
-
-\`\`\`granit-action
-{"type":"note","title":"Reading list","body":"- Meditations\\n- The Brothers Karamazov\\n","folder":"Lists"}
-\`\`\`
-
-\`\`\`granit-action
-{"type":"remember","content":"User's wife is named Anna","tags":["family"]}
-\`\`\`
-
-Fields: task.text required; dueDate/priority/notePath optional. event.title+start required; end/location optional. note.title+body required; folder optional. remember.content required; tags optional. priority is 1 (low) to 3 (high). Dates use YYYY-MM-DD; datetimes use floating ISO (no Z). Emit zero or many; the user picks which to commit.`;
+  // Lives in $lib/chat/prelude.ts together with the per-turn prelude
+  // assembly. Injected on the FIRST turn of every new thread, like
+  // the vault snapshot — re-injecting on every turn burns tokens
+  // for instructions the model has already internalised.
 
   // Already-committed action chips per message id — keyed by the
   // action's stable signature (see $lib/chat/actionParser.actionKey)
@@ -1789,62 +1486,14 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
   async function commitAction(msgIdx: number, a: ParsedAction) {
     const key = actionKey(msgIdx, a);
     if (committedActions[key]) return;
-    try {
-      if (a.type === 'task') {
-        // Default notePath: the user's current page when it's a
-        // note (so the task lives where they're working), else
-        // today's daily — same pattern QuickCaptureFab uses. The
-        // create-task endpoint auto-materialises Daily/<date>.md
-        // when it doesn't exist yet.
-        const np = a.notePath || (currentNotePath || `Daily/${todayISO()}.md`);
-        await api.createTask({
-          notePath: np,
-          text: a.text,
-          dueDate: a.dueDate || undefined,
-          priority: a.priority,
-          section: '## Tasks'
-        });
-        toast.success(`Task added · ${a.text.slice(0, 50)}`);
-      } else if (a.type === 'event') {
-        // Parse the start to derive the date + HH:MM split events.json
-        // wants. Floating ISO ("2026-05-12T13:00:00") parses cleanly
-        // as local; if the model emitted Z we strip the offset so we
-        // store the wall-clock the user typed, matching how native
-        // events round-trip.
-        const startStr = a.start.replace(/Z$/, '').replace(/[+-]\d{2}:\d{2}$/, '');
-        const startDate = startStr.slice(0, 10);
-        const startTime = startStr.slice(11, 16);
-        const endStr = (a.end ?? '').replace(/Z$/, '').replace(/[+-]\d{2}:\d{2}$/, '');
-        const endTime = endStr.slice(11, 16);
-        await api.createEvent({
-          title: a.title,
-          date: startDate,
-          start_time: startTime,
-          end_time: endTime || undefined,
-          location: a.location || undefined
-        });
-        toast.success(`Event added · ${a.title}`);
-      } else if (a.type === 'note') {
-        const folder = (a.folder ?? '').trim();
-        const slug = a.title.replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').toLowerCase() || 'note';
-        const path = folder ? `${folder.replace(/\/+$/, '')}/${slug}.md` : `${slug}.md`;
-        await api.createNote({
-          path,
-          frontmatter: { title: a.title },
-          body: a.body
-        });
-        toast.success(`Note created · ${path}`, {
-          action: { label: 'Open', href: `/notes/${encodeURIComponent(path)}` }
-        });
-      } else if (a.type === 'remember') {
-        await api.addAIMemory(a.content, a.tags);
-        toast.success('Saved to memory');
-        await loadAIMemory();
-      }
-      committedActions = { ...committedActions, [key]: true };
-    } catch (err) {
-      toast.error('Action failed: ' + errorMessage(err));
-    }
+    const ok = await commitParsedAction(a, {
+      api,
+      toast,
+      currentNotePath,
+      defaultDailyNotePath: `Daily/${todayISO()}.md`,
+      onMemoryAdded: loadAIMemory
+    });
+    if (ok) committedActions = { ...committedActions, [key]: true };
   }
 
   function sendFollowup(prompt: string) {
@@ -1861,17 +1510,10 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
   function applyContextDefaults() {
     if (contextDefaultsApplied) return;
     if (typeof window === 'undefined') return;
-    const path = $page.url.pathname;
-    // Map routes → mode. Conservative: only flip on routes where the
-    // mode shift is obviously useful. /notes/X already has its own
-    // attach-current-note logic; the rest live here.
-    let suggested: string | null = null;
-    if (path.startsWith('/tasks')) suggested = 'analyst';
-    else if (path.startsWith('/calendar')) suggested = 'analyst';
-    else if (path.startsWith('/goals') || path.startsWith('/ventures')) suggested = 'coach';
-    else if (path.startsWith('/projects')) suggested = 'architect';
-    else if (path.startsWith('/examen')) suggested = 'examen';
-    else if (path.startsWith('/prayer') || path.startsWith('/bible') || path.startsWith('/scripture')) suggested = 'aurelius';
+    // Path → mode mapping lives in $lib/chat/contextDefaults; we only
+    // override the user's pick when they're parked on the default
+    // 'general' mode so a deliberate choice never gets clobbered.
+    const suggested = suggestedModeForPath($page.url.pathname);
     if (suggested && mode.id === 'general') {
       const target = AGENT_MODES.find((m) => m.id === suggested);
       if (target) {
@@ -1909,189 +1551,64 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
     // AI menu can offer this prompt as a chat-source recent next
     // time the user opens it on a note. Non-fatal if storage fails.
     recordSharedPrompt({ prompt: text, source: 'chat' });
-    // Build the prelude — a system message containing the
-    // active agent mode's posture, optionally the vault snapshot
-    // (on non-note routes when attached), optionally retrieved
-    // RAG hits (when rag=true). Posture stays for the whole
-    // thread; snapshot/RAG inject on the first turn only since
-    // re-injecting on every turn burns tokens for facts the
-    // assistant has already seen.
-    const prelude: ChatMessage[] = [];
+    // Build the prelude — system messages prepended to every turn.
+    // Posture every turn; capabilities + memory + page context +
+    // snapshot first turn only; RAG every turn the toggle is on.
+    // All the policy + loader composition lives in $lib/chat/prelude.
     const isFirstTurn = messages.length === 0;
-    // Mode posture — every turn (cheap; one paragraph). Keeps the
-    // mode active even after history is long.
-    prelude.push({ role: 'system', content: mode.system });
-    // Agent capabilities — describes the structured-output channels
-    // (follow-ups + granit-action chips). First turn only since the
-    // model internalises it after one example; re-injecting on every
-    // turn would burn ~400 tokens per turn for no marginal lift.
-    if (isFirstTurn) {
-      prelude.push({ role: 'system', content: AGENT_CAPABILITIES_SYSTEM });
-    }
-    // Long-term memory — the user's persistent facts. First turn
-    // only for the same token-cost reason; the model carries them
-    // forward in its context after that. Skipped when the store is
-    // empty so a fresh vault doesn't pay for an empty prelude.
-    if (isFirstTurn && aiMemoryFacts.length > 0) {
-      const lines = aiMemoryFacts.map((f) => `- ${f.content}`);
-      prelude.push({
-        role: 'system',
-        content:
-          "These are persistent facts the user has told Granit to remember about themselves. Use them when relevant — don't re-ask for context they've already given.\n\n" +
-          lines.join('\n')
-      });
-    }
-    // @-mentioned entity context. Strict, structured system message
-    // — gives the model real fields (id, title, due date, status…)
-    // rather than relying on the user's prose to convey them.
-    // Injected only on the turn the mentions are attached, then
-    // cleared so a follow-up doesn't spam the same context.
-    if (mentionedRefs.length > 0) {
-      const lines = mentionedRefs.map((r) => `- ${r.contextLine}`);
-      prelude.push({
-        role: 'system',
-        content:
-          'The user has explicitly referenced these vault entities in their message. Use these fields when answering — do not invent ids or dates.\n\n' +
-          lines.join('\n')
-      });
-    }
-    // Project-scoped context — when the user opens chat from
-    // /projects/<name>, grab the project's description + open-task
-    // list and inject as a system message on the first turn. Saves
-    // the user from re-explaining "I'm asking about the Granite
-    // project" on every fresh thread. Skipped after first turn so
-    // a long thread doesn't burn tokens re-asserting the context.
-    if (isFirstTurn && currentProjectName) {
-      try {
-        // Use the shared Project-Manager context loader so the
-        // chat surface and the Project Manager mode share one
-        // ground-truth bundle (linked goals, open + recently-done
-        // tasks, notes under the project folder). Tested in
-        // projectManagerContext.test.ts so the prelude shape
-        // can't silently drift.
-        const bundle = await loadProjectContext(currentProjectName, {
-          getProject: (n) => api.getProject(n),
-          listTasksForProject: async (n, s) => {
-            const r = await api.listTasks({ project: n, status: s });
-            return r.tasks;
-          },
-          listGoalsForProject: async (n) => {
-            const r = await api.listGoals();
-            return r.goals.filter((g) => g.project === n);
-          },
-          listNotesInFolder: async (folder) => {
-            const r = await api.listNotes({ folder, limit: 50 });
-            return r.notes;
-          }
-        });
-        prelude.push({
-          role: 'system',
-          content:
-            "The user is currently looking at this project in Granit. Use it as the default subject of their messages — they don't need to re-state which project they mean.\n\n" +
-            renderProjectContext(bundle)
-        });
-      } catch {
-        // Project fetch failure — skip the injection silently and
-        // let the chat run as a generic thread.
-      }
-    }
-    // Calendar context — date-window flavour rather than per-entity.
-    // Fires when the user opens the chat from /calendar and we're
-    // not already loading project/goal scope. Window defaults to
-    // 14 days ahead; the formatter surfaces the range so the AI
-    // refuses questions about events outside it.
-    if (isFirstTurn && onCalendarPage && !currentProjectName && !currentGoalId) {
-      try {
-        const bundle = await loadCalendarContext(
-          {
-            listEvents: async () => {
-              const r = await api.listEvents();
-              return r.events;
-            },
-            listTasks: async () => {
-              const r = await api.listTasks({});
-              return r.tasks;
-            }
-          },
-          { todayISO: todayISO() }
-        );
-        prelude.push({
-          role: 'system',
-          content:
-            "The user is currently looking at their calendar in Granit. Use this date-window context as the default subject of their messages.\n\n" +
-            renderCalendarContext(bundle)
-        });
-      } catch {
-        // Listing failure — skip silently.
-      }
-    }
-    // Goal-scoped context — mirror of the project flow above.
-    // Fires only when a goal is focused (URL `?focus=<id>`) and
-    // we're not already loading project context (project wins
-    // for the rare case of an overlapping URL). Uses the shared
-    // loadGoalContext so both Goal Manager mode and the prelude
-    // see the same goal bundle.
-    if (isFirstTurn && currentGoalId && !currentProjectName) {
-      try {
-        const bundle = await loadGoalContext(currentGoalId, {
-          getGoal: async (id) => {
-            const r = await api.listGoals();
-            const g = r.goals.find((x) => x.id === id);
-            if (!g) throw new Error('goal not found');
-            return g;
-          },
-          listTasksForGoal: async (id, s) => {
-            const r = await api.listTasks({ goal: id, status: s });
-            return r.tasks;
-          }
-        });
-        prelude.push({
-          role: 'system',
-          content:
-            "The user is currently focused on this goal in Granit. Use it as the default subject of their messages — they don't need to re-state which goal they mean.\n\n" +
-            renderGoalContext(bundle)
-        });
-      } catch {
-        // Goal not found / fetch failure — skip silently.
-      }
-    }
-    if (isFirstTurn && attachSnapshot && snapshotData && !currentNotePath) {
-      prelude.push({
-        role: 'system',
-        content:
-          "Here's a snapshot of the user's vault — today's events, " +
-          'open tasks, recent notes, active goals, and deadlines. ' +
-          'Refer to it when relevant; do not invent content beyond it.\n\n' +
-          '```json\n' + JSON.stringify(snapshotData, null, 2) + '\n```'
-      });
-    }
-    // RAG — runs on every turn the toggle is on, so a follow-up
-    // question about a different topic retrieves different notes.
-    // We pass currentNotePath so retrieveForRag skips it (no point
-    // re-injecting the note already on the prompt via notePath).
-    // Composing both: attachNote=true (current note in system) +
-    // rag=true (related notes in system) is supported and useful
-    // for 'explain this concept using my other notes too'.
-    lastRagHits = [];
-    if (rag) {
-      try {
-        const hits = await retrieveForRag(text, currentNotePath);
-        if (hits.length > 0) {
-          lastRagHits = hits;
-          const formatted = hits
-            .map((h, i) => `### Note ${i + 1}: ${h.title}\nPath: \`${h.path}\`\n\n${h.excerpt}`)
-            .join('\n\n---\n\n');
-          prelude.push({
-            role: 'system',
-            content:
-              `RAG retrieved ${hits.length} note(s) from the user's vault that match this query. Quote from these when relevant; cite the note title in your reply. Do NOT invent content beyond what's here. If they don't actually answer the question, say so plainly.\n\n${formatted}`
-          });
+    const { messages: prelude, ragHits } = await buildPrelude({
+      mode,
+      aiMemoryFacts,
+      mentionedRefs,
+      currentNotePath,
+      currentProjectName,
+      currentGoalId,
+      onCalendarPage,
+      attachSnapshot,
+      snapshotData,
+      rag,
+      isFirstTurn,
+      query: text,
+      projectLoaders: {
+        getProject: (n) => api.getProject(n),
+        listTasksForProject: async (n, s) => {
+          const r = await api.listTasks({ project: n, status: s });
+          return r.tasks;
+        },
+        listGoalsForProject: async (n) => {
+          const r = await api.listGoals();
+          return r.goals.filter((g) => g.project === n);
+        },
+        listNotesInFolder: async (folder) => {
+          const r = await api.listNotes({ folder, limit: 50 });
+          return r.notes;
         }
-      } catch {
-        // Retrieval failure shouldn't block the chat — fall through
-        // and let the model answer without RAG context.
-      }
-    }
+      },
+      goalLoaders: {
+        getGoal: async (id) => {
+          const r = await api.listGoals();
+          const g = r.goals.find((x) => x.id === id);
+          if (!g) throw new Error('goal not found');
+          return g;
+        },
+        listTasksForGoal: async (id, s) => {
+          const r = await api.listTasks({ goal: id, status: s });
+          return r.tasks;
+        }
+      },
+      calendarLoaders: {
+        listEvents: async () => {
+          const r = await api.listEvents();
+          return r.events;
+        },
+        listTasks: async () => {
+          const r = await api.listTasks({});
+          return r.tasks;
+        }
+      },
+      todayISO: todayISO()
+    });
+    lastRagHits = ragHits;
     const history = [...prelude, ...messages, userMsg];
     messages = [...messages, userMsg, { role: 'assistant', content: '' }];
     input = '';
@@ -2372,125 +1889,14 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
           </svg>
         </button>
         {#if modePickerOpen}
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <div
-            role="presentation"
-            class="fixed inset-0 z-40"
-            onclick={() => (modePickerOpen = false)}
-          ></div>
-          <div
-            role="listbox"
-            class="absolute left-0 top-full mt-1 w-[min(18rem,calc(100vw-1rem))] bg-mantle border border-surface1 rounded-lg shadow-xl z-50 py-1 max-h-[70dvh] overflow-y-auto"
-          >
-            <!-- Generic modes group. The "modes" header is implicit
-                 (the picker opens with them; no need to label what
-                 the user is already looking at). The "personas"
-                 header below makes the second group obvious. -->
-            <div class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-dim">Modes</div>
-            {#each GENERIC_MODES as m (m.id)}
-              <button
-                type="button"
-                role="option"
-                aria-selected={m.id === modeId}
-                onclick={() => { selectMode(m.id); modePickerOpen = false; }}
-                class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface0 text-left transition-colors {m.id === modeId ? 'bg-surface1' : ''}"
-              >
-                <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-surface1 text-subtext">{m.glyph}</span>
-                <div class="flex-1 min-w-0">
-                  <div class="text-[13px] font-medium text-text leading-tight">{m.label}</div>
-                  <div class="text-[11px] text-dim leading-snug mt-0.5">{m.tagline}</div>
-                </div>
-                {#if m.id === modeId}
-                  <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                {/if}
-              </button>
-            {/each}
-            {#if CONTEXTUAL_MODES.length > 0}
-              <!-- Contextual modes — page-aware. They auto-switch
-                   when the user is on a matching URL (project /
-                   goal / calendar) and revert when the user leaves.
-                   Visually distinguished with a primary-tinted
-                   glyph background so the user reads them as
-                   "tied to a page", not generic postures.
-                   Out-of-scope modes are dimmed + carry a "needs
-                   <X>" hint so the user knows the prelude won't
-                   carry context — they can still pick (sometimes
-                   useful for the system-prompt posture alone),
-                   it just won't be the full PM/Goal/Calendar
-                   manager experience. -->
-              <div class="border-t border-surface1 mt-1"></div>
-              <div class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary">Contextual</div>
-              {#each CONTEXTUAL_MODES as m (m.id)}
-                {@const inScope =
-                  (m.id === 'project-manager' && !!currentProjectName) ||
-                  (m.id === 'goal-manager' && !!currentGoalId) ||
-                  (m.id === 'calendar-manager' && onCalendarPage)}
-                {@const scopeHint =
-                  m.id === 'project-manager'
-                    ? 'open a project'
-                    : m.id === 'goal-manager'
-                    ? 'focus a goal'
-                    : 'open the calendar'}
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={m.id === modeId}
-                  onclick={() => { selectMode(m.id); modePickerOpen = false; }}
-                  class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface0 text-left transition-colors {m.id === modeId ? 'bg-surface1' : ''} {inScope ? '' : 'text-dim'}"
-                  title={inScope
-                    ? m.tagline
-                    : `Pick-able from any page, but the prelude won't carry context until you ${scopeHint}.`}
-                >
-                  <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary text-on-primary">{m.glyph}</span>
-                  <div class="flex-1 min-w-0">
-                    <div class="text-[13px] font-medium text-text leading-tight inline-flex items-center gap-1.5">
-                      {m.label}
-                      {#if !inScope}
-                        <span class="text-[9px] uppercase tracking-wider text-dim font-normal bg-surface1 px-1 py-0.5 rounded">needs {scopeHint}</span>
-                      {/if}
-                    </div>
-                    <div class="text-[11px] text-dim leading-snug mt-0.5">{m.tagline}</div>
-                  </div>
-                  {#if m.id === modeId}
-                    <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                  {/if}
-                </button>
-              {/each}
-            {/if}
-            {#if PERSONAS.length > 0}
-              <!-- Personas group — sharper, named voices. Visually
-                   distinguished by a divider, a section header, an
-                   accent-coloured glyph background, and an italic
-                   tagline so the user reads "this is a character,
-                   not a generic posture" at a glance. -->
-              <div class="border-t border-surface1 mt-1"></div>
-              <div class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-secondary">Personas</div>
-              {#each PERSONAS as m (m.id)}
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={m.id === modeId}
-                  onclick={() => { selectMode(m.id); modePickerOpen = false; }}
-                  class="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-surface0 text-left transition-colors {m.id === modeId ? 'bg-surface1' : ''}"
-                >
-                  <span class="text-[11px] font-semibold tracking-tight leading-none flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-secondary text-on-primary">{m.glyph}</span>
-                  <div class="flex-1 min-w-0">
-                    <div class="text-[13px] font-medium text-text leading-tight">{m.label}</div>
-                    <div class="text-[11px] text-dim leading-snug italic mt-0.5">{m.tagline}</div>
-                  </div>
-                  {#if m.id === modeId}
-                    <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                  {/if}
-                </button>
-              {/each}
-            {/if}
-          </div>
+          <ChatModePicker
+            {modeId}
+            {currentProjectName}
+            {currentGoalId}
+            {onCalendarPage}
+            onSelect={selectMode}
+            onDismiss={() => (modePickerOpen = false)}
+          />
         {/if}
       </div>
       {#if statusInfo}
@@ -2617,56 +2023,26 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
             </button>
           {/if}
           {#if currentProjectName}
-            <button
-              onclick={() => { input = `Draft a one-page project brief for ${currentProjectName} — Why · Scope · Out of scope · Definition of done · Stakeholders. Markdown, paste-ready.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-            >Draft brief</button>
-            <button
-              onclick={() => { input = `Write a crisp status update for ${currentProjectName} — what shipped, what's open, what's blocked, what's next. 1 short paragraph, no filler.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-            >Status update</button>
-            <button
-              onclick={() => { input = `Brainstorm 3-5 distinct directions for ${currentProjectName}'s next milestone. For each: the move, the main risk, what would prove or kill it.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-            >Brainstorm</button>
-            <button
-              onclick={() => { input = `Looking at the open tasks + linked goals on ${currentProjectName}, what's the ONE thing I should do next, and why? Pick one, defend it briefly.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-            >What's next?</button>
+            {#each projectContextChips(currentProjectName) as c (c.label)}
+              <button
+                onclick={() => { input = c.prompt; }}
+                class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
+              >{c.label}</button>
+            {/each}
           {:else if onCalendarPage}
-            <button
-              onclick={() => { input = `Describe what my week looks like — heaviest day, lightest day, where the deep-work blocks are or aren't, what's the dominant theme.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-            >Week shape</button>
-            <button
-              onclick={() => { input = `Find me a 2-hour focus block in the next 5 days. Propose ONE specific day + start time + reasoning. Don't list options.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-            >Find focus block</button>
-            <button
-              onclick={() => { input = `What's overdue and worth doing vs. worth declaring dead? Walk me through it.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-            >Overdue triage</button>
-            <button
-              onclick={() => { input = `If I had to clear one meeting from this week to protect a deep-work block, which one and why? Name the trade-off explicitly.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-            >Clear one meeting</button>
+            {#each CALENDAR_CONTEXT_CHIPS as c (c.label)}
+              <button
+                onclick={() => { input = c.prompt; }}
+                class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
+              >{c.label}</button>
+            {/each}
           {:else if currentGoalId}
-            <button
-              onclick={() => { input = `Write a goal review note for this goal — progress so far, what's working, what's stuck, what to change. 1 short paragraph each section.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-            >Review note</button>
-            <button
-              onclick={() => { input = `Reframe this goal sharper — what does success look like specifically, by when, and how will I know I've hit it?`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-            >Reframe</button>
-            <button
-              onclick={() => { input = `Looking at the open tasks attached to this goal, which ONE moves it forward most this week? Pick one, defend it briefly.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-            >Highest-leverage next step</button>
-            <button
-              onclick={() => { input = `Brainstorm 3-5 new milestones for this goal — concrete checkpoints I'd accept as proof of progress. For each: outcome statement + how I'd measure it.`; }}
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-            >New milestones</button>
+            {#each GOAL_CONTEXT_CHIPS as c (c.label)}
+              <button
+                onclick={() => { input = c.prompt; }}
+                class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
+              >{c.label}</button>
+            {/each}
           {/if}
         </div>
       {/if}
@@ -3321,7 +2697,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
       class="border-t border-surface1 px-3 py-3 flex-shrink-0"
     >
       <div
-        class="relative bg-surface0 border rounded-2xl px-3 py-2 transition-colors {recording ? 'border-error' : 'border-surface1 focus-within:border-primary'}"
+        class="relative bg-surface0 border rounded-2xl px-3 py-2 transition-colors {voice.recording ? 'border-error' : 'border-surface1 focus-within:border-primary'}"
       >
         <!-- font-size: 16px on mobile is CRITICAL. iOS Safari
              auto-zooms any focused input with font-size < 16px and,
@@ -3340,7 +2716,7 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
           oninput={onInputChange}
           onclick={onInputClick}
           rows="2"
-          placeholder={$sabbath ? 'Sabbath active — AI paused' : recording ? 'Listening… speak freely' : 'Ask anything, /help for commands, @ to reference…'}
+          placeholder={$sabbath ? 'Sabbath active — AI paused' : voice.recording ? 'Listening… speak freely' : 'Ask anything, /help for commands, @ to reference…'}
           disabled={busy || $sabbath}
           class="w-full bg-transparent border-0 text-base md:text-sm text-text placeholder-dim focus:outline-none resize-none disabled:opacity-60 pr-20"
           style="min-height: 2.5rem; max-height: 12rem;"
@@ -3354,10 +2730,10 @@ Fields: task.text required; dueDate/priority/notePath optional. event.title+star
               type="button"
               onclick={toggleVoice}
               disabled={busy || $sabbath}
-              aria-pressed={recording}
-              class="w-8 h-8 inline-flex items-center justify-center rounded-full disabled:opacity-40 transition-colors {recording ? 'bg-error text-white animate-pulse' : 'text-subtext hover:bg-surface1 hover:text-text'}"
-              title={recording ? 'Stop dictating' : 'Dictate'}
-              aria-label={recording ? 'Stop dictating' : 'Dictate'}
+              aria-pressed={voice.recording}
+              class="w-8 h-8 inline-flex items-center justify-center rounded-full disabled:opacity-40 transition-colors {voice.recording ? 'bg-error text-white animate-pulse' : 'text-subtext hover:bg-surface1 hover:text-text'}"
+              title={voice.recording ? 'Stop dictating' : 'Dictate'}
+              aria-label={voice.recording ? 'Stop dictating' : 'Dictate'}
             >
               <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="9" y="3" width="6" height="12" rx="3"/>
