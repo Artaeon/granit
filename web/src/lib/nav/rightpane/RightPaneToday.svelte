@@ -17,6 +17,7 @@
   import { createCoalescedReload } from '$lib/util/coalesce';
   import { onLocalMidnight } from '$lib/util/midnightTick';
   import TaskCard from '$lib/tasks/TaskCard.svelte';
+  import RightPaneSection from './RightPaneSection.svelte';
 
   let daily = $state<Note | null>(null);
   let tasks = $state<Task[]>([]);
@@ -123,12 +124,13 @@
   });
 </script>
 
-<div class="flex flex-col h-full text-sm min-h-0">
-  <header class="flex items-baseline gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0">
-    <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Today</h3>
-    <span class="text-[10px] text-dim tabular-nums">{dateLabel}</span>
-  </header>
-
+<RightPaneSection
+  title="Today"
+  badge={dateLabel}
+  footerLabel="Open daily note"
+  footerHref={`/notes/daily/${today}.md`}
+  bodyClass="flex-1 flex flex-col min-h-0"
+>
   <!-- Top section — daily note preview. 40% height so the tasks below
        have the bulk of the column. min-h-0 + overflow-y-auto so a
        large note doesn't push the tasks off-screen. -->
@@ -191,8 +193,4 @@
       {/if}
     </div>
   </section>
-
-  <footer class="border-t border-surface1 px-3 py-1.5 flex-shrink-0">
-    <a href="/notes/daily/{today}.md" class="text-xs text-secondary hover:underline">Open daily note →</a>
-  </footer>
-</div>
+</RightPaneSection>

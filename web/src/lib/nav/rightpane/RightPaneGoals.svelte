@@ -14,6 +14,7 @@
   import { onWsEvent } from '$lib/ws';
   import { createCoalescedReload } from '$lib/util/coalesce';
   import { onLocalMidnight } from '$lib/util/midnightTick';
+  import RightPaneSection from './RightPaneSection.svelte';
 
   let goals = $state<Goal[]>([]);
   let loading = $state(true);
@@ -92,66 +93,60 @@
   }
 </script>
 
-<div class="flex flex-col h-full text-sm min-h-0">
-  <header class="flex items-baseline gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0">
-    <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Goals</h3>
-    <span class="text-[10px] tabular-nums text-dim">{goals.length} active</span>
-  </header>
-
-  <div class="flex-1 overflow-y-auto px-2 py-2 min-h-0">
-    {#if loading}
-      <ul class="space-y-2.5 px-1">
-        {#each [0, 1, 2, 3] as i (i)}
-          <li>
-            <div class="h-3 w-3/4 bg-surface1 rounded animate-pulse"></div>
-            <div class="h-1.5 bg-surface1 rounded-full animate-pulse mt-1.5"></div>
-          </li>
-        {/each}
-      </ul>
-    {:else if error}
-      <p class="px-2 text-dim italic text-xs">Couldn't load goals.</p>
-    {:else if goals.length === 0}
-      <p class="px-2 text-dim italic text-xs">
-        No active goals — <a href="/goals" class="text-secondary hover:underline">set one →</a>
-      </p>
-    {:else}
-      <ul class="space-y-2.5 px-1">
-        {#each goals as g (g.id)}
-          {@const p = progress(g)}
-          {@const days = daysToTarget(g)}
-          {@const overdue = days !== null && days < 0}
-          {@const tone = dateTone(days)}
-          <li class="border-l-2 pl-2.5 py-0.5" style="border-left-color: var(--color-{tone === 'dim' ? 'surface2' : tone});">
-            <a href="/goals?focus={encodeURIComponent(g.id)}" class="block hover:opacity-90 group">
-              <div class="flex items-baseline gap-2">
-                <span class="text-[13px] text-text truncate flex-1 group-hover:text-primary transition-colors" title={g.title}>{g.title}</span>
-                {#if g.target_date}
-                  <span class="text-[10px] tabular-nums flex-shrink-0" style="color: var(--color-{tone});">
-                    {days !== null ? fmtDays(days) : g.target_date}
-                  </span>
-                {/if}
-              </div>
-              {#if g.milestones && g.milestones.length > 0}
-                <div class="flex items-baseline gap-2 mt-0.5">
-                  <span class="text-[10px] text-dim tabular-nums ml-auto flex-shrink-0">
-                    {p}% · {g.milestones.filter((m) => m.done).length}/{g.milestones.length}
-                  </span>
-                </div>
-                <div class="h-1 bg-mantle rounded-full overflow-hidden mt-1">
-                  <div
-                    class="h-full transition-all duration-300 {p === 100 ? 'bg-success' : overdue ? 'bg-surface2' : 'bg-primary'}"
-                    style="width: {p}%"
-                  ></div>
-                </div>
+<RightPaneSection
+  title="Goals"
+  badge={`${goals.length} active`}
+  footerLabel="Open goals"
+  footerHref="/goals"
+>
+  {#if loading}
+    <ul class="space-y-2.5 px-1">
+      {#each [0, 1, 2, 3] as i (i)}
+        <li>
+          <div class="h-3 w-3/4 bg-surface1 rounded animate-pulse"></div>
+          <div class="h-1.5 bg-surface1 rounded-full animate-pulse mt-1.5"></div>
+        </li>
+      {/each}
+    </ul>
+  {:else if error}
+    <p class="px-2 text-dim italic text-xs">Couldn't load goals.</p>
+  {:else if goals.length === 0}
+    <p class="px-2 text-dim italic text-xs">
+      No active goals — <a href="/goals" class="text-secondary hover:underline">set one →</a>
+    </p>
+  {:else}
+    <ul class="space-y-2.5 px-1">
+      {#each goals as g (g.id)}
+        {@const p = progress(g)}
+        {@const days = daysToTarget(g)}
+        {@const overdue = days !== null && days < 0}
+        {@const tone = dateTone(days)}
+        <li class="border-l-2 pl-2.5 py-0.5" style="border-left-color: var(--color-{tone === 'dim' ? 'surface2' : tone});">
+          <a href="/goals?focus={encodeURIComponent(g.id)}" class="block hover:opacity-90 group">
+            <div class="flex items-baseline gap-2">
+              <span class="text-[13px] text-text truncate flex-1 group-hover:text-primary transition-colors" title={g.title}>{g.title}</span>
+              {#if g.target_date}
+                <span class="text-[10px] tabular-nums flex-shrink-0" style="color: var(--color-{tone});">
+                  {days !== null ? fmtDays(days) : g.target_date}
+                </span>
               {/if}
-            </a>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-  </div>
-
-  <footer class="border-t border-surface1 px-3 py-1.5 flex-shrink-0">
-    <a href="/goals" class="text-xs text-secondary hover:underline">Open goals →</a>
-  </footer>
-</div>
+            </div>
+            {#if g.milestones && g.milestones.length > 0}
+              <div class="flex items-baseline gap-2 mt-0.5">
+                <span class="text-[10px] text-dim tabular-nums ml-auto flex-shrink-0">
+                  {p}% · {g.milestones.filter((m) => m.done).length}/{g.milestones.length}
+                </span>
+              </div>
+              <div class="h-1 bg-mantle rounded-full overflow-hidden mt-1">
+                <div
+                  class="h-full transition-all duration-300 {p === 100 ? 'bg-success' : overdue ? 'bg-surface2' : 'bg-primary'}"
+                  style="width: {p}%"
+                ></div>
+              </div>
+            {/if}
+          </a>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+</RightPaneSection>

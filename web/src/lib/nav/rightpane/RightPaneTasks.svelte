@@ -18,6 +18,7 @@
   import { createCoalescedReload } from '$lib/util/coalesce';
   import { onLocalMidnight } from '$lib/util/midnightTick';
   import TaskCard from '$lib/tasks/TaskCard.svelte';
+  import RightPaneSection from './RightPaneSection.svelte';
 
   let tasks = $state<Task[]>([]);
   let loading = $state(true);
@@ -117,11 +118,13 @@
   }
 </script>
 
-<div class="flex flex-col h-full text-sm min-h-0">
-  <header class="flex items-baseline gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0">
-    <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Today's tasks</h3>
-    <span class="text-[10px] tabular-nums text-dim">{visible.length}</span>
-    <span class="flex-1"></span>
+<RightPaneSection
+  title="Today's tasks"
+  badge={String(visible.length)}
+  footerLabel="Open tasks page"
+  footerHref="/tasks"
+>
+  {#snippet headerTrailing()}
     <form
       class="flex items-center gap-1"
       onsubmit={(e) => {
@@ -138,38 +141,32 @@
         disabled={adding}
       />
     </form>
-  </header>
+  {/snippet}
 
-  <div class="flex-1 overflow-y-auto px-2 py-2 min-h-0">
-    {#if loading}
-      <div class="space-y-2 px-1">
-        {#each [0, 1, 2, 3] as i (i)}
-          <div class="h-8 w-full bg-surface1 rounded animate-pulse"></div>
-        {/each}
-      </div>
-    {:else if error}
-      <p class="px-2 py-2 text-dim italic text-xs">Couldn't load tasks.</p>
-    {:else if visible.length === 0}
-      <p class="px-2 py-2 text-dim italic text-xs">Nothing due today.</p>
-    {:else}
-      <ul class="space-y-1">
-        {#each visible as t (t.id)}
-          <li>
-            <TaskCard
-              task={t}
-              compact={true}
-              onChanged={() => reload.trigger()}
-            />
-          </li>
-        {/each}
-      </ul>
-    {/if}
-    {#if addError}
-      <p class="px-2 pt-2 text-[11px] text-error">Couldn't add — try again.</p>
-    {/if}
-  </div>
-
-  <footer class="border-t border-surface1 px-3 py-1.5 flex-shrink-0">
-    <a href="/tasks" class="text-xs text-secondary hover:underline">Open tasks page →</a>
-  </footer>
-</div>
+  {#if loading}
+    <div class="space-y-2 px-1">
+      {#each [0, 1, 2, 3] as i (i)}
+        <div class="h-8 w-full bg-surface1 rounded animate-pulse"></div>
+      {/each}
+    </div>
+  {:else if error}
+    <p class="px-2 py-2 text-dim italic text-xs">Couldn't load tasks.</p>
+  {:else if visible.length === 0}
+    <p class="px-2 py-2 text-dim italic text-xs">Nothing due today.</p>
+  {:else}
+    <ul class="space-y-1">
+      {#each visible as t (t.id)}
+        <li>
+          <TaskCard
+            task={t}
+            compact={true}
+            onChanged={() => reload.trigger()}
+          />
+        </li>
+      {/each}
+    </ul>
+  {/if}
+  {#if addError}
+    <p class="px-2 pt-2 text-[11px] text-error">Couldn't add — try again.</p>
+  {/if}
+</RightPaneSection>
