@@ -94,14 +94,18 @@
   // tinted badge — different visual treatment for the same control
   // confused power users scanning a list. Now the badge is ALWAYS
   // visible in the same slot, the cycle (P0 → P1 → P2 → P3 → P0)
-  // works from any state, and only the colour shifts: dim for P0,
-  // priority-toned for P1-3.
+  // works from any state.
+  //
+  // Visual: P1 / P2 / P3 carry tinted backgrounds + bold weight so
+  // they read at a glance in a scrolling list — the user explicitly
+  // asked for STRONGER priority contrast. P0 stays dim + outlined so
+  // the badge slot remains visible without competing for attention.
   function priorityBadge(p: number): { label: string; cls: string } {
     const tone = priorityTone(p);
     const cls =
-      tone === 'error' ? 'bg-surface0 text-error'
-      : tone === 'warning' ? 'bg-surface0 text-warning'
-      : tone === 'info' ? 'bg-surface0 text-info'
+      tone === 'error' ? 'bg-error/25 text-error font-bold border border-error/40'
+      : tone === 'warning' ? 'bg-warning/20 text-warning font-semibold border border-warning/30'
+      : tone === 'info' ? 'bg-info/15 text-info font-semibold border border-info/25'
       : 'bg-surface0 text-dim border border-surface2';
     return { label: `P${p}`, cls };
   }
@@ -429,8 +433,10 @@
     </div>
   {/if}
 <div
-  class="task-card touch-reveal bg-surface0 border-l-2 {priorityClass(task.priority)} border border-surface1 rounded p-2 transition-all group relative
+  class="task-card touch-reveal bg-surface0 border-l-[3px] {priorityClass(task.priority)} border border-surface1 rounded px-2 py-1.5 transition-all group relative
     {isSelected ? 'ring-1 ring-primary' : 'hover:border-primary hover:bg-surface0'}
+    {task.priority === 1 ? 'task-card--p1' : ''}
+    {task.priority === 2 ? 'task-card--p2' : ''}
     {isOverdue ? 'task-card--overdue' : ''}
     {isDueToday ? 'task-card--today' : ''}
     {task.done ? 'task-card--done' : ''}
@@ -486,7 +492,7 @@
           {/if}
           <button
             onclick={onTitleClick}
-            class="text-sm text-left flex-1 min-w-0 break-words [overflow-wrap:anywhere] {task.done ? 'line-through text-dim' : 'text-text'}"
+            class="text-sm text-left flex-1 min-w-0 break-words [overflow-wrap:anywhere] {task.done ? 'line-through text-dim' : task.priority === 1 ? 'text-text font-semibold' : 'text-text'}"
             title="click to edit · cmd/ctrl-click to open details · right-click for actions"
           >
             {#if (task.indent ?? 0) > 0}
@@ -625,12 +631,20 @@
                 <span class="font-mono">deadline</span>
               </span>
             {/if}
-            <button
-              onclick={cycleTriage}
-              class="text-[10px] uppercase px-1.5 py-0.5 rounded transition-colors"
-              style="color: var(--color-{triageTone(task.triage)}); background: color-mix(in srgb, var(--color-{triageTone(task.triage)}) 12%, transparent);"
-              title="click to cycle triage state"
-            >{task.triage || 'inbox'}</button>
+            <!-- Triage chip: only render when the task has been
+                 actively triaged (not the default 'inbox' state).
+                 Most tasks live in 'inbox' by default, so showing
+                 the chip there was pure visual noise. Users can
+                 still set / cycle triage via the right-click menu
+                 or the detail drawer. -->
+            {#if task.triage && task.triage !== 'inbox'}
+              <button
+                onclick={cycleTriage}
+                class="text-[10px] uppercase px-1.5 py-0.5 rounded transition-colors"
+                style="color: var(--color-{triageTone(task.triage)}); background: color-mix(in srgb, var(--color-{triageTone(task.triage)}) 12%, transparent);"
+                title="click to cycle triage state"
+              >{task.triage}</button>
+            {/if}
             {#if task.dependsOn && task.dependsOn.length > 0}
               <span class="text-[10px] text-dim" title="depends on {task.dependsOn.join(', ')}">↳ {task.dependsOn.length} dep{task.dependsOn.length !== 1 ? 's' : ''}</span>
             {/if}
@@ -661,9 +675,9 @@
               aria-label={isThisRunning ? 'stop tracking' : 'start tracking'}
             >
               {#if isThisRunning}
-                <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                <svg viewBox="0 0 24 24" class="w-3 h-3" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
               {:else}
-                <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor"><path d="M5 4l14 8-14 8z"/></svg>
+                <svg viewBox="0 0 24 24" class="w-3 h-3" fill="currentColor"><path d="M5 4l14 8-14 8z"/></svg>
               {/if}
             </button>
             <button
@@ -673,11 +687,11 @@
               class="text-dim hover:text-warning opacity-0 group-hover:opacity-100"
               title="snooze"
             >
-              <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
               </svg>
             </button>
-            <button onclick={startEdit} class="text-dim hover:text-text opacity-0 group-hover:opacity-100">edit</button>
+            <button onclick={startEdit} class="text-[10px] text-dim hover:text-text opacity-0 group-hover:opacity-100">edit</button>
             {#if onOpenDetail}
               <button
                 onclick={(e) => { e.stopPropagation(); onOpenDetail!(task); }}
@@ -685,7 +699,7 @@
                 title="open details"
                 class="text-dim hover:text-primary opacity-0 group-hover:opacity-100"
               >
-                <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+                <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
               </button>
             {/if}
             <button onclick={openNote} class="text-dim hover:text-secondary opacity-0 group-hover:opacity-100" aria-label="open note">↗</button>
@@ -731,7 +745,18 @@
   /* Soft urgency tints. The priority border (left rail) is the
      primary signal; these card-wide tints are secondary, set low
      enough that they don't fight the border but high enough that a
-     scanning eye can pick out overdue rows in a long list. */
+     scanning eye can pick out overdue rows in a long list.
+
+     Specificity order: overdue + today (date-based) override p1/p2
+     because urgency-on-deadline is more actionable than priority
+     alone. Tints are stacked low (3-6%) so the card never feels
+     "loud" — the contrast comes from the priority badge + border. */
+  .task-card--p1 {
+    background: color-mix(in srgb, var(--color-error) 4%, var(--color-surface0));
+  }
+  .task-card--p2 {
+    background: color-mix(in srgb, var(--color-warning) 3%, var(--color-surface0));
+  }
   .task-card--overdue {
     background: color-mix(in srgb, var(--color-error) 6%, var(--color-surface0));
   }
