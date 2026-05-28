@@ -429,13 +429,55 @@
   // Render is wrapped in try/catch so a malformed token (corner-case
   // marked bug, half-edited fence, weird unicode) shows the source
   // verbatim instead of taking the page hostage. Without this, a
-  // throwing marked.parse would bubble up through the $derived
-  // computation and the preview would silently render nothing.
-  let html = $derived.by(() => {
-    if (!body) return '';
+  // throwing marked.parse would bubble up through the compute pass
+  // and the preview would silently render nothing.
+  //
+  // Rendering is async + generation-guarded so toggling reading mode
+  // on a large note (10k words, code blocks, mermaid, embeds) doesn't
+  // block the main thread for hundreds of ms. The flow:
+  //
+  //   1. Bump the generation counter and flip `rendering` true.
+  //   2. Yield one rAF tick so Svelte can paint the loading skeleton
+  //      BEFORE marked + DOMPurify burn CPU. Without the yield the
+  //      whole compute runs in the same microtask as the effect and
+  //      the user sees the original freeze.
+  //   3. Drive marked in async mode — it yields between blocks so
+  //      huge docs no longer monopolise the thread for the whole
+  //      parse.
+  //   4. Generation check after each await: if `body` changed mid-
+  //      compute (user toggled back or edited), abandon the stale
+  //      pass instead of clobbering the newer html.
+  let html = $state('');
+  let rendering = $state(false);
+  let renderGen = 0;
+
+  async function computeHtml(src: string): Promise<void> {
+    const myGen = ++renderGen;
+    if (!src) {
+      html = '';
+      rendering = false;
+      return;
+    }
+    rendering = true;
     try {
-      const pre = preprocess(body);
-      const out = marked.parse(pre, { async: false }) as string;
+      // Yield to the browser so the loading state paints before
+      // marked + purify burn CPU. requestAnimationFrame is only
+      // available client-side; SSR falls back to a microtask yield
+      // which still lets the runtime breathe.
+      await new Promise<void>((r) => {
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => r());
+        } else {
+          queueMicrotask(() => r());
+        }
+      });
+      if (myGen !== renderGen) return;
+      const pre = preprocess(src);
+      // marked.parse with { async: true } returns a Promise and the
+      // library yields between blocks, so a long doc no longer pins
+      // the main thread for the whole parse.
+      const out = (await marked.parse(pre, { async: true })) as string;
+      if (myGen !== renderGen) return;
       // purify() is the load-bearing XSS defence — marked itself
       // dropped its `sanitize` option in v7 and explicitly recommends
       // DOMPurify downstream. The threat surface is small (self-
@@ -444,17 +486,28 @@
       // execute on device B without this layer. PURIFY_CONFIG keeps
       // our data-wikilink / data-tag etc. hooks alive so click
       // delegation still works after sanitisation.
-      return purify(postprocess(out));
+      const sanitized = purify(postprocess(out));
+      if (myGen !== renderGen) return;
+      html = sanitized;
     } catch (e) {
+      if (myGen !== renderGen) return;
       const msg = errorMessage(e);
-      return (
+      html =
         `<div class="prose-note__error">` +
         `<p><strong>Preview render failed:</strong> ${escHtml(msg)}</p>` +
         `<p class="text-dim text-sm">Showing source. Edit mode still works.</p>` +
-        `<pre><code>${escHtml(body)}</code></pre>` +
-        `</div>`
-      );
+        `<pre><code>${escHtml(src)}</code></pre>` +
+        `</div>`;
+    } finally {
+      if (myGen === renderGen) rendering = false;
     }
+  }
+
+  // `void computeHtml(body)` keeps `body` the only tracked dep — we
+  // intentionally don't want `html`/`rendering` reads inside the
+  // function to re-trigger this effect.
+  $effect(() => {
+    void computeHtml(body);
   });
 
   function onClickContainer(e: MouseEvent) {
@@ -652,8 +705,21 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="prose-note" bind:this={mermaidContainer} onclick={onClickContainer}>
-  {@html html}
+<div class="prose-note relative" bind:this={mermaidContainer} onclick={onClickContainer}>
+  {#if rendering && !html}
+    <!-- Initial-render skeleton — three pulsing lines, no layout shift.
+         Shown only while there is no previous html to fall back to;
+         re-renders (stale html + rendering) dim the existing tree
+         instead so the reader keeps their context. -->
+    <div class="space-y-3 pt-2">
+      <div class="h-3 w-3/4 bg-surface1 rounded animate-pulse"></div>
+      <div class="h-3 w-full bg-surface1 rounded animate-pulse"></div>
+      <div class="h-3 w-5/6 bg-surface1 rounded animate-pulse"></div>
+    </div>
+  {/if}
+  <div class:opacity-50={rendering && html} class="transition-opacity duration-150">
+    {@html html}
+  </div>
 </div>
 <!-- Wikilink hover preview — listens on the prose container for
      [data-wikilink] hover events, fetches the target note's first
