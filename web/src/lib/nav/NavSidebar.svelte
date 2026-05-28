@@ -144,19 +144,8 @@
       <div class="w-8 h-8 rounded bg-surface1 text-primary flex items-center justify-center" aria-label="Granit">
         <Logo class="w-4 h-4" label="" />
       </div>
-      <ProfileSwitcher isCompact={true} />
-      <a
-        href="/settings"
-        onclick={navigate}
-        title="Settings"
-        aria-label="Settings"
-        class="w-7 h-7 flex items-center justify-center rounded text-dim hover:text-text hover:bg-surface0 transition-colors"
-      >
-        <NavIcon name="settings" class="w-4 h-4" />
-      </a>
-      <!-- Right-pane toggle — surfaced in the brand row (not just
-           the footer rail) so users find the pane without having
-           to scroll the sidebar. Active styling mirrors the open
+      <!-- Right-pane toggle — sits in the workspace-controls cluster
+           right after the brand mark. Active styling mirrors the open
            flag; tooltip carries the keyboard chord for discovery. -->
       <button
         onclick={toggleRightPane}
@@ -170,23 +159,24 @@
           <line x1="15" y1="4" x2="15" y2="20"/>
         </svg>
       </button>
-    {:else}
-      <div class="w-6 h-6 rounded bg-surface1 text-primary flex items-center justify-center flex-shrink-0">
-        <Logo class="w-3.5 h-3.5" label="" />
-      </div>
-      <div class="text-sm font-semibold text-text">Granit</div>
-      <span class="flex-1"></span>
-      <ProfileSwitcher isCompact={false} />
+      <ProfileSwitcher isCompact={true} />
       <a
         href="/settings"
         onclick={navigate}
         title="Settings"
         aria-label="Settings"
-        class="w-7 h-7 flex items-center justify-center rounded text-dim hover:text-text hover:bg-surface0 transition-colors flex-shrink-0"
+        class="w-7 h-7 flex items-center justify-center rounded text-dim hover:text-text hover:bg-surface0 transition-colors"
       >
         <NavIcon name="settings" class="w-4 h-4" />
       </a>
-      <!-- Right-pane toggle — see compact branch above. -->
+    {:else}
+      <div class="w-6 h-6 rounded bg-surface1 text-primary flex items-center justify-center flex-shrink-0">
+        <Logo class="w-3.5 h-3.5" label="" />
+      </div>
+      <!-- Right-pane toggle — moved to the left workspace cluster
+           after the brand. Previously sat at the rightmost slot but
+           5 items in 224px clipped the icon at the sidebar's edge,
+           making it visually unclickable. See feedback 2026-05-28. -->
       <button
         onclick={toggleRightPane}
         title={$rightPaneStore.open ? 'Close right pane (⌘\\)' : 'Open right pane (⌘\\)'}
@@ -199,6 +189,18 @@
           <line x1="15" y1="4" x2="15" y2="20"/>
         </svg>
       </button>
+      <div class="text-sm font-semibold text-text truncate min-w-0">Granit</div>
+      <span class="flex-1 min-w-0"></span>
+      <ProfileSwitcher isCompact={false} />
+      <a
+        href="/settings"
+        onclick={navigate}
+        title="Settings"
+        aria-label="Settings"
+        class="w-7 h-7 flex items-center justify-center rounded text-dim hover:text-text hover:bg-surface0 transition-colors flex-shrink-0"
+      >
+        <NavIcon name="settings" class="w-4 h-4" />
+      </a>
     {/if}
   </div>
 
