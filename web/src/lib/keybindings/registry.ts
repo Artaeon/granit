@@ -167,7 +167,42 @@ export const KEYBINDINGS: KeyBinding[] = [
     label: 'Right pane: Widgets',
     keys: 'Mod+Shift+5',
     scope: 'global',
-    description: 'Switch the right pane to a vertical strip of dashboard widgets.'
+    description: 'Switch the right pane to a slim vertical strip of dashboard widgets.'
+  },
+  {
+    id: 'right-pane-tasks',
+    label: 'Right pane: Tasks',
+    keys: 'Mod+Shift+6',
+    scope: 'global',
+    description: "Switch the right pane to today's task list (overdue + due today + scheduled + P1)."
+  },
+  {
+    id: 'right-pane-today',
+    label: 'Right pane: Today',
+    keys: 'Mod+Shift+7',
+    scope: 'global',
+    description: "Switch the right pane to the Today combo (daily note preview + today's tasks)."
+  },
+  {
+    id: 'right-pane-goals',
+    label: 'Right pane: Goals',
+    keys: 'Mod+Shift+8',
+    scope: 'global',
+    description: 'Switch the right pane to the active goals list with progress bars.'
+  },
+  {
+    id: 'right-pane-habits',
+    label: 'Right pane: Habits',
+    keys: 'Mod+Shift+9',
+    scope: 'global',
+    description: "Switch the right pane to today's habit check-ins."
+  },
+  {
+    id: 'right-pane-dashboard',
+    label: 'Right pane: Dashboard',
+    keys: 'Mod+Shift+0',
+    scope: 'global',
+    description: 'Switch the right pane to the expanded dashboard widget column.'
   },
   // ── /tasks page-scoped bindings ──────────────────────────────────
   // These ship as part of Stream F (power-user efficiency). The

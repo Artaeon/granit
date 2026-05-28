@@ -375,7 +375,12 @@
       { id: 'right-pane-notes', content: 'notes' },
       { id: 'right-pane-ai', content: 'ai' },
       { id: 'right-pane-vision', content: 'vision' },
-      { id: 'right-pane-widgets', content: 'widgets' }
+      { id: 'right-pane-widgets', content: 'widgets' },
+      { id: 'right-pane-tasks', content: 'tasks' },
+      { id: 'right-pane-today', content: 'today' },
+      { id: 'right-pane-goals', content: 'goals' },
+      { id: 'right-pane-habits', content: 'habits' },
+      { id: 'right-pane-dashboard', content: 'dashboard' }
     ];
     const contentChords = contentBindings
       .map((b) => ({ ...b, binding: findBinding(b.id) }))
@@ -468,10 +473,12 @@
   </main>
 
   {#if $auth && $rightPaneStore.open}
-    <!-- Right pane companion column. Hidden on mobile (the component
-         itself carries `hidden md:flex`) so the soft keyboard +
-         bottom nav don't compete with it. Auth-gated since none of
-         its content (events, notes, vision) is reachable pre-login. -->
+    <!-- Right pane companion column. Phase 1.5 added a mobile bottom-
+         sheet variant — the component now branches internally on
+         viewport (mediaQuery md+) and renders either a flex-sibling
+         column (desktop) or a fixed bottom sheet (mobile). Auth-gated
+         since none of its content (events, notes, vision) is
+         reachable pre-login. -->
     <RightPane />
   {/if}
 
