@@ -5,7 +5,11 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import { onMount } from 'svelte';
   import { eventStartDate, eventEndDate, fmtTime, eventTypeColor } from './utils';
-  import { EVENT_TYPES, findEventType } from './eventTypes';
+  import { findEventType } from './eventTypes';
+  import TimeInput from './TimeInput.svelte';
+  import RecurrenceEditor from './RecurrenceEditor.svelte';
+  import EventTypeChips from './EventTypeChips.svelte';
+  import RecurringScopePicker from './RecurringScopePicker.svelte';
 
   let {
     open = $bindable(false),
@@ -42,28 +46,15 @@
   }
   onMount(loadProjects);
 
-  // 24-hour HH:MM picker buffers — same pattern as UnifiedCreate.
-  // Native <input type="time"> renders AM/PM on most OS locales
-  // regardless of any lang attribute. Custom HH + MM selects
-  // guarantee 24-hour display everywhere.
-  let editStartH = $state(0);
-  let editStartM = $state(0);
-  let editEndH = $state(0);
-  let editEndM = $state(0);
-  // editStartTime / editEndTime are DERIVED, not state-with-effect.
-  // The previous $effect-driven sync had a flush race: the user
-  // could change a select and immediately click Save, and the
-  // submit handler would read a stale time string that hadn't
-  // picked up the new H/M yet. Events landed at the previous
-  // time, not the one the user just chose. The user reported this
-  // as "editing the times also not, they get scheduled somewhere".
-  // $derived is read synchronously on access — no flush race.
-  let editStartTime = $derived(
-    `${String(editStartH).padStart(2, '0')}:${String(editStartM).padStart(2, '0')}`
-  );
-  let editEndTime = $derived(
-    `${String(editEndH).padStart(2, '0')}:${String(editEndM).padStart(2, '0')}`
-  );
+  // 24-hour HH:MM picker buffers — bindable strings owned here and
+  // forwarded to the shared TimeInput component (paired HH+MM selects
+  // — native <input type="time"> renders AM/PM on most OS locales
+  // regardless of any lang attribute). Strings are read synchronously
+  // by the submit handler, avoiding the $effect-driven flush race
+  // the user previously reported ("editing the times also not, they
+  // get scheduled somewhere").
+  let editStartTime = $state('00:00');
+  let editEndTime = $state('00:00');
 
   // Snapshot of date/time fields when edit-mode opens. Used by the
   // save path to detect "user did NOT change time" so we can skip
@@ -75,20 +66,15 @@
   // on wrong times" after renaming a floating-time event with no
   // time change.
   let origEditDate = $state('');
-  let origEditStartH = $state(0);
-  let origEditStartM = $state(0);
-  let origEditEndH = $state(0);
-  let origEditEndM = $state(0);
+  let origEditStartTime = $state('00:00');
+  let origEditEndTime = $state('00:00');
 
   // ── Recurrence edit state ──────────────────────────────────────
-  // Mirrors the picker in CreateEvent. We seed from the source
-  // event's rrule on edit-start by parsing the FREQ + INTERVAL +
-  // BYDAY tokens; arbitrary RRULEs that don't match a preset land
-  // in 'custom' and round-trip verbatim.
-  type Repeat = 'none' | 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | 'yearly' | 'custom';
-  let editRepeat = $state<Repeat>('none');
-  let editUntilDate = $state('');
-  let editCustomRule = $state('');
+  // RRULE editing handled by the shared RecurrenceEditor component;
+  // we only carry the bindable string. The component parses on
+  // open (seedFromRRule) and serialises back into editRRule on
+  // every internal flip.
+  let editRRule = $state('');
   // For recurring events, edit-scope is a per-modal toggle:
   // 'series' rewrites the parent (date / time / rrule all shift),
   // 'instance' writes a per-occurrence override so only the open
@@ -97,47 +83,6 @@
   // Hidden for ICS events (no override path) and for non-recurring
   // events.
   let editScope = $state<'instance' | 'series'>('instance');
-
-  function parseRepeatFromRRule(rrule: string): { repeat: Repeat; until: string; custom: string } {
-    if (!rrule) return { repeat: 'none', until: '', custom: '' };
-    const parts: Record<string, string> = {};
-    for (const seg of rrule.split(';')) {
-      const [k, v] = seg.split('=', 2);
-      if (k && v !== undefined) parts[k.trim().toUpperCase()] = v.trim();
-    }
-    let until = '';
-    if (parts.UNTIL) {
-      // RFC 5545 UNTIL is YYYYMMDDTHHMMSSZ — pull the date prefix.
-      const m = /^(\d{4})(\d{2})(\d{2})/.exec(parts.UNTIL);
-      if (m) until = `${m[1]}-${m[2]}-${m[3]}`;
-    }
-    const freq = parts.FREQ ?? '';
-    const interval = parts.INTERVAL ?? '';
-    const byday = parts.BYDAY ?? '';
-    if (freq === 'DAILY' && !interval && !byday) return { repeat: 'daily', until, custom: '' };
-    if (freq === 'WEEKLY' && byday === 'MO,TU,WE,TH,FR' && !interval) return { repeat: 'weekdays', until, custom: '' };
-    if (freq === 'WEEKLY' && !byday && (interval === '' || interval === '1')) return { repeat: 'weekly', until, custom: '' };
-    if (freq === 'WEEKLY' && !byday && interval === '2') return { repeat: 'biweekly', until, custom: '' };
-    if (freq === 'MONTHLY' && !interval && !byday) return { repeat: 'monthly', until, custom: '' };
-    if (freq === 'YEARLY' && !interval) return { repeat: 'yearly', until, custom: '' };
-    return { repeat: 'custom', until: '', custom: rrule };
-  }
-  function untilSuffix(date: string): string {
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return '';
-    return `;UNTIL=${date.replace(/-/g, '')}T235959Z`;
-  }
-  let editRRule = $derived.by((): string => {
-    switch (editRepeat) {
-      case 'none': return '';
-      case 'daily': return 'FREQ=DAILY' + untilSuffix(editUntilDate);
-      case 'weekdays': return 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' + untilSuffix(editUntilDate);
-      case 'weekly': return 'FREQ=WEEKLY' + untilSuffix(editUntilDate);
-      case 'biweekly': return 'FREQ=WEEKLY;INTERVAL=2' + untilSuffix(editUntilDate);
-      case 'monthly': return 'FREQ=MONTHLY' + untilSuffix(editUntilDate);
-      case 'yearly': return 'FREQ=YEARLY' + untilSuffix(editUntilDate);
-      case 'custom': return editCustomRule.trim();
-    }
-  });
 
   // Calendar sources — needed to know if an ICS event came from a
   // writable .ics file. Loaded once on mount; refreshed on demand.
@@ -187,32 +132,30 @@
     // minutes to the nearest 5 to align with the select options;
     // the underlying time string still carries the exact value
     // until the user changes it.
+    const pad2 = (n: number) => String(n).padStart(2, '0');
     if (event.start) {
       const sd = new Date(event.start);
-      editStartH = sd.getHours();
-      editStartM = Math.round(sd.getMinutes() / 5) * 5;
-      if (editStartM === 60) { editStartH = (editStartH + 1) % 24; editStartM = 0; }
+      let sh = sd.getHours();
+      let sm = Math.round(sd.getMinutes() / 5) * 5;
+      if (sm === 60) { sh = (sh + 1) % 24; sm = 0; }
+      editStartTime = `${pad2(sh)}:${pad2(sm)}`;
     } else {
-      editStartH = 0;
-      editStartM = 0;
+      editStartTime = '00:00';
     }
     if (event.end) {
       const ed = new Date(event.end);
-      editEndH = ed.getHours();
-      editEndM = Math.round(ed.getMinutes() / 5) * 5;
-      if (editEndM === 60) { editEndH = (editEndH + 1) % 24; editEndM = 0; }
+      let eh = ed.getHours();
+      let em = Math.round(ed.getMinutes() / 5) * 5;
+      if (em === 60) { eh = (eh + 1) % 24; em = 0; }
+      editEndTime = `${pad2(eh)}:${pad2(em)}`;
     } else {
-      editEndH = 0;
-      editEndM = 0;
+      editEndTime = '00:00';
     }
     // Seed recurrence editor from the source rule. ICS events also
     // carry rrule but their write path goes through ics-events
     // endpoints which don't accept rrule today — show the rule
     // read-only via the picker but disable Save-as-series for ICS.
-    const parsed = parseRepeatFromRRule(event.rrule ?? '');
-    editRepeat = parsed.repeat;
-    editUntilDate = parsed.until;
-    editCustomRule = parsed.custom;
+    editRRule = event.rrule ?? '';
     // Seed the project link from the event so unchanged saves
     // round-trip. Empty when the event isn't linked.
     editProjectId = event.project_id ?? '';
@@ -224,10 +167,8 @@
     // Snapshot the seeded date+time so the save handler can detect
     // a no-op time change and skip the ICS PATCH start/end fields.
     origEditDate = editDate;
-    origEditStartH = editStartH;
-    origEditStartM = editStartM;
-    origEditEndH = editEndH;
-    origEditEndM = editEndM;
+    origEditStartTime = editStartTime;
+    origEditEndTime = editEndTime;
     editing = true;
   }
 
@@ -309,10 +250,8 @@
           // floating-ness intact for the very common rename-only edit.
           const timeChanged =
             editDate !== origEditDate ||
-            editStartH !== origEditStartH ||
-            editStartM !== origEditStartM ||
-            editEndH !== origEditEndH ||
-            editEndM !== origEditEndM;
+            editStartTime !== origEditStartTime ||
+            editEndTime !== origEditEndTime;
           const patch: Parameters<typeof api.patchICSEvent>[2] = {
             summary: editTitle,
             location: editLocation,
@@ -867,61 +806,13 @@
                usable width on phones. The date gets its own row, then
                start/end share a row. -->
           <input type="date" bind:value={editDate} required class="w-full px-2 py-2 bg-surface0 border border-surface1 rounded text-sm text-text" />
-          <!-- 24-hour HH:MM picker — paired selects, same pattern as
-               UnifiedCreate. Native <input type="time"> respects the
-               OS locale, not the element's lang, so a US-locale user
-               saw AM/PM on every event edit. These selects always
-               show 24-hour values. -->
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <span class="block text-[10px] uppercase tracking-wider text-dim mb-1">Start (24h)</span>
-              <div class="flex items-center bg-surface0 border border-surface1 rounded overflow-hidden focus-within:border-primary">
-                <select
-                  bind:value={editStartH}
-                  aria-label="start hour"
-                  class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
-                >
-                  {#each Array.from({ length: 24 }, (_, i) => i) as h}
-                    <option value={h}>{String(h).padStart(2, '0')}</option>
-                  {/each}
-                </select>
-                <span class="text-dim px-1">:</span>
-                <select
-                  bind:value={editStartM}
-                  aria-label="start minute"
-                  class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
-                >
-                  {#each Array.from({ length: 12 }, (_, i) => i * 5) as m}
-                    <option value={m}>{String(m).padStart(2, '0')}</option>
-                  {/each}
-                </select>
-              </div>
-            </div>
-            <div>
-              <span class="block text-[10px] uppercase tracking-wider text-dim mb-1">End (24h)</span>
-              <div class="flex items-center bg-surface0 border border-surface1 rounded overflow-hidden focus-within:border-primary">
-                <select
-                  bind:value={editEndH}
-                  aria-label="end hour"
-                  class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
-                >
-                  {#each Array.from({ length: 24 }, (_, i) => i) as h}
-                    <option value={h}>{String(h).padStart(2, '0')}</option>
-                  {/each}
-                </select>
-                <span class="text-dim px-1">:</span>
-                <select
-                  bind:value={editEndM}
-                  aria-label="end minute"
-                  class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
-                >
-                  {#each Array.from({ length: 12 }, (_, i) => i * 5) as m}
-                    <option value={m}>{String(m).padStart(2, '0')}</option>
-                  {/each}
-                </select>
-              </div>
-            </div>
-          </div>
+          <!-- 24-hour HH:MM picker — shared TimeInput keeps the same
+               paired-select markup. Native <input type="time"> respects
+               the OS locale, not the element's lang, so a US-locale
+               user saw AM/PM on every event edit. The selects always
+               show 24-hour values. step=5 matches the seed rounding
+               in startEdit so the bound value lines up with an option. -->
+          <TimeInput bind:startTime={editStartTime} bind:endTime={editEndTime} step={5} />
           <input bind:value={editLocation} placeholder="location (optional)" class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text" />
           <!-- Edit scope picker — only relevant for recurring NATIVE
                events. 'this' writes a per-occurrence override (title /
@@ -976,45 +867,12 @@
                disabled when the user is editing a single occurrence
                (recurrence is a series-level concept). -->
           {#if event?.type === 'event' && (!event?.rrule || editScope === 'series')}
-            <div class="flex items-baseline gap-2 flex-wrap">
-              <label class="text-[11px] text-dim uppercase tracking-wider" for="ev-edit-repeat">Repeat</label>
-              <select
-                id="ev-edit-repeat"
-                bind:value={editRepeat}
-                class="bg-surface0 border border-surface1 rounded px-2 py-1 text-sm text-text"
-              >
-                <option value="none">Does not repeat</option>
-                <option value="daily">Every day</option>
-                <option value="weekdays">Every weekday (Mon–Fri)</option>
-                <option value="weekly">Every week</option>
-                <option value="biweekly">Every 2 weeks</option>
-                <option value="monthly">Every month</option>
-                <option value="yearly">Every year</option>
-                <option value="custom">Custom RRULE…</option>
-              </select>
-              {#if editRepeat !== 'none' && editRepeat !== 'custom'}
-                <label class="text-[11px] text-dim flex items-center gap-1.5">
-                  until
-                  <input
-                    type="date"
-                    bind:value={editUntilDate}
-                    min={editDate}
-                    class="bg-surface0 border border-surface1 rounded px-2 py-1 text-sm text-text"
-                  />
-                </label>
-              {/if}
-            </div>
-            {#if editRepeat === 'custom'}
-              <input
-                bind:value={editCustomRule}
-                placeholder="FREQ=MONTHLY;BYDAY=1MO"
-                spellcheck="false"
-                class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-xs text-text font-mono"
-              />
-            {/if}
-            {#if editRRule}
-              <p class="text-[10px] text-dim font-mono"><span class="text-secondary">→</span> {editRRule}</p>
-            {/if}
+            <RecurrenceEditor
+              bind:rrule={editRRule}
+              layout="inline"
+              minDate={editDate}
+              idPrefix="ev-edit"
+            />
           {/if}
           <!-- Project link picker — drives the calendar's project
                filter + colour-by-project overlay. Hidden when no
@@ -1042,32 +900,7 @@
                state = no type; clicking the active chip clears it. -->
           <div>
             <span class="block text-[11px] uppercase tracking-wider text-dim mb-1.5">Type</span>
-            <div class="flex items-center gap-1 flex-wrap">
-              {#each EVENT_TYPES as t (t.id)}
-                {@const on = editKind === t.id}
-                <button
-                  type="button"
-                  onclick={() => (editKind = on ? '' : t.id)}
-                  aria-pressed={on}
-                  title={t.description}
-                  class="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium border transition-colors {on ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-text border-surface1 hover:border-primary'}"
-                >
-                  <span
-                    class="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold font-mono leading-none"
-                    style:background={on ? 'transparent' : `color-mix(in srgb, var(--color-${t.color}) 22%, transparent)`}
-                    style:color={on ? undefined : `var(--color-${t.color})`}
-                  >{t.glyph}</span>
-                  <span>{t.label}</span>
-                </button>
-              {/each}
-              {#if editKind}
-                <button
-                  type="button"
-                  onclick={() => (editKind = '')}
-                  class="text-[10px] text-dim hover:text-error px-1.5 py-0.5 border border-dashed border-surface1 hover:border-error"
-                >clear</button>
-              {/if}
-            </div>
+            <EventTypeChips bind:kind={editKind} chipSize="compact" />
           </div>
           <div class="flex items-center gap-2">
             <span class="text-[11px] text-dim uppercase tracking-wider">Color</span>
@@ -1096,30 +929,16 @@
            reflexively pressing Esc/Cancel to abort. Three explicit
            buttons; nothing happens until one is clicked. -->
       {#if deletePrompt !== 'none'}
-        <div class="pt-2 border-t border-surface1 space-y-2">
-          <div class="text-xs text-text">
-            <span class="font-medium">"{event.title}"</span> is a recurring event. What do you want to delete?
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <button
-              onclick={confirmDeleteOccurrence}
-              disabled={busy}
-              class="px-3 py-1.5 text-sm bg-surface1 text-warning rounded hover:bg-surface2 disabled:opacity-50"
-              title="EXDATE just this date — every other instance stays"
-            >Just this occurrence</button>
-            <button
-              onclick={confirmDeleteSeries}
-              disabled={busy}
-              class="px-3 py-1.5 text-sm bg-surface1 text-error rounded hover:bg-surface2 disabled:opacity-50"
-              title="Delete every past + future instance — cannot be undone"
-            >Entire series</button>
-            <button
-              onclick={cancelDeletePrompt}
-              disabled={busy}
-              class="px-3 py-1.5 text-sm text-subtext hover:text-text"
-            >Cancel</button>
-          </div>
-        </div>
+        <RecurringScopePicker
+          eventTitle={event.title}
+          action="delete"
+          onChoose={(scope) => {
+            if (scope === 'this') void confirmDeleteOccurrence();
+            else if (scope === 'series') void confirmDeleteSeries();
+          }}
+          onCancel={cancelDeletePrompt}
+          {busy}
+        />
       {/if}
       <div class="flex flex-wrap gap-2 pt-2 border-t border-surface1" class:opacity-40={deletePrompt !== 'none'}>
         {#if event.taskId}
@@ -1199,20 +1018,3 @@
   </div>
 {/if}
 
-<style>
-  /* Native <select> dropdown panel is rendered with OS chrome and
-     defaults to white-on-white in dark mode. Same fix as
-     UnifiedCreate: hint color-scheme + explicit option colors so
-     the dropdown is readable on every browser/OS. */
-  .time-select {
-    color-scheme: dark;
-    background: var(--color-surface0);
-  }
-  .time-select option {
-    background: var(--color-base);
-    color: var(--color-text);
-  }
-  :global([data-theme="light"]) .time-select {
-    color-scheme: light;
-  }
-</style>

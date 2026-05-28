@@ -3,7 +3,9 @@
   import { api, type CalendarEvent, type Project } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
-  import { EVENT_TYPES, findEventType } from './eventTypes';
+  import { findEventType } from './eventTypes';
+  import RecurrenceEditor from './RecurrenceEditor.svelte';
+  import EventTypeChips from './EventTypeChips.svelte';
 
   let {
     open = $bindable(false),
@@ -42,17 +44,14 @@
   let remindMinutes = $state(0); // 0 = no reminder
   let projectId = $state('');
   let saving = $state(false);
-  function pickKind(next: string) {
-    if (kind === next) {
-      // Tapping the same chip clears it — escape hatch for the user
-      // who picked a type and decided "actually, generic".
-      kind = '';
-      return;
-    }
-    kind = next;
-    // Auto-suggest end time when the user picked a duration-defining
-    // type AND start is set AND end is still empty (or matches the
-    // previous type's default). Don't overwrite a hand-picked end.
+  // Called by EventTypeChips' onChange. EventTypeChips already handles
+  // the "tap same chip = clear" toggle locally and emits the resulting
+  // kind ('' on clear). This handler only owns the duration-defaulting
+  // side-effect: when the user picks a duration-bearing type AND start
+  // is set AND end is still empty, pre-fill end so the common "60-min
+  // focus block" workflow is one click. We don't fire on clears.
+  function onKindChange(next: string) {
+    if (!next) return;
     const def = findEventType(next);
     if (def?.defaultDurationMin && startTime && !endTime) {
       endTime = addMinutesToHHMM(startTime, def.defaultDurationMin);
@@ -86,74 +85,28 @@
   });
 
   // ── Recurrence picker ─────────────────────────────────────────
-  // Stored as RFC 5545 RRULE strings so the same expander handles
-  // ICS-imported and native events. Common presets cover ~95% of
-  // calendar use; "Custom" lets a power user paste a raw rule.
-  // 'until' is a separate date input that the picker concatenates
-  // to whichever frequency is active.
-  type Repeat = 'none' | 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | 'yearly' | 'bydays' | 'custom';
-  let repeat = $state<Repeat>('none');
-  let untilDate = $state(''); // YYYY-MM-DD; empty = forever
-  let customRule = $state(''); // raw RRULE the user typed for 'custom'
-  // BYDAY picker state — set of 5545 weekday codes the user toggled
-  // on. Only applies when repeat === 'bydays'. Order doesn't matter
-  // for correctness (we sort on serialisation), but Mon→Sun feels
-  // natural for the grid layout.
-  type WD = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU';
-  const WEEKDAYS: { code: WD; label: string; isWeekend: boolean }[] = [
-    { code: 'MO', label: 'Mon', isWeekend: false },
-    { code: 'TU', label: 'Tue', isWeekend: false },
-    { code: 'WE', label: 'Wed', isWeekend: false },
-    { code: 'TH', label: 'Thu', isWeekend: false },
-    { code: 'FR', label: 'Fri', isWeekend: false },
-    { code: 'SA', label: 'Sat', isWeekend: true },
-    { code: 'SU', label: 'Sun', isWeekend: true }
-  ];
-  // Default: Mon-Fri checked so flipping to "Specific days" looks
-  // like the previous "weekdays" preset. User can toggle individuals.
-  let bydaysSet = $state<Set<WD>>(new Set<WD>(['MO', 'TU', 'WE', 'TH', 'FR']));
-  function toggleBYDay(code: WD) {
-    const next = new Set(bydaysSet);
-    if (next.has(code)) next.delete(code);
-    else next.add(code);
-    bydaysSet = next;
-  }
+  // Stored as RFC 5545 RRULE strings — the shared RecurrenceEditor
+  // owns parse + serialise + the BYDAY picker. We only carry the
+  // bindable string and the AI parse maps natural-language preset
+  // names into the same RRULE shape so the editor seeds correctly.
+  let rrule = $state('');
 
-  // Compose the RRULE the backend will store. Empty = no recurrence.
-  // UNTIL is encoded per RFC 5545 as YYYYMMDDT235959Z (UTC end-of-day
-  // so the last day is inclusive in the user's local zone).
-  function untilSuffix(): string {
-    if (!untilDate || !/^\d{4}-\d{2}-\d{2}$/.test(untilDate)) return '';
-    const compact = untilDate.replace(/-/g, '');
-    return `;UNTIL=${compact}T235959Z`;
-  }
-  // Serialise the byday set in canonical MO→SU order so two equivalent
-  // selections produce the same RRULE on disk (helps diffs + dedup).
-  function bydaysSuffix(): string {
-    if (bydaysSet.size === 0) return '';
-    const order: WD[] = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
-    return order.filter((d) => bydaysSet.has(d)).join(',');
-  }
-  const rrule = $derived.by((): string => {
-    switch (repeat) {
-      case 'none': return '';
-      case 'daily': return 'FREQ=DAILY' + untilSuffix();
-      case 'weekdays': return 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' + untilSuffix();
-      case 'weekly': return 'FREQ=WEEKLY' + untilSuffix();
-      case 'biweekly': return 'FREQ=WEEKLY;INTERVAL=2' + untilSuffix();
-      case 'monthly': return 'FREQ=MONTHLY' + untilSuffix();
-      case 'yearly': return 'FREQ=YEARLY' + untilSuffix();
-      case 'bydays': {
-        // Empty selection → fall back to a plain weekly so the rule
-        // is still valid. Surfacing a warning on the form would be
-        // overkill; the user can clearly see no days are picked.
-        const days = bydaysSuffix();
-        if (!days) return 'FREQ=WEEKLY' + untilSuffix();
-        return 'FREQ=WEEKLY;BYDAY=' + days + untilSuffix();
-      }
-      case 'custom': return customRule.trim();
+  // Map AI-parsed preset names ("weekly", "weekdays", …) to an
+  // RRULE string so RecurrenceEditor's parser picks the matching
+  // preset back up. Keeps the AI prompt simple (still emits the
+  // friendly preset name) while letting the editor own the canonical
+  // shape. Unknown values map to '' (no recurrence).
+  function presetToRRule(preset: string): string {
+    switch (preset) {
+      case 'daily': return 'FREQ=DAILY';
+      case 'weekdays': return 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR';
+      case 'weekly': return 'FREQ=WEEKLY';
+      case 'biweekly': return 'FREQ=WEEKLY;INTERVAL=2';
+      case 'monthly': return 'FREQ=MONTHLY';
+      case 'yearly': return 'FREQ=YEARLY';
+      default: return '';
     }
-  });
+  }
 
   // ── Conflict detection ──────────────────────────────────────────
   // Compute the events on the chosen date that overlap the picked
@@ -222,9 +175,7 @@
     aiInput = '';
     aiBusy = false;
     aiError = '';
-    repeat = 'none';
-    untilDate = '';
-    customRule = '';
+    rrule = '';
   }
 
   // ─── AI natural-language parse ───────────────────────────────────
@@ -284,9 +235,9 @@
               if (parsed.start && /^\d{2}:\d{2}$/.test(parsed.start)) startTime = parsed.start;
               if (parsed.end && /^\d{2}:\d{2}$/.test(parsed.end)) endTime = parsed.end;
               if (parsed.location) location = parsed.location;
-              const validRepeats: Repeat[] = ['none', 'daily', 'weekdays', 'weekly', 'biweekly', 'monthly', 'yearly'];
-              if (parsed.repeat && (validRepeats as string[]).includes(parsed.repeat)) {
-                repeat = parsed.repeat as Repeat;
+              const validRepeats = ['none', 'daily', 'weekdays', 'weekly', 'biweekly', 'monthly', 'yearly'];
+              if (parsed.repeat && validRepeats.includes(parsed.repeat)) {
+                rrule = presetToRRule(parsed.repeat);
               }
               aiInput = '';
             } catch {
@@ -439,32 +390,7 @@
                toggle buttons, not a single input. Span keeps the
                visual without lying about the relationship. -->
           <span class="block text-[11px] uppercase tracking-wider text-dim mb-1.5">Type <span class="text-dim normal-case tracking-normal">(optional)</span></span>
-          <div class="flex items-center gap-1 flex-wrap">
-            {#each EVENT_TYPES as t (t.id)}
-              {@const on = kind === t.id}
-              <button
-                type="button"
-                onclick={() => pickKind(t.id)}
-                aria-pressed={on}
-                title={t.description}
-                class="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium border transition-colors {on ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-text border-surface1 hover:border-primary'}"
-              >
-                <span
-                  class="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold font-mono leading-none"
-                  style:background={on ? 'transparent' : `color-mix(in srgb, var(--color-${t.color}) 22%, transparent)`}
-                  style:color={on ? undefined : `var(--color-${t.color})`}
-                >{t.glyph}</span>
-                <span>{t.label}</span>
-              </button>
-            {/each}
-            {#if kind}
-              <button
-                type="button"
-                onclick={() => (kind = '')}
-                class="text-[10px] text-dim hover:text-error px-1.5 py-1 border border-dashed border-surface1 hover:border-error"
-              >clear</button>
-            {/if}
-          </div>
+          <EventTypeChips bind:kind onChange={onKindChange} chipSize="comfy" />
         </div>
 
         <!-- Title — bigger touch target than the rest since it's
@@ -574,115 +500,16 @@
           </select>
         </div>
 
-        <!-- Repeat picker. Common-case presets (daily / weekdays /
-             weekly / biweekly / monthly / yearly) cover ~95% of
-             calendar use; 'Custom' lets a power user paste a raw
-             RFC 5545 RRULE. The Until input only renders when a
-             frequency is active so the form stays compact. -->
-        <div>
-          <label class="block text-[11px] uppercase tracking-wider text-dim mb-1.5" for="ev-repeat">Repeat</label>
-          <select
-            id="ev-repeat"
-            bind:value={repeat}
-            class="w-full px-3 py-3 sm:py-2.5 bg-surface0 border border-surface1 rounded-lg text-base sm:text-sm text-text focus:outline-none focus:border-primary"
-          >
-            <option value="none">Does not repeat</option>
-            <option value="daily">Every day</option>
-            <option value="weekdays">Every weekday (Mon–Fri)</option>
-            <option value="weekly">Every week</option>
-            <option value="biweekly">Every 2 weeks</option>
-            <option value="bydays">Specific weekdays…</option>
-            <option value="monthly">Every month</option>
-            <option value="yearly">Every year</option>
-            <option value="custom">Custom RRULE…</option>
-          </select>
-        </div>
-        {#if repeat === 'bydays'}
-          <!-- Weekday grid — seven toggleable chips. The user picks
-               an arbitrary subset (e.g. Mon/Wed/Fri only). Selected
-               chips fill with primary; unselected stay quiet so the
-               picked set scans at a glance. Pre-fix, only the
-               hardcoded "weekdays" preset existed and there was no
-               way to do "Tuesday + Thursday" or "Sat/Sun only"
-               without dropping to the custom-RRULE field. -->
-          <div>
-            <span class="block text-[11px] uppercase tracking-wider text-dim mb-1.5">Days of week</span>
-            <div class="flex items-center gap-1 flex-wrap">
-              {#each WEEKDAYS as wd (wd.code)}
-                {@const on = bydaysSet.has(wd.code)}
-                <button
-                  type="button"
-                  onclick={() => toggleBYDay(wd.code)}
-                  aria-pressed={on}
-                  title={wd.label + (wd.isWeekend ? ' (weekend)' : '')}
-                  class="min-w-[2.75rem] px-2 py-1.5 text-xs font-medium border transition-colors {on ? 'bg-primary text-on-primary border-primary' : wd.isWeekend ? 'bg-surface0 text-dim border-surface1 hover:border-secondary' : 'bg-surface0 text-text border-surface1 hover:border-primary'}"
-                >{wd.label}</button>
-              {/each}
-            </div>
-            <!-- Quick presets that flip multiple chips at once. Mon-Fri
-                 is the most-asked "weekdays only" workflow; Sat-Sun is
-                 the converse for weekend-only events. -->
-            <div class="flex items-center gap-1.5 mt-1.5 text-[10px]">
-              <button
-                type="button"
-                onclick={() => (bydaysSet = new Set<WD>(['MO', 'TU', 'WE', 'TH', 'FR']))}
-                class="px-1.5 py-0.5 text-dim hover:text-primary border border-dashed border-surface1 hover:border-primary"
-              >Mon–Fri</button>
-              <button
-                type="button"
-                onclick={() => (bydaysSet = new Set<WD>(['SA', 'SU']))}
-                class="px-1.5 py-0.5 text-dim hover:text-primary border border-dashed border-surface1 hover:border-primary"
-              >Sat–Sun</button>
-              <button
-                type="button"
-                onclick={() => (bydaysSet = new Set<WD>(['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']))}
-                class="px-1.5 py-0.5 text-dim hover:text-primary border border-dashed border-surface1 hover:border-primary"
-              >All</button>
-              <button
-                type="button"
-                onclick={() => (bydaysSet = new Set<WD>())}
-                class="px-1.5 py-0.5 text-dim hover:text-error border border-dashed border-surface1 hover:border-error"
-              >Clear</button>
-              <span class="text-dim ml-2">{bydaysSet.size} day{bydaysSet.size === 1 ? '' : 's'} selected</span>
-            </div>
-          </div>
-        {/if}
-        {#if repeat !== 'none'}
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {#if repeat !== 'custom'}
-              <div>
-                <label class="block text-[11px] uppercase tracking-wider text-dim mb-1.5" for="ev-until">Until (optional)</label>
-                <input
-                  id="ev-until"
-                  type="date"
-                  bind:value={untilDate}
-                  min={dateISO}
-                  placeholder="forever"
-                  class="w-full px-3 py-3 sm:py-2.5 bg-surface0 border border-surface1 rounded-lg text-base sm:text-sm text-text focus:outline-none focus:border-primary"
-                />
-              </div>
-            {:else}
-              <div class="sm:col-span-2">
-                <label class="block text-[11px] uppercase tracking-wider text-dim mb-1.5" for="ev-rrule">RRULE</label>
-                <input
-                  id="ev-rrule"
-                  bind:value={customRule}
-                  placeholder='e.g. FREQ=MONTHLY;BYDAY=1MO;UNTIL=20271231T235959Z'
-                  spellcheck="false"
-                  class="w-full px-3 py-3 sm:py-2.5 bg-surface0 border border-surface1 rounded-lg text-sm text-text font-mono focus:outline-none focus:border-primary"
-                />
-                <p class="text-[10px] text-dim mt-1 leading-snug">
-                  RFC 5545 — FREQ + INTERVAL + BYDAY + UNTIL. Power-user shape; presets above cover most cases.
-                </p>
-              </div>
-            {/if}
-            {#if rrule}
-              <div class="sm:col-span-2 px-2.5 py-1.5 bg-mantle border border-surface1 rounded text-[11px] text-dim font-mono">
-                <span class="text-secondary">→</span> {rrule}
-              </div>
-            {/if}
-          </div>
-        {/if}
+        <!-- Repeat picker. Shared RecurrenceEditor owns the preset
+             dropdown, the BYDAY weekday grid, the Until input, and the
+             RRULE preview line. Common-case presets cover ~95% of
+             calendar use; 'Custom' lets a power user paste a raw rule. -->
+        <RecurrenceEditor
+          bind:rrule
+          layout="block"
+          minDate={dateISO}
+          idPrefix="ev"
+        />
 
         <div>
           <span class="block text-[11px] uppercase tracking-wider text-dim mb-1.5">Color</span>

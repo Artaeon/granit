@@ -3,6 +3,7 @@
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { fmtDateISO } from './utils';
+  import TimeInput from './TimeInput.svelte';
 
   // Unified create modal — task or event — invoked from drag-to-create on
   // the calendar grid OR from the sidebar buttons. Single dialog so the
@@ -67,27 +68,40 @@
     }
   }
 
-  // 24-hour time picker buffers. We use TWO selects per time (hours
-  // 0-23 + minutes 0-55 in 5-min steps) instead of <input type="time">
-  // because every browser's <input type="time"> renders AM/PM based
-  // on OS locale, IGNORING the element's lang attribute. Custom
-  // selects guarantee 24-hour display everywhere.
-  let startH = $state(0);
-  let startM = $state(0);
-  let endH = $state(0);
-  let endM = $state(0);
-  // Track the previous start so we can shift the end when the user
-  // changes start. Without this, picking 14:00-15:00 then changing
-  // start to 15:00 leaves end at 15:00 → 0-minute event → endBefore-
-  // Start gate fires and the user can't save. Auto-shifting keeps
-  // the duration the user already chose.
+  // 24-hour HH:MM picker — bindable strings owned here and forwarded
+  // to the shared TimeInput (paired HH+MM selects in 5-min steps).
+  // Native <input type="time"> renders AM/PM on most OS locales
+  // regardless of the element's lang attribute, so we keep the
+  // 24-hour selects. Strings are read synchronously by the submit
+  // handler — no flush race, which previously surfaced as "the times
+  // … get scheduled somewhere" because the submit observed stale
+  // startTime values that hadn't picked up the latest H/M yet.
+  let startTime = $state('00:00');
+  let endTime = $state('00:00');
+
+  // Track the previous start in minutes so we can shift the end when
+  // the user changes start. Without this, picking 14:00-15:00 then
+  // changing start to 15:00 leaves end at 15:00 → 0-minute event →
+  // endBeforeStart gate fires and the user can't save. Auto-shifting
+  // keeps the duration the user already chose.
+  function hhmmToMin(s: string): number {
+    const [h, m] = s.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  }
+  function minToHHMM(n: number): string {
+    const wrapped = ((n % (24 * 60)) + 24 * 60) % (24 * 60);
+    const h = Math.floor(wrapped / 60);
+    const m = wrapped % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
   let prevStartMinutes = $state(0);
   let suppressShift = $state(false);
   $effect(() => {
-    const cur = startH * 60 + startM;
-    const endCur = endH * 60 + endM;
+    const cur = hhmmToMin(startTime);
+    const endCur = hhmmToMin(endTime);
     if (suppressShift) {
-      // Skip shift on programmatic resets (open / kind-switch).
+      // Skip shift on programmatic resets (open / kind-switch /
+      // duration-preset button).
       prevStartMinutes = cur;
       suppressShift = false;
       return;
@@ -95,26 +109,11 @@
     if (cur !== prevStartMinutes && endCur > 0) {
       const dur = endCur - prevStartMinutes;
       if (dur > 0) {
-        let newEnd = (cur + dur) % (24 * 60);
-        endH = Math.floor(newEnd / 60);
-        endM = newEnd % 60;
+        endTime = minToHHMM(cur + dur);
       }
     }
     prevStartMinutes = cur;
   });
-  // startTime / endTime are DERIVED from H+M, not state-with-effect.
-  // The previous $effect-driven sync had a real flush race: the
-  // user could change a select, immediately click Save, and the
-  // submit handler would read a stale startTime that hadn't picked
-  // up the new H/M yet — events landed at the previous time, not
-  // the one the user just chose. The user reported this as "the
-  // times … get scheduled somewhere".
-  // $derived is read synchronously on access — no flush dep, no
-  // race. Reading startTime in the submit handler ALWAYS reflects
-  // the current H/M. The select onchange writes are still reactive
-  // (via the $derived) so the live "range preview" updates on type.
-  let startTime = $derived(`${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`);
-  let endTime = $derived(`${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`);
 
   // Re-seed every time the modal opens — `start`/`end` reflect the most
   // recent drag, so the buffer must follow.
@@ -126,19 +125,20 @@
     // we don't drag the end time to follow start when the user
     // hasn't even seen the form yet.
     suppressShift = true;
-    // Seed the H/M selects from the prop's start/end. startTime /
-    // endTime are derived from these — DON'T also assign them
-    // directly, that would fight the $derived expression.
-    // Round minutes to the nearest 5 so they line up with the
-    // select's options. The grid drag-create already snaps to 15min
-    // so this rounding is usually a no-op; defends against modal
-    // re-opens with hand-picked starts.
-    startH = start.getHours();
-    startM = Math.round(start.getMinutes() / 5) * 5;
-    if (startM === 60) { startH = (startH + 1) % 24; startM = 0; }
-    endH = end.getHours();
-    endM = Math.round(end.getMinutes() / 5) * 5;
-    if (endM === 60) { endH = (endH + 1) % 24; endM = 0; }
+    // Seed startTime / endTime from the prop's start/end. Round
+    // minutes to the nearest 5 so they line up with the picker's
+    // options. The grid drag-create already snaps to 15min so this
+    // rounding is usually a no-op; defends against modal re-opens
+    // with hand-picked starts.
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    let sh = start.getHours();
+    let sm = Math.round(start.getMinutes() / 5) * 5;
+    if (sm === 60) { sh = (sh + 1) % 24; sm = 0; }
+    let eh = end.getHours();
+    let em = Math.round(end.getMinutes() / 5) * 5;
+    if (em === 60) { eh = (eh + 1) % 24; em = 0; }
+    startTime = `${pad2(sh)}:${pad2(sm)}`;
+    endTime = `${pad2(eh)}:${pad2(em)}`;
     title = '';
     notePath = defaultNotePath ?? `Jots/${dateISO}.md`;
     priority = 0;
@@ -369,63 +369,14 @@
             class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text focus:outline-none focus:border-primary"
           />
         </label>
-        <!-- Custom 24-hour time picker. Native <input type="time">
-             renders AM/PM on most OS locales regardless of the
-             element's lang attribute, so we use HH + MM selects:
-             every browser, every OS, always 24-hour. Hours 0-23
-             list every value; minutes step in 5s (most calendar
-             interactions snap to 15, so 5 covers every realistic
-             pick without 60 menu items). -->
-        <div class="grid grid-cols-2 gap-2">
-          <div>
-            <span class="block text-[11px] uppercase tracking-wider text-dim mb-1">Start (24h)</span>
-            <div class="flex items-center bg-surface0 border border-surface1 rounded-lg overflow-hidden focus-within:border-primary">
-              <select
-                bind:value={startH}
-                aria-label="start hour"
-                class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
-              >
-                {#each Array.from({ length: 24 }, (_, i) => i) as h}
-                  <option value={h}>{String(h).padStart(2, '0')}</option>
-                {/each}
-              </select>
-              <span class="text-dim px-1">:</span>
-              <select
-                bind:value={startM}
-                aria-label="start minute"
-                class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
-              >
-                {#each Array.from({ length: 12 }, (_, i) => i * 5) as m}
-                  <option value={m}>{String(m).padStart(2, '0')}</option>
-                {/each}
-              </select>
-            </div>
-          </div>
-          <div>
-            <span class="block text-[11px] uppercase tracking-wider text-dim mb-1">End (24h)</span>
-            <div class="flex items-center bg-surface0 border border-surface1 rounded-lg overflow-hidden focus-within:border-primary">
-              <select
-                bind:value={endH}
-                aria-label="end hour"
-                class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
-              >
-                {#each Array.from({ length: 24 }, (_, i) => i) as h}
-                  <option value={h}>{String(h).padStart(2, '0')}</option>
-                {/each}
-              </select>
-              <span class="text-dim px-1">:</span>
-              <select
-                bind:value={endM}
-                aria-label="end minute"
-                class="time-select flex-1 px-2 py-2 text-sm text-text font-mono tabular-nums focus:outline-none"
-              >
-                {#each Array.from({ length: 12 }, (_, i) => i * 5) as m}
-                  <option value={m}>{String(m).padStart(2, '0')}</option>
-                {/each}
-              </select>
-            </div>
-          </div>
-        </div>
+        <!-- Custom 24-hour time picker — shared TimeInput keeps the
+             paired-select markup. Native <input type="time"> renders
+             AM/PM on most OS locales regardless of the element's lang
+             attribute, so we use HH + MM selects: every browser, every
+             OS, always 24-hour. step=5 keeps the existing 5-minute
+             granularity (most calendar interactions snap to 15, so 5
+             covers every realistic pick without 60 menu items). -->
+        <TimeInput bind:startTime bind:endTime step={5} />
         <!-- Duration quick-pick. Sets the end-time to start +
              selected duration. Saves users from clicking through
              two select dropdowns when they want a standard slot. -->
@@ -439,15 +390,13 @@
             { mins: 90, label: '1.5h' },
             { mins: 120, label: '2h' }
           ] as preset}
-            {@const active = (endH * 60 + endM) - (startH * 60 + startM) === preset.mins}
+            {@const active = hhmmToMin(endTime) - hhmmToMin(startTime) === preset.mins}
             <button
               type="button"
               onclick={() => {
-                const startMin = startH * 60 + startM;
-                const newEnd = (startMin + preset.mins) % (24 * 60);
+                const startMin = hhmmToMin(startTime);
                 suppressShift = true;
-                endH = Math.floor(newEnd / 60);
-                endM = newEnd % 60;
+                endTime = minToHHMM(startMin + preset.mins);
               }}
               class="px-2 py-1 text-xs rounded border transition-colors
                 {active ? 'bg-surface1 border-primary text-primary' : 'bg-surface0 border-surface1 text-subtext hover:border-primary'}"
@@ -621,33 +570,3 @@
   </div>
 {/if}
 
-<style>
-  /* The native <select> dropdown panel is rendered by the browser
-     using OS chrome, NOT our app's CSS variables. On a dark theme
-     that means white-text-on-white-background by default, which the
-     user reported as "the dropdown is only white nothing to see".
-     Two fixes layered together so every browser/OS combo lands on
-     readable values:
-       - color-scheme: dark — hints to Chromium / Safari / Firefox
-         that the UA should pick the dark variant of its native
-         widgets, including <option> rendering.
-       - explicit background / color on the <select> AND on each
-         <option>. Some renderers honour these (Firefox), some
-         ignore them (Chromium-on-Linux falls back to OS theme).
-         color-scheme covers the second case.
-     The result: the open dropdown shows white-on-dark text in dark
-     mode, dark-on-white in light mode. Always legible. */
-  .time-select {
-    color-scheme: dark;
-    background: var(--color-surface0);
-  }
-  .time-select option {
-    background: var(--color-base);
-    color: var(--color-text);
-  }
-  /* Light-mode override — color-scheme: light keeps the option
-     panel readable when the user's app theme is set to light. */
-  :global([data-theme="light"]) .time-select {
-    color-scheme: light;
-  }
-</style>
