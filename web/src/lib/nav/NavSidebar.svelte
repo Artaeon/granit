@@ -154,6 +154,22 @@
       >
         <NavIcon name="settings" class="w-4 h-4" />
       </a>
+      <!-- Right-pane toggle — surfaced in the brand row (not just
+           the footer rail) so users find the pane without having
+           to scroll the sidebar. Active styling mirrors the open
+           flag; tooltip carries the keyboard chord for discovery. -->
+      <button
+        onclick={toggleRightPane}
+        title={$rightPaneStore.open ? 'Close right pane (⌘\\)' : 'Open right pane (⌘\\)'}
+        aria-label="Toggle right pane"
+        aria-pressed={$rightPaneStore.open}
+        class="w-7 h-7 flex items-center justify-center rounded transition-colors {$rightPaneStore.open ? 'bg-surface1 text-primary' : 'text-dim hover:text-text hover:bg-surface0'}"
+      >
+        <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="16" rx="2"/>
+          <line x1="15" y1="4" x2="15" y2="20"/>
+        </svg>
+      </button>
     {:else}
       <div class="w-6 h-6 rounded bg-surface1 text-primary flex items-center justify-center flex-shrink-0">
         <Logo class="w-3.5 h-3.5" label="" />
@@ -170,6 +186,19 @@
       >
         <NavIcon name="settings" class="w-4 h-4" />
       </a>
+      <!-- Right-pane toggle — see compact branch above. -->
+      <button
+        onclick={toggleRightPane}
+        title={$rightPaneStore.open ? 'Close right pane (⌘\\)' : 'Open right pane (⌘\\)'}
+        aria-label="Toggle right pane"
+        aria-pressed={$rightPaneStore.open}
+        class="w-7 h-7 flex items-center justify-center rounded transition-colors flex-shrink-0 {$rightPaneStore.open ? 'bg-surface1 text-primary' : 'text-dim hover:text-text hover:bg-surface0'}"
+      >
+        <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="16" rx="2"/>
+          <line x1="15" y1="4" x2="15" y2="20"/>
+        </svg>
+      </button>
     {/if}
   </div>
 
@@ -478,21 +507,6 @@
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </button>
-      <!-- Right-pane discovery toggle. Mod+\ also fires it, but the
-           icon button is how non-keyboard users find the pane in the
-           first place. Active state mirrors the open flag. -->
-      <button
-        onclick={toggleRightPane}
-        title={$rightPaneStore.open ? 'Close right pane (⌘\\)' : 'Open right pane (⌘\\)'}
-        aria-label="Toggle right pane"
-        aria-pressed={$rightPaneStore.open}
-        class="hidden md:flex w-full justify-center items-center px-2 py-1.5 rounded transition-colors {$rightPaneStore.open ? 'bg-surface1 text-primary' : 'text-dim hover:bg-surface0 hover:text-text'}"
-      >
-        <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="4" width="18" height="16" rx="2"/>
-          <line x1="15" y1="4" x2="15" y2="20"/>
-        </svg>
-      </button>
       <div class="flex justify-center pt-0.5" title={$wsConnected ? 'live' : 'offline'}>
         <span class="w-2 h-2 rounded-full {$wsConnected ? 'bg-success' : 'bg-dim'}"></span>
       </div>
@@ -524,20 +538,6 @@
         >
           <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-        <!-- Right-pane discovery toggle (expanded sidebar mode). Same
-             intent as the compact-mode button above. -->
-        <button
-          onclick={toggleRightPane}
-          title={$rightPaneStore.open ? 'Close right pane (⌘\\)' : 'Open right pane (⌘\\)'}
-          aria-label="Toggle right pane"
-          aria-pressed={$rightPaneStore.open}
-          class="hidden md:flex w-8 h-8 items-center justify-center rounded transition-colors {$rightPaneStore.open ? 'bg-surface1 text-primary' : 'text-dim hover:bg-surface0 hover:text-text'}"
-        >
-          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="16" rx="2"/>
-            <line x1="15" y1="4" x2="15" y2="20"/>
           </svg>
         </button>
         <span class="flex-1"></span>

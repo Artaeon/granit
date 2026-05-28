@@ -1,8 +1,8 @@
 <script lang="ts">
-  // Mobile top bar — back (when in a subpage) · title · search.
-  // Settings used to live here too but it's already in the More
-  // drawer now, so the redundancy is gone. The bottom nav is the
-  // primary nav surface; this top bar is just contextual.
+  // Mobile top bar — back (when in a subpage) · title · search ·
+  // right-pane toggle. The bottom nav is the primary nav surface;
+  // this top bar is contextual + hosts the right-pane affordance
+  // since the bottom nav has no room for it.
   //
   // Visible only below md. Sticky to the top so the page title
   // and a "back to /<section>" affordance stay reachable while
@@ -12,6 +12,7 @@
 
   import { page } from '$app/stores';
   import { activeNav } from '$lib/nav/active';
+  import { rightPaneStore, toggleRightPane } from '$lib/stores/rightPane';
 
   type Props = {
     onQuickJump: () => void;
@@ -52,6 +53,18 @@
   >
     <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
       <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" stroke-linecap="round" />
+    </svg>
+  </button>
+  <button
+    onclick={toggleRightPane}
+    aria-label="Toggle right pane"
+    aria-pressed={$rightPaneStore.open}
+    title="Right pane"
+    class="w-10 h-10 flex items-center justify-center rounded transition-colors {$rightPaneStore.open ? 'text-primary' : 'text-subtext hover:text-primary'}"
+  >
+    <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2"/>
+      <line x1="15" y1="4" x2="15" y2="20"/>
     </svg>
   </button>
 </header>
