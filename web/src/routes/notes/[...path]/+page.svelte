@@ -6,10 +6,6 @@
   import { onWsEvent } from '$lib/ws';
   import Editor from '$lib/editor/Editor.svelte';
   import NotesTree from '$lib/notes/NotesTree.svelte';
-  import Outline from '$lib/notes/Outline.svelte';
-  import BacklinksPanel from '$lib/notes/BacklinksPanel.svelte';
-  import AnnotationsPanel from '$lib/notes/AnnotationsPanel.svelte';
-  import FrontmatterEditor from '$lib/notes/FrontmatterEditor.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import DayActivityInline from '$lib/notes/DayActivityInline.svelte';
   import DailyQuickAdd from '$lib/notes/DailyQuickAdd.svelte';
@@ -36,7 +32,6 @@
   import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
   import SelectionToolbar from '$lib/editor/SelectionToolbar.svelte';
   import MobileEditorToolbar from '$lib/editor/MobileEditorToolbar.svelte';
-  import LinkSuggestPanel from '$lib/notes/LinkSuggestPanel.svelte';
   import InlineAIMenu from '$lib/notes/InlineAIMenu.svelte';
   import AIActionBar from '$lib/notes/AIActionBar.svelte';
   import {
@@ -45,13 +40,13 @@
   } from '$lib/editor/inline-ai-trigger';
   import { inlineAIObserver, type InlineAIState } from '$lib/editor/inline-ai';
   import type { EditorView } from '@codemirror/view';
-  import ResearchPanel from '$lib/notes/ResearchPanel.svelte';
-  import ReferenceNotePanel from '$lib/notes/ReferenceNotePanel.svelte';
-  import StreakBadge from '$lib/notes/StreakBadge.svelte';
-  import AIDraftBadge from '$lib/notes/AIDraftBadge.svelte';
   import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
   import NotePresentation from '$lib/notes/NotePresentation.svelte';
+  import NoteStatusBar from '$lib/notes/NoteStatusBar.svelte';
+  import NoteOverflowMenu from '$lib/notes/NoteOverflowMenu.svelte';
+  import NoteInfoRail from '$lib/notes/NoteInfoRail.svelte';
+  import NoteHeader from '$lib/notes/NoteHeader.svelte';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
   import { recordOpenNote, updateOpenNoteScroll } from '$lib/stores/open-note';
   import { registerActiveEditor } from '$lib/stores/active-editor';
@@ -895,57 +890,15 @@
   // toolbar button or Mod-Shift-P.
   let presentationOpen = $state(false);
 
-  // Mobile overflow menu — collapses the secondary header buttons
-  // (find, print, slideshow, audio, reading, focus, help) into a
-  // single ⋯ trigger on phones. Without this the header overflowed
-  // horizontally on narrow viewports; the buttons were just
-  // `hidden sm:flex` so mobile users had no way to reach them at
-  // all. Positioned with the same viewport-aware fixed-coordinate
-  // pattern as EditorAIMenu so it never spills off-screen.
+  // Overflow menu — collapses the secondary header actions (find,
+  // history, PDF, slideshow, audio, reading, focus, flashcards,
+  // help) behind a single ⋯ trigger. State + positioning + click-
+  // outside / Esc / resize wiring live inside <NoteOverflowMenu>.
+  // We keep `overflowOpen` and the trigger ref here so the header
+  // button still toggles the menu and `runScheduleFlashcards` can
+  // close it before the long-running async job.
   let overflowOpen = $state(false);
-  let overflowMenuEl: HTMLDivElement | undefined = $state();
   let overflowTriggerEl: HTMLButtonElement | undefined = $state();
-  let overflowMenuTop = $state(0);
-  let overflowMenuLeft = $state(0);
-  let overflowMenuWidth = $state(240);
-
-  function repositionOverflow() {
-    if (!overflowTriggerEl) return;
-    const rect = overflowTriggerEl.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const margin = 8;
-    overflowMenuWidth = Math.min(240, vw - margin * 2);
-    let left = rect.right - overflowMenuWidth;
-    if (left < margin) left = margin;
-    if (left + overflowMenuWidth > vw - margin) left = vw - margin - overflowMenuWidth;
-    overflowMenuLeft = left;
-    overflowMenuTop = rect.bottom + 4;
-  }
-
-  $effect(() => {
-    if (!overflowOpen) return;
-    repositionOverflow();
-    function onDocClick(e: MouseEvent) {
-      if (!overflowMenuEl || !overflowTriggerEl) return;
-      if (e.target instanceof Node && overflowMenuEl.contains(e.target)) return;
-      if (e.target instanceof Node && overflowTriggerEl.contains(e.target)) return;
-      overflowOpen = false;
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') overflowOpen = false;
-    }
-    function onResize() { repositionOverflow(); }
-    document.addEventListener('mousedown', onDocClick);
-    document.addEventListener('keydown', onKey);
-    window.addEventListener('resize', onResize);
-    window.addEventListener('scroll', onResize, true);
-    return () => {
-      document.removeEventListener('mousedown', onDocClick);
-      document.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('scroll', onResize, true);
-    };
-  });
 
   // ── Editor extra extensions ─────────────────────────────────────
   // Editor.svelte reads extraExtensions ONCE at setupView time, so
@@ -1589,104 +1542,26 @@
 {/snippet}
 
 {#snippet infoContent()}
-  <!-- Right rail — pruned from 12 sections to 6. Removed surfaces
-       that duplicated features available elsewhere:
-         * Local graph    → Backlinks already lists what's relevant
-         * Ask this note  → AIOverlay covers single-note Q&A via the
-                            "attach note" toggle on the composer
-         * Section questions → EditorAIBar's More menu has Outline +
-                               Open questions verbs
-         * Word frequencies + Sentence rhythm → niche editorial tools;
-                               EditorAIBar covers tighten/critique
-       The kept set is the active-reading + navigation kernel: where
-       am I in the note (Outline), my marginalia (Margin notes),
-       what else links here (Backlinks), and three collapsible
-       advanced surfaces under details/summary so they don't crowd
-       the rail until the user reaches for them. -->
-  <div class="p-3 space-y-4 overflow-y-auto h-full">
-    <section>
-      <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5">
-        <span>Outline</span>
-        {#if visitedHeadings.size > 0}
-          <button
-            type="button"
-            onclick={resetVisited}
-            class="ml-auto text-[9px] tracking-normal normal-case text-dim hover:text-error"
-            title="clear visited-section ticks for this note"
-            aria-label="reset reading progress"
-          >reset</button>
-        {/if}
-      </h3>
-      <Outline
-        body={body}
-        onJump={jumpToLine}
-        cursorLine={cursorLine}
-        scrollContainer={viewMode !== 'edit' ? previewContainer : null}
-        visited={visitedHeadings}
-      />
-    </section>
-    {#if note}
-      <section>
-        <h3 class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5">
-          <span>Margin notes</span>
-          {#if annotationCount > 0}
-            <span class="ml-auto normal-case tracking-normal text-[10px] px-1.5 py-0.5 rounded-full bg-surface1 text-text tabular-nums">{annotationCount}</span>
-          {/if}
-        </h3>
-        <AnnotationsPanel
-          notePath={note.path}
-          activeLine={cursorLine}
-          onJumpToLine={jumpToLine}
-          onCountChange={(n) => (annotationCount = n)}
-        />
-      </section>
-      <section>
-        <h3 class="text-xs uppercase tracking-wider text-dim mb-2">Backlinks</h3>
-        <BacklinksPanel path={note.path} onNavigate={navigateWikilink} />
-      </section>
-      <!-- Research panel auto-hides when the body has no highlights /
-           footnotes / outbound URLs. Keep visible (no wrapping
-           details) so it just appears the moment the note picks up
-           any of those affordances. -->
-      <ResearchPanel body={body} onJump={jumpToLine} />
-      <!-- Advanced surfaces — collapsed by default. Each `<details>`
-           opens independently and remembers nothing across reloads
-           on purpose; defaulting closed is the whole point. -->
-      <details class="group">
-        <summary class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5 cursor-pointer hover:text-text select-none">
-          <svg viewBox="0 0 24 24" class="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
-          <span>AI link suggester</span>
-        </summary>
-        <div class="mt-2">
-          <LinkSuggestPanel
-            notePath={note.path}
-            body={body}
-            existingTags={existingTagList}
-            onAddTag={addSuggestedTag}
-            onInsertLink={insertSuggestedLink}
-          />
-        </div>
-      </details>
-      <details class="group">
-        <summary class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5 cursor-pointer hover:text-text select-none">
-          <svg viewBox="0 0 24 24" class="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
-          <span>Reference note</span>
-        </summary>
-        <div class="mt-2">
-          <ReferenceNotePanel currentPath={note.path} currentBody={body} currentTitle={note.title ?? ''} />
-        </div>
-      </details>
-      <details class="group">
-        <summary class="text-xs uppercase tracking-wider text-dim mb-2 flex items-center gap-1.5 cursor-pointer hover:text-text select-none">
-          <svg viewBox="0 0 24 24" class="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
-          <span>Properties</span>
-        </summary>
-        <div class="mt-2">
-          <FrontmatterEditor frontmatter={note.frontmatter ?? {}} onChange={saveFrontmatter} />
-        </div>
-      </details>
-    {/if}
-  </div>
+  <!-- Right rail contents extracted to <NoteInfoRail> 2026-05-28.
+       The snippet wrapper stays so the matchMedia-gated mount
+       strategy (single mount of the rail to either the desktop
+       aside or the drawer, never both) is preserved. -->
+  <NoteInfoRail
+    {note}
+    {body}
+    {viewMode}
+    {previewContainer}
+    {visitedHeadings}
+    {cursorLine}
+    bind:annotationCount
+    {existingTagList}
+    onJumpToLine={jumpToLine}
+    onNavigateWikilink={navigateWikilink}
+    onResetVisited={resetVisited}
+    onSaveFrontmatter={saveFrontmatter}
+    onAddSuggestedTag={addSuggestedTag}
+    onInsertSuggestedLink={insertSuggestedLink}
+  />
 {/snippet}
 
 <div class="h-full flex" class:focus-mode={focusMode} class:reading-mode={readingMode}>
@@ -1745,246 +1620,44 @@
       <div class="px-4 py-2 text-sm text-error border-b border-error bg-surface0 flex-shrink-0">{error}</div>
     {/if}
     {#if note}
-      <header class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle sticky top-0 z-20">
-        <!-- Hidden on mobile: the layout's top-bar already shows a back
-             arrow to /notes for any subpath, so a second one here pushes
-             the view-mode toggle (and save button) off the right edge on
-             narrow phones. -->
-        <a
-          href="/notes"
-          aria-label="back to notes"
-          class="hidden md:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0"
-        >
-          <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </a>
-        <button
-          onclick={() => (treeDrawerOpen = true)}
-          aria-label="vault tree"
-          title="vault tree"
-          class="lg:hidden w-9 h-9 flex items-center justify-center text-subtext hover:bg-surface0 rounded flex-shrink-0"
-        >
-          <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 6h18M3 12h18M3 18h18" stroke-linecap="round" />
-          </svg>
-        </button>
-        {#if isDaily && dailyDate}
-          <button
-            onclick={() => gotoDaily(shiftDate(dailyDate, -1))}
-            aria-label="previous day"
-            title="previous day"
-            class="w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0"
-          >‹</button>
-        {/if}
-        <div class="min-w-0 flex-1">
-          <!-- Single-line ellipsis with the full title surfaced via
-               the native tooltip + an explicit aria-label so the
-               hidden tail is still discoverable on hover (desktop)
-               and accessible to screen readers. The h1 itself only
-               shows up to one row's worth so the buttons on the
-               right never get pushed off the viewport. -->
-          <h1
-            class="text-base sm:text-lg font-semibold text-text truncate"
-            title={note.title}
-            aria-label={note.title}
-          >
-            {note.title}
-            {#if dailyLabel}
-              <span class="ml-2 text-xs font-normal text-dim uppercase tracking-wider">{dailyLabel}</span>
-            {/if}
-          </h1>
-          <!-- Folder breadcrumbs — each segment is a clickable filter
-               link back into the notes index. Deep paths collapse to
-               first/…/last with the ellipsis acting as an expand
-               toggle so the bar stays one-line even on
-               work/projects/2026/q1/notes/foo.md. Tag chips render
-               beside the trail when present. -->
-          <div class="text-[11px] text-dim flex items-center gap-1 min-w-0 flex-nowrap overflow-hidden">
-            <a href="/notes" class="hover:text-primary flex-shrink-0">vault</a>
-            {#each visibleCrumbs as c, i}
-              <span class="text-dim/60 flex-shrink-0">/</span>
-              {#if crumbsCollapsed && i === 2}
-                <button
-                  type="button"
-                  onclick={() => (breadcrumbExpanded = true)}
-                  class="px-1 rounded hover:bg-surface0 hover:text-text flex-shrink-0 font-mono"
-                  title="Show full path ({allCrumbs.length} folders)"
-                  aria-label="Expand collapsed folders"
-                >…</button>
-                <span class="text-dim/60 flex-shrink-0">/</span>
-              {/if}
-              <a
-                href={c.href}
-                class="hover:text-primary truncate font-mono {i === visibleCrumbs.length - 1 ? '' : 'flex-shrink'}"
-                title={c.label}
-              >{c.label}</a>
-            {/each}
-            {#if (note.frontmatter as Record<string, unknown>)?.tags && Array.isArray((note.frontmatter as Record<string, unknown>).tags)}
-              <span class="ml-2 hidden sm:flex items-center gap-1 flex-wrap min-w-0">
-                {#each ((note.frontmatter as Record<string, unknown>).tags as string[]).slice(0, 6) as t}
-                  <a
-                    href="/notes?tag={encodeURIComponent(t)}"
-                    class="px-1.5 py-0.5 rounded text-[10px] hover:bg-surface1 flex-shrink-0"
-                    style="background: color-mix(in srgb, var(--color-secondary) 14%, transparent); color: var(--color-secondary);"
-                  >#{t}</a>
-                {/each}
-              </span>
-            {/if}
-          </div>
-        </div>
-        {#if isDaily && dailyDate}
-          <button
-            onclick={() => gotoDaily(shiftDate(dailyDate, 1))}
-            aria-label="next day"
-            title="next day"
-            class="w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0"
-          >›</button>
-          <button
-            onclick={() => gotoDaily('today')}
-            aria-label="today"
-            title="jump to today"
-            class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-primary hidden md:inline-flex flex-shrink-0"
-          >today</button>
-        {/if}
-        <button
-          onclick={togglePin}
-          disabled={pinBusy}
-          aria-label={pinned.has(note.path) ? 'unpin' : 'pin'}
-          title={pinned.has(note.path) ? 'unpin from dashboard' : 'pin to dashboard'}
-          class="w-9 h-9 flex items-center justify-center rounded text-lg disabled:opacity-50
-            {pinned.has(note.path) ? 'text-warning' : 'text-dim hover:text-warning'}"
-        >
-          {pinned.has(note.path) ? '★' : '☆'}
-        </button>
-        <span class="text-xs text-dim hidden lg:inline">
-          {wordCount} words{#if wordCount >= 50} · {readingMinutes} min read{#if viewMode === 'preview' && previewProgress > 0.05 && previewProgress < 0.95} · {Math.max(1, Math.ceil(readingMinutes * (1 - previewProgress)))} left{/if}{/if}
-        </span>
-        <!-- AI-draft back-link chip — surfaces for notes saved
-             through the sidebar chat's "save as note" flow. Reads
-             frontmatter.type === 'ai-draft' + optional project /
-             goal / calendar_window to render a back-link to the
-             source context. Self-hides when the note isn't a
-             draft, so the row stays clean for hand-written notes. -->
-        {#if note}
-          <AIDraftBadge
-            frontmatter={note.frontmatter as Record<string, unknown> | undefined}
-          />
-        {/if}
-        <!-- Daily-note streak badge — surfaces consecutive-day count
-             when the user has any history. Auto-hides when there's no
-             history to brag about. Wrapped in a hidden-on-phones span
-             so the streak chip doesn't squeeze the title row on narrow
-             viewports; the badge still renders on the dashboard and
-             at sm+. -->
-        <span class="hidden lg:inline-flex">
-          <StreakBadge />
-        </span>
-        <!-- view-mode toggle: 3-button strip from md+ (when there's room
-             for icon + tooltip), 2-button toggle below md so the header
-             keeps its save button on-screen on phones. -->
-        <div class="hidden md:flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs">
-          {#each [{m: 'edit', l: 'edit', i: '✎'}, {m: 'split', l: 'split', i: '⊟'}, {m: 'preview', l: 'preview', i: '👁'}] as v}
-            <button
-              onclick={() => setViewMode(v.m as ViewMode)}
-              class="px-2.5 py-1.5 {viewMode === v.m ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-              title={v.l}
-            >
-              <span class="text-[11px]">{v.i}</span>
-            </button>
-          {/each}
-        </div>
-        <!-- mobile: 2-mode toggle (edit/preview only). Sub-md so it
-             only appears when the 3-button strip above is hidden — both
-             at the same breakpoint to avoid a dead window where neither
-             toggle renders. -->
-        <button
-          onclick={() => setViewMode(viewMode === 'preview' ? 'edit' : 'preview')}
-          aria-label={viewMode === 'preview' ? 'edit source' : 'show preview'}
-          class="md:hidden w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
-        >
-          {viewMode === 'preview' ? '✎' : '👁'}
-        </button>
-        <!-- 2026-05-25 toolbar redesign: secondary actions (find,
-             history, PDF, slideshow, audio, reading mode, focus
-             mode, help) ALL live in the overflow menu now — at
-             every breakpoint, not just below lg. The header was
-             carrying ~17 buttons on desktop, which pushed the
-             title row into a hard-to-scan strip. Primary tier
-             (view-mode, AI, Research, overflow) stays in the
-             rail; the rest collapses behind ⋯ even on wide
-             monitors. Faster scan, cleaner rhythm, single home
-             for "everything else". -->
-
-        <!-- AI affordance: open the InlineAIMenu at the editor's
-             cursor. Cmd-/ from inside the editor does the same thing
-             with a keystroke; this button is for click-first users
-             and as a discoverable entry point in the toolbar.
-             (Previously bound to Mod-k, but that chord is now
-             claimed by the global CommandPalette + markdown-link —
-             dispatching it here would either open search or wrap
-             the selection as a link.) -->
-        {#if note}
-          <button
-            type="button"
-            onclick={() => editor?.dispatchChord('Mod-/')}
-            title="AI — Cmd-/ or type /ai in the editor"
-            class="w-9 h-9 flex items-center justify-center text-subtext hover:text-text hover:bg-surface0 rounded flex-shrink-0 text-[10px] font-mono uppercase tracking-wider"
-          >AI</button>
-          <!-- Research Mode — pins the AI overlay as a side rail
-               seeded with this note's title + tags + leading excerpt,
-               framed as exploration. Stays open while the user
-               wanders backlinks / annotations / other notes so the
-               AI is a running thinking partner rather than a one-
-               shot Q&A. Hidden below lg because the toolbar is
-               already busy on tablet+phone. -->
-          <button
-            type="button"
-            onclick={openResearchMode}
-            title="Research Mode — pin AI side-rail with this note as context"
-            aria-label="open research mode"
-            class="hidden lg:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
-          >
-            <span aria-hidden="true">🔬</span>
-          </button>
-        {/if}
-        <!-- Overflow trigger — single home for all secondary actions
-             (find, history, PDF, slideshow, audio, reading mode,
-             focus mode, keyboard shortcuts, flashcards). Visible at
-             every breakpoint so the toolbar has one consistent
-             "more actions" affordance and the wide-viewport row
-             doesn't carry 17 buttons. -->
-        <button
-          bind:this={overflowTriggerEl}
-          onclick={() => (overflowOpen = !overflowOpen)}
-          aria-label="More actions"
-          aria-haspopup="menu"
-          aria-expanded={overflowOpen}
-          title="More actions"
-          class="w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-lg leading-none"
-        >⋯</button>
-        <!-- Save button. Stays primary — it's the always-on signal of
-             whether the buffer is dirty, saving, or saved cleanly. -->
-        <button
-          onclick={() => save()}
-          disabled={(!dirty && !saveFailed) || saving}
-          title={saveStatus}
-          class="px-3 sm:px-4 py-2.5 sm:py-2 min-h-[40px] sm:min-h-0 rounded text-sm font-medium disabled:opacity-60 transition-shadow flex-shrink-0
-            {saveFailed ? 'bg-error text-mantle' : dirty || saving ? 'bg-primary text-on-primary' : 'bg-surface1 text-subtext'}
-            {saveFlash ? 'save-flash' : ''}"
-        >
-          {saveStatus}
-        </button>
-        <button
-          onclick={() => (infoDrawerOpen = true)}
-          aria-label="outline & backlinks"
-          class="xl:hidden w-9 h-9 flex items-center justify-center text-subtext hover:bg-surface0 rounded"
-        >
-          <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 6h16M4 10h10M4 14h16M4 18h10" stroke-linecap="round" />
-          </svg>
-        </button>
-      </header>
+      <!-- Header chrome extracted to <NoteHeader> 2026-05-28. The page
+           still owns every piece of state behind the header (note,
+           viewMode, breadcrumbs, daily-date helpers, pin set, save
+           state, overflow state); the component is a presentational
+           shell that takes the props and emits the callbacks. -->
+      <NoteHeader
+        {note}
+        {viewMode}
+        {isDaily}
+        {dailyDate}
+        {dailyLabel}
+        {visibleCrumbs}
+        {allCrumbs}
+        {crumbsCollapsed}
+        {pinned}
+        {pinBusy}
+        {wordCount}
+        {readingMinutes}
+        {previewProgress}
+        {saveStatus}
+        {saving}
+        {dirty}
+        {saveFailed}
+        {saveFlash}
+        {overflowOpen}
+        bind:overflowTriggerEl
+        onOpenTreeDrawer={() => (treeDrawerOpen = true)}
+        onOpenInfoDrawer={() => (infoDrawerOpen = true)}
+        onExpandBreadcrumbs={() => (breadcrumbExpanded = true)}
+        onSetViewMode={setViewMode}
+        onTogglePin={togglePin}
+        onGotoDaily={gotoDaily}
+        onShiftDate={shiftDate}
+        onDispatchAI={() => editor?.dispatchChord('Mod-/')}
+        onOpenResearchMode={openResearchMode}
+        onToggleOverflow={() => (overflowOpen = !overflowOpen)}
+        onSave={() => save()}
+      />
       {#if isDaily && note}
         {@const np = note.path}
         <!-- Carryover (yesterday's open) + habit checklist render
@@ -2102,57 +1775,21 @@
            previous version was md:hidden, which left desktop users
            with no live word/char/line/cursor readout. The desktop
            layout fits more datapoints; mobile collapses to the
-           essentials.
-
-           Order: counts (words · chars · lines) · reading time ·
-           cursor (line:col + selection length) · last saved.
-           Right side carries autocomplete hint on mobile only —
-           desktop has the help button in the header. -->
-      <footer
-        class="px-3 py-1.5 border-t border-surface1 text-[11px] text-dim flex items-center gap-3 flex-wrap"
-        style="padding-bottom: max(0.375rem, env(safe-area-inset-bottom));"
-      >
-        {#if wordGoal}
-          <!-- Word-count goal progress: chip + tiny progress bar
-               surfaces a writing target set in frontmatter
-               (target_words: 1500). When the goal is hit, palette
-               flips to success so the user sees the win. -->
-          <span class="inline-flex items-baseline gap-1.5 font-mono tabular-nums">
-            <span class={wordCount >= wordGoal ? 'text-success font-semibold' : 'text-text'}>
-              {wordCount.toLocaleString()}/{wordGoal.toLocaleString()}
-            </span>
-            <span class="text-dim">words</span>
-            <span class="inline-block w-12 h-1 rounded bg-surface1 overflow-hidden align-middle relative">
-              <span
-                class="absolute inset-y-0 left-0 {wordCount >= wordGoal ? 'bg-success' : 'bg-primary'}"
-                style="width: {wordGoalPct}%"
-              ></span>
-            </span>
-            <span class="text-dim">{wordGoalPct}%</span>
-          </span>
-        {:else}
-          <span class="font-mono tabular-nums">{wordCount} words</span>
-        {/if}
-        <span class="hidden sm:inline opacity-60">·</span>
-        <span class="hidden sm:inline font-mono tabular-nums">{charCount.toLocaleString()} chars</span>
-        <span class="hidden md:inline opacity-60">·</span>
-        <span class="hidden md:inline font-mono tabular-nums">{lineCount} lines</span>
-        {#if wordCount >= 50}
-          <span class="opacity-60">·</span>
-          <span>{readingMinutes} min read</span>
-        {/if}
-        {#if viewMode !== 'preview'}
-          <span class="hidden sm:inline opacity-60">·</span>
-          <span class="hidden sm:inline font-mono tabular-nums">
-            Ln {cursorLine}, Col {cursorCol}{#if cursorSelLen > 0} · {cursorSelLen} sel{/if}
-          </span>
-        {/if}
-        <span class="flex-1"></span>
-        {#if lastSavedAt}
-          <span class="hidden sm:inline">Saved {lastSavedDisplay}</span>
-        {/if}
-        <span class="md:hidden opacity-60">[[ autocomplete · ⌘-click links</span>
-      </footer>
+           essentials. Extracted to <NoteStatusBar> 2026-05-28. -->
+      <NoteStatusBar
+        {wordCount}
+        {charCount}
+        {lineCount}
+        {readingMinutes}
+        {wordGoal}
+        {wordGoalPct}
+        {cursorLine}
+        {cursorCol}
+        {cursorSelLen}
+        {viewMode}
+        {lastSavedAt}
+        {lastSavedDisplay}
+      />
     {:else}
       <div class="p-6 text-sm text-dim">loading…</div>
     {/if}
@@ -2281,161 +1918,36 @@
   />
 {/if}
 
-<!-- Mobile overflow popover — surfaces the secondary header
-     actions on phones. Rendered with `position: fixed` and
-     viewport-clamped coordinates so it escapes any ancestor
-     overflow (the editor / drawer ancestors) and never lands
-     off-screen on narrow phones. -->
-{#if overflowOpen && note}
-  <div
-    bind:this={overflowMenuEl}
-    role="menu"
-    aria-label="More actions"
-    class="fixed z-50 bg-mantle border border-surface1 rounded-md shadow-xl py-1 text-sm"
-    style="top: {overflowMenuTop}px; left: {overflowMenuLeft}px; width: {overflowMenuWidth}px;"
-  >
-    <button
-      type="button"
-      role="menuitem"
-      onclick={() => { overflowOpen = false; editor?.openFind(); }}
-      class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem]"
-    >
-      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
-        <circle cx="11" cy="11" r="7"/>
-        <path d="M21 21l-4.5-4.5" stroke-linecap="round"/>
-      </svg>
-      <span>Find / replace</span>
-    </button>
-    <button
-      type="button"
-      role="menuitem"
-      onclick={() => { overflowOpen = false; historyOpen = true; }}
-      class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem]"
-    >
-      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
-        <circle cx="12" cy="12" r="9"/>
-        <path d="M12 7v5l3 2" stroke-linecap="round"/>
-        <path d="M3 12a9 9 0 0114-7.5l1 1" stroke-linecap="round"/>
-        <path d="M3 4v4h4" stroke-linecap="round"/>
-      </svg>
-      <span>Version history</span>
-    </button>
-    <button
-      type="button"
-      role="menuitem"
-      onclick={() => { overflowOpen = false; printOpen = true; }}
-      class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem]"
-    >
-      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M6 9V4h12v5"/>
-        <rect x="6" y="14" width="12" height="6" rx="1"/>
-        <path d="M6 17H4a2 2 0 01-2-2v-3a2 2 0 012-2h16a2 2 0 012 2v3a2 2 0 01-2 2h-2"/>
-      </svg>
-      <span>Export PDF</span>
-    </button>
-    <button
-      type="button"
-      role="menuitem"
-      onclick={() => { overflowOpen = false; presentationOpen = true; }}
-      class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem]"
-    >
-      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
-        <rect x="3" y="4" width="18" height="13" rx="1.5"/>
-        <path d="M8 21h8M12 17v4" stroke-linecap="round"/>
-      </svg>
-      <span>Slideshow</span>
-    </button>
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={audioOpen}
-      onclick={() => { overflowOpen = false; audioOpen = !audioOpen; }}
-      class="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-surface0 text-left min-h-[2.25rem]
-        {audioOpen ? 'text-secondary' : 'text-text'}"
-    >
-      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M11 5L6 9H2v6h4l5 4V5z" stroke-linejoin="round"/>
-        <path d="M15.5 8.5a5 5 0 010 7" stroke-linecap="round"/>
-        <path d="M19 5a9 9 0 010 14" stroke-linecap="round"/>
-      </svg>
-      <span>{audioOpen ? 'Close audio' : 'Read aloud'}</span>
-    </button>
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={readingMode}
-      onclick={() => { overflowOpen = false; toggleReadingMode(); }}
-      class="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-surface0 text-left min-h-[2.25rem]
-        {readingMode ? 'text-primary' : 'text-text'}"
-    >
-      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M2 5h7a3 3 0 013 3v11a2 2 0 00-2-2H2V5z"/>
-        <path d="M22 5h-7a3 3 0 00-3 3v11a2 2 0 012-2h8V5z"/>
-      </svg>
-      <span>{readingMode ? 'Exit reading mode' : 'Reading mode'}</span>
-    </button>
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={focusMode}
-      onclick={() => { overflowOpen = false; focusMode = !focusMode; }}
-      class="w-full px-3 py-2 flex items-center gap-2.5 hover:bg-surface0 text-left min-h-[2.25rem]
-        {focusMode ? 'text-primary' : 'text-text'}"
-    >
-      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
-        {#if focusMode}
-          <path d="M9 4v4H5M15 4v4h4M9 20v-4H5M15 20v-4h4" stroke-linecap="round" stroke-linejoin="round"/>
-        {:else}
-          <path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4" stroke-linecap="round" stroke-linejoin="round"/>
-        {/if}
-      </svg>
-      <span>{focusMode ? 'Exit focus mode' : 'Focus mode'}</span>
-    </button>
-    <div class="border-t border-surface1 my-1"></div>
-    <!-- Schedule flashcards — parses Q:/A: pairs in the body and
-         drops a 1/3/7/14/30-day review series on the calendar per
-         card. Same shape as the scripture memory-verse drill so
-         the calendar treats both surfaces identically. -->
-    <button
-      type="button"
-      role="menuitem"
-      onclick={runScheduleFlashcards}
-      disabled={schedulingFlashcards}
-      class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem] disabled:opacity-60"
-    >
-      <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="4" y="6" width="14" height="10" rx="1.5"/>
-        <rect x="6" y="4" width="14" height="10" rx="1.5"/>
-        <path d="M10 10h4"/>
-      </svg>
-      <span>{schedulingFlashcards ? 'Scheduling…' : 'Schedule flashcard reviews'}</span>
-    </button>
-    <button
-      type="button"
-      role="menuitem"
-      onclick={() => { overflowOpen = false; helpOpen = true; }}
-      class="w-full px-3 py-2 flex items-center gap-2.5 text-text hover:bg-surface0 text-left min-h-[2.25rem]"
-    >
-      <span class="w-4 h-4 flex-shrink-0 flex items-center justify-center font-mono text-sm">?</span>
-      <span>Keyboard shortcuts</span>
-    </button>
-  </div>
+<!-- Overflow menu popover — secondary header actions (find,
+     history, PDF, slideshow, audio, reading mode, focus mode,
+     flashcards, keyboard shortcuts). Rendered with position:
+     fixed and viewport-clamped coordinates so it escapes any
+     ancestor overflow and never lands off-screen. Self-contained
+     since the 2026-05-28 extraction. -->
+{#if note}
+  <NoteOverflowMenu
+    bind:open={overflowOpen}
+    triggerEl={overflowTriggerEl}
+    {audioOpen}
+    {readingMode}
+    {focusMode}
+    {schedulingFlashcards}
+    onOpenFind={() => editor?.openFind()}
+    onOpenHistory={() => (historyOpen = true)}
+    onOpenPrint={() => (printOpen = true)}
+    onOpenPresentation={() => (presentationOpen = true)}
+    onToggleAudio={() => (audioOpen = !audioOpen)}
+    onToggleReadingMode={toggleReadingMode}
+    onToggleFocusMode={() => (focusMode = !focusMode)}
+    onScheduleFlashcards={runScheduleFlashcards}
+    onOpenHelp={() => (helpOpen = true)}
+  />
 {/if}
 
 <style>
-  /* Save-button success flash — a 1.2s outline pulse fires whenever
-     lastSavedAt updates, so the user gets positive visual confirmation
-     that their autosave actually landed. Uses an outline ring (not a
-     colour swap) so the existing dirty/saved/error palette on the
-     button still reads through underneath. */
-  @keyframes save-flash {
-    0%   { box-shadow: 0 0 0 0 rgb(var(--color-success-rgb, 34 197 94) / 0.55); }
-    60%  { box-shadow: 0 0 0 6px rgb(var(--color-success-rgb, 34 197 94) / 0); }
-    100% { box-shadow: 0 0 0 0 rgb(var(--color-success-rgb, 34 197 94) / 0); }
-  }
-  .save-flash {
-    animation: save-flash 1.2s ease-out 1;
-  }
+  /* save-flash animation lives in $lib/notes/NoteHeader.svelte alongside
+     the button that wears it — Svelte 5 scopes class selectors to the
+     declaring component, so the rule has to follow the element. */
   /* Focus mode: hide the side asides (tree on the left, info on the
      right) so the editor pane fills the available width. The header
      and footer stay — they're tightly bound to the editing flow
