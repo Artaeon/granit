@@ -15,21 +15,8 @@
   } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
-  import { saveStoredString } from '$lib/util/storage';
-  import {
-    PANEL_WIDTH_MIN,
-    PANEL_WIDTH_MAX,
-    type SheetSnap,
-    SHEET_SNAP_KEY,
-    clampPanelWidth,
-    loadPanelWidth,
-    persistPanelWidth,
-    nextPanelWidthForKey,
-    loadSheetSnap,
-    snapHeightPx,
-    clampSheetHeight,
-    nearestSnap
-  } from './ai-overlay-geometry';
+  import { PANEL_WIDTH_MIN, PANEL_WIDTH_MAX } from './ai-overlay-geometry';
+  import { createOverlayChrome } from './aioverlay/overlayChrome.svelte';
   import { rafThrottle } from '$lib/util/streamThrottle';
   import { isMobile } from '$lib/util/breakpoint';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
@@ -125,240 +112,17 @@
   let inputEl: HTMLTextAreaElement | undefined = $state();
   let scrollEl: HTMLDivElement | undefined = $state();
 
-  // ── Mobile body-scroll lock ──────────────────────────────────
-  // When the sheet is open on mobile, lock the document body so iOS
-  // Safari can't scroll the page to bring the focused composer above
-  // the keyboard — that scroll is what historically dragged the
-  // position: fixed panel up with it, leaving the input mid-screen
-  // with a fat gap to the keyboard top. Paired with the
-  // `interactive-widget=resizes-content` viewport meta this kills
-  // the bug on every supported iOS / Android browser. The classic
-  // "save scrollY → fix body → restore" recipe so the user lands
-  // back at the same scroll position when the overlay closes.
-  //
-  // Desktop (md+) is exempt: the panel is a side rail, not a sheet,
-  // and locking body scroll there would be obnoxious. The breakpoint
-  // is tracked reactively via $lib/util/breakpoint so an iPad rotate
-  // (portrait/landscape crosses the 768px line) or a touch-laptop
-  // resize re-runs this effect and the body lock follows the new
-  // mode — previously we read matchMedia once at effect time and a
-  // user crossing the breakpoint with the overlay open would have
-  // the body stay locked on desktop or unlocked on mobile.
-  let savedScrollY = 0;
-  $effect(() => {
-    if (typeof window === 'undefined') return;
-    // Pinned desktop panel doesn't trigger this lock; mobile pinned
-    // isn't a thing (pinned is forced false on mobile breakpoints).
-    if (open && $isMobile && !$aiOverlayPinned) {
-      savedScrollY = window.scrollY;
-      const body = document.body;
-      const html = document.documentElement;
-      // Body lock (fixed + saved scrollY) — the load-bearing piece.
-      body.style.position = 'fixed';
-      body.style.top = `-${savedScrollY}px`;
-      body.style.left = '0';
-      body.style.right = '0';
-      body.style.width = '100%';
-      // html overflow:hidden as second-stage defence against iOS rubber-
-      // band scrolling that can leak through a fixed body in some
-      // Safari builds (the touch-action: none alternative is too
-      // aggressive — it would kill tap handling on the panel itself).
-      html.style.overflow = 'hidden';
-      return () => {
-        body.style.position = '';
-        body.style.top = '';
-        body.style.left = '';
-        body.style.right = '';
-        body.style.width = '';
-        html.style.overflow = '';
-        window.scrollTo(0, savedScrollY);
-      };
-    }
-  });
-
-  // ── Resizable panel (desktop only) ──────────────────────────────
-  // Geometry helpers + constants live in ./ai-overlay-geometry.ts.
-  // This component owns the panel's reactive $state (panelWidth /
-  // resizing / sheetSnap / sheetDragging) and the pointer-event
-  // handlers; the math + load/persist + snap rules come from the
-  // helper.
-  let panelWidth = $state<number>(loadPanelWidth());
-  let resizing = $state(false);
-
-  // When pinned, push the current panel width up to documentElement
-  // so +layout.svelte can reserve a matching right gutter on <main>
-  // via the --ai-pinned-w variable. Cleared (set to 0) when unpinned
-  // so content reclaims the space.
-  $effect(() => {
-    if (typeof document === 'undefined') return;
-    if ($aiOverlayPinned) {
-      document.documentElement.style.setProperty('--ai-pinned-w', `${panelWidth}px`);
-    } else {
-      document.documentElement.style.setProperty('--ai-pinned-w', '0px');
-    }
-  });
-  function onResizeStart(e: PointerEvent) {
-    // Pointer-events lets one handler cover mouse + touch + pen. We
-    // capture so the user can drag past the panel edge without losing
-    // the gesture if their cursor strays into the chat content.
-    e.preventDefault();
-    resizing = true;
-    const target = e.currentTarget as HTMLElement;
-    target.setPointerCapture(e.pointerId);
-    function onMove(ev: PointerEvent) {
-      // Panel is right-anchored; widening means pulling LEFT, which
-      // increases (window.innerWidth - clientX). Clamp via helper.
-      panelWidth = clampPanelWidth(window.innerWidth - ev.clientX);
-    }
-    function onUp() {
-      resizing = false;
-      target.releasePointerCapture(e.pointerId);
-      target.removeEventListener('pointermove', onMove);
-      target.removeEventListener('pointerup', onUp);
-      target.removeEventListener('pointercancel', onUp);
-      persistPanelWidth(panelWidth);
-    }
-    target.addEventListener('pointermove', onMove);
-    target.addEventListener('pointerup', onUp);
-    target.addEventListener('pointercancel', onUp);
-  }
-  function onResizeKey(e: KeyboardEvent) {
-    // Keyboard fallback for accessibility — ArrowLeft widens (right-
-    // anchored panel), ArrowRight narrows; Home/End jump to extremes.
-    // Rule lives in nextPanelWidthForKey so both surfaces (mouse drag,
-    // keyboard) agree on bounds.
-    const next = nextPanelWidthForKey(panelWidth, e.key);
-    if (next === null) return;
-    e.preventDefault();
-    panelWidth = next;
-    persistPanelWidth(next);
-  }
-
-  // ── Mobile bottom-sheet snap points ────────────────────────────
-  // Three snap heights — peek (~35%), mid (~65%), full (~92%) —
-  // defined in ai-overlay-geometry.ts. The drag handle bar at the
-  // top of the sheet is the affordance; release snaps to nearest.
-  // Desktop ignores all this (the left-edge resize handle keeps
-  // governing width).
-  let sheetSnap = $state<SheetSnap>(loadSheetSnap());
-  $effect(() => saveStoredString(SHEET_SNAP_KEY, sheetSnap));
-  // While the user drags, follow the finger 1:1. On release the
-  // pointerup handler picks the nearest snap and zeroes this out.
-  let sheetDragHeight = $state<number | null>(null);
-  let sheetDragging = $state(false);
-
-  function onSheetHandleDown(e: PointerEvent) {
-    // Desktop has its own left-edge resize handle; ignore the
-    // mobile-only drag-handle on >=md.
-    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
-    e.preventDefault();
-    const startY = e.clientY;
-    const viewportH = window.innerHeight;
-    const startH = panelEl?.getBoundingClientRect().height ?? snapHeightPx(sheetSnap, viewportH);
-    sheetDragging = true;
-    sheetDragHeight = startH;
-    const target = e.currentTarget as HTMLElement;
-    target.setPointerCapture(e.pointerId);
-    function move(ev: PointerEvent) {
-      // Pulling UP grows the sheet; clientY decreases as the finger
-      // moves up, so dy is negative and we subtract. Clamp via helper.
-      const dy = ev.clientY - startY;
-      sheetDragHeight = clampSheetHeight(startH - dy, viewportH);
-    }
-    function up() {
-      target.releasePointerCapture(e.pointerId);
-      target.removeEventListener('pointermove', move);
-      target.removeEventListener('pointerup', up);
-      target.removeEventListener('pointercancel', up);
-      // Snap to nearest. window.innerHeight read fresh in case a soft
-      // keyboard shifted vh between drag start and end.
-      const finalH = sheetDragHeight ?? startH;
-      sheetSnap = nearestSnap(finalH, window.innerHeight);
-      sheetDragHeight = null;
-      sheetDragging = false;
-    }
-    target.addEventListener('pointermove', move);
-    target.addEventListener('pointerup', up);
-    target.addEventListener('pointercancel', up);
-  }
-
-  // ── iOS keyboard-safe compose ──────────────────────────────────
-  // Without this, iOS Safari floats the on-screen keyboard OVER the
-  // bottom-anchored panel, hiding the compose textarea. visualViewport
-  // shrinks when the keyboard opens; the delta against window.innerHeight
-  // is the obscured strip height. We lift the panel's `bottom` by that
-  // amount so the compose stays just above the keyboard. Also snap to
-  // full so the user gets the whole conversation visible while typing.
-  let keyboardOffset = $state(0);
-  let keyboardOpen = $state(false);
-  $effect(() => {
-    if (typeof window === 'undefined') return;
-    const vv = window.visualViewport;
-    if (!vv) return;
-    function update() {
-      const obscured = Math.max(0, window.innerHeight - (vv?.height ?? window.innerHeight));
-      keyboardOffset = obscured;
-      // ~120px threshold = the keyboard is up (URL bar / floating UI
-      // can shrink VV by 40–80px in normal scroll without the keyboard
-      // being involved; 120 cleanly separates "keyboard" from "chrome").
-      keyboardOpen = obscured > 120;
-    }
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    update();
-    return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
-    };
-  });
-
-  // Snap to full whenever the keyboard pops up — minimises the
-  // moment-of-friction where the user taps in compose and then can
-  // barely see their own conversation history. Restores to whatever
-  // they had before once the keyboard closes (we don't write back to
-  // sheetSnap during keyboard-open so the restore is implicit).
-  let savedSnapBeforeKeyboard: SheetSnap | null = $state(null);
-  $effect(() => {
-    if (keyboardOpen) {
-      if (savedSnapBeforeKeyboard === null) {
-        savedSnapBeforeKeyboard = sheetSnap;
-        sheetSnap = 'full';
-      }
-    } else if (savedSnapBeforeKeyboard !== null) {
-      sheetSnap = savedSnapBeforeKeyboard;
-      savedSnapBeforeKeyboard = null;
-    }
-  });
-
-  // The actual height we render at — drag value while a drag is in
-  // flight, otherwise the snap target. Empty string lets the desktop
-  // override class (md:h-full md:max-h-none) win unchanged.
-  //
-  // Why visualViewport.height + not innerHeight - keyboardOffset:
-  // iOS Safari keeps window.innerHeight FIXED when the keyboard
-  // opens (only visualViewport shrinks). Chrome Android in recent
-  // versions does the same. So `innerHeight - keyboardOffset` is
-  // correct on iOS but double-subtracts on Android (where the
-  // keyboard already isn't in innerHeight). The earlier fix worked
-  // on iOS Safari, broke on Android Chrome: panel collapsed to
-  // ~innerHeight - 2×keyboardOffset, input field floated mid-
-  // screen with a big gap above the keyboard.
-  //
-  // visualViewport.height is the visible viewport on every modern
-  // mobile browser — the area between viewport top and keyboard
-  // top (or just viewport bottom when keyboard is closed). Using
-  // it as the snap-base gives "fill the room I have" semantics
-  // that work everywhere.
-  let mobileSheetHeight = $derived.by(() => {
-    if (typeof window === 'undefined') return `${snapHeightPx(sheetSnap, 800)}px`;
-    if (sheetDragging && sheetDragHeight !== null) {
-      return `${Math.round(sheetDragHeight)}px`;
-    }
-    // visualViewport.height = visible-above-keyboard space on iOS +
-    // Android. Falls back to innerHeight on desktop / older browsers
-    // where the var doesn't exist.
-    const visibleH = window.visualViewport?.height ?? window.innerHeight;
-    return `${snapHeightPx(sheetSnap, visibleH)}px`;
+  // Overlay chrome layer — desktop resize, mobile sheet snap/drag,
+  // iOS keyboard offset, and body-scroll lock. State, effects, and
+  // pointer handlers live in ./aioverlay/overlayChrome so this file
+  // can stay focused on AI conversation logic. The wrapper element
+  // is still owned here (bind:this={panelEl} below); the factory
+  // reads it via getPanelEl for getBoundingClientRect at drag-start.
+  const chrome = createOverlayChrome({
+    isOpen: () => open,
+    isPinned: () => $aiOverlayPinned,
+    isMobileView: () => $isMobile,
+    getPanelEl: () => panelEl
   });
 
   let busy = $state(false);
@@ -1803,14 +1567,14 @@
     data-ai-overlay
     role="dialog"
     aria-label="AI assistant"
-    style:--ai-panel-w="{panelWidth}px"
-    style:--ai-sheet-h={mobileSheetHeight}
-    style:--ai-sheet-lift="{keyboardOffset}px"
+    style:--ai-panel-w="{chrome.panelWidth}px"
+    style:--ai-sheet-h={chrome.mobileSheetHeight}
+    style:--ai-sheet-lift="{chrome.keyboardOffset}px"
     in:fly={{ duration: $aiOverlayPinned ? 0 : 200, easing: cubicOut, ...panelTransitionParams() }}
     out:fly={{ duration: $aiOverlayPinned ? 0 : 150, easing: cubicOut, ...panelTransitionParams() }}
     class="ai-overlay-panel fixed z-50 flex flex-col bg-base border-surface1
-           inset-x-0 rounded-t-xl border-t {keyboardOpen ? '' : 'pb-safe'} {keyboardOpen ? 'ai-overlay-kb-open' : ''}
-           md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:top-0 md:h-full md:max-h-none md:rounded-none md:border-l md:border-t-0 md:pb-0 {$aiOverlayPinned ? 'md:shadow-none' : 'shadow-2xl'} {resizing ? 'ai-overlay-resizing' : ''} {sheetDragging ? 'ai-overlay-snapping' : ''}"
+           inset-x-0 rounded-t-xl border-t {chrome.keyboardOpen ? '' : 'pb-safe'} {chrome.keyboardOpen ? 'ai-overlay-kb-open' : ''}
+           md:inset-y-0 md:right-0 md:left-auto md:bottom-auto md:top-0 md:h-full md:max-h-none md:rounded-none md:border-l md:border-t-0 md:pb-0 {$aiOverlayPinned ? 'md:shadow-none' : 'shadow-2xl'} {chrome.resizing ? 'ai-overlay-resizing' : ''} {chrome.sheetDragging ? 'ai-overlay-snapping' : ''}"
   >
     <!-- Desktop-only drag handle on the LEFT edge of the panel. The
          panel is right-anchored; widening means pulling left so the
@@ -1821,13 +1585,13 @@
     <button
       type="button"
       aria-label="Resize AI panel"
-      aria-valuenow={panelWidth}
+      aria-valuenow={chrome.panelWidth}
       aria-valuemin={PANEL_WIDTH_MIN}
       aria-valuemax={PANEL_WIDTH_MAX}
       role="slider"
-      onpointerdown={onResizeStart}
-      onkeydown={onResizeKey}
-      class="hidden md:block absolute left-0 top-0 bottom-0 w-1.5 -ml-0.5 z-50 cursor-col-resize group {resizing ? 'bg-primary/40' : 'hover:bg-primary focus-visible:bg-primary/40'} transition-colors"
+      onpointerdown={chrome.onResizeStart}
+      onkeydown={chrome.onResizeKey}
+      class="hidden md:block absolute left-0 top-0 bottom-0 w-1.5 -ml-0.5 z-50 cursor-col-resize group {chrome.resizing ? 'bg-primary/40' : 'hover:bg-primary focus-visible:bg-primary/40'} transition-colors"
     >
       <span class="sr-only">Drag to resize panel</span>
     </button>
@@ -1847,15 +1611,11 @@
     <button
       type="button"
       class="md:hidden flex justify-center pt-2 pb-2 w-full touch-none"
-      onpointerdown={onSheetHandleDown}
-      onclick={() => {
-        const order: SheetSnap[] = ['peek', 'mid', 'full'];
-        const idx = order.indexOf(sheetSnap);
-        sheetSnap = order[(idx + 1) % order.length];
-      }}
+      onpointerdown={chrome.onSheetHandleDown}
+      onclick={chrome.cycleSheetSnap}
       aria-label="Resize chat sheet — drag or tap to cycle"
     >
-      <span class="block w-10 h-1.5 rounded-full bg-surface2 transition-colors {sheetDragging ? 'bg-primary' : ''}"></span>
+      <span class="block w-10 h-1.5 rounded-full bg-surface2 transition-colors {chrome.sheetDragging ? 'bg-primary' : ''}"></span>
     </button>
     <header class="px-3 py-2 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
       <!-- Mode picker — replaces the static '✨ AI assistant'
