@@ -47,17 +47,14 @@
   } from '$lib/chat/contextChips';
   import { deriveDraftTitle } from '$lib/ai/draftTitle';
   import {
-    getThread,
-    upsertThread,
-    deleteThread,
-    togglePin,
-    isPinned,
-    deriveThreadTitle,
     loadActiveThreadId,
     persistActiveThreadId,
     deriveLibraryLabel
   } from '$lib/chat/history';
-  import { findPrecedingUserIndex, buildBranchTitle, pruneNumKeyedRecord } from '$lib/chat/branch';
+  import {
+    createChatHistoryManager,
+    type ChatHistoryRefs
+  } from '$lib/chat/chatHistoryManager.svelte';
   import type { RagHit } from '$lib/chat/rag';
   import { loadOverlayHistory, persistOverlayHistory } from '$lib/chat/overlaySessionHistory';
   import {
@@ -233,237 +230,73 @@
   // localStorage on every render of the chat list.
   let pinnedIndex = $state<Record<number, boolean>>({});
 
-  function refreshPinnedIndex() {
-    if (!activeThreadId) {
-      pinnedIndex = {};
-      return;
-    }
-    const next: Record<number, boolean> = {};
-    for (let i = 0; i < messages.length; i++) {
-      if (messages[i].role !== 'assistant') continue;
-      if (isPinned(activeThreadId, i)) next[i] = true;
-    }
-    pinnedIndex = next;
-  }
-
-  function startNewThread() {
-    // Snapshot current thread first so the user doesn't lose work.
-    autoSaveThread();
-    messages = [];
-    activeThreadId = '';
-    persistActiveThreadId('');
-    pinnedIndex = {};
-    quickTitle = '';
-    quickResult = '';
-    lastRagHits = [];
-    perTurnRagHits = {};
-    tick().then(() => inputEl?.focus());
-  }
-
-  function loadSavedThread(id: string) {
-    autoSaveThread();
-    const t = getThread(id);
-    if (!t) {
-      toast.error('Thread no longer exists.');
-      historyRailRef?.refresh();
-      return;
-    }
-    messages = t.messages.slice();
-    activeThreadId = t.id;
-    persistActiveThreadId(t.id);
-    if (t.modeId && t.modeId !== modeId) {
-      modeId = t.modeId;
-      persistModeId(t.modeId);
-    }
-    quickTitle = '';
-    quickResult = '';
-    lastRagHits = [];
-    perTurnRagHits = {};
-    historyOpen = false;
-    refreshPinnedIndex();
-    tick().then(() => {
-      if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
-      inputEl?.focus();
-    });
-  }
-
-  function deleteSavedThread(id: string) {
-    deleteThread(id);
-    if (activeThreadId === id) {
-      activeThreadId = '';
-      persistActiveThreadId('');
-      messages = [];
-      pinnedIndex = {};
-    }
-    historyRailRef?.refresh();
-  }
-
-  // Auto-save the current thread to localStorage. Called after every
-  // assistant turn lands (so the thread is visible in history even if
-  // the user closes the overlay mid-conversation) and before swapping
-  // threads. Cheap — JSON-stringify of <60 messages.
-  function autoSaveThread() {
-    if (messages.length === 0) return;
-    // Only save once we have at least one user message AND one
-    // assistant reply — empty-or-system-only threads aren't worth
-    // a row in the picker.
-    const hasUser = messages.some((m) => m.role === 'user');
-    const hasAssistant = messages.some(
-      (m) => m.role === 'assistant' && m.content.trim().length > 0
-    );
-    if (!hasUser || !hasAssistant) return;
-    const t = upsertThread({
-      id: activeThreadId || undefined,
-      title: deriveThreadTitle(messages),
-      modeId,
-      messages
-    });
-    if (!activeThreadId) {
-      activeThreadId = t.id;
-      persistActiveThreadId(t.id);
-    }
-  }
-
-  // Branch from a specific assistant message: copy the conversation
-  // up to and including that message into a new thread, then load it
-  // as the active thread. The original is preserved in history so a
-  // user can come back to it. Useful when the user wants to ask a
-  // different follow-up without losing the path they already took.
-  // ── Replay / regenerate / edit ────────────────────────────────
-  // Three closely-related affordances on individual messages:
-  //
-  //   replayFromUserMessage — the shared kernel. Truncates the
-  //     thread at the chosen user message, sets `input` to the
-  //     content, calls send(). send() then re-pushes the user
-  //     message, opens a fresh assistant slot, and streams. RAG /
-  //     mentions / snapshot all run again as on any first-class
-  //     send.
-  //
-  //   regenAssistantMessage — find the user message that produced
-  //     this assistant reply, call replay with the same content.
-  //     Same prompt, fresh attempt — covers the standard "give me
-  //     a different answer" affordance.
-  //
-  //   startEditUser / submitEditUser — inline-edit a user message
-  //     and resubmit. Truncates everything after, the same way
-  //     ChatGPT / Claude's web UIs do it.
-  function replayFromUserMessage(userIdx: number, content: string) {
-    if (busy) {
-      toast.info('Wait for the current response to finish.');
-      return;
-    }
-    if (userIdx < 0 || userIdx >= messages.length || messages[userIdx].role !== 'user') return;
-    // Truncate everything from the user message onward — send() will
-    // re-push the user message + open the assistant slot. Per-turn
-    // data keyed by gone indices gets pruned so the inline-sources
-    // block doesn't dangle pointing at messages that no longer exist.
-    messages = messages.slice(0, userIdx);
-    perTurnRagHits = pruneNumKeyedRecord(perTurnRagHits, userIdx);
-    expandedSources = pruneNumKeyedRecord(expandedSources, userIdx);
-    input = content;
-    void send();
-  }
-
-  function regenAssistantMessage(assistantIdx: number) {
-    if (assistantIdx < 0 || assistantIdx >= messages.length) return;
-    if (messages[assistantIdx].role !== 'assistant') return;
-    const userIdx = findPrecedingUserIndex(messages, assistantIdx);
-    if (userIdx === -1) return;
-    replayFromUserMessage(userIdx, messages[userIdx].content);
-  }
-
   // Inline-edit state for user messages. Null = nobody being edited.
+  // Lives in the parent because the message list's inline form binds
+  // editingUserDraft and the manager reads it on submit.
   let editingUserIdx = $state<number | null>(null);
   let editingUserDraft = $state('');
-  function startEditUser(idx: number) {
-    if (busy) {
-      toast.info('Wait for the current response to finish.');
-      return;
-    }
-    if (messages[idx]?.role !== 'user') return;
-    editingUserIdx = idx;
-    editingUserDraft = messages[idx].content;
-  }
-  function cancelEditUser() {
-    editingUserIdx = null;
-    editingUserDraft = '';
-  }
-  function submitEditUser() {
-    if (editingUserIdx === null) return;
-    const idx = editingUserIdx;
-    const content = editingUserDraft.trim();
-    // Cancel-on-empty: editing down to nothing is the same gesture
-    // as cancel — preserves the original message rather than
-    // submitting an empty turn.
-    if (!content) {
-      cancelEditUser();
-      return;
-    }
-    // No-op when the user didn't actually change the text.
-    if (content === messages[idx].content) {
-      cancelEditUser();
-      return;
-    }
-    editingUserIdx = null;
-    editingUserDraft = '';
-    replayFromUserMessage(idx, content);
-  }
 
-  function branchFromMessage(idx: number) {
-    if (idx < 0 || idx >= messages.length) return;
-    if (messages[idx].role !== 'assistant') return;
-    // Persist the current thread as-is BEFORE forking so the fork
-    // point lives in history (otherwise the source thread might
-    // never have been saved if the user is fast).
-    autoSaveThread();
-    // Slice INCLUDING the assistant message at idx, so the user sees
-    // the same context as before and the branch starts fresh from
-    // that point.
-    const upto = messages.slice(0, idx + 1);
-    const sourceTitle = activeThreadId
-      ? getThread(activeThreadId)?.title ?? deriveThreadTitle(messages)
-      : deriveThreadTitle(messages);
-    const newTitle = buildBranchTitle(sourceTitle);
-    const branched = upsertThread({
-      // No id ⇒ new thread.
-      title: newTitle,
-      modeId,
-      messages: upto
-    });
-    messages = upto.slice();
-    activeThreadId = branched.id;
-    persistActiveThreadId(branched.id);
-    perTurnRagHits = {};
-    expandedSources = {};
-    refreshPinnedIndex();
-    if (historyOpen) historyRailRef?.refresh();
-    toast.success('Branched into a new thread.');
-    tick().then(() => {
-      if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
-      inputEl?.focus();
-    });
-  }
-
-  function pinAssistantMessage(idx: number) {
-    if (!messages[idx] || messages[idx].role !== 'assistant') return;
-    // Make sure the thread is persisted before pinning so the pin can
-    // reference a real thread id (the snapshotted content survives the
-    // thread anyway, but the back-link is useful UX).
-    autoSaveThread();
-    const tid = activeThreadId || 'orphan-' + Date.now().toString(36);
-    const nowPinned = togglePin({
-      threadId: tid,
-      threadTitle: deriveThreadTitle(messages),
-      modeId,
-      messageIndex: idx,
-      content: messages[idx].content
-    });
-    pinnedIndex = { ...pinnedIndex, [idx]: nowPinned };
-    // Rail tracks its own tab; if it's open, prod a refresh so a
-    // toggled pin shows up in the Pinned tab without waiting for the
-    // rail's own open-effect to re-fire.
-    if (historyOpen) historyRailRef?.refresh();
-  }
+  // Thread CRUD lives in $lib/chat/chatHistoryManager. The refs object
+  // exposes each reactive slot as a getter/setter pair so the manager
+  // can read and write parent $state through one indirection. Getter
+  // bodies are lazy — they're only evaluated when the manager methods
+  // are actually called (after onMount), so referencing later-declared
+  // state (messages/modeId/lastRagHits/perTurnRagHits/expandedSources)
+  // is safe even though those `let`s appear further down this file.
+  const historyRefs: ChatHistoryRefs = {
+    get messages() { return messages; },
+    set messages(v) { messages = v; },
+    get activeThreadId() { return activeThreadId; },
+    set activeThreadId(v) { activeThreadId = v; },
+    get modeId() { return modeId; },
+    set modeId(v) { modeId = v; },
+    get input() { return input; },
+    set input(v) { input = v; },
+    get pinnedIndex() { return pinnedIndex; },
+    set pinnedIndex(v) { pinnedIndex = v; },
+    get perTurnRagHits() { return perTurnRagHits; },
+    set perTurnRagHits(v) { perTurnRagHits = v; },
+    get expandedSources() { return expandedSources; },
+    set expandedSources(v) { expandedSources = v; },
+    get quickTitle() { return quickTitle; },
+    set quickTitle(v) { quickTitle = v; },
+    get quickResult() { return quickResult; },
+    set quickResult(v) { quickResult = v; },
+    get lastRagHits() { return lastRagHits; },
+    set lastRagHits(v) { lastRagHits = v; },
+    get historyOpen() { return historyOpen; },
+    set historyOpen(v) { historyOpen = v; },
+    get editingUserIdx() { return editingUserIdx; },
+    set editingUserIdx(v) { editingUserIdx = v; },
+    get editingUserDraft() { return editingUserDraft; },
+    set editingUserDraft(v) { editingUserDraft = v; }
+  };
+  const history = createChatHistoryManager({
+    refs: historyRefs,
+    getHistoryRail: () => historyRailRef,
+    isBusy: () => busy,
+    send: () => { void send(); },
+    refocusInput: () => { tick().then(() => inputEl?.focus()); },
+    scrollToBottom: () => {
+      tick().then(() => {
+        if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+      });
+    }
+  });
+  const {
+    startNewThread,
+    loadSavedThread,
+    deleteSavedThread,
+    autoSaveThread,
+    replayFromUserMessage,
+    regenAssistantMessage,
+    branchFromMessage,
+    pinAssistantMessage,
+    startEditUser,
+    cancelEditUser,
+    submitEditUser,
+    refreshPinnedIndex
+  } = history;
 
   // ── Page-aware context ──────────────────────────────────────────
   // Two attach modes, mutually exclusive depending on the route:
