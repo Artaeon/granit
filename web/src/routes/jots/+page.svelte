@@ -5,10 +5,16 @@
   import { api, fmtDateISO, type DayActivityItem, type Jot, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { rafThrottle } from '$lib/util/streamThrottle';
-  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import { toast } from '$lib/components/toast';
+  import JotsPageHeader from '$lib/jots/JotsPageHeader.svelte';
+  import JotsToolbar from '$lib/jots/JotsToolbar.svelte';
+  import JotsAIPanel from '$lib/jots/JotsAIPanel.svelte';
+  import JotsQuickFilters from '$lib/jots/JotsQuickFilters.svelte';
+  import JotsComposer from '$lib/jots/JotsComposer.svelte';
+  import JotItem from '$lib/jots/JotItem.svelte';
+  import JotsShortcutsOverlay from '$lib/jots/JotsShortcutsOverlay.svelte';
 
   // Amplenote-style infinite-scroll feed of every daily note. The page
   // talks to /api/v1/jots which paginates server-side — fetching N
@@ -173,59 +179,6 @@
     }
   }
 
-  // Group activity items by their Kind so the renderer can render a
-  // labelled bucket per category instead of one undifferentiated
-  // list. Order of buckets is fixed so the layout stays stable
-  // across re-renders even as items shift.
-  type Bucket = { kind: string; label: string; items: DayActivityItem[] };
-  const KIND_LABELS: Record<string, string> = {
-    note_created: 'Notes created',
-    task_created: 'Tasks created',
-    task_completed: 'Tasks completed',
-    event: 'Calendar',
-    habit: 'Habits',
-    prayer: 'Prayer',
-    hub_item: 'Hub',
-    jot: 'Jots'
-  };
-  const BUCKET_ORDER: string[] = [
-    'event',
-    'task_created',
-    'task_completed',
-    'note_created',
-    'jot',
-    'habit',
-    'prayer',
-    'hub_item'
-  ];
-
-  // Inline-header counts: a compact summary of the day-activity items
-  // bucketed by Kind, used to render a chip strip in each jot's header
-  // without expanding the <details> block. Picked the four buckets that
-  // matter at-a-glance: events, tasks created, tasks completed, notes
-  // created. Habits/prayer/hub are surfaced inside the expanded panel.
-  type ActivitySummary = {
-    events: number;
-    tasksCreated: number;
-    tasksDone: number;
-    notes: number;
-    total: number;
-  };
-  function summarize(items: DayActivityItem[] | undefined): ActivitySummary {
-    const s: ActivitySummary = { events: 0, tasksCreated: 0, tasksDone: 0, notes: 0, total: 0 };
-    if (!items) return s;
-    for (const it of items) {
-      s.total += 1;
-      switch (it.kind) {
-        case 'event': s.events += 1; break;
-        case 'task_created': s.tasksCreated += 1; break;
-        case 'task_completed': s.tasksDone += 1; break;
-        case 'note_created': s.notes += 1; break;
-      }
-    }
-    return s;
-  }
-
   // Eager-but-bounded prefetch of dayActivity for newly-loaded jots so
   // the inline header counts populate without each card needing to be
   // scrolled into view. Caps concurrency at 4 to avoid hammering the
@@ -256,48 +209,6 @@
         drainPrefetch();
       });
     }
-  }
-
-  function bucketize(items: DayActivityItem[]): Bucket[] {
-    const groups = new Map<string, DayActivityItem[]>();
-    for (const it of items) {
-      const arr = groups.get(it.kind) ?? [];
-      arr.push(it);
-      groups.set(it.kind, arr);
-    }
-    const out: Bucket[] = [];
-    for (const k of BUCKET_ORDER) {
-      const arr = groups.get(k);
-      if (arr && arr.length > 0) {
-        out.push({ kind: k, label: KIND_LABELS[k] ?? k, items: arr });
-      }
-    }
-    // Stray kinds the server might add later get appended at the end
-    // so a future "measurement" entry surfaces without a UI release.
-    for (const [k, arr] of groups) {
-      if (BUCKET_ORDER.indexOf(k) === -1 && arr.length > 0) {
-        out.push({ kind: k, label: KIND_LABELS[k] ?? k, items: arr });
-      }
-    }
-    return out;
-  }
-
-  function activityHref(it: DayActivityItem): string {
-    if (it.path) return `/notes/${encodeURIComponent(it.path)}`;
-    if (it.kind === 'event') return '/calendar';
-    if (it.kind === 'prayer') return '/prayer';
-    if (it.kind === 'hub_item') return '/hub';
-    if (it.kind === 'habit') return '/habits';
-    if (it.kind === 'task_created' || it.kind === 'task_completed') return '/tasks';
-    return '#';
-  }
-
-  function activityTime(at: string): string {
-    const d = new Date(at);
-    if (Number.isNaN(d.getTime())) return '';
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    return `${hh}:${mm}`;
   }
 
   // ─── AI: multi-mode panel ────────────────────────────────────────
@@ -594,30 +505,6 @@
     return fmtDateISO(dt);
   }
 
-  // ── header date formatting ────────────────────────────────────────
-  // "Today" / "Yesterday" / weekday for ±6 days / full date otherwise.
-  function relativeLabel(date: string, today: Date): string {
-    const d = new Date(date + 'T00:00:00');
-    const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
-    if (diff === 0) return 'Today';
-    if (diff === -1) return 'Yesterday';
-    if (diff === 1) return 'Tomorrow';
-    if (diff > -7 && diff < 7) {
-      return d.toLocaleDateString(undefined, { weekday: 'long' });
-    }
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  }
-
-  function fullLabel(date: string): string {
-    const d = new Date(date + 'T00:00:00');
-    return d.toLocaleDateString(undefined, {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  }
-
   // Midnight today, recomputed reactively via $derived.by — used as the
   // anchor for relative-date labels ("Today" / "Yesterday" / etc).
   let today = $derived.by(() => {
@@ -667,11 +554,6 @@
     }
     return n;
   });
-
-  function formatCount(n: number): string {
-    if (n >= 1000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k`;
-    return String(n);
-  }
 
   // ── handlers ──────────────────────────────────────────────────────
   function handleWikilink(target: string) {
@@ -1015,356 +897,84 @@
 
 <div class="h-full overflow-y-auto" id="jots-scroll">
   <div class="max-w-3xl mx-auto px-3 sm:px-5 lg:px-6 pt-2 pb-6">
-    <!-- Title strip: tight one-row header — title + live counters.
-         Replaces the old two-line h1+subtitle block, freeing ~40px
-         of vertical for actual content. -->
-    <header
-      class="flex items-baseline gap-2 mb-1.5 text-[11px] text-dim border-b border-surface1 pb-1.5"
-    >
-      <span class="text-[13px] font-semibold uppercase tracking-[0.18em] text-text">Jots</span>
-      {#if streakDays > 0}
-        <span
-          class="font-mono text-text"
-          title="consecutive days ending today with a daily note loaded"
-        >{streakDays}d streak</span>
-      {/if}
-      {#if jots.length > 0}
-        <span class="opacity-50">·</span>
-        <span class="font-mono" title="loaded across all pages">
-          {formatCount(jots.length)} jots
-          {#if allTags.length > 0}
-            · {formatCount(allTags.length)} tags
-          {/if}
-          {#if loadedWords > 0}
-            · {formatCount(loadedWords)} words
-          {/if}
-        </span>
-      {/if}
-      <button
-        type="button"
-        onclick={() => (showShortcuts = !showShortcuts)}
-        class="ml-auto opacity-60 hidden sm:inline font-mono hover:opacity-100 hover:text-text"
-        title="show keyboard shortcuts (press ?)"
-      >? shortcuts</button>
-    </header>
+    <JotsPageHeader
+      streakDays={streakDays}
+      jotsCount={jots.length}
+      tagsCount={allTags.length}
+      loadedWords={loadedWords}
+      onToggleHelp={() => (showShortcuts = !showShortcuts)}
+    />
 
-    <!-- Toolbar (sticky) — compact one-row controls. Wraps on narrow
-         viewports but stays as dense as possible at desktop width. -->
-    <div
-      class="sticky top-0 z-20 -mx-3 sm:-mx-5 lg:-mx-6 px-3 sm:px-5 lg:px-6 py-1.5 mb-2 bg-base border-b border-surface1"
+    <JotsToolbar
+      bind:searchEl
+      bind:searchText
+      searching={searching}
+      searchResults={searchResults}
+      aiMode={aiMode}
+      aiBusy={aiBusy}
+      jotsCount={jots.length}
+      onJumpToDate={jumpToDate}
+      onSearchEnter={runSearch}
+      onClearSearch={clearSearch}
+      onDetectThemes={detectThemes}
+      onStartAsk={startAsk}
+      onBuildDigest={buildDigest}
+      onOpenToday={openToday}
     >
-      <div class="flex flex-wrap items-center gap-1.5">
-        <input
-          type="date"
-          onchange={jumpToDate}
-          title="jump to date"
-          class="bg-mantle border border-surface1 rounded px-1.5 py-0.5 text-[11px] text-text focus:outline-none focus:border-primary"
-        />
-        <div class="flex-1 min-w-[10rem] flex items-center gap-0.5">
-          <input
-            type="text"
-            bind:this={searchEl}
-            bind:value={searchText}
-            onkeydown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                runSearch();
-              }
-            }}
-            placeholder="search jots…  /"
-            data-page-search="1"
-            class="flex-1 bg-mantle border border-surface1 rounded px-1.5 py-0.5 text-[11px] text-text placeholder-dim focus:outline-none focus:border-primary"
+      {#snippet aiPanel()}
+        {#if aiMode !== 'none'}
+          <JotsAIPanel
+            mode={aiMode}
+            busy={aiBusy}
+            error={aiError}
+            themes={aiThemes}
+            bind:askQuestion
+            askAnswer={askAnswer}
+            bind:askInputEl
+            digestAnswer={digestAnswer}
+            onStop={() => aiAbort?.abort()}
+            onRegenerateThemes={detectThemes}
+            onApplyTheme={applyTheme}
+            onSubmitAsk={submitAsk}
+            onCopy={copyToClipboard}
+            onRegenerateDigest={buildDigest}
+            onSaveDigestAsNote={saveDigestAsNote}
+            onDismiss={dismissAI}
+            onWikilink={handleWikilink}
           />
-          {#if searchText}
-            <button
-              type="button"
-              onclick={clearSearch}
-              aria-label="clear search"
-              class="text-[11px] text-dim hover:text-text px-1"
-            >×</button>
-          {/if}
-        </div>
-        <!-- AI button cluster — three buttons in front of "today" so
-             they're at thumb-reach on mobile. Each opens a distinct
-             AI surface that streams into the panel below the toolbar.
-             aiBusy disables all three so the user can't start a
-             second stream while one is in-flight. -->
-        {#if jots.length >= 1}
-          <button
-            type="button"
-            onclick={detectThemes}
-            disabled={aiBusy}
-            class="text-[11px] px-1.5 py-0.5 rounded {aiMode === 'themes' ? 'bg-primary text-on-primary' : 'bg-surface1 text-text hover:bg-surface2'} border border-surface2 disabled:opacity-50"
-            title="surface recurring themes across the loaded jots"
-          >themes</button>
-          <button
-            type="button"
-            onclick={startAsk}
-            disabled={aiBusy}
-            class="text-[11px] px-1.5 py-0.5 rounded {aiMode === 'ask' ? 'bg-primary text-on-primary' : 'bg-surface1 text-text hover:bg-surface2'} border border-surface2 disabled:opacity-50"
-            title="ask a question about your jots"
-          >ask</button>
-          <button
-            type="button"
-            onclick={buildDigest}
-            disabled={aiBusy}
-            class="text-[11px] px-1.5 py-0.5 rounded {aiMode === 'digest' ? 'bg-primary text-on-primary' : 'bg-surface1 text-text hover:bg-surface2'} border border-surface2 disabled:opacity-50"
-            title="weekly digest of the last 7 days"
-          >digest</button>
         {/if}
-        <button
-          type="button"
-          onclick={openToday}
-          title="open today's daily note"
-          class="text-[11px] px-1.5 py-0.5 rounded bg-surface0 text-subtext hover:bg-surface1"
-        >today</button>
-      </div>
+      {/snippet}
+      {#snippet quickFilters()}
+        <JotsQuickFilters
+          activeTags={activeTags}
+          allTags={allTags}
+          filterOpenTasks={filterOpenTasks}
+          filterTimeframe={filterTimeframe}
+          hasAnyFilter={hasAnyFilter}
+          visibleCount={visibleJots.length}
+          totalCount={jots.length}
+          onToggleOpenTasks={() => (filterOpenTasks = !filterOpenTasks)}
+          onSetTimeframe={(tf) => (filterTimeframe = tf)}
+          onToggleTag={toggleTag}
+          onClearAll={clearAllFilters}
+        />
+      {/snippet}
+    </JotsToolbar>
 
-      <!-- AI panel — adapts to the active aiMode. One source of truth
-           for streamed AI output across the jots page; each mode
-           renders its own body inside the same chrome. -->
-      {#if aiMode !== 'none'}
-        <div class="mt-1.5 p-2 bg-surface1 border border-surface2 rounded">
-          <div class="flex items-baseline gap-2 mb-1">
-            <h3 class="text-[10px] uppercase tracking-wider text-text font-medium">
-              {#if aiMode === 'themes'}recurring themes
-              {:else if aiMode === 'ask'}ask jots
-              {:else if aiMode === 'digest'}weekly digest
-              {/if}
-            </h3>
-            <span class="flex-1"></span>
-            {#if aiBusy}
-              <span class="text-[10px] text-dim italic font-mono">streaming…</span>
-              <button
-                type="button"
-                onclick={() => aiAbort?.abort()}
-                class="text-[10px] text-dim hover:text-text font-mono"
-                title="stop the current stream"
-              >stop</button>
-            {:else}
-              {#if aiMode === 'themes' && aiThemes.length > 0}
-                <button onclick={detectThemes} class="text-[10px] text-text hover:underline font-mono">regenerate</button>
-              {:else if aiMode === 'ask' && askAnswer.length > 0}
-                <button onclick={submitAsk} class="text-[10px] text-text hover:underline font-mono">re-ask</button>
-                <button onclick={() => copyToClipboard(askAnswer)} class="text-[10px] text-dim hover:text-text font-mono">copy</button>
-              {:else if aiMode === 'digest' && digestAnswer.length > 0}
-                <button onclick={buildDigest} class="text-[10px] text-text hover:underline font-mono">regenerate</button>
-                <button onclick={() => copyToClipboard(digestAnswer)} class="text-[10px] text-dim hover:text-text font-mono">copy</button>
-                <button onclick={saveDigestAsNote} class="text-[10px] text-text hover:underline font-mono">save as note</button>
-              {/if}
-            {/if}
-            <button onclick={dismissAI} class="text-[10px] text-dim hover:text-text font-mono">dismiss</button>
-          </div>
-
-          {#if aiError}
-            <p class="text-[11px] text-error">{aiError}</p>
-          {/if}
-
-          {#if aiMode === 'themes'}
-            {#if aiThemes.length > 0}
-              <div class="flex flex-wrap gap-1.5">
-                {#each aiThemes as t (t.label)}
-                  <button
-                    type="button"
-                    onclick={() => applyTheme(t)}
-                    class="text-[11px] px-2 py-0.5 rounded-full bg-mantle border border-surface1 hover:border-primary text-text"
-                    title={`search: ${t.query}`}
-                  >{t.label}</button>
-                {/each}
-              </div>
-            {/if}
-          {:else if aiMode === 'ask'}
-            <input
-              bind:this={askInputEl}
-              bind:value={askQuestion}
-              onkeydown={(e) => {
-                if (e.key === 'Enter') { e.preventDefault(); submitAsk(); }
-              }}
-              placeholder="e.g. what was I worried about last month?"
-              disabled={aiBusy}
-              class="w-full bg-mantle border border-surface1 rounded px-2 py-1 text-[12px] text-text placeholder-dim focus:outline-none focus:border-primary mb-1.5 disabled:opacity-50"
-            />
-            {#if askAnswer.trim()}
-              <div class="bg-mantle border border-surface1 rounded p-2 max-h-[24rem] overflow-y-auto">
-                <MarkdownRenderer body={askAnswer} onWikilink={handleWikilink} />
-              </div>
-            {/if}
-          {:else if aiMode === 'digest'}
-            {#if digestAnswer.trim()}
-              <div class="bg-mantle border border-surface1 rounded p-2 max-h-[28rem] overflow-y-auto">
-                <MarkdownRenderer body={digestAnswer} onWikilink={handleWikilink} />
-              </div>
-            {/if}
-          {/if}
-        </div>
-      {/if}
-
-      <!-- Filter strip: quick filters + hashtag chips. Tags are AND-
-           combined — clicking adds a tag to the filter set, clicking
-           again removes it. Quick filters (open tasks, last 7d/30d)
-           are orthogonal and stack on top of the tag filter. -->
-      {#if allTags.length > 0 || jots.length > 0}
-        <div class="flex flex-wrap items-center gap-1 mt-1.5 text-[11px]">
-          {#if hasAnyFilter}
-            <button
-              type="button"
-              onclick={clearAllFilters}
-              class="px-1.5 py-0.5 rounded bg-surface1 text-text hover:bg-surface2"
-              title="clear every active filter"
-            >clear ({visibleJots.length}/{jots.length})</button>
-          {/if}
-          <!-- Quick filters: orthogonal toggles, distinguished from
-               tag chips by a leading dot so the user can tell them
-               apart at a glance. -->
-          <button
-            type="button"
-            onclick={() => (filterOpenTasks = !filterOpenTasks)}
-            class="px-1.5 py-0.5 rounded {filterOpenTasks ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
-            title="only jots whose daily has open tasks"
-          >· open tasks</button>
-          <button
-            type="button"
-            onclick={() => (filterTimeframe = filterTimeframe === '7d' ? 'all' : '7d')}
-            class="px-1.5 py-0.5 rounded {filterTimeframe === '7d' ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
-            title="last 7 days only"
-          >· 7d</button>
-          <button
-            type="button"
-            onclick={() => (filterTimeframe = filterTimeframe === '30d' ? 'all' : '30d')}
-            class="px-1.5 py-0.5 rounded {filterTimeframe === '30d' ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
-            title="last 30 days only"
-          >· 30d</button>
-          {#if allTags.length > 0}
-            <span class="text-dim opacity-50 mx-0.5">|</span>
-          {/if}
-          {#each allTags.slice(0, 24) as t}
-            <button
-              type="button"
-              onclick={() => toggleTag(t)}
-              class="px-1.5 py-0.5 rounded {activeTags.includes(t) ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
-            >#{t}</button>
-          {/each}
-          {#if allTags.length > 24}
-            <span class="text-dim">+{allTags.length - 24} more</span>
-          {/if}
-        </div>
-      {/if}
-
-      {#if searchResults.length > 0}
-        <div class="mt-1.5 bg-mantle border border-surface1 rounded p-1.5 max-h-64 overflow-y-auto">
-          <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5 px-1">
-            {searchResults.length} match{searchResults.length === 1 ? '' : 'es'}
-          </div>
-          <ul class="space-y-0.5">
-            {#each searchResults as n (n.path)}
-              <li>
-                <a
-                  href="/notes/{encodeURIComponent(n.path)}"
-                  class="block px-2 py-1 rounded text-sm text-text hover:bg-surface0"
-                >
-                  <span class="font-medium">{n.title}</span>
-                  <span class="text-xs text-dim ml-2">{n.path}</span>
-                </a>
-              </li>
-            {/each}
-          </ul>
-        </div>
-      {:else if searchText && !searching}
-        <div class="mt-2 text-xs text-dim italic px-1">no matches — press Enter to search</div>
-      {/if}
-    </div>
-
-    <!-- Quick-jot composer — Amplenote-style fire-and-forget input
-         that appends a timestamped line to today's daily. The user
-         doesn't navigate; the new content lands in the feed below.
-         Single-row by default; expands as the user types thanks to
-         the bottom-resize textarea and rows=1.
-
-         AI-expand toggle (✦) routes Enter through the AI to expand
-         a terse note into a fuller entry before saving. The toggle
-         is persisted to localStorage so a daily-journal user who
-         lives in this mode doesn't have to re-enable it every
-         session. -->
-    <div class="mb-3 bg-surface0 border border-surface1 rounded focus-within:border-primary transition-colors">
-      <div class="flex items-start gap-1.5 px-2 py-1.5">
-        <textarea
-          bind:this={composerEl}
-          bind:value={composerText}
-          onkeydown={(e) => {
-            // Enter (without shift) submits; Shift+Enter inserts a newline.
-            // Cmd/Ctrl+Enter also submits as a power-user convenience.
-            if (e.key === 'Enter' && (!e.shiftKey || e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              submitJot();
-            }
-          }}
-          placeholder={composerExpand ? 'jot a seed thought — AI will expand on Enter' : 'jot a thought — Enter saves, Shift+Enter newline'}
-          rows="1"
-          disabled={composerBusy || expanding || expandedText.length > 0}
-          class="flex-1 bg-transparent text-sm text-text placeholder-dim focus:outline-none resize-y disabled:opacity-50 leading-snug"
-        ></textarea>
-        <button
-          type="button"
-          onclick={() => (composerExpand = !composerExpand)}
-          aria-pressed={composerExpand}
-          class="text-[11px] px-1.5 py-1 rounded {composerExpand ? 'bg-primary text-on-primary' : 'bg-surface1 text-dim hover:bg-surface2 hover:text-text'} font-mono shrink-0"
-          title={composerExpand ? 'AI-expand: ON — Enter will expand your draft before saving' : 'AI-expand: OFF — Enter saves verbatim'}
-        >AI</button>
-        <button
-          type="button"
-          onclick={() => submitJot()}
-          disabled={composerBusy || expanding || expandedText.length > 0 || !composerText.trim()}
-          class="text-[11px] px-2 py-1 rounded bg-primary text-on-primary font-medium hover:opacity-90 disabled:opacity-40 shrink-0"
-        >{composerBusy ? '…' : composerExpand ? 'expand' : 'add'}</button>
-      </div>
-
-      <!-- Expand preview — streaming markdown render of the AI's
-           expanded entry. Visible only after the user submits with
-           expand on. Keep saves through the normal submit path;
-           Discard aborts + returns to the raw composer. Re-expand
-           re-runs the AI on the same seed text. -->
-      {#if expanding || expandedText.length > 0}
-        <div class="border-t border-surface1 px-2 py-1.5">
-          <div class="flex items-baseline gap-2 mb-1">
-            <span class="text-[10px] uppercase tracking-wider text-text font-mono">AI expansion</span>
-            {#if expanding}
-              <span class="text-[10px] text-dim italic font-mono">streaming…</span>
-              <span class="flex-1"></span>
-              <button
-                type="button"
-                onclick={discardExpand}
-                class="text-[10px] text-dim hover:text-text font-mono"
-              >stop</button>
-            {:else}
-              <span class="flex-1"></span>
-              <button
-                type="button"
-                onclick={runExpand}
-                class="text-[10px] text-text hover:underline font-mono"
-                title="re-run the AI on the same seed text"
-              >try again</button>
-              <button
-                type="button"
-                onclick={keepExpand}
-                class="text-[10px] px-1.5 py-0.5 rounded bg-primary text-on-primary font-medium hover:opacity-90"
-              >keep</button>
-              <button
-                type="button"
-                onclick={discardExpand}
-                class="text-[10px] text-dim hover:text-text font-mono"
-              >discard</button>
-            {/if}
-          </div>
-          <div class="bg-mantle border border-surface1 rounded p-2 max-h-[20rem] overflow-y-auto">
-            {#if expandedText.trim()}
-              <MarkdownRenderer body={expandedText} onWikilink={handleWikilink} />
-            {:else}
-              <p class="text-xs text-dim italic">…</p>
-            {/if}
-          </div>
-        </div>
-      {/if}
-    </div>
+    <JotsComposer
+      bind:text={composerText}
+      bind:composerEl
+      busy={composerBusy}
+      expand={composerExpand}
+      expanding={expanding}
+      expandedText={expandedText}
+      onSubmit={() => submitJot()}
+      onToggleExpand={() => (composerExpand = !composerExpand)}
+      onDiscardExpand={discardExpand}
+      onKeepExpand={keepExpand}
+      onRunExpand={runExpand}
+      onWikilink={handleWikilink}
+    />
 
     {#if error}
       <div class="text-sm text-error mb-4 p-3 bg-surface0 border border-error rounded">
@@ -1413,104 +1023,14 @@
       <ul class="space-y-3">
         {#each visibleJots as jot (jot.path)}
           <li data-jot-date={jot.date}>
-            <article>
-              <header
-                class="sticky top-[2.5rem] z-10 -mx-1 px-1 py-1 bg-base flex items-baseline gap-2 mb-1.5 border-b border-surface1/60"
-              >
-                <h2 class="text-sm font-semibold text-text">
-                  {relativeLabel(jot.date, today)}
-                </h2>
-                <span class="text-[11px] text-dim hidden sm:inline font-mono">{jot.date}</span>
-                {#if jot.openTasks > 0}
-                  <span
-                    class="text-[10px] px-1 py-0.5 rounded bg-surface1 text-text font-mono"
-                    title="{jot.openTasks} open task{jot.openTasks === 1 ? '' : 's'} in this daily"
-                  >{jot.openTasks}☐</span>
-                {/if}
-                <!-- Inline activity counts. Reads from the prefetched
-                     dayActivityCache populated as soon as the page
-                     loads; shows nothing while the request is in
-                     flight so the header doesn't shift. -->
-                {#if dayActivityCache[jot.date]}
-                  {@const sum = summarize(dayActivityCache[jot.date])}
-                  {#if sum.total > 0}
-                    <span class="flex items-baseline gap-1 text-[10px] font-mono text-dim">
-                      {#if sum.events > 0}
-                        <span class="text-text" title="{sum.events} calendar event{sum.events === 1 ? '' : 's'}">{sum.events}cal</span>
-                      {/if}
-                      {#if sum.tasksDone > 0}
-                        <span class="text-text" title="{sum.tasksDone} task{sum.tasksDone === 1 ? '' : 's'} completed">{sum.tasksDone}✓</span>
-                      {/if}
-                      {#if sum.tasksCreated > 0}
-                        <span title="{sum.tasksCreated} task{sum.tasksCreated === 1 ? '' : 's'} created">+{sum.tasksCreated}</span>
-                      {/if}
-                      {#if sum.notes > 0}
-                        <span title="{sum.notes} note{sum.notes === 1 ? '' : 's'} created">{sum.notes}n</span>
-                      {/if}
-                    </span>
-                  {/if}
-                {/if}
-                <a
-                  href="/notes/{encodeURIComponent(jot.path)}"
-                  class="ml-auto text-[11px] text-text hover:underline opacity-70 hover:opacity-100"
-                >open →</a>
-              </header>
-              <div class="bg-surface0 border border-surface1 rounded p-2.5">
-                {#if jot.body.trim()}
-                  <MarkdownRenderer body={jot.body} onWikilink={handleWikilink} />
-                {:else}
-                  <p class="text-xs text-dim italic">empty</p>
-                {/if}
-              </div>
-
-              <!-- What happened that day — collapsed Amplenote-style
-                   overview of every item created/completed/touched on
-                   this date across the vault. Loads lazily on first
-                   open so long scrolls don't N+1 the API. -->
-              <details
-                class="mt-1 bg-surface0 border border-surface1 rounded text-sm"
-                ontoggle={(e) => {
-                  if ((e.currentTarget as HTMLDetailsElement).open) {
-                    loadDayActivity(jot.date);
-                  }
-                }}
-              >
-                <summary class="cursor-pointer px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-dim hover:text-text select-none">
-                  what happened that day
-                </summary>
-                <div class="px-2.5 pb-2.5 pt-1">
-                  {#if dayActivityLoading[jot.date] && dayActivityCache[jot.date] === undefined}
-                    <p class="text-xs text-dim italic">loading…</p>
-                  {:else if (dayActivityCache[jot.date]?.length ?? 0) === 0}
-                    {#if dayActivityCache[jot.date] !== undefined}
-                      <p class="text-xs text-dim italic">No tracked activity on this day.</p>
-                    {/if}
-                  {:else}
-                    {#each bucketize(dayActivityCache[jot.date] ?? []) as bucket (bucket.kind)}
-                      <div class="mb-2 last:mb-0">
-                        <h4 class="text-[10px] uppercase tracking-[0.18em] text-text font-medium mb-0.5">
-                          {bucket.label} <span class="text-dim font-normal">({bucket.items.length})</span>
-                        </h4>
-                        <ul>
-                          {#each bucket.items as it (it.kind + ':' + (it.target_id ?? it.path ?? it.title) + ':' + it.at)}
-                            <li class="flex items-baseline gap-1.5 text-[11px] leading-relaxed">
-                              <span class="text-dim font-mono w-9 shrink-0">{activityTime(it.at)}</span>
-                              <a
-                                href={activityHref(it)}
-                                class="text-text hover:underline truncate"
-                              >{it.title}</a>
-                              {#if it.detail}
-                                <span class="text-dim truncate">· {it.detail}</span>
-                              {/if}
-                            </li>
-                          {/each}
-                        </ul>
-                      </div>
-                    {/each}
-                  {/if}
-                </div>
-              </details>
-            </article>
+            <JotItem
+              jot={jot}
+              today={today}
+              activity={dayActivityCache[jot.date]}
+              activityLoading={!!dayActivityLoading[jot.date]}
+              onWikilink={handleWikilink}
+              onExpandActivity={loadDayActivity}
+            />
           </li>
         {/each}
       </ul>
@@ -1527,38 +1047,6 @@
   </div>
 </div>
 
-<!-- Keyboard shortcuts overlay. Backdrop click + Esc both dismiss
-     (Esc handled by onShortcutKey at the top level). Placed at the
-     document root so the fixed positioning isn't constrained by the
-     internal scroll container. -->
 {#if showShortcuts}
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-    onclick={(e) => { if (e.currentTarget === e.target) showShortcuts = false; }}
-    role="presentation"
-  >
-    <div class="bg-surface0 border border-surface1 rounded shadow-xl max-w-sm w-full p-4 text-text">
-      <div class="flex items-baseline mb-2">
-        <h3 class="text-xs uppercase tracking-[0.18em] font-semibold">Keyboard shortcuts</h3>
-        <button
-          type="button"
-          onclick={() => (showShortcuts = false)}
-          class="ml-auto text-dim hover:text-text text-sm"
-          aria-label="close shortcuts"
-        >×</button>
-      </div>
-      <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
-        <dt class="font-mono text-text">j</dt><dd class="text-dim">next jot</dd>
-        <dt class="font-mono text-text">k</dt><dd class="text-dim">previous jot</dd>
-        <dt class="font-mono text-text">g</dt><dd class="text-dim">top of feed</dd>
-        <dt class="font-mono text-text">G</dt><dd class="text-dim">end of feed (load more)</dd>
-        <dt class="font-mono text-text">c</dt><dd class="text-dim">focus composer</dd>
-        <dt class="font-mono text-text">/</dt><dd class="text-dim">focus search</dd>
-        <dt class="font-mono text-text">?</dt><dd class="text-dim">toggle this overlay</dd>
-        <dt class="font-mono text-text">Esc</dt><dd class="text-dim">clear filters / blur / dismiss</dd>
-        <dt class="font-mono text-text">⏎</dt><dd class="text-dim">save jot (in composer)</dd>
-        <dt class="font-mono text-text">⇧⏎</dt><dd class="text-dim">newline in composer</dd>
-      </dl>
-    </div>
-  </div>
+  <JotsShortcutsOverlay onClose={() => (showShortcuts = false)} />
 {/if}
