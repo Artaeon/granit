@@ -73,10 +73,12 @@
   } from '$lib/chat/actionParser';
   import { todayISO } from '$lib/util/date';
   import { createVoiceDictation } from '$lib/chat/voiceDictation.svelte';
-  import SlashCommandPicker from '$lib/components/SlashCommandPicker.svelte';
-  import MentionPicker, { type MentionRef } from '$lib/components/MentionPicker.svelte';
+  import type SlashCommandPicker from '$lib/components/SlashCommandPicker.svelte';
+  import type MentionPicker from '$lib/components/MentionPicker.svelte';
+  import type { MentionRef } from '$lib/components/MentionPicker.svelte';
   import ChatHistoryRail from '$lib/components/ChatHistoryRail.svelte';
   import ChatModePicker from '$lib/components/aioverlay/ChatModePicker.svelte';
+  import ChatComposer from '$lib/components/aioverlay/ChatComposer.svelte';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { hasActiveEditor, insertAtCursor } from '$lib/stores/active-editor';
   import { record as recordSharedPrompt, list as listSharedPrompts, type RecentPrompt } from '$lib/ai/recentPrompts';
@@ -1471,55 +1473,10 @@
     });
   });
 
-  function onInputKey(e: KeyboardEvent) {
-    // Mention + slash pickers swallow arrow/enter/tab while open so
-    // the user navigates the popup before falling through to
-    // send-on-enter. handleKey returns true when the picker swallows
-    // the event; the slash picker also returns false on the
-    // exact-match-Enter case so this fall-through still calls send().
-    if (mentionPickerRef?.handleKey(e)) return;
-    if (slashPickerRef?.handleKey(e)) return;
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void send();
-    }
-  }
-  function onInputChange() {
-    slashPickerRef?.detectTrigger();
-    mentionPickerRef?.detectTrigger();
-    autosizeInput();
-  }
-  // Composer auto-grow. textarea[rows=2] is the resting height; as the
-  // user types newlines (or pastes a multi-line prompt) we expand the
-  // element up to ~50% of the panel's height before falling back to
-  // internal scrolling. Without this the textarea stays fixed at 2
-  // rows and longer prompts hide their own bottom — frustrating on
-  // both mobile and desktop. Implementation: reset to height:auto so
-  // scrollHeight reads the natural content height, then clamp + write
-  // back. Cheap (one layout read per keystroke).
-  function autosizeInput() {
-    if (!inputEl) return;
-    const ta = inputEl;
-    const panel = panelEl?.getBoundingClientRect().height ?? window.innerHeight;
-    const cap = Math.max(120, Math.floor(panel * 0.5));
-    ta.style.height = 'auto';
-    const next = Math.min(cap, ta.scrollHeight);
-    ta.style.height = next + 'px';
-    ta.style.overflowY = ta.scrollHeight > cap ? 'auto' : 'hidden';
-  }
-  // Re-run autosize on every input mutation (typing, voice, slash
-  // pick, mention pick). $effect tracks `input` as a dep so any
-  // programmatic write — voice transcript, mention insert, /help —
-  // also triggers a resize without relying on individual call sites.
-  $effect(() => {
-    void input;
-    tick().then(() => autosizeInput());
-  });
-  function onInputClick() {
-    // Caret moved without typing — re-evaluate mention/slash context.
-    slashPickerRef?.detectTrigger();
-    mentionPickerRef?.detectTrigger();
-  }
+  // Composer handlers + auto-grow live in <ChatComposer />. Parent
+  // owns `input`, `inputEl`, picker open/refs, and `voice` because
+  // surfaces outside the composer (Esc handlers, starter-button
+  // strip, send() prelude builder) need to read or mutate them.
 
   // Mode quick-switch: Mod+1..9 picks the matching entry by
   // position in AGENT_MODES (generic modes first, then personas).
@@ -2449,91 +2406,20 @@
       >Clear</button>
     </div>
 
-    <!-- Chat input. ChatGPT-style composer: textarea wraps the full
-         width, mic + send sit as icon buttons inside the bottom-right
-         corner. Disabled during Sabbath. -->
-    <form
-      onsubmit={send}
-      class="border-t border-surface1 px-3 py-3 flex-shrink-0"
-    >
-      <div
-        class="relative bg-surface0 border rounded-2xl px-3 py-2 transition-colors {voice.recording ? 'border-error' : 'border-surface1 focus-within:border-primary'}"
-      >
-        <!-- font-size: 16px on mobile is CRITICAL. iOS Safari
-             auto-zooms any focused input with font-size < 16px and,
-             while zooming, scrolls the page to centre the input —
-             dragging fixed-positioned ancestors (this whole AI panel)
-             up with it. That's the long-standing "input field
-             wanders to the top, big gap to the keyboard" bug the
-             user kept reporting through three previous height-math
-             fixes. The actual root cause is the 14px text-sm here.
-             text-base md:text-sm gives 16px on mobile (no iOS zoom)
-             + 14px on desktop (matches the rest of the chat). -->
-        <textarea
-          bind:this={inputEl}
-          bind:value={input}
-          onkeydown={onInputKey}
-          oninput={onInputChange}
-          onclick={onInputClick}
-          rows="2"
-          placeholder={$sabbath ? 'Sabbath active — AI paused' : voice.recording ? 'Listening… speak freely' : 'Ask anything, /help for commands, @ to reference…'}
-          disabled={busy || $sabbath}
-          class="w-full bg-transparent border-0 text-base md:text-sm text-text placeholder-dim focus:outline-none resize-none disabled:opacity-60 pr-20"
-          style="min-height: 2.5rem; max-height: 12rem;"
-        ></textarea>
-        <!-- Bottom-right action cluster — mic (optional) + send.
-             Anchored inside the textarea wrapper so the input grows
-             vertically while the buttons stay pinned to its corner. -->
-        <div class="absolute right-2 bottom-2 flex items-center gap-1">
-          {#if voiceSupported}
-            <button
-              type="button"
-              onclick={toggleVoice}
-              disabled={busy || $sabbath}
-              aria-pressed={voice.recording}
-              class="w-8 h-8 inline-flex items-center justify-center rounded-full disabled:opacity-40 transition-colors {voice.recording ? 'bg-error text-white animate-pulse' : 'text-subtext hover:bg-surface1 hover:text-text'}"
-              title={voice.recording ? 'Stop dictating' : 'Dictate'}
-              aria-label={voice.recording ? 'Stop dictating' : 'Dictate'}
-            >
-              <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="3" width="6" height="12" rx="3"/>
-                <path d="M5 11a7 7 0 0014 0M12 18v3"/>
-              </svg>
-            </button>
-          {/if}
-          <button
-            type="submit"
-            disabled={busy || !input.trim() || $sabbath}
-            aria-label="Send"
-            title="Send (Enter)"
-            class="w-8 h-8 inline-flex items-center justify-center rounded-full bg-primary text-on-primary disabled:opacity-30 hover:opacity-90 active:opacity-80 transition-opacity"
-          >
-            <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 19V5M5 12l7-7 7 7"/>
-            </svg>
-          </button>
-        </div>
-        <!-- Slash-command + mention pickers. Same wiring as before;
-             rendered as children of the wrapper so their popovers
-             anchor to the input box. -->
-        <SlashCommandPicker
-          bind:this={slashPickerRef}
-          bind:value={input}
-          bind:open={slashPickerOpen}
-          {inputEl}
-          onSubmit={() => { void send(); }}
-        />
-        {#if !slashPickerOpen}
-          <MentionPicker
-            bind:this={mentionPickerRef}
-            bind:value={input}
-            bind:open={mentionPickerOpen}
-            {inputEl}
-            onPick={(ref) => { mentionedRefs = [...mentionedRefs, ref]; }}
-          />
-        {/if}
-      </div>
-    </form>
+    <ChatComposer
+      bind:input
+      bind:inputEl
+      {panelEl}
+      bind:slashPickerOpen
+      bind:mentionPickerOpen
+      bind:slashPickerRef
+      bind:mentionPickerRef
+      {voice}
+      {busy}
+      sabbathActive={$sabbath}
+      onSubmit={() => { void send(); }}
+      onMentionPick={(ref) => { mentionedRefs = [...mentionedRefs, ref]; }}
+    />
   </div>
 {/if}
 
