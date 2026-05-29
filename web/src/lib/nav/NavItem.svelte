@@ -14,6 +14,8 @@
   import { sidebarPins, togglePin } from '$lib/stores/sidebar-pins';
   import { activeNav } from '$lib/nav/active';
   import type { NavItem } from '$lib/nav/config';
+  import { goto } from '$app/navigation';
+  import { newTab } from '$lib/stores/tabs';
 
   type Props = {
     item: NavItem;
@@ -50,7 +52,22 @@
 
 <a
   href={item.href}
-  onclick={() => onNavigate?.()}
+  onclick={(e) => {
+    // Cmd/Ctrl-click → open in a new tab (multi-tab Phase 2). Mirrors
+    // browser behaviour: modifier + click on a link = new tab. We
+    // intercept here rather than letting the browser do it because
+    // these tabs are inside the SPA, not actual browser tabs.
+    // Shift / middle-click stay browser-default (open in a real
+    // window / browser tab) so the user retains the escape hatch.
+    if (e.metaKey || e.ctrlKey) {
+      e.preventDefault();
+      newTab(item.href, item.label);
+      goto(item.href);
+      onNavigate?.();
+      return;
+    }
+    onNavigate?.();
+  }}
   title={isCompact ? (badge ? `${item.label} — ${badge.label}` : item.label) : undefined}
   aria-label={badge ? `${item.label}, ${badge.label}` : item.label}
   class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3'} rounded transition-colors

@@ -1,6 +1,6 @@
 <script lang="ts">
   import '../app.css';
-  import { onMount, untrack } from 'svelte';
+  import { onMount, untrack, tick } from 'svelte';
   import { get } from 'svelte/store';
   import { auth } from '$lib/stores/auth';
   import { page } from '$app/stores';
@@ -15,6 +15,7 @@
   import NavSidebar from '$lib/nav/NavSidebar.svelte';
   import MobileTopBar from '$lib/nav/MobileTopBar.svelte';
   import RightPane from '$lib/nav/RightPane.svelte';
+  import TabStrip from '$lib/nav/TabStrip.svelte';
   import SabbathRibbon from '$lib/components/SabbathRibbon.svelte';
   import UpdateAvailableBanner from '$lib/components/UpdateAvailableBanner.svelte';
   import MobileAIFab from '$lib/components/MobileAIFab.svelte';
@@ -37,6 +38,18 @@
     setRightPaneContent,
     type RightPaneContent
   } from '$lib/stores/rightPane';
+  import {
+    tabsStore,
+    setActiveTabUrl,
+    newTab,
+    closeTab,
+    cycleTab,
+    activateNth,
+    setActiveScroll,
+    clearTabs
+  } from '$lib/stores/tabs';
+  import { titleForUrl } from '$lib/nav/tabTitle';
+  import { aiOverlayOpen } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
   import { findBinding, matchesKey } from '$lib/keybindings/registry';
   import { isMobile, isMobileNow } from '$lib/util/breakpoint';
@@ -413,6 +426,158 @@
     if (!$activeNav || $activeNav.href === '/') return 'Granit';
     return `Granit · ${$activeNav.label}`;
   });
+
+  // ── Multi-tab Phase 2 wiring ──────────────────────────────────────
+  // mainScrollEl is the per-route scrollable container — we bind to
+  // it so we can capture the LEAVING tab's scrollTop before a switch
+  // and restore the ENTERING tab's scrollTop after the new route
+  // renders. The strip itself reads $tabsStore directly; the layout
+  // only owns the navigation interception + scroll bookkeeping.
+  let mainScrollEl: HTMLElement | undefined = $state();
+
+  // Track the pathname+search the layout last wrote to the store so
+  // we don't bounce the active tab title when the page store fires a
+  // re-derivation for the same URL (e.g. hashchange on the same path).
+  let lastWrittenUrl = $state<string | null>(null);
+
+  // Sync the active tab with the current navigation. Treats sidebar
+  // clicks as "address-bar typing" — they update the active tab's
+  // URL in place rather than creating a new tab. New tabs are
+  // explicitly opened via the TabStrip + or Mod+T.
+  $effect(() => {
+    const url = $page.url.pathname + $page.url.search;
+    const label = $activeNav?.label ?? titleForUrl(url);
+    if (url === lastWrittenUrl) return;
+    lastWrittenUrl = url;
+    setActiveTabUrl(url, label);
+  });
+
+  // Scroll persistence on tab switch. We observe activeTabId
+  // transitions: before the new tab activates we capture the current
+  // mainScrollEl.scrollTop into the LEAVING tab (already done by the
+  // strip's click handler? no — the store update happens AFTER nav
+  // goto in our setup, so the active id flips first). Instead we
+  // listen for activeTabId changes here and, on the NEXT frame after
+  // the new route has rendered, restore that tab's persisted scroll.
+  // The capture path runs continuously on scroll via the listener
+  // below so the LEAVING value is always fresh.
+  let lastActiveId = $state<string | null>(null);
+  $effect(() => {
+    const id = $tabsStore.activeTabId;
+    if (id === lastActiveId) return;
+    lastActiveId = id;
+    if (!id) return;
+    const tab = $tabsStore.tabs.find((t) => t.id === id);
+    if (!tab) return;
+    // Wait for the new route to render before scrolling. tick() +
+    // rAF together cover both Svelte's microtask and the browser's
+    // paint, which fixes the "scroll resets to 0 then jumps" jank
+    // that happens when restoring on the same frame as the route
+    // swap.
+    tick().then(() => {
+      requestAnimationFrame(() => {
+        if (!mainScrollEl) return;
+        mainScrollEl.scrollTop = tab.scrollTop;
+      });
+    });
+  });
+
+  // Capture scroll position continuously into the active tab. Cheap
+  // — just a writable update keyed by id. We attach to mainScrollEl
+  // once it's bound; the effect re-runs if mainScrollEl ever rebinds
+  // (e.g. layout remount).
+  $effect(() => {
+    const el = mainScrollEl;
+    if (!el) return;
+    let raf = 0;
+    const onScroll = () => {
+      // Coalesce to next frame so a fast scroll doesn't write
+      // dozens of times per second. Single rAF is enough — the
+      // captured value is approximate by design.
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        setActiveScroll(el.scrollTop);
+      });
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  });
+
+  // Tab keyboard shortcuts. Listener kept in a single onMount so
+  // teardown is one removeEventListener. The Mod+1..9 path defers
+  // to the AI overlay — when the overlay is open it owns those
+  // chords for mode quick-switch, which is the documented behaviour
+  // (see AIOverlay.svelte's effect at L1767). Mod+Tab cycles tabs;
+  // we don't try to handle Mod+Tab without any tabs open (the
+  // browser would normally hand it to the OS, but Chromium/Firefox
+  // never deliver Mod+Tab to web apps anyway — we keep the binding
+  // in the registry for documentation).
+  onMount(() => {
+    function isMac(): boolean {
+      return typeof navigator !== 'undefined' &&
+        /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
+    }
+    const onKey = (e: KeyboardEvent) => {
+      const mod = isMac() ? e.metaKey : e.ctrlKey;
+      if (!mod) return;
+      // Mod+T → new tab on current route
+      if (!e.shiftKey && !e.altKey && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        const url = $page.url.pathname + $page.url.search;
+        const label = $activeNav?.label ?? titleForUrl(url);
+        newTab(url, label);
+        // newTab activates the new tab; navigate to refresh route
+        // state (same URL — SvelteKit no-ops but our $effect picks
+        // up the activeTabId change and restores scroll = 0).
+        goto(url);
+        return;
+      }
+      // Mod+W → close active tab
+      if (!e.shiftKey && !e.altKey && e.key.toLowerCase() === 'w') {
+        e.preventDefault();
+        const activeId = $tabsStore.activeTabId;
+        if (!activeId) return;
+        const { nextUrl } = closeTab(activeId);
+        if ($tabsStore.tabs.length === 0) {
+          clearTabs();
+          goto('/');
+        } else if (nextUrl) {
+          goto(nextUrl);
+        }
+        return;
+      }
+      // Mod+Tab / Mod+Shift+Tab → cycle. preventDefault keeps the
+      // browser from doing its own tab cycle (which would be a
+      // no-op for a single-page app, but cleaner not to flash).
+      if (e.key === 'Tab') {
+        if ($tabsStore.tabs.length === 0) return;
+        e.preventDefault();
+        const url = cycleTab(e.shiftKey ? -1 : 1);
+        if (url) goto(url);
+        return;
+      }
+      // Mod+1..9 → activate Nth tab. Defer to the AI overlay when
+      // it's open (the overlay's own listener uses preventDefault
+      // but we belt-and-braces gate here too so the ordering
+      // doesn't matter).
+      if (!e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {
+        if (get(aiOverlayOpen)) return;
+        const n = parseInt(e.key, 10);
+        const url = activateNth(n);
+        if (url) {
+          e.preventDefault();
+          goto(url);
+        }
+        return;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 </script>
 
 <svelte:head>
@@ -466,8 +631,19 @@
   >
     {#if $auth}
       <SabbathRibbon />
+      <!-- Multi-tab Phase 2 strip. Self-hides when no tabs are open
+           (initial / single-route state pays no vertical cost) and
+           hides itself on mobile (md:flex) until Phase 3. The
+           scrollable content area below owns the per-route scroll
+           position which we persist into the active tab. -->
+      <TabStrip />
     {/if}
-    <div class="flex-1 min-h-0 overflow-hidden">
+    <!-- Inner content area. overflow-hidden is intentional — each
+         route owns its own scroll container (h-full overflow-y-auto)
+         so the layout doesn't double-scroll. mainScrollEl binding
+         is kept for scroll persistence on routes that DON'T own
+         their scroll (Phase 3 will deepen per-page integration). -->
+    <div bind:this={mainScrollEl} class="flex-1 min-h-0 overflow-hidden">
       {@render children()}
     </div>
   </main>

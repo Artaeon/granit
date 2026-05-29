@@ -204,6 +204,48 @@ export const KEYBINDINGS: KeyBinding[] = [
     scope: 'global',
     description: 'Switch the right pane to the expanded dashboard widget column.'
   },
+  // ── Tabs (Phase 2 — main-pane Obsidian-style tabs) ──────────────
+  // Mod+T opens a fresh tab on the current route, Mod+W closes the
+  // active tab, Mod+Tab / Mod+Shift+Tab cycle between them, Mod+1..9
+  // jumps to a specific tab. Mod+1..9 overlaps with the AIOverlay's
+  // mode quick-switch — the overlay listener gates itself behind
+  // `open`, so the tab handler only fires when the overlay isn't
+  // intercepting first.
+  {
+    id: 'tab-new',
+    label: 'New tab',
+    keys: 'Mod+T',
+    scope: 'global',
+    description: 'Open a new tab on the current route — like a browser duplicate-tab.'
+  },
+  {
+    id: 'tab-close',
+    label: 'Close tab',
+    keys: 'Mod+W',
+    scope: 'global',
+    description: 'Close the active tab. On the last tab, also navigates home and clears the strip.'
+  },
+  {
+    id: 'tab-cycle-next',
+    label: 'Next tab',
+    keys: 'Mod+Tab',
+    scope: 'global',
+    description: 'Cycle forward through open tabs.'
+  },
+  {
+    id: 'tab-cycle-prev',
+    label: 'Previous tab',
+    keys: 'Mod+Shift+Tab',
+    scope: 'global',
+    description: 'Cycle backward through open tabs.'
+  },
+  {
+    id: 'tab-activate-n',
+    label: 'Activate tab N',
+    keys: 'Mod+1..9',
+    scope: 'global',
+    description: 'Jump to the Nth open tab (1-indexed). Inactive while the AI overlay is open — there Mod+1..9 picks the AI mode.'
+  },
   // ── /tasks page-scoped bindings ──────────────────────────────────
   // These ship as part of Stream F (power-user efficiency). The
   // handler still lives in /tasks/+page.svelte's onKey listener —
