@@ -30,26 +30,22 @@
   import { buildPrelude } from '$lib/chat/prelude';
   import { commitParsedAction } from '$lib/chat/commitAction';
   import {
-    buildSaveThreadPayload,
-    buildAssistantNotePayload,
-    buildAssistantNoteRetryPath
-  } from '$lib/chat/saveToNote';
+    createQuickActionService,
+    type QuickActionRefs
+  } from '$lib/chat/quickActionService.svelte';
   import {
-    QUICK_ACTION_TITLES,
-    renderTriageProposals,
-    renderDeadlineProposals
-  } from '$lib/chat/quickActions';
+    createSaveNoteService,
+    type SaveNoteRefs
+  } from '$lib/chat/saveNoteService.svelte';
   import { suggestedModeForPath } from '$lib/chat/contextDefaults';
   import {
     projectContextChips,
     CALENDAR_CONTEXT_CHIPS,
     GOAL_CONTEXT_CHIPS
   } from '$lib/chat/contextChips';
-  import { deriveDraftTitle } from '$lib/ai/draftTitle';
   import {
     loadActiveThreadId,
-    persistActiveThreadId,
-    deriveLibraryLabel
+    persistActiveThreadId
   } from '$lib/chat/history';
   import {
     createChatHistoryManager,
@@ -175,41 +171,85 @@
   let savingLibraryIdx = $state<number | null>(null);
   let savingLibraryLabel = $state('');
   let savingLibraryBusy = $state(false);
-  function openSaveLibrary(idx: number, content: string) {
-    savingLibraryIdx = idx;
-    // Seed label with the first few words so the user has something
-    // to edit rather than starting from blank — most labels are a
-    // quick tweak of the seed. Helper lives in chat/history.
-    savingLibraryLabel = deriveLibraryLabel(content);
-  }
-  function cancelSaveLibrary() {
-    savingLibraryIdx = null;
-    savingLibraryLabel = '';
-  }
-  async function confirmSaveLibrary(promptContent: string) {
-    const label = savingLibraryLabel.trim();
-    if (!label || savingLibraryBusy) return;
-    savingLibraryBusy = true;
-    try {
-      const cur = await api.getAIPrompts();
-      // 'either' as the default scope — the user can edit scope later
-      // if they want to constrain when the entry surfaces. Most chat
-      // prompts apply equally to selection + cursor surfaces.
-      const next = {
-        entries: [
-          ...(cur.entries ?? []),
-          { label, prompt: promptContent.trim(), scope: 'either' as const }
-        ]
-      };
-      await api.putAIPrompts(next);
-      toast.success(`Saved "${label}" to library`);
-      cancelSaveLibrary();
-    } catch (err) {
-      toast.error('save failed: ' + errorMessage(err));
-    } finally {
-      savingLibraryBusy = false;
-    }
-  }
+
+  // Save-as-note state (saveThreadAsNote in flight + per-message
+  // save / copy indicators). Owned here because the message list
+  // template reads them; behavior lives in saveNoteService below.
+  let saving = $state(false);
+  let savingMessageIdx = $state<number | null>(null);
+  let copiedMessageIdx = $state<number | null>(null);
+
+  // Quick-action service — owns its own AbortController so a quick
+  // action cancel does NOT touch chat send()'s abort lifecycle.
+  // Same refs pattern as chatHistoryManager: getter/setter pairs
+  // expose parent $state to the service; getter bodies are lazy so
+  // referencing later-declared state (messages/quickTitle/etc.) is
+  // safe.
+  const quickActionRefs: QuickActionRefs = {
+    get busy() { return busy; },
+    set busy(v) { busy = v; },
+    get quickTitle() { return quickTitle; },
+    set quickTitle(v) { quickTitle = v; },
+    get quickResult() { return quickResult; },
+    set quickResult(v) { quickResult = v; },
+    get messages() { return messages; },
+    set messages(v) { messages = v; }
+  };
+  const quickActions = createQuickActionService({ refs: quickActionRefs });
+  const {
+    runBriefing,
+    runSynopsis,
+    runTriage,
+    runDeadlines
+  } = quickActions;
+
+  // Save-note service — owns the save / copy / library flows.
+  // currentProjectName / currentGoalId / onCalendarPage / mode are
+  // declared further down; the getters resolve them lazily at call
+  // time (user clicks a save button after onMount has run).
+  const saveNoteRefs: SaveNoteRefs = {
+    get saving() { return saving; },
+    set saving(v) { saving = v; },
+    get savingMessageIdx() { return savingMessageIdx; },
+    set savingMessageIdx(v) { savingMessageIdx = v; },
+    get copiedMessageIdx() { return copiedMessageIdx; },
+    set copiedMessageIdx(v) { copiedMessageIdx = v; },
+    get savingLibraryIdx() { return savingLibraryIdx; },
+    set savingLibraryIdx(v) { savingLibraryIdx = v; },
+    get savingLibraryLabel() { return savingLibraryLabel; },
+    set savingLibraryLabel(v) { savingLibraryLabel = v; },
+    get savingLibraryBusy() { return savingLibraryBusy; },
+    set savingLibraryBusy(v) { savingLibraryBusy = v; },
+    get messages() { return messages; },
+    set messages(v) { messages = v; },
+    get quickTitle() { return quickTitle; },
+    set quickTitle(v) { quickTitle = v; },
+    get quickResult() { return quickResult; },
+    set quickResult(v) { quickResult = v; },
+    get modeId() { return mode.id; },
+    set modeId(_v) { /* derived from modeId state; service writes go through modeLabel only */ },
+    get modeLabel() { return mode.label; },
+    set modeLabel(_v) { /* same — derived */ },
+    get rag() { return rag; },
+    set rag(v) { rag = v; },
+    get lastRagHits() { return lastRagHits; },
+    set lastRagHits(v) { lastRagHits = v; },
+    get currentProjectName() { return currentProjectName; },
+    set currentProjectName(_v) { /* derived */ },
+    get currentGoalId() { return currentGoalId; },
+    set currentGoalId(_v) { /* derived */ },
+    get onCalendarPage() { return onCalendarPage; },
+    set onCalendarPage(_v) { /* derived */ }
+  };
+  const saveNote = createSaveNoteService({ refs: saveNoteRefs });
+  const {
+    saveThreadAsNote,
+    saveAssistantAsNote,
+    copyAssistantMessage,
+    openSaveLibrary,
+    cancelSaveLibrary,
+    confirmSaveLibrary
+  } = saveNote;
 
   // ── Long-term thread history (localStorage, LRU 30) ──────────────
   // sessionStorage above is the in-flight buffer (cleared on tab
@@ -685,63 +725,10 @@
     }
   }
 
-  // ── Quick actions ──────────────────────────────────────────────
-  // Each one: cancel any in-flight call, fire the API, render
-  // markdown (briefing / synopsis) or a JSON block of proposals
-  // (triage / deadlines). Proposals are NOT applied from here —
-  // the dedicated tasks page is the place for that flow because
-  // it has the full task context. The overlay just shows the
-  // model's suggestions so the user can decide whether to navigate
-  // there. Keeps the overlay simple.
-  async function runBriefing() {
-    await runQuick(QUICK_ACTION_TITLES.briefing, async (s) => {
-      const r = await api.aiDailyBriefing(s);
-      return r.markdown;
-    });
-  }
-  async function runSynopsis() {
-    await runQuick(QUICK_ACTION_TITLES.synopsis, async (s) => {
-      const r = await api.aiWeeklyReview(s);
-      return r.markdown;
-    });
-  }
-  async function runTriage() {
-    await runQuick(QUICK_ACTION_TITLES.triage, async (s) => {
-      const r = await api.aiInboxTriage(s);
-      return renderTriageProposals(r.proposals ?? []);
-    });
-  }
-  async function runDeadlines() {
-    await runQuick(QUICK_ACTION_TITLES.deadlines, async (s) => {
-      const r = await api.aiDeadlineDetect(s);
-      return renderDeadlineProposals(r.proposals ?? []);
-    });
-  }
-
-  async function runQuick(title: string, fn: (signal: AbortSignal) => Promise<string>) {
-    if (busy) return;
-    abort?.abort();
-    abort = new AbortController();
-    busy = true;
-    quickTitle = title;
-    quickResult = '_running…_';
-    messages = []; // chat clears when a quick action runs
-    try {
-      quickResult = await fn(abort.signal);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        quickResult = '_cancelled_';
-      } else {
-        const msg = errorMessage(err);
-        quickResult = /disabled in AI preferences/i.test(msg)
-          ? `_${msg}_  \n\n[Open settings →](/settings)`
-          : `_failed:_ ${msg}`;
-      }
-    } finally {
-      busy = false;
-      abort = null;
-    }
-  }
+  // Quick actions (briefing / synopsis / triage / deadlines) live in
+  // $lib/chat/quickActionService — wired below. The service owns its
+  // own AbortController so a quick action can't accidentally cancel
+  // the chat stream and vice versa.
 
   // ── Chat ──────────────────────────────────────────────────────
   // Streaming via /api/v1/chat/stream so the user sees tokens
@@ -904,137 +891,6 @@
   const voiceSupported = voice.supported;
   function toggleVoice() { voice.toggle(); }
   function stopVoice() { voice.stop(); }
-
-  // ── Save thread as note ────────────────────────────────────────
-  // Persists the current overlay conversation as a markdown note
-  // under chat-history/YYYY-MM-DD-HHmm-<slug>.md. Useful when a
-  // chat lands on a real insight worth keeping; the dedicated
-  // /chat page is for long-running threads, this is the quick
-  // 'this was a good answer, save it' move from any page. The
-  // payload assembly (path stem, frontmatter, body lines) lives
-  // in $lib/chat/saveToNote; the createNote call + toasts stay
-  // here so the loading state + error surfaces are local.
-  let saving = $state(false);
-  async function saveThreadAsNote() {
-    if (saving) return;
-    const payload = buildSaveThreadPayload({
-      messages,
-      quickTitle,
-      quickResult,
-      modeId: mode.id,
-      modeLabel: mode.label,
-      rag,
-      lastRagHits,
-      now: new Date()
-    });
-    if (!payload) {
-      toast.info('Nothing to save yet.');
-      return;
-    }
-    saving = true;
-    try {
-      await api.createNote(payload);
-      toast.success('Saved · ' + payload.path);
-    } catch (e) {
-      toast.error('save failed: ' + (errorMessage(e)));
-    } finally {
-      saving = false;
-    }
-  }
-
-  // ── Save one assistant reply as a vault note ───────────────────
-  // Cuts the "draft a brief → copy-paste into a new note" loop.
-  // Common path: PM mode drafts a brief, user accepts, saves under
-  // Projects/<name>/<derived-title>.md. When not in a project the
-  // file lands under Drafts/. The path is exposed via the toast's
-  // "open" action so the user can verify what got written.
-  let savingMessageIdx = $state<number | null>(null);
-
-  // copiedMessageIdx — tracks which assistant message just got
-  // copied so the button can flash a checkmark for ~1.2s before
-  // reverting to the copy icon. Single-slot (only one feedback at
-  // a time) — a fresh copy on another row resets the previous.
-  let copiedMessageIdx = $state<number | null>(null);
-  let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
-  async function copyAssistantMessage(content: string, idx: number): Promise<void> {
-    // stripStructuredBlocks is the same cleaner saveAssistantAsNote
-    // uses — drops action / suggestion blocks so the clipboard
-    // contains only the human-readable reply, not the JSON the
-    // assistant emitted alongside.
-    const cleaned = stripStructuredBlocks(content || '').trim();
-    if (!cleaned) {
-      toast.info('Nothing to copy.');
-      return;
-    }
-    try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(cleaned);
-      } else {
-        // Fallback for non-secure contexts / older browsers: temporary
-        // textarea + execCommand. Deprecated but still works on iOS
-        // Safari served over plain HTTP (rare for granit but possible
-        // on a LAN).
-        const ta = document.createElement('textarea');
-        ta.value = cleaned;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-      }
-      copiedMessageIdx = idx;
-      if (copyResetTimer) clearTimeout(copyResetTimer);
-      copyResetTimer = setTimeout(() => {
-        copiedMessageIdx = null;
-      }, 1200);
-    } catch {
-      toast.error('Copy failed — your browser blocked clipboard access.');
-    }
-  }
-
-  async function saveAssistantAsNote(idx: number) {
-    const m = messages[idx];
-    if (!m || m.role !== 'assistant') return;
-    if (savingMessageIdx !== null) return;
-    const cleaned = stripStructuredBlocks(m.content || '').trim();
-    if (!cleaned) {
-      toast.info('Nothing to save in this reply.');
-      return;
-    }
-    savingMessageIdx = idx;
-    const title = deriveDraftTitle(cleaned, todayISO());
-    const { basePath, folder, baseSlug, frontmatter } = buildAssistantNotePayload({
-      cleanedContent: cleaned,
-      title,
-      modeId: mode.id,
-      currentProjectName,
-      currentGoalId,
-      onCalendarPage
-    });
-    try {
-      let finalPath = basePath;
-      try {
-        await api.createNote({ path: basePath, frontmatter, body: cleaned });
-      } catch (err) {
-        // 409 Conflict — file exists. Retry with a time suffix.
-        // Any other error rethrows to the outer toast handler.
-        const msg = errorMessage(err);
-        if (!/already exists|409/i.test(msg)) throw err;
-        finalPath = buildAssistantNoteRetryPath(folder, baseSlug, new Date());
-        await api.createNote({ path: finalPath, frontmatter, body: cleaned });
-      }
-      toast.success(`Saved · ${finalPath}`, {
-        action: { label: 'Open', href: `/notes/${encodeURIComponent(finalPath)}` }
-      });
-    } catch (e) {
-      toast.error('Save failed: ' + errorMessage(e));
-    } finally {
-      savingMessageIdx = null;
-    }
-  }
-  // deriveDraftTitle lives in $lib/ai/draftTitle (10 tests pin
-  // the precedence rules) — imported above.
 
   // ── Long-term AI memory ─────────────────────────────────────────
   // The user's persistent facts ("wife is Anna", "vegetarian", etc.)
