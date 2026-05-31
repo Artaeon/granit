@@ -20,6 +20,7 @@
   } from '$lib/calendar/utils';
   import HourGrid from '$lib/calendar/HourGrid.svelte';
   import MonthView from '$lib/calendar/MonthView.svelte';
+  import ContentPipelineOverlay from '$lib/calendar/ContentPipelineOverlay.svelte';
   import AgendaView from '$lib/calendar/AgendaView.svelte';
   import YearView from '$lib/calendar/YearView.svelte';
   import MiniMonth from '$lib/calendar/MiniMonth.svelte';
@@ -607,6 +608,22 @@
   let visibleFilterChips = $derived(
     FILTER_CHIPS.filter((c) => c.key !== 'content_event' || (typeCounts['content_event'] ?? 0) > 0)
   );
+
+  // Pipeline overlay — kanban-style status grouping rendered on top of
+  // the month grid. Toggled from a header button that only appears
+  // when content events exist (so non-content users see no extra
+  // chrome). Closing the overlay returns to the underlying month grid
+  // with no scroll loss.
+  let pipelineMode = $state(false);
+  let pipelineButtonAvailable = $derived(
+    view === 'month' && (typeCounts['content_event'] ?? 0) > 0
+  );
+  // Auto-close the overlay when the user leaves month view — a kanban
+  // anchored to a hidden grid is confusing and the dismissal isn't
+  // discoverable through any other affordance.
+  $effect(() => {
+    if (pipelineMode && view !== 'month') pipelineMode = false;
+  });
 
   let viewDays = $derived.by(() => {
     if (view === 'day') return [cursor];
@@ -1455,6 +1472,31 @@
       onClearAll={() => (hidden = new Set())}
     />
 
+    {#if pipelineButtonAvailable}
+      <!-- Pipeline toggle — only appears when at least one content
+           event exists in the loaded window AND month view is
+           active. The kanban overlay is anchored to the month grid;
+           offering it from week/day would point at nothing useful. -->
+      <div class="flex items-center gap-2 px-3 py-1 border-b border-surface1 flex-shrink-0 bg-mantle">
+        <button
+          type="button"
+          onclick={() => (pipelineMode = !pipelineMode)}
+          aria-pressed={pipelineMode}
+          title={pipelineMode ? 'Close the pipeline kanban' : 'Group content events by status in a kanban overlay'}
+          class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border transition-colors {pipelineMode ? 'bg-lavender text-on-primary border-lavender' : 'bg-surface0 text-subtext border-surface1 hover:border-lavender hover:text-text'}"
+        >
+          <span
+            class="inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-mono font-semibold"
+            style={pipelineMode ? 'background: rgba(0,0,0,0.18)' : 'background: color-mix(in srgb, var(--color-lavender) 18%, transparent); color: var(--color-lavender)'}
+            aria-hidden="true"
+          >C</span>
+          Pipeline
+          <span class="font-mono tabular-nums opacity-80">{typeCounts['content_event'] ?? 0}</span>
+        </button>
+        <span class="text-[11px] text-dim">kanban by status</span>
+      </div>
+    {/if}
+
     <div
       class="flex-1 overflow-hidden p-2 sm:p-3"
       role="region"
@@ -1495,8 +1537,21 @@
       {:else if view === 'day' || view === 'week' || view === 'workweek'}
         <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} {hourPx} />
       {:else if view === 'month'}
-        <div class="h-full overflow-auto">
+        <div class="relative h-full overflow-auto">
           <MonthView cursor={cursor} events={events} density={monthDensity} onClickEvent={clickEvent} onClickDay={clickDay} />
+          {#if pipelineMode}
+            <!-- Kanban overlay sits absolute over the month grid so
+                 the underlying dates stay visually present (closing
+                 returns to the same scroll position, no transition
+                 cost). All status grouping logic lives inside the
+                 component; the page just hands it the filtered
+                 event list + the same click handler the grid uses. -->
+            <ContentPipelineOverlay
+              events={events}
+              onClickEvent={clickEvent}
+              onClose={() => (pipelineMode = false)}
+            />
+          {/if}
         </div>
       {:else if view === 'year'}
         <div class="h-full overflow-auto">
