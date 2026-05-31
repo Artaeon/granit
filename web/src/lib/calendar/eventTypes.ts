@@ -81,6 +81,14 @@ export const EVENT_TYPES: readonly EventTypeDef[] = [
     color: 'red',
     description: 'Hard busy. Visible to scheduling AI as "do not place anything here".',
     defaultDurationMin: 60
+  },
+  {
+    id: 'content',
+    label: 'Content',
+    glyph: 'C',
+    color: 'lavender',
+    description: 'Content production — posts, videos, podcasts. Carries a status (idea → published) and channel(s) for cross-platform planning.',
+    defaultDurationMin: 30
   }
 ] as const;
 

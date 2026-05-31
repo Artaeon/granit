@@ -258,7 +258,36 @@ export interface CalendarEvent {
    *  'reset this occurrence' action. Empty for plain occurrences
    *  and non-recurring events. */
   override_key?: string;
+  /** Content-pipeline fields. Only meaningful when kind==='content';
+   *  silently ignored for every other kind. Status drives the chip
+   *  letter (D/R/S/P) on calendar cards and the kanban grouping in
+   *  the pipeline overlay. Channels[0] drives the week-view swim
+   *  lane assignment. Tags is general-purpose cross-event grouping. */
+  status?: EventStatus;
+  channels?: string[];
+  tags?: string[];
 }
+
+/** Canonical content-pipeline stages. Stored as plain strings so the
+ *  backend round-trips unknown values; this union is the UI-side
+ *  expectation. The picker offers these in order; the renderer
+ *  treats anything outside the union as 'no status set' (no chip). */
+export type EventStatus =
+  | 'idea'
+  | 'drafting'
+  | 'review'
+  | 'scheduled'
+  | 'published'
+  | 'archived';
+
+export const EVENT_STATUSES: readonly EventStatus[] = [
+  'idea',
+  'drafting',
+  'review',
+  'scheduled',
+  'published',
+  'archived'
+] as const;
 
 // Mirrors internal/deadlines.Deadline — top-level "this matters by date X"
 // markers stored in .granit/deadlines.json. Linkable to a goal, project,
@@ -410,6 +439,13 @@ export interface CalendarEventEntry {
    *  on render so a single instance can move/rename without rewriting
    *  the series base. */
   overrides?: Record<string, EventOverride>;
+  /** Content-pipeline fields — only meaningful when kind==='content'.
+   *  Status drives the pipeline-overlay column; channels[0] drives
+   *  the week-view swim lane; tags is general-purpose grouping. See
+   *  CalendarEvent for the same fields' UI semantics. */
+  status?: EventStatus;
+  channels?: string[];
+  tags?: string[];
 }
 
 export interface EventOverride {
