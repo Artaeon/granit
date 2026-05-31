@@ -21,6 +21,7 @@
   import HourGrid from '$lib/calendar/HourGrid.svelte';
   import MonthView from '$lib/calendar/MonthView.svelte';
   import ContentPipelineOverlay from '$lib/calendar/ContentPipelineOverlay.svelte';
+  import ContentChannelLanes from '$lib/calendar/ContentChannelLanes.svelte';
   import AgendaView from '$lib/calendar/AgendaView.svelte';
   import YearView from '$lib/calendar/YearView.svelte';
   import MiniMonth from '$lib/calendar/MiniMonth.svelte';
@@ -609,21 +610,28 @@
     FILTER_CHIPS.filter((c) => c.key !== 'content_event' || (typeCounts['content_event'] ?? 0) > 0)
   );
 
-  // Pipeline overlay — kanban-style status grouping rendered on top of
-  // the month grid. Toggled from a header button that only appears
-  // when content events exist (so non-content users see no extra
-  // chrome). Closing the overlay returns to the underlying month grid
-  // with no scroll loss.
+  // Pipeline / channel-lanes overlay — a single toggle that renders
+  // two different content-pipeline grouping shapes depending on the
+  // active view: kanban by status on month, swim lanes by channel on
+  // week / workweek. The user toggles ONCE and gets the right
+  // grouping for the day-axis they're already looking at. Toggled
+  // from a header button that only appears when content events exist
+  // (so non-content users see no extra chrome) AND the active view
+  // has a useful pipeline shape (day / year / agenda don't).
   let pipelineMode = $state(false);
   let pipelineButtonAvailable = $derived(
-    view === 'month' && (typeCounts['content_event'] ?? 0) > 0
+    (view === 'month' || view === 'week' || view === 'workweek') &&
+      (typeCounts['content_event'] ?? 0) > 0
   );
-  // Auto-close the overlay when the user leaves month view — a kanban
-  // anchored to a hidden grid is confusing and the dismissal isn't
-  // discoverable through any other affordance.
+  // Auto-close the overlay when the user navigates to a view that
+  // has no pipeline shape — an orphan overlay anchored to a hidden
+  // grid is confusing and the dismissal isn't discoverable through
+  // any other affordance.
   $effect(() => {
-    if (pipelineMode && view !== 'month') pipelineMode = false;
+    if (pipelineMode && !pipelineButtonAvailable) pipelineMode = false;
   });
+  // Label the button by shape so the user knows what tapping does.
+  let pipelineButtonLabel = $derived(view === 'month' ? 'Pipeline' : 'Channels');
 
   let viewDays = $derived.by(() => {
     if (view === 'day') return [cursor];
@@ -1473,16 +1481,21 @@
     />
 
     {#if pipelineButtonAvailable}
-      <!-- Pipeline toggle — only appears when at least one content
-           event exists in the loaded window AND month view is
-           active. The kanban overlay is anchored to the month grid;
-           offering it from week/day would point at nothing useful. -->
+      <!-- Pipeline toggle — month view gets kanban-by-status; week /
+           workweek view gets swim-lanes-by-channel. Both surface the
+           same content events grouped for the day-axis the user is
+           already looking at. Hidden in day / year / agenda since
+           there's no useful grouping shape for those. -->
       <div class="flex items-center gap-2 px-3 py-1 border-b border-surface1 flex-shrink-0 bg-mantle">
         <button
           type="button"
           onclick={() => (pipelineMode = !pipelineMode)}
           aria-pressed={pipelineMode}
-          title={pipelineMode ? 'Close the pipeline kanban' : 'Group content events by status in a kanban overlay'}
+          title={pipelineMode
+            ? `Close the ${view === 'month' ? 'pipeline kanban' : 'channel lanes'}`
+            : view === 'month'
+              ? 'Group content events by status in a kanban overlay'
+              : 'Group content events by channel into horizontal lanes'}
           class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border transition-colors {pipelineMode ? 'bg-lavender text-on-primary border-lavender' : 'bg-surface0 text-subtext border-surface1 hover:border-lavender hover:text-text'}"
         >
           <span
@@ -1490,10 +1503,10 @@
             style={pipelineMode ? 'background: rgba(0,0,0,0.18)' : 'background: color-mix(in srgb, var(--color-lavender) 18%, transparent); color: var(--color-lavender)'}
             aria-hidden="true"
           >C</span>
-          Pipeline
+          {pipelineButtonLabel}
           <span class="font-mono tabular-nums opacity-80">{typeCounts['content_event'] ?? 0}</span>
         </button>
-        <span class="text-[11px] text-dim">kanban by status</span>
+        <span class="text-[11px] text-dim">{view === 'month' ? 'kanban by status' : 'swim lanes by channel'}</span>
       </div>
     {/if}
 
@@ -1535,7 +1548,21 @@
           </div>
         </div>
       {:else if view === 'day' || view === 'week' || view === 'workweek'}
-        <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} {hourPx} />
+        <div class="relative h-full">
+          <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} {hourPx} />
+          {#if pipelineMode && (view === 'week' || view === 'workweek')}
+            <!-- Swim-lane overlay for week-axis content production
+                 planning. Same overlay chrome as ContentPipelineOverlay
+                 but grouped by channel rather than status — the user
+                 reads horizontally for each platform's week-at-a-glance. -->
+            <ContentChannelLanes
+              days={viewDays}
+              events={events}
+              onClickEvent={clickEvent}
+              onClose={() => (pipelineMode = false)}
+            />
+          {/if}
+        </div>
       {:else if view === 'month'}
         <div class="relative h-full overflow-auto">
           <MonthView cursor={cursor} events={events} density={monthDensity} onClickEvent={clickEvent} onClickDay={clickDay} />
