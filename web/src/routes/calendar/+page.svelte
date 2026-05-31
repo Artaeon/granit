@@ -216,7 +216,13 @@
 
   // Event-type filter: each toggle hides events of that type. Persisted so
   // the user's preference (e.g. "always hide ICS") sticks across sessions.
-  type EventFilterKey = 'daily' | 'task_due' | 'task_scheduled' | 'event' | 'ics_event' | 'deadline' | 'goal_target' | 'meal_slot';
+  //
+  // 'content_event' is a logical key — it doesn't match a CalendarEventType
+  // directly. The filter below maps it to (e.type === 'event' && e.kind ===
+  // 'content') so content events get their own chip without polluting the
+  // wire-shape type enum. The chip is hidden when no content events are
+  // in the loaded window so non-content users never see it.
+  type EventFilterKey = 'daily' | 'task_due' | 'task_scheduled' | 'event' | 'ics_event' | 'deadline' | 'goal_target' | 'meal_slot' | 'content_event';
   const FILTER_KEY = 'granit.calendar.filters';
   let hidden = $state<Set<EventFilterKey>>(
     new Set(loadStored<EventFilterKey[]>(FILTER_KEY, []))
@@ -243,7 +249,13 @@
     { key: 'deadline',       label: 'Deadlines',  tone: 'error' },
     { key: 'goal_target',    label: 'Goals',      tone: 'mauve' },
     { key: 'meal_slot',      label: 'Meals',      tone: 'subtext' },
-    { key: 'daily',          label: 'Daily',      tone: 'secondary' }
+    { key: 'daily',          label: 'Daily',      tone: 'secondary' },
+    // Content events get their own chip — same tone as the 'content'
+    // event-type catalog colour so the chip + the on-grid accent read
+    // as one feature. Hidden from the visible row when count = 0 (see
+    // visibleFilterChips below) so non-content users see no extra
+    // clutter.
+    { key: 'content_event',  label: 'Content',    tone: 'lavender' }
   ];
 
   // Project filter — when set to a non-empty project name, the grid
@@ -502,6 +514,13 @@
     allEvents
       .filter((e) => !hidden.has(e.type as EventFilterKey))
       .filter((e) => {
+        // content_event is a derived filter: when the chip is toggled
+        // off (key in hidden), we hide events that look like content
+        // (type=event + kind=content). Non-content events are unaffected.
+        if (!hidden.has('content_event')) return true;
+        return !(e.type === 'event' && e.kind === 'content');
+      })
+      .filter((e) => {
         if (!projectFilter) return true;
         return e.project_id === projectFilter;
       })
@@ -569,9 +588,25 @@
   }
   let typeCounts = $derived.by(() => {
     const c: Record<string, number> = {};
-    for (const e of allEvents) c[e.type] = (c[e.type] ?? 0) + 1;
+    for (const e of allEvents) {
+      c[e.type] = (c[e.type] ?? 0) + 1;
+      // content_event isn't a wire-shape type — it's a kind on
+      // type='event'. Count separately so the chip can show its own
+      // tally (and the visibility gate below has a value to read).
+      if (e.type === 'event' && e.kind === 'content') {
+        c['content_event'] = (c['content_event'] ?? 0) + 1;
+      }
+    }
     return c;
   });
+
+  // Visible chip strip — strips the Content chip out for users who
+  // aren't running a content pipeline. Re-includes it the moment any
+  // content event lands so a fresh-from-template content event shows
+  // its chip on the next render.
+  let visibleFilterChips = $derived(
+    FILTER_CHIPS.filter((c) => c.key !== 'content_event' || (typeCounts['content_event'] ?? 0) > 0)
+  );
 
   let viewDays = $derived.by(() => {
     if (view === 'day') return [cursor];
@@ -1309,7 +1344,7 @@
          empty before hiding them. -->
     <div class="space-y-1 text-xs">
       <h3 class="text-dim uppercase tracking-wider mb-2">Filters</h3>
-      {#each FILTER_CHIPS as f (f.key)}
+      {#each visibleFilterChips as f (f.key)}
         {@const isHidden = hidden.has(f.key)}
         <button
           onclick={() => toggleType(f.key)}
@@ -1413,7 +1448,7 @@
          Filters section uses, so a type toggled here is also toggled
          in the sidebar. -->
     <CalendarFilterChips
-      chips={FILTER_CHIPS}
+      chips={visibleFilterChips}
       hidden={hidden}
       typeCounts={typeCounts}
       onToggle={toggleType}
