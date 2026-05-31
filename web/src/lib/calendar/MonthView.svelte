@@ -161,6 +161,21 @@
                 : `color: var(--color-text); ${ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}`}
               title={chipTooltip(ev)}
             >
+              {#if ev.kind === 'content'}
+                <!-- Content accent: a thin lavender left-edge band so
+                     content events are glanceable in mixed month grids
+                     without extra chrome. Status letter (I/D/R/S/P/A)
+                     surfaces on hover/focus only — keeps the rest state
+                     uncluttered for users with packed days. -->
+                <span class="w-0.5 self-stretch rounded-sm flex-shrink-0" style="background: var(--color-lavender)" aria-hidden="true"></span>
+                {#if ev.status}
+                  <span
+                    class="text-[9px] font-bold uppercase tabular-nums opacity-0 group-hover/chip:opacity-100 transition-opacity flex-shrink-0 text-lavender"
+                    title={`Status: ${ev.status}`}
+                    aria-label={`Status: ${ev.status}`}
+                  >{ev.status.charAt(0)}</span>
+                {/if}
+              {/if}
               {#if allDay}
                 {#if ev.rrule}<span class="opacity-70 text-[9px]" aria-hidden="true">↻</span>{/if}
                 <span class="truncate flex-1">{ev.title}</span>

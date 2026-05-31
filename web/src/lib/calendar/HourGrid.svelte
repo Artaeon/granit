@@ -618,12 +618,17 @@
             {#each visible as ev}
               {@const c = eventTypeColor(ev)}
               {@const glyph = glyphForKind(ev.kind)}
+              {@const isContent = ev.kind === 'content'}
+              <!-- Content events swap the generic dark inset for a
+                   lavender accent so they're glanceable in a busy
+                   all-day row. Status letter sits next to the glyph
+                   when set — full word would crowd the chip. -->
               <button
                 onclick={() => onClickEvent(ev)}
                 class="block w-full text-left text-[10px] leading-tight py-0.5 rounded-sm truncate font-semibold"
-                style="background: {c.bg}; color: {c.fg}; padding-left: 7px; padding-right: 5px; box-shadow: inset 3px 0 0 rgba(0,0,0,0.28); {ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}"
+                style="background: {c.bg}; color: {c.fg}; padding-left: 7px; padding-right: 5px; box-shadow: inset 3px 0 0 {isContent ? 'var(--color-lavender)' : 'rgba(0,0,0,0.28)'}; {ev.done ? 'text-decoration: line-through; opacity: 0.7;' : ''}"
               >
-                {#if glyph}<span class="font-mono opacity-80 mr-1">{glyph}</span>{/if}{ev.title}
+                {#if glyph}<span class="font-mono opacity-80 mr-1">{glyph}</span>{/if}{#if isContent && ev.status}<span class="font-mono opacity-90 mr-1" title={`Status: ${ev.status}`}>{ev.status.charAt(0).toUpperCase()}</span>{/if}{ev.title}
               </button>
             {/each}
             {#if hidden > 0}
@@ -775,6 +780,7 @@
               {@const draggable = isMovable(item.ev)}
               {@const resizable = isResizable(item.ev)}
               {@const glyph = glyphForKind(item.ev.kind)}
+              {@const isContent = item.ev.kind === 'content'}
               <div
                 class="absolute z-10"
                 style="top: {top}px; height: {height}px; left: {item.col * widthPct}%; width: calc({widthPct}% - 2px);"
@@ -787,9 +793,9 @@
                   onclick={(e) => { e.stopPropagation(); if (!drag && !draggable) onClickEvent(item.ev); }}
                   title={draggable ? 'Drag to move · drag bottom edge to resize' : item.ev.type === 'ics_event' ? 'Read-only ICS event (subscribed feed)' : 'Click to view'}
                   class="absolute inset-0 rounded-sm text-left text-[11px] overflow-hidden leading-tight hover:brightness-110 transition {draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} {isDragging ? 'opacity-30' : ''} {isResizing ? 'ring-2 ring-primary ring-offset-1' : ''}"
-                  style="background: {c.bg}; color: {c.fg}; padding: 3px 5px 3px 8px; touch-action: none; box-shadow: inset 3px 0 0 rgba(0,0,0,0.28);"
+                  style="background: {c.bg}; color: {c.fg}; padding: 3px 5px 3px 8px; touch-action: none; box-shadow: inset 3px 0 0 {isContent ? 'var(--color-lavender)' : 'rgba(0,0,0,0.28)'};"
                 >
-                  <div class="font-semibold truncate {item.ev.done ? 'line-through opacity-70' : ''}">{#if glyph}<span class="font-mono opacity-80 mr-1">{glyph}</span>{/if}{item.ev.title}</div>
+                  <div class="font-semibold truncate {item.ev.done ? 'line-through opacity-70' : ''}">{#if glyph}<span class="font-mono opacity-80 mr-1">{glyph}</span>{/if}{#if isContent && item.ev.status}<span class="font-mono opacity-90 mr-1" title={`Status: ${item.ev.status}`}>{item.ev.status.charAt(0).toUpperCase()}</span>{/if}{item.ev.title}</div>
                   {#if height > 30}
                     <div class="text-[10px] opacity-85 truncate mt-px">
                       {fmtTime(eventStartDate(item.ev)!)}
