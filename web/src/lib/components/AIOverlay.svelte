@@ -4,7 +4,7 @@
   import { cubicOut } from 'svelte/easing';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { api, type ChatMessage, type AIMemoryFact } from '$lib/api';
+  import { api, type ChatMessage } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { sabbath } from '$lib/stores/sabbath';
   import {
@@ -19,13 +19,8 @@
   import { createOverlayChrome } from './aioverlay/overlayChrome.svelte';
   import { isMobile } from '$lib/util/breakpoint';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
-  import {
-    AGENT_MODES,
-    PERSONAS,
-    findMode,
-    loadModeId,
-    persistModeId
-  } from '$lib/ai/agents';
+  import { AGENT_MODES } from '$lib/ai/agents';
+  import { createAIContextManager } from '$lib/chat/aiContextManager.svelte';
   import { buildPrelude } from '$lib/chat/prelude';
   import { commitParsedAction } from '$lib/chat/commitAction';
   import {
@@ -229,12 +224,12 @@
     set quickTitle(v) { quickTitle = v; },
     get quickResult() { return quickResult; },
     set quickResult(v) { quickResult = v; },
-    get modeId() { return mode.id; },
-    set modeId(_v) { /* derived from modeId state; service writes go through modeLabel only */ },
-    get modeLabel() { return mode.label; },
-    set modeLabel(_v) { /* same — derived */ },
-    get rag() { return rag; },
-    set rag(v) { rag = v; },
+    get modeId() { return aiCtx.mode.id; },
+    set modeId(_v) { /* read-only — saveNote never writes mode */ },
+    get modeLabel() { return aiCtx.mode.label; },
+    set modeLabel(_v) { /* read-only — derived from mode */ },
+    get rag() { return aiCtx.rag; },
+    set rag(v) { aiCtx.setRag(v); },
     get lastRagHits() { return lastRagHits; },
     set lastRagHits(v) { lastRagHits = v; },
     get currentProjectName() { return currentProjectName; },
@@ -291,8 +286,8 @@
     set messages(v) { messages = v; },
     get activeThreadId() { return activeThreadId; },
     set activeThreadId(v) { activeThreadId = v; },
-    get modeId() { return modeId; },
-    set modeId(v) { modeId = v; },
+    get modeId() { return aiCtx.modeId; },
+    set modeId(v) { aiCtx.restoreMode(v); },
     get input() { return input; },
     set input(v) { input = v; },
     get pinnedIndex() { return pinnedIndex; },
@@ -357,122 +352,28 @@
   // "what's going on right now" view that the snapshot provides.
   let attachSnapshot = $state(true);
 
-  // ── Agent modes + RAG ──────────────────────────────────────────
-  // Mode = posture (system prompt). RAG = grounding (retrieved
-  // notes prepended as context). They're independent: a Writer mode
-  // user might want vault retrieval for facts; a Research mode user
-  // might want bare LLM if working with a paper they pasted in.
-  // The mode picker is the headline UX; RAG is a secondary toggle
-  // that defaults from the mode's preference but the user overrides.
-  let modeId = $state<string>(loadModeId());
-  let mode = $derived(findMode(modeId));
-  // Tracks the context-driven auto-switch state. Four values:
-  //   - ''           : user's chosen mode is in effect (persisted)
-  //   - 'project'    : project-manager (on a project page)
-  //   - 'goal'       : goal-manager   (focused goal on /goals)
-  //   - 'calendar'   : calendar-manager (on /calendar)
-  // Each contextual switch is NOT persisted; leaving the context
-  // reverts to loadModeId() so the user's normal preference
-  // doesn't get clobbered.
-  let autoMode = $state<'' | 'project' | 'goal' | 'calendar'>('');
-
-  // Tracks which page-context we already auto-switched FOR.
-  // Without this, the effect loops when the user manually picks
-  // a different mode while on a project page: selectMode clears
-  // autoMode, the effect re-runs, sees `modeId !== 'project-manager'`
-  // and yanks them right back into PM. With this guard, we only
-  // auto-switch ONCE per page-context entry — after the user has
-  // chosen (or accepted) a mode for this page, no more nagging.
-  // Cleared on context exit so re-entering still triggers the
-  // initial auto-switch.
-  let lastAutoSwitchedFor = $state<string>('');
-
-  $effect(() => {
-    // Precedence: most-specific entity wins. Project > goal >
-    // calendar — only one is ever truly active in practice.
-    const inProject = !!currentProjectName;
-    const inGoal = !inProject && !!currentGoalId;
-    const inCalendar = !inProject && !inGoal && onCalendarPage;
-    const key = inProject
-      ? `project:${currentProjectName}`
-      : inGoal
-      ? `goal:${currentGoalId}`
-      : inCalendar
-      ? 'calendar'
-      : '';
-
-    if (key) {
-      if (lastAutoSwitchedFor !== key) {
-        // First entry into this specific page-context. Switch
-        // mode + remember we did so for this key.
-        const targetMode = inProject
-          ? 'project-manager'
-          : inGoal
-          ? 'goal-manager'
-          : 'calendar-manager';
-        if (modeId !== targetMode) {
-          autoMode = inProject ? 'project' : inGoal ? 'goal' : 'calendar';
-          modeId = targetMode;
-        }
-        lastAutoSwitchedFor = key;
-      }
-      // Otherwise: user has already engaged this page-context.
-      // Their mode choice (PM, or whatever they picked manually)
-      // sticks until they leave.
-    } else {
-      // Out of every context. Revert if we're still parked in an
-      // auto-set mode; otherwise leave the user's mode alone.
-      if (
-        autoMode &&
-        (modeId === 'project-manager' ||
-          modeId === 'goal-manager' ||
-          modeId === 'calendar-manager')
-      ) {
-        autoMode = '';
-        modeId = loadModeId();
-      }
-      lastAutoSwitchedFor = '';
-    }
+  // ── AI context manager (mode + RAG + memory) ───────────────────
+  // Posture / grounding / long-term facts — the three things the
+  // prelude assembler reads to decide what every turn sees. Their
+  // policy + the page-aware auto-switch effect live in
+  // $lib/chat/aiContextManager. The manager exposes mode + rag +
+  // memory as getters and the two action verbs selectMode +
+  // restoreMode; the parent reads through aiCtx.* and never owns
+  // the underlying state.
+  //
+  // Sources are lazy getters into the parent's $derived page
+  // context (currentProjectName etc. declared further down — JS
+  // closure capture handles the forward reference, the deriveds
+  // exist by the time the manager's $effect first fires).
+  const aiCtx = createAIContextManager({
+    sources: {
+      currentProjectName: () => currentProjectName,
+      currentGoalId: () => currentGoalId,
+      onCalendarPage: () => onCalendarPage
+    },
+    announce: (msg) => announce(msg)
   });
-  // Legacy alias for the picker's auto-badge — true when ANY
-  // contextual switch is in effect. Cheaper than threading the
-  // string through every template branch.
-  let autoPMActive = $derived(autoMode !== '');
 
-  // Persist mode change + reset RAG default when user picks a new
-  // mode, but DON'T reset on every render (that would clobber the
-  // user's explicit override). Only seed when the user actively
-  // changes mode.
-  function selectMode(id: string) {
-    if (id === modeId) return;
-    // User is taking control — clear the contextual auto-switch
-    // so a future project/goal-page exit doesn't yank them back.
-    autoMode = '';
-    modeId = id;
-    persistModeId(id);
-    const m = findMode(id);
-    rag = m.ragDefault;
-    // Remember the last persona the user actively chose so the
-    // inline persona chip can keep showing it even when the mode
-    // is currently posture-only (Coach, Research, ...).
-    if (m.kind === 'persona') lastPersonaId = id;
-    announce(`Mode: ${m.label}. ${m.tagline}`);
-  }
-  // Persistent "last persona" so the inline persona chip above the
-  // composer keeps showing a meaningful label even when the active
-  // mode is a generic posture. Seeded from the loaded mode if it's
-  // already a persona; otherwise the first persona in PERSONAS.
-  let lastPersonaId = $state<string>(
-    findMode(loadModeId()).kind === 'persona'
-      ? loadModeId()
-      : (PERSONAS[0]?.id ?? '')
-  );
-  let lastPersona = $derived(lastPersonaId ? findMode(lastPersonaId) : null);
-  // Initial seed: read the loaded mode's RAG default. We use the
-  // module helper rather than `modeId` (which Svelte's analyzer
-  // flags as a non-reactive read) so the warning stays clean. The
-  // user's later mode-changes flow through selectMode() above.
-  let rag = $state(findMode(loadModeId()).ragDefault);
   let modePickerOpen = $state(false);
   // Last retrieval result for transparency: 'AI saw notes A, B, C'.
   // Cleared on every send so the user sees fresh attribution per
@@ -660,12 +561,9 @@
         // no args won't re-trigger it.
         const seed = takeAIOverlaySeed();
         if (seed) {
-          if (seed.modeId) {
-            modeId = seed.modeId;
-            persistModeId(seed.modeId);
-            const m = findMode(seed.modeId);
-            rag = m.ragDefault;
-          }
+          // selectMode handles persist + RAG-reset + announce in one
+          // step so we don't repeat the wiring here.
+          if (seed.modeId) aiCtx.selectMode(seed.modeId);
           input = seed.text;
           if (seed.send) {
             tick().then(() => { void send(); });
@@ -810,46 +708,46 @@
       rememberFact: async (fact) => {
         try {
           const f = await api.addAIMemory(fact, []);
-          await loadAIMemory();
+          await aiCtx.loadAIMemory();
           toast.success(`Remembered · ${f.content.slice(0, 60)}`);
         } catch (err) {
           toast.error('Memory add failed: ' + errorMessage(err));
         }
       },
       showMemory: async (userText) => {
-        await loadAIMemory();
+        await aiCtx.loadAIMemory();
         messages = [
           ...messages,
           { role: 'user', content: userText },
-          { role: 'assistant', content: formatMemoryAsAssistantContent(aiMemoryFacts) }
+          { role: 'assistant', content: formatMemoryAsAssistantContent(aiCtx.aiMemoryFacts) }
         ];
       },
       forgetFact: async (idPrefix) => {
-        await loadAIMemory();
-        const match = aiMemoryFacts.find((f) => f.id.toLowerCase().startsWith(idPrefix.toLowerCase()));
+        await aiCtx.loadAIMemory();
+        const match = aiCtx.aiMemoryFacts.find((f) => f.id.toLowerCase().startsWith(idPrefix.toLowerCase()));
         if (!match) {
           toast.error(`No fact id starts with "${idPrefix}"`);
           return;
         }
         try {
           await api.deleteAIMemory(match.id);
-          await loadAIMemory();
+          await aiCtx.loadAIMemory();
           toast.success(`Forgot · ${match.content.slice(0, 50)}`);
         } catch (err) {
           toast.error('Forget failed: ' + errorMessage(err));
         }
       },
       selectModeAndToast: (m) => {
-        selectMode(m.id);
+        aiCtx.selectMode(m.id);
         toast.success(`${m.glyph} ${m.label} — ${m.tagline}`);
       },
       unknownModeOrPersona: (kind, arg) => {
         toast.error(`Unknown ${kind}: ${arg}`);
       },
       toggleRag: () => {
-        rag = !rag;
-        toast.success(`RAG ${rag ? 'on' : 'off'} for the next turn.`);
-        announce(`RAG ${rag ? 'enabled' : 'disabled'}`);
+        const next = aiCtx.toggleRag();
+        toast.success(`RAG ${next ? 'on' : 'off'} for the next turn.`);
+        announce(`RAG ${next ? 'enabled' : 'disabled'}`);
       },
       detachContext: () => {
         attachNote = false;
@@ -897,32 +795,17 @@
   function toggleVoice() { voice.toggle(); }
   function stopVoice() { voice.stop(); }
 
-  // ── Long-term AI memory ─────────────────────────────────────────
-  // The user's persistent facts ("wife is Anna", "vegetarian", etc.)
-  // get folded into every thread's first-turn prelude so the model
-  // doesn't need them re-stated. Loaded lazily on overlay open +
-  // refreshed when the server broadcasts ai-memory.json changes.
-  let aiMemoryFacts = $state<AIMemoryFact[]>([]);
-  let aiMemoryLoaded = $state(false);
-
-  async function loadAIMemory() {
-    try {
-      const r = await api.listAIMemory();
-      aiMemoryFacts = r.facts;
-      aiMemoryLoaded = true;
-    } catch {
-      // Silent: an empty/failed memory load shouldn't block the
-      // chat. The user simply doesn't get memory-augmented replies
-      // until the next successful fetch.
-    }
-  }
-  // Refresh on WS broadcasts so a successful action-chip click on
-  // a "remember-this" proposal in one tab updates other tabs.
+  // ── Long-term AI memory — loader lives in aiCtx ────────────────
+  // Persistent facts ("wife is Anna", "vegetarian", etc.) get
+  // folded into every thread's first-turn prelude by the prelude
+  // assembler. aiCtx owns the state + the fetcher; the parent owns
+  // the lifecycle (mount-time prime + WS refresh) because the WS
+  // subscription needs the parent's onWsEvent helper anyway.
   onMount(() => {
-    void loadAIMemory();
+    void aiCtx.loadAIMemory();
     return onWsEvent((ev) => {
       if (ev.type === 'state.changed' && ev.path === '.granit/ai-memory.json') {
-        void loadAIMemory();
+        void aiCtx.loadAIMemory();
       }
     });
   });
@@ -948,7 +831,7 @@
       toast,
       currentNotePath,
       defaultDailyNotePath: `Daily/${todayISO()}.md`,
-      onMemoryAdded: loadAIMemory
+      onMemoryAdded: aiCtx.loadAIMemory
     });
     if (ok) committedActions = { ...committedActions, [key]: true };
   }
@@ -966,10 +849,10 @@
     // override the user's pick when they're parked on the default
     // 'general' mode so a deliberate choice never gets clobbered.
     const suggested = suggestedModeForPath($page.url.pathname);
-    if (suggested && mode.id === 'general') {
+    if (suggested && aiCtx.mode.id === 'general') {
       const target = AGENT_MODES.find((m) => m.id === suggested);
       if (target) {
-        selectMode(target.id);
+        aiCtx.selectMode(target.id);
       }
     }
     contextDefaultsApplied = true;
@@ -1030,8 +913,8 @@
     isFirstTurn: boolean
   ): Promise<PreludeBundle> {
     const { messages: preludeMessages, ragHits } = await buildPrelude({
-      mode,
-      aiMemoryFacts,
+      mode: aiCtx.mode,
+      aiMemoryFacts: aiCtx.aiMemoryFacts,
       mentionedRefs,
       currentNotePath,
       currentProjectName,
@@ -1039,7 +922,7 @@
       onCalendarPage,
       attachSnapshot,
       snapshotData,
-      rag,
+      rag: aiCtx.rag,
       isFirstTurn,
       query,
       projectLoaders: {
@@ -1140,7 +1023,7 @@
       const idx = parseInt(e.key, 10);
       if (Number.isNaN(idx) || idx < 1 || idx > Math.min(9, AGENT_MODES.length)) return;
       e.preventDefault();
-      selectMode(AGENT_MODES[idx - 1].id);
+      aiCtx.selectMode(AGENT_MODES[idx - 1].id);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -1232,19 +1115,19 @@
           aria-haspopup="listbox"
           aria-expanded={modePickerOpen}
           class="tap-target inline-flex items-center gap-1.5 px-2 py-1 rounded hover:bg-surface0 active:bg-surface1 text-text transition-colors"
-          title={autoPMActive
-            ? `Mode: ${mode.label} (auto — you're on a project page). Click to override.`
-            : `Mode: ${mode.label} — ${mode.tagline}`}
+          title={aiCtx.autoPMActive
+            ? `Mode: ${aiCtx.mode.label} (auto — you're on a project page). Click to override.`
+            : `Mode: ${aiCtx.mode.label} — ${aiCtx.mode.tagline}`}
         >
-          <span class="text-[10px] font-semibold tracking-tight leading-none inline-flex items-center justify-center w-6 h-6 rounded-md {mode.kind === 'persona' ? 'bg-secondary text-on-primary' : mode.kind === 'contextual' ? 'bg-primary text-on-primary' : 'bg-surface1 text-subtext'}">{mode.glyph}</span>
-          <span class="text-sm font-semibold truncate max-w-[8rem] sm:max-w-none">{mode.label}</span>
-          {#if autoPMActive}
+          <span class="text-[10px] font-semibold tracking-tight leading-none inline-flex items-center justify-center w-6 h-6 rounded-md {aiCtx.mode.kind === 'persona' ? 'bg-secondary text-on-primary' : aiCtx.mode.kind === 'contextual' ? 'bg-primary text-on-primary' : 'bg-surface1 text-subtext'}">{aiCtx.mode.glyph}</span>
+          <span class="text-sm font-semibold truncate max-w-[8rem] sm:max-w-none">{aiCtx.mode.label}</span>
+          {#if aiCtx.autoPMActive}
             <!-- Tiny "auto · <source>" badge. The source word makes
                  the contextual switch self-explanatory — the user
                  reads "auto · project" and knows where the mode
                  came from (and that picking anything else takes
                  control back). Clears the moment they pick. -->
-            <span class="text-[9px] uppercase tracking-wider px-1 rounded bg-primary text-on-primary leading-tight whitespace-nowrap">auto · {autoMode}</span>
+            <span class="text-[9px] uppercase tracking-wider px-1 rounded bg-primary text-on-primary leading-tight whitespace-nowrap">auto · {aiCtx.autoMode}</span>
           {/if}
           <svg viewBox="0 0 24 24" class="w-3 h-3 text-dim flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="6 9 12 15 18 9" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1252,11 +1135,11 @@
         </button>
         {#if modePickerOpen}
           <ChatModePicker
-            {modeId}
+            modeId={aiCtx.modeId}
             {currentProjectName}
             {currentGoalId}
             {onCalendarPage}
-            onSelect={selectMode}
+            onSelect={aiCtx.selectMode}
             onDismiss={() => (modePickerOpen = false)}
           />
         {/if}
@@ -1584,7 +1467,8 @@
         <label class="flex items-center gap-1.5 cursor-pointer flex-shrink-0" title="Search the vault for relevant notes and include their excerpts as grounding context">
           <input
             type="checkbox"
-            bind:checked={rag}
+            checked={aiCtx.rag}
+            onchange={(e) => aiCtx.setRag(e.currentTarget.checked)}
             class="w-3.5 h-3.5 accent-primary cursor-pointer flex-shrink-0"
           />
           <span class="text-dim">RAG</span>
@@ -1630,7 +1514,8 @@
         <label class="flex items-center gap-1.5 cursor-pointer flex-shrink-0" title="Search the vault for relevant notes per question and include their excerpts as grounding context">
           <input
             type="checkbox"
-            bind:checked={rag}
+            checked={aiCtx.rag}
+            onchange={(e) => aiCtx.setRag(e.currentTarget.checked)}
             class="w-3.5 h-3.5 accent-primary cursor-pointer flex-shrink-0"
           />
           <span class="text-dim">RAG</span>
@@ -1693,22 +1578,22 @@
         type="button"
         onclick={() => (modePickerOpen = !modePickerOpen)}
         class="inline-flex items-center gap-1 text-[11px] text-dim hover:text-text px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 transition-colors max-w-[10rem]"
-        title="Active mode — click to change ({mode.tagline})"
+        title="Active mode — click to change ({aiCtx.mode.tagline})"
         aria-haspopup="listbox"
         aria-expanded={modePickerOpen}
       >
-        <span class="{mode.kind === 'persona' ? 'text-secondary' : mode.kind === 'contextual' ? 'text-primary' : 'text-subtext'}">●</span>
-        <span class="truncate">{mode.label}</span>
+        <span class="{aiCtx.mode.kind === 'persona' ? 'text-secondary' : aiCtx.mode.kind === 'contextual' ? 'text-primary' : 'text-subtext'}">●</span>
+        <span class="truncate">{aiCtx.mode.label}</span>
       </button>
-      {#if lastPersona}
+      {#if aiCtx.lastPersona}
         <button
           type="button"
           onclick={() => (modePickerOpen = !modePickerOpen)}
-          class="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded transition-colors max-w-[10rem] {modeId === lastPersona.id ? 'bg-secondary text-on-primary' : 'text-dim hover:text-text bg-surface0 hover:bg-surface1'}"
-          title="Persona — {modeId === lastPersona.id ? 'active' : 'last used'}. Click to open picker."
+          class="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded transition-colors max-w-[10rem] {aiCtx.modeId === aiCtx.lastPersona.id ? 'bg-secondary text-on-primary' : 'text-dim hover:text-text bg-surface0 hover:bg-surface1'}"
+          title="Persona — {aiCtx.modeId === aiCtx.lastPersona.id ? 'active' : 'last used'}. Click to open picker."
         >
-          <span class="text-[9px] font-mono">{lastPersona.glyph}</span>
-          <span class="truncate">{lastPersona.label}</span>
+          <span class="text-[9px] font-mono">{aiCtx.lastPersona.glyph}</span>
+          <span class="truncate">{aiCtx.lastPersona.label}</span>
         </button>
       {/if}
       <span class="flex-1"></span>
