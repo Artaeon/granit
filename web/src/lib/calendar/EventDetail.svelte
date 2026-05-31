@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { api, type CalendarEvent, type CalendarSource, type Project , todayISO } from '$lib/api';
+  import { api, type CalendarEvent, type CalendarSource, type Project, type EventStatus, todayISO } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { onMount } from 'svelte';
@@ -10,6 +10,7 @@
   import RecurrenceEditor from './RecurrenceEditor.svelte';
   import EventTypeChips from './EventTypeChips.svelte';
   import RecurringScopePicker from './RecurringScopePicker.svelte';
+  import ContentPanel from './ContentPanel.svelte';
 
   let {
     open = $bindable(false),
@@ -31,6 +32,14 @@
   // "generic / no type", matching the storage convention.
   let editKind = $state('');
   let editProjectId = $state('');
+  // Content-pipeline edit state. Only meaningful when
+  // editKind === 'content'; the ContentPanel is rendered conditionally
+  // and the patchEvent call sends these fields unconditionally so
+  // clearing a status / channel / tag persists rather than being
+  // dropped by an omitempty-style round-trip.
+  let editStatus = $state<EventStatus | ''>('');
+  let editChannels = $state<string[]>([]);
+  let editTags = $state<string[]>([]);
 
   // Project list — loaded once on mount so the picker is populated by
   // the time the user clicks 'edit'. Failure degrades silently to "No
@@ -160,6 +169,13 @@
     // round-trip. Empty when the event isn't linked.
     editProjectId = event.project_id ?? '';
     editKind = event.kind ?? '';
+    // Content-pipeline fields. Always seed (even for non-content
+    // events) so a user switching the kind to 'content' mid-edit
+    // starts from a clean blank rather than stale state from a
+    // prior content event in the same session.
+    editStatus = (event.status ?? '') as EventStatus | '';
+    editChannels = event.channels ? [...event.channels] : [];
+    editTags = event.tags ? [...event.tags] : [];
     // Default scope: this-occurrence-only. Users editing 'this
     // Tuesday' through the modal get the same conservative default
     // as the drag-move flow.
@@ -308,7 +324,16 @@
             project_id: editProjectId,
             // Same reasoning for kind — empty must clear the type
             // server-side, not be skipped as "no change".
-            kind: editKind
+            kind: editKind,
+            // Content-pipeline fields. Sent unconditionally for the
+            // same reason as project_id / kind — clearing a status or
+            // emptying the channel list must overwrite the on-disk
+            // value, not be dropped. The backend's apply() helper
+            // tolerates either presence-with-empty (clear) or absence
+            // (no change); we want the clear semantics.
+            status: editStatus,
+            channels: editChannels,
+            tags: editTags
           });
         }
       } else {
@@ -796,6 +821,22 @@
           {#if event.notePath}
             <div class="text-xs text-dim mt-2 font-mono truncate">{event.notePath}</div>
           {/if}
+          {#if event.kind === 'content' && (event.status || (event.channels?.length ?? 0) > 0 || (event.tags?.length ?? 0) > 0)}
+            <!-- Read-only content panel for the view-mode card. Status
+                 + channels + tags only render when at least one is set
+                 so a content event with no metadata yet stays clean. -->
+            <div class="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+              {#if event.status}
+                <span class="px-1.5 py-0.5 rounded border border-lavender/40 bg-lavender/15 text-lavender uppercase tracking-wider text-[10px] font-semibold">{event.status}</span>
+              {/if}
+              {#each event.channels ?? [] as ch (ch)}
+                <span class="px-1.5 py-0.5 rounded bg-surface1 text-subtext">{ch}</span>
+              {/each}
+              {#each event.tags ?? [] as t (t)}
+                <span class="px-1.5 py-0.5 rounded bg-surface0 text-dim">#{t}</span>
+              {/each}
+            </div>
+          {/if}
         </div>
       </div>
 
@@ -902,6 +943,21 @@
             <span class="block text-[11px] uppercase tracking-wider text-dim mb-1.5">Type</span>
             <EventTypeChips bind:kind={editKind} chipSize="compact" />
           </div>
+          <!-- Content-pipeline panel — only when the user has selected
+               the 'content' kind. Status / channels / tags live here.
+               Switching kind away hides the panel; the values stay in
+               local state so flipping back-and-forth doesn't lose work
+               mid-edit. -->
+          {#if editKind === 'content'}
+            <ContentPanel
+              status={editStatus}
+              channels={editChannels}
+              tags={editTags}
+              onStatusChange={(s) => (editStatus = s)}
+              onChannelsChange={(c) => (editChannels = c)}
+              onTagsChange={(t) => (editTags = t)}
+            />
+          {/if}
           <div class="flex items-center gap-2">
             <span class="text-[11px] text-dim uppercase tracking-wider">Color</span>
             {#each colorOptions as c (c.name)}

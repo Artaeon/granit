@@ -262,8 +262,14 @@ export interface CalendarEvent {
    *  silently ignored for every other kind. Status drives the chip
    *  letter (D/R/S/P) on calendar cards and the kanban grouping in
    *  the pipeline overlay. Channels[0] drives the week-view swim
-   *  lane assignment. Tags is general-purpose cross-event grouping. */
-  status?: EventStatus;
+   *  lane assignment. Tags is general-purpose cross-event grouping.
+   *
+   *  Status is typed `string` (not `EventStatus`) because the wire
+   *  carries any string the backend stores — including ''  to clear
+   *  on PATCH — and the UI treats unknown values as 'no status'.
+   *  EVENT_STATUSES is the picker vocabulary; the type is loose so
+   *  PATCH payloads with empty-string clear don't need a cast. */
+  status?: string;
   channels?: string[];
   tags?: string[];
 }
@@ -441,9 +447,11 @@ export interface CalendarEventEntry {
   overrides?: Record<string, EventOverride>;
   /** Content-pipeline fields — only meaningful when kind==='content'.
    *  Status drives the pipeline-overlay column; channels[0] drives
-   *  the week-view swim lane; tags is general-purpose grouping. See
-   *  CalendarEvent for the same fields' UI semantics. */
-  status?: EventStatus;
+   *  the week-view swim lane; tags is general-purpose grouping.
+   *  Status typed `string` for the same wire-flexibility reason as
+   *  CalendarEvent.status — see EVENT_STATUSES for the picker
+   *  vocabulary. */
+  status?: string;
   channels?: string[];
   tags?: string[];
 }
