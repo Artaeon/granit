@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, buildRRULE, type CalendarSource, type ICSRecurrenceFreq } from '$lib/api';
+  import { api, buildRRULE, EVENT_STATUSES, type CalendarSource, type ICSRecurrenceFreq } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { fmtDateISO } from './utils';
@@ -21,7 +21,7 @@
     open?: boolean;
     start: Date;
     end: Date;
-    defaultKind?: 'task' | 'event';
+    defaultKind?: 'task' | 'event' | 'content';
     defaultNotePath?: string;
     onCreated: () => void | Promise<void>;
   } = $props();
@@ -30,7 +30,18 @@
   // `defaultKind` every time the modal opens, so a prop change after
   // instantiation propagates correctly. Reading the prop directly here
   // would warn about capturing only the initial value.
-  let kind = $state<'task' | 'event'>('task');
+  //
+  // 'content' is a third preset: same wire shape as 'event' but
+  // pre-fills kind='content' + Idea status + a channel chip input.
+  // Routes through createEvent under the hood — content just IS an
+  // event with extra metadata, no separate endpoint.
+  let kind = $state<'task' | 'event' | 'content'>('task');
+  // Content-only seed: status defaults to 'idea' so a fresh content
+  // event starts at the top of the funnel. Channels is freeform —
+  // single chip is enough at create-time, more get added in
+  // EventDetail later.
+  let contentStatus = $state<string>('idea');
+  let contentChannel = $state<string>('');
   let title = $state('');
   let dateISO = $state('');
   let notePath = $state('');
@@ -120,6 +131,10 @@
   $effect(() => {
     if (!open) return;
     kind = defaultKind;
+    // Reset content-only fields on every open so a previous
+    // content event's channel doesn't bleed into a fresh form.
+    contentStatus = 'idea';
+    contentChannel = '';
     dateISO = fmtDateISO(start);
     // Suppress the auto-shift effect during the open-time reseed so
     // we don't drag the end time to follow start when the user
@@ -264,6 +279,26 @@
           location: location.trim() || undefined,
           rrule: rrule || undefined
         });
+      } else if (kind === 'content') {
+        // Content event — same wire shape as a native event, with
+        // the content-pipeline metadata pre-attached. Channel is
+        // optional at create-time (the user can fill it in
+        // EventDetail later if they're still scoping); status
+        // defaults to 'idea' to match the natural top-of-funnel
+        // starting point.
+        const ch = contentChannel.trim();
+        await api.createEvent({
+          title: title.trim(),
+          date: dateISO,
+          start_time: startTime,
+          end_time: endTime,
+          location: location.trim(),
+          color,
+          remind_minutes_before: remindMinsBefore || undefined,
+          kind: 'content',
+          status: contentStatus,
+          channels: ch ? [ch] : []
+        });
       } else {
         await api.createEvent({
           title: title.trim(),
@@ -277,7 +312,9 @@
       }
       close();
       await onCreated();
-      toast.success(kind === 'task' ? 'task scheduled' : 'event created');
+      toast.success(
+        kind === 'task' ? 'task scheduled' : kind === 'content' ? 'content scheduled' : 'event created'
+      );
     } catch (err) {
       toast.error('save failed: ' + (errorMessage(err)));
     } finally {
@@ -321,8 +358,12 @@
         <button onclick={close} class="text-dim hover:text-text" aria-label="close">×</button>
       </header>
 
-      <!-- Type toggle: task ↔ event. Big and obvious so the user can flip
-           after a drag without re-doing the time selection. -->
+      <!-- Type toggle: task / event / content. Big and obvious so the
+           user can flip presets after a drag without re-doing the time
+           selection. Content is a fast-path for production calendars —
+           same wire shape as event, but with the pipeline metadata
+           pre-attached so the user doesn't have to flip kind +
+           ContentPanel manually after creation. -->
       <div class="px-5 pt-4">
         <div class="flex bg-surface0 border border-surface1 rounded-lg overflow-hidden">
           <button
@@ -341,6 +382,14 @@
             <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
             Event
           </button>
+          <button
+            type="button"
+            onclick={() => (kind = 'content')}
+            class="flex-1 px-3 py-2 text-sm flex items-center justify-center gap-2 {kind === 'content' ? 'bg-lavender text-on-primary' : 'text-subtext hover:bg-surface1'}"
+          >
+            <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 5h16M4 12h10M4 19h16"/><circle cx="18" cy="12" r="3"/></svg>
+            Content
+          </button>
         </div>
       </div>
 
@@ -349,9 +398,38 @@
           bind:this={titleEl}
           bind:value={title}
           required
-          placeholder={kind === 'task' ? 'what needs doing?' : 'event title'}
+          placeholder={kind === 'task' ? 'what needs doing?' : kind === 'content' ? 'what are you publishing?' : 'event title'}
           class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded-lg text-sm text-text focus:outline-none focus:border-primary"
         />
+
+        {#if kind === 'content'}
+          <!-- Content-only fast-path: a single channel + status seed
+               so the user gets a usable production-pipeline event in
+               one form-fill. More channels and tags can be added in
+               EventDetail later — this surface is the "capture, don't
+               scope" optimisation. -->
+          <label class="block">
+            <span class="block text-[11px] uppercase tracking-wider text-dim mb-1">Channel</span>
+            <input
+              type="text"
+              bind:value={contentChannel}
+              placeholder="twitter, linkedin, blog..."
+              class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text focus:outline-none focus:border-lavender"
+            />
+          </label>
+          <div>
+            <div class="block text-[11px] uppercase tracking-wider text-dim mb-1">Status</div>
+            <div class="flex flex-wrap gap-1">
+              {#each EVENT_STATUSES as s (s)}
+                <button
+                  type="button"
+                  onclick={() => (contentStatus = s)}
+                  class="text-[11px] px-2 py-1 rounded border transition-colors {contentStatus === s ? 'bg-lavender/15 border-lavender/40 text-lavender' : 'bg-surface0 border-surface1 text-subtext hover:bg-surface1'}"
+                >{s[0].toUpperCase() + s.slice(1)}</button>
+              {/each}
+            </div>
+          </div>
+        {/if}
 
         <!-- Date + time row — shared between task & event branches.
              Each input gets an explicit label so a 12-hour-locale
@@ -440,22 +518,27 @@
             </div>
           </div>
         {:else}
-          <!-- Calendar picker. Default ("") = events.json (granit-native);
-               any other value routes through the new ICS endpoints.
-               Wrapping the select inside the label is the simplest
-               valid label-association pattern (no for/id pair needed). -->
-          <label class="block">
-            <span class="block text-[11px] text-dim uppercase tracking-wider mb-1">Calendar</span>
-            <select
-              bind:value={calendarTarget}
-              class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text"
-            >
-              <option value="">events.json (default)</option>
-              {#each writableSources as src}
-                <option value={src.source}>{src.source}</option>
-              {/each}
-            </select>
-          </label>
+          {#if kind !== 'content'}
+            <!-- Calendar picker. Default ("") = events.json (granit-native);
+                 any other value routes through the new ICS endpoints.
+                 Wrapping the select inside the label is the simplest
+                 valid label-association pattern (no for/id pair needed).
+                 Hidden for the content preset since content events
+                 always live in events.json (the pipeline metadata
+                 doesn't fit ICS's VEVENT vocabulary). -->
+            <label class="block">
+              <span class="block text-[11px] text-dim uppercase tracking-wider mb-1">Calendar</span>
+              <select
+                bind:value={calendarTarget}
+                class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded-lg text-sm text-text"
+              >
+                <option value="">events.json (default)</option>
+                {#each writableSources as src}
+                  <option value={src.source}>{src.source}</option>
+                {/each}
+              </select>
+            </label>
+          {/if}
 
           <input
             bind:value={location}
