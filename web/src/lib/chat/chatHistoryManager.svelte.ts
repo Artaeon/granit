@@ -91,6 +91,13 @@ export interface ChatHistoryManager {
   /** Idempotent. Returns immediately if nothing to save or a save is
    *  already in flight. */
   autoSaveThread(): void;
+  /** Resolves once any in-flight autoSaveThread call has settled.
+   *  ChatSessionManager awaits this at the START of every send() so a
+   *  rapid resend can't race the previous turn's persistence write —
+   *  important once the save layer gains async work (server sync,
+   *  IndexedDB) beyond the current sync localStorage path. Resolves
+   *  immediately when nothing is in flight. */
+  awaitSave(): Promise<void>;
   replayFromUserMessage(userIdx: number, content: string): void;
   regenAssistantMessage(assistantIdx: number): void;
   branchFromMessage(idx: number): void;
@@ -115,6 +122,13 @@ export function createChatHistoryManager(opts: ChatHistoryManagerOptions): ChatH
   // entry so a save in flight blocks the next one — the in-flight
   // write owns the localStorage slot until it returns.
   let savingThread = $state(false);
+  // Tracks the latest autoSaveThread call as a Promise. awaitSave()
+  // returns it so consumers (chatSessionManager) can gate on the save
+  // before starting new work. The wrapping IIFE makes the body
+  // awaitable even though upsertThread is sync today — that way the
+  // future async path (server sync, IndexedDB) doesn't need a second
+  // refactor here.
+  let savePromise: Promise<void> | null = null;
 
   function refreshPinnedIndex() {
     if (!refs.activeThreadId) {
@@ -194,20 +208,26 @@ export function createChatHistoryManager(opts: ChatHistoryManagerOptions): ChatH
     );
     if (!hasUser || !hasAssistant) return;
     savingThread = true;
-    try {
-      const t = upsertThread({
-        id: refs.activeThreadId || undefined,
-        title: deriveThreadTitle(refs.messages),
-        modeId: refs.modeId,
-        messages: refs.messages
-      });
-      if (!refs.activeThreadId) {
-        refs.activeThreadId = t.id;
-        persistActiveThreadId(t.id);
+    savePromise = (async () => {
+      try {
+        const t = upsertThread({
+          id: refs.activeThreadId || undefined,
+          title: deriveThreadTitle(refs.messages),
+          modeId: refs.modeId,
+          messages: refs.messages
+        });
+        if (!refs.activeThreadId) {
+          refs.activeThreadId = t.id;
+          persistActiveThreadId(t.id);
+        }
+      } finally {
+        savingThread = false;
       }
-    } finally {
-      savingThread = false;
-    }
+    })();
+  }
+
+  async function awaitSave(): Promise<void> {
+    if (savePromise) await savePromise;
   }
 
   // ── Replay / regenerate / edit ────────────────────────────────
@@ -349,6 +369,7 @@ export function createChatHistoryManager(opts: ChatHistoryManagerOptions): ChatH
     loadSavedThread,
     deleteSavedThread,
     autoSaveThread,
+    awaitSave,
     replayFromUserMessage,
     regenAssistantMessage,
     branchFromMessage,
