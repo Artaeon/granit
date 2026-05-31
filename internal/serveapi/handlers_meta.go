@@ -386,6 +386,13 @@ func (s *Server) handlePatchEvent(w http.ResponseWriter, r *http.Request) {
 	apply("project_id", &ev.ProjectID)
 	apply("overrides", &ev.Overrides)
 	apply("kind", &ev.Kind)
+	// Content-pipeline fields — Status / Channels / Tags. Set on a
+	// content-kind event by the calendar's ContentPanel; freely
+	// patched (no enum validation) so the client can evolve the
+	// vocabulary without a server roundtrip.
+	apply("status", &ev.Status)
+	apply("channels", &ev.Channels)
+	apply("tags", &ev.Tags)
 	// Validate AFTER apply so a partial patch (e.g. just start_time)
 	// gets validated against the merged record. Catches "user shifted
 	// the start past the end" without forcing them to also patch end.

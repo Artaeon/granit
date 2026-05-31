@@ -71,6 +71,26 @@ type Event struct {
 	// this one" instead. Both can be authored by hand in events.json
 	// and round-trip through the API.
 	Overrides map[string]EventOverride `json:"overrides,omitempty"`
+	// Status is the optional content-pipeline stage when Kind is
+	// "content": idea / drafting / review / scheduled / published /
+	// archived. Empty for every non-content event (no stage chip,
+	// no pipeline grouping). Stored verbatim so unknown values
+	// round-trip through the API — clients may evolve the vocabulary
+	// independently of the backend.
+	Status string `json:"status,omitempty"`
+	// Channels lists the publication targets for a content event —
+	// freeform strings ("twitter", "linkedin", "youtube", "blog",
+	// "podcast", whatever the user runs). Drives the week-view swim
+	// lanes (group by channels[0]) and the per-event chip row.
+	// Optional + free-text by design: there's no canonical channel
+	// list and the user shouldn't be blocked on a missing enum
+	// value when adding a new platform mid-quarter.
+	Channels []string `json:"channels,omitempty"`
+	// Tags is the general-purpose tag list — parity with Task.Tags
+	// and Goal.Tags. Used for cross-event grouping ("all the
+	// year-end retrospective posts", "everything for the Q3 push")
+	// without forcing the user into a fixed schema.
+	Tags []string `json:"tags,omitempty"`
 }
 
 // EventOverride patches a single occurrence of a recurring event.
