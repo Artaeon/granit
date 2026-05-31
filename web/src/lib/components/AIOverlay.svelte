@@ -17,7 +17,6 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import { PANEL_WIDTH_MIN, PANEL_WIDTH_MAX } from './ai-overlay-geometry';
   import { createOverlayChrome } from './aioverlay/overlayChrome.svelte';
-  import { rafThrottle } from '$lib/util/streamThrottle';
   import { isMobile } from '$lib/util/breakpoint';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import {
@@ -51,6 +50,11 @@
     createChatHistoryManager,
     type ChatHistoryRefs
   } from '$lib/chat/chatHistoryManager.svelte';
+  import {
+    createChatSessionManager,
+    type ChatSessionRefs,
+    type PreludeBundle
+  } from '$lib/chat/chatSessionManager.svelte';
   import type { RagHit } from '$lib/chat/rag';
   import { loadOverlayHistory, persistOverlayHistory } from '$lib/chat/overlaySessionHistory';
   import {
@@ -71,7 +75,7 @@
   import ChatModePicker from '$lib/components/aioverlay/ChatModePicker.svelte';
   import ChatComposer from '$lib/components/aioverlay/ChatComposer.svelte';
   import ChatMessageList from '$lib/components/aioverlay/ChatMessageList.svelte';
-  import { record as recordSharedPrompt, list as listSharedPrompts, type RecentPrompt } from '$lib/ai/recentPrompts';
+  import { list as listSharedPrompts, type RecentPrompt } from '$lib/ai/recentPrompts';
 
   // AIOverlay — global AI panel. Slides in from the right on
   // desktop, becomes a bottom sheet on mobile. Triggered with
@@ -118,7 +122,6 @@
   });
 
   let busy = $state(false);
-  let abort: AbortController | null = null;
 
   // Status pill — what model the chat / actions will route to.
   let statusInfo = $state<{ provider: string; model: string; sabbath: boolean } | null>(null);
@@ -591,7 +594,9 @@
   }
 
   function close() {
-    abort?.abort();
+    // Abort any in-flight chat stream via the session manager's
+    // controller. cancelInflight() is a no-op when nothing's running.
+    cancelInflight();
     if (voice.recording) stopVoice();
     // When pinned, the close button instead unpins (so the user
     // gets an obvious "remove this panel" action). Without this,
@@ -948,11 +953,6 @@
     if (ok) committedActions = { ...committedActions, [key]: true };
   }
 
-  function sendFollowup(prompt: string) {
-    input = prompt;
-    void send();
-  }
-
   // ── Context-aware defaults ──────────────────────────────────────
   // When the overlay opens for the first time on a route, pick a
   // mode that fits the page so the user doesn't have to flip the
@@ -988,27 +988,48 @@
     }
   });
 
-  async function send(e?: Event) {
-    e?.preventDefault();
-    const text = input.trim();
-    if (!text || busy) return;
-    if (text.startsWith('/') && handleSlashCommand(text)) return;
-    quickTitle = '';
-    quickResult = '';
-    busy = true;
-    abort?.abort();
-    abort = new AbortController();
-    const userMsg: ChatMessage = { role: 'user', content: text };
-    // Record to the shared cross-source recents log so the inline
-    // AI menu can offer this prompt as a chat-source recent next
-    // time the user opens it on a note. Non-fatal if storage fails.
-    recordSharedPrompt({ prompt: text, source: 'chat' });
-    // Build the prelude — system messages prepended to every turn.
-    // Posture every turn; capabilities + memory + page context +
-    // snapshot first turn only; RAG every turn the toggle is on.
-    // All the policy + loader composition lives in $lib/chat/prelude.
-    const isFirstTurn = messages.length === 0;
-    const { messages: prelude, ragHits } = await buildPrelude({
+  // ── Chat session — send / cancel / clear lives here ────────────
+  // The streaming send pipeline (composer text → prelude → SSE →
+  // tokens into the assistant slot → finally) is owned by
+  // $lib/chat/chatSessionManager. The factory takes:
+  //   - `refs` for the parent state it reads + writes (matching the
+  //     pattern used by chatHistoryManager and the save / quick-action
+  //     services);
+  //   - a `buildPrelude` closure that captures all the page-aware
+  //     policy here (mode + memory + page context + loaders), so the
+  //     manager itself is free of $lib/api / page-state knowledge;
+  //   - a `chatStream` injection (the api function) so the manager is
+  //     pure orchestration and unit-testable with a fake stream;
+  //   - the side-effect bridges parent owns (autoSave, awaitSave,
+  //     resetForClear, getScrollEl).
+  //
+  // Race fixes the extraction ships: onError silenced after abort,
+  // scrollHeight read after tick, send() gated on in-flight save.
+  // See chatSessionManager.svelte.ts for the why on each.
+  const sessionRefs: ChatSessionRefs = {
+    get input() { return input; },
+    set input(v) { input = v; },
+    get busy() { return busy; },
+    set busy(v) { busy = v; },
+    get messages() { return messages; },
+    set messages(v) { messages = v; },
+    get mentionedRefs() { return mentionedRefs; },
+    set mentionedRefs(v) { mentionedRefs = v; },
+    get lastRagHits() { return lastRagHits; },
+    set lastRagHits(v) { lastRagHits = v; },
+    get perTurnRagHits() { return perTurnRagHits; },
+    set perTurnRagHits(v) { perTurnRagHits = v; },
+    get quickTitle() { return quickTitle; },
+    set quickTitle(v) { quickTitle = v; },
+    get quickResult() { return quickResult; },
+    set quickResult(v) { quickResult = v; }
+  };
+
+  async function buildPreludeForSession(
+    query: string,
+    isFirstTurn: boolean
+  ): Promise<PreludeBundle> {
+    const { messages: preludeMessages, ragHits } = await buildPrelude({
       mode,
       aiMemoryFacts,
       mentionedRefs,
@@ -1020,7 +1041,7 @@
       snapshotData,
       rag,
       isFirstTurn,
-      query: text,
+      query,
       projectLoaders: {
         getProject: (n) => api.getProject(n),
         listTasksForProject: async (n, s) => {
@@ -1060,96 +1081,34 @@
       },
       todayISO: todayISO()
     });
-    lastRagHits = ragHits;
-    const history = [...prelude, ...messages, userMsg];
-    messages = [...messages, userMsg, { role: 'assistant', content: '' }];
-    input = '';
-    // Refs were attached in the prelude; drop them so a follow-up
-    // doesn't repeat the same context block.
-    mentionedRefs = [];
-    let acc = '';
-    const idx = messages.length - 1;
-    // Record this turn's RAG hits against the assistant message index so
-    // the inline Sources block renders next to the right reply, not the
-    // most-recent one. Set even when empty — the renderer keys on
-    // presence, not truthiness.
-    if (lastRagHits.length > 0) {
-      perTurnRagHits = { ...perTurnRagHits, [idx]: lastRagHits.slice() };
-    }
-    try {
-      // rAF throttle — the assistant message is rendered live as a
-      // MarkdownRenderer block (one per message in the thread).
-      // Pre-fix the messages array was rebuilt + re-rendered + the
-      // assistant message's markdown re-parsed PER token, freezing
-      // long replies. The throttle commits the latest buffer once
-      // per animation frame; flush() runs on stream completion so
-      // the final state lands before auto-save fires.
-      //
-      // Smart auto-scroll: if the user is within 80px of the
-      // bottom we keep them pinned to the streaming edge so a long
-      // reply doesn't run off-screen. If they scrolled up to re-
-      // read older content, we respect that — no yank-back when a
-      // chunk lands. 80px is generous enough that the user clearly
-      // intended to stay near the bottom; smaller windows would
-      // disengage from the stream on a single trackpad nudge.
-      const t = rafThrottle((full) => {
-        const stickBottom = !!scrollEl &&
-          (scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight) < 80;
-        acc = full;
-        messages = messages.map((m, i) => (i === idx ? { ...m, content: full } : m));
-        if (stickBottom) {
-          tick().then(() => {
-            if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
-          });
-        }
-      });
-      await api.chatStream(
-        history,
-        attachNote && currentNotePath ? currentNotePath : undefined,
-        {
-          onChunk: t.onChunk,
-          onDone: () => { t.flush(); },
-          onError: (err) => {
-            t.flush();
-            messages = messages.map((m, i) =>
-              i === idx ? { ...m, content: `_error:_ ${err.message}` } : m
-            );
-          }
-        },
-        abort.signal
-      );
-    } finally {
-      busy = false;
-      abort = null;
-      // Auto-save the thread once the assistant reply lands — gives
-      // the history picker a row even if the user closes the overlay
-      // before a follow-up. Skip if the reply was an error stub.
-      if (acc.trim().length > 0) autoSaveThread();
-      tick().then(() => {
-        if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
-      });
-    }
+    return {
+      messages: preludeMessages,
+      ragHits,
+      notePathForStream: attachNote && currentNotePath ? currentNotePath : null
+    };
   }
 
-  function cancelInflight() {
-    abort?.abort();
-  }
-
-  function clearChat() {
-    if (messages.length === 0) return;
-    // Snapshot to history before nuking — "clear" should not destroy
-    // a useful conversation. The user can still hard-delete from the
-    // history picker if they really want it gone.
-    autoSaveThread();
-    messages = [];
-    quickTitle = '';
-    quickResult = '';
-    perTurnRagHits = {};
-    expandedSources = {};
-    pinnedIndex = {};
-    activeThreadId = '';
-    persistActiveThreadId('');
-  }
+  const chat = createChatSessionManager({
+    refs: sessionRefs,
+    buildPrelude: buildPreludeForSession,
+    chatStream: api.chatStream,
+    handleSlashCommand,
+    autoSaveThread,
+    awaitSave: () => history.awaitSave(),
+    resetForClear: () => {
+      // The chat manager owns messages / perTurnRagHits / quickTitle /
+      // quickResult. clearChat ALSO needs to reset state owned by
+      // sibling concerns (history rail's pinnedIndex, ui's
+      // expandedSources, the active thread id). Centralise here so
+      // the manager doesn't need a wider refs surface.
+      expandedSources = {};
+      pinnedIndex = {};
+      activeThreadId = '';
+      persistActiveThreadId('');
+    },
+    getScrollEl: () => scrollEl
+  });
+  const { send, sendFollowup, cancelInflight, clearChat } = chat;
 
   $effect(() => {
     void messages.length;
