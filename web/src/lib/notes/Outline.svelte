@@ -75,26 +75,29 @@
 
   let activeLine = $derived(observedActiveLine ?? cursorActiveLine);
 
-  // (Re)attach the IntersectionObserver only when the heading
-  // STRUCTURE changes — i.e. the set of source line numbers — not on
-  // every keystroke. Previously this effect tracked the headings
-  // array reference, which a body-derived $derived rebuilds for
-  // every body change. On a long preview-mode note that meant
-  // disconnecting + reconnecting the observer + re-querying every
-  // [data-heading-line] element on every keystroke; the DOM walk
-  // alone could blow the per-keystroke budget on slow devices.
+  // (Re)attach the IntersectionObserver whenever `body` changes.
   //
-  // structuralKey collapses the heading list to a join of line
-  // numbers — same key string for the same set of lines, regardless
-  // of whether the underlying array got a fresh reference. That
-  // matches what the observer actually cares about (the targets it
-  // observes are keyed by data-heading-line). When the user edits
-  // text WITHIN a section without adding/removing/moving a heading,
-  // the key stays identical and the effect doesn't re-run.
-  let structuralKey = $derived(headings.map((h) => h.line).join(','));
+  // A prior version tracked a `structuralKey` (the heading-line set)
+  // and re-attached only when headings moved, on the assumption that
+  // the DOM was stable between heading-set changes. That assumption
+  // is wrong: MarkdownRenderer renders via {@html html}, which
+  // wholesale-replaces the prose-note container's children on every
+  // body change — even formatting-only edits (bold, italics, link
+  // toggles) inside an unchanged section. The old DOM elements get
+  // detached, new ones with the same data-heading-line attribute
+  // take their place, and the observer's frozen refs point at
+  // garbage. Result: the active-heading tracker silently stops
+  // updating after the first formatting edit. Tracking `body`
+  // directly re-attaches against the live DOM.
+  //
+  // Cost is acceptable because `body` flows in from the parent's
+  // bodyForPreview mirror (rAF-throttled at 60 Hz), so this effect
+  // fires at most 60 ×/sec on fast typing. The querySelectorAll
+  // walk is O(N) over a few hundred elements — well under a
+  // millisecond on commodity hardware.
   $effect(() => {
     const container = scrollContainer ?? null;
-    void structuralKey; // dependency — re-run only on heading shape change
+    void body; // dependency — DOM rebuilds on every body change
     if (!container) return;
 
     let raf = 0;
