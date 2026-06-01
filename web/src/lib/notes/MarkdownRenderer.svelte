@@ -7,9 +7,9 @@
   import {
     preprocess,
     postprocess,
-    escAttr,
     escHtml
   } from './markdown/transforms';
+  import { createEmbedHydrator } from './markdown/embeds';
 
   // DOMPurify config — single shared profile for every sanitize() call
   // in this component. We allow our wikilink / tag / diagram / image
@@ -241,25 +241,15 @@
     }
   }
 
-  // ── Inline note embed renderer ────────────────────────────────
-  // The preprocessor lays down `<div class="transclude-card">` for
-  // every ![[path]] in the source; this post-render pass walks
-  // those placeholders and replaces them with the actual rendered
-  // body of the linked note. Recursion is bounded — we strip
-  // ![[…]] from the embedded content before parsing it so an
-  // embed-of-an-embed doesn't snowball into a fetch storm or an
-  // infinite loop.
-  //
-  // Shape of a hydrated embed:
-  //   <aside class="embed-card">
-  //     <header class="embed-card__header">
-  //       <a class="wikilink" data-wikilink="…">embedded · Title</a>
-  //     </header>
-  //     <div class="embed-card__body prose-note">…rendered body…</div>
-  //   </aside>
-  // The wikilink in the header still triggers onWikilink so the
-  // user can jump into the embedded note for full edit access.
-  const embedCache = new Map<string, string>();
+  // Inline note-embed hydrator — walks `.transclude-card` placeholders
+  // and replaces them with rendered embed bodies. Implementation +
+  // module-scope embed cache live in $lib/notes/markdown/embeds. The
+  // factory pattern lets us bind the container ref + purify pass
+  // without those leaking into the embeds module.
+  const { hydrateEmbeds } = createEmbedHydrator({
+    getContainer: () => mermaidContainer,
+    purify
+  });
 
   // Top-level parse-and-sanitize cache. Keyed by the raw body
   // string; value is the post-purify HTML ready to assign to the
@@ -271,67 +261,6 @@
   // big note is hundreds of KB — see computeHtml for the math.
   const HTML_CACHE_CAP = 20;
   const HTML_CACHE = new Map<string, string>();
-
-  async function hydrateEmbeds() {
-    if (!mermaidContainer) return;
-    const cards = Array.from(mermaidContainer.querySelectorAll('.transclude-card'));
-    if (cards.length === 0) return;
-    for (const card of cards) {
-      const link = card.querySelector('[data-wikilink]') as HTMLElement | null;
-      if (!link) continue;
-      const target = link.getAttribute('data-wikilink');
-      if (!target) continue;
-      try {
-        let bodyHtml = embedCache.get(target);
-        if (bodyHtml === undefined) {
-          // Resolve the target → path. listNotes search is forgiving;
-          // we accept the first hit. A `.md` suffix already makes
-          // exact-path links work directly via the backend.
-          const list = await api.listNotes({ q: target.replace(/\.md$/, ''), limit: 5 });
-          const exact = list.notes.find((n) => n.title.toLowerCase() === target.toLowerCase()) ??
-                         list.notes.find((n) => n.path === target || n.path === `${target}.md`);
-          const note = exact ?? list.notes[0];
-          if (!note) {
-            embedCache.set(target, '');
-            continue;
-          }
-          const full = await api.getNote(note.path);
-          // Strip ![[…]] from the embed's own body before parsing —
-          // otherwise A→B→A or any cycle re-fetches forever. One
-          // level of embed is enough; deeper embeds appear as plain
-          // wikilink cards inside the embedded content.
-          const stripped = (full.body ?? '').replace(/!\[\[[^\]]+\]\]/g, '');
-          // Recursive render of the embedded note's body. preprocess
-          // returns its own TransformState so the embed render
-          // doesn't share carved-out caches with the parent pass.
-          const { preprocessed: embedPre, state: embedState } = preprocess(stripped);
-          // Same sanitisation pass as the top-level body. The embed
-          // is just a recursive call into the same render — anything
-          // unsafe in target.md should be neutralised here BEFORE we
-          // assign to aside.innerHTML below, since innerHTML doesn't
-          // re-trigger the framework's render-time defences.
-          bodyHtml = purify(
-            postprocess(marked.parse(embedPre, { async: false }) as string, embedState, stripped)
-          );
-          embedCache.set(target, bodyHtml);
-        }
-        if (!bodyHtml) continue;
-        const aside = document.createElement('aside');
-        aside.className = 'embed-card';
-        aside.innerHTML =
-          `<header class="embed-card__header">` +
-          `<span class="embed-card__label">embedded</span>` +
-          `<a class="wikilink" data-wikilink="${escAttr(target)}">${escHtml(target)}</a>` +
-          `</header>` +
-          `<div class="embed-card__body prose-note">${bodyHtml}</div>`;
-        card.replaceWith(aside);
-      } catch {
-        // Leave the card in place on failure so the user still has
-        // a clickable target; the placeholder shape ("embed" label
-        // + wikilink) already conveys the intent.
-      }
-    }
-  }
 
   // Re-run after every html update. Two kinds of work happen here:
   //
