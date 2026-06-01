@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { goto, beforeNavigate } from '$app/navigation';
   import { page } from '$app/stores';
   import { api, type Note , todayISO } from '$lib/api';
@@ -139,6 +139,19 @@
       previewBodyRaf = 0;
       bodyForPreview = body;
     });
+    // Note: NO cleanup return here. $effect cleanup fires on every
+    // dep change, not just unmount — cancelling the pending rAF on
+    // each body keystroke would defeat the coalescer (every
+    // keystroke would cancel + reschedule instead of riding the
+    // already-queued frame). Unmount cancellation is handled
+    // separately via onDestroy below so the pending frame is
+    // killed exactly once, when the component goes away.
+  });
+  onDestroy(() => {
+    if (previewBodyRaf) {
+      cancelAnimationFrame(previewBodyRaf);
+      previewBodyRaf = 0;
+    }
   });
   let saving = $state(false);
   let dirty = $state(false);
@@ -1586,7 +1599,7 @@
        aside or the drawer, never both) is preserved. -->
   <NoteInfoRail
     {note}
-    {body}
+    body={bodyForPreview}
     {viewMode}
     {previewContainer}
     {visitedHeadings}
@@ -1713,7 +1726,7 @@
            any in-flight reading. -->
       {#if audioOpen}
         <NoteAudioPlayer
-          body={body}
+          body={bodyForPreview}
           title={note.title || note.path}
           onClose={() => (audioOpen = false)}
         />
@@ -1778,7 +1791,7 @@
                 <NoteSummaryCard
                   notePath={note.path}
                   title={note.title || note.path}
-                  body={body}
+                  body={bodyForPreview}
                   frontmatter={(note.frontmatter ?? {}) as Record<string, unknown>}
                   onSaveFrontmatter={saveFrontmatter}
                   onPrepend={(text) => { body = text + body; dirty = true; }}
@@ -1874,7 +1887,7 @@
   <PrintPreview
     bind:open={printOpen}
     title={note.title || note.path}
-    body={body}
+    body={bodyForPreview}
     sourcePath={note.path}
     onClose={() => (printOpen = false)}
   />
@@ -1889,7 +1902,7 @@
   <HistoryPanel
     bind:open={historyOpen}
     notePath={note.path}
-    currentBody={body}
+    currentBody={bodyForPreview}
     onRestore={(restoredBody: string) => {
       body = restoredBody;
       dirty = true;
@@ -1909,7 +1922,7 @@
      nothing while closed. -->
 {#if note}
   <NotePresentation
-    body={body}
+    body={bodyForPreview}
     title={note.title || note.path}
     open={presentationOpen}
     onClose={() => (presentationOpen = false)}
@@ -1954,7 +1967,7 @@
   <InlineAIMenu
     event={aiTriggerEvent}
     notePath={note.path}
-    {body}
+    body={bodyForPreview}
     onClose={() => (aiTriggerEvent = null)}
   />
 {/if}
