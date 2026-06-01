@@ -132,12 +132,28 @@
   // even when 5+ keystrokes fall inside one 16ms frame.
   let bodyForPreview = $state('');
   let previewBodyRaf = 0;
+  // Diagnostic counter — number of body changes the throttle has
+  // dropped since the last flush. Each flush logs the count (when
+  // hunt mode is on) so the user can SEE the coalescer working
+  // instead of guessing. A keyboard mash that produces 30 changes
+  // in one frame logs '{dropped: 29}', proving 30 → 1.
+  let previewDropped = 0;
   $effect(() => {
     void body;
-    if (previewBodyRaf) return;
+    if (previewBodyRaf) {
+      previewDropped++;
+      return;
+    }
     previewBodyRaf = requestAnimationFrame(() => {
       previewBodyRaf = 0;
       bodyForPreview = body;
+      if (freezeHuntOn() && previewDropped > 0) {
+        console.warn('[freeze-hunt] body-throttle:flush', {
+          dropped: previewDropped,
+          bytes: body.length
+        });
+      }
+      previewDropped = 0;
     });
     // Note: NO cleanup return here. $effect cleanup fires on every
     // dep change, not just unmount — cancelling the pending rAF on
