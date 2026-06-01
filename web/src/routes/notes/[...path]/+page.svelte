@@ -120,6 +120,26 @@
 
   let note = $state<Note | null>(null);
   let body = $state('');
+  // bodyForPreview is the rAF-throttled mirror that drives the
+  // MarkdownRenderer. Without this, every keystroke would re-parse
+  // the full document (60–200×/sec on fast typing for a 600-line
+  // note), since CodeMirror's updateListener writes `body` at
+  // microtask speed. The throttle coalesces multiple keystrokes per
+  // frame down to one parse, while keeping `body` live for save
+  // logic, dirty tracking, and slash-command parsing that need the
+  // unthrottled value. The rAF callback reads `body` at flush time
+  // (not at effect-run time) so it always commits the latest text
+  // even when 5+ keystrokes fall inside one 16ms frame.
+  let bodyForPreview = $state('');
+  let previewBodyRaf = 0;
+  $effect(() => {
+    void body;
+    if (previewBodyRaf) return;
+    previewBodyRaf = requestAnimationFrame(() => {
+      previewBodyRaf = 0;
+      bodyForPreview = body;
+    });
+  });
   let saving = $state(false);
   let dirty = $state(false);
   let error = $state('');
@@ -1452,11 +1472,17 @@
   const DAY_ACTIVITY_MARKER = '<!-- granit:day-activity -->';
   let dayActivitySegments = $derived.by(() => {
     if (!isDaily || !dailyDate) return null;
-    const idx = body.indexOf(DAY_ACTIVITY_MARKER);
+    // Derives from bodyForPreview (the rAF-throttled mirror) so a
+    // fast typist on a daily note doesn't pay for indexOf + two
+    // string slices per keystroke. The .before/.after segments
+    // flow into MarkdownRenderer, which only needs the throttled
+    // value anyway.
+    const src = bodyForPreview;
+    const idx = src.indexOf(DAY_ACTIVITY_MARKER);
     if (idx < 0) return null;
     return {
-      before: body.slice(0, idx),
-      after: body.slice(idx + DAY_ACTIVITY_MARKER.length)
+      before: src.slice(0, idx),
+      after: src.slice(idx + DAY_ACTIVITY_MARKER.length)
     };
   });
 
@@ -1751,7 +1777,10 @@
                 <DayActivityInline date={dailyDate} />
                 <MarkdownRenderer body={dayActivitySegments.after} onWikilink={navigateWikilink} />
               {:else}
-                <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
+                <!-- Throttled body — rAF-coalesced via bodyForPreview
+                     above. Multiple keystrokes in one frame produce
+                     one parse, not 5+. -->
+                <MarkdownRenderer body={bodyForPreview} onWikilink={navigateWikilink} />
               {/if}
             </div>
           </div>
@@ -1765,7 +1794,7 @@
                 <DayActivityInline date={dailyDate} />
                 <MarkdownRenderer body={dayActivitySegments.after} onWikilink={navigateWikilink} />
               {:else}
-                <MarkdownRenderer body={body} onWikilink={navigateWikilink} />
+                <MarkdownRenderer body={bodyForPreview} onWikilink={navigateWikilink} />
               {/if}
             </div>
           </div>
