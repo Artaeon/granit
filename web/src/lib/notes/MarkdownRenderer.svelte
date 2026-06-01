@@ -10,6 +10,7 @@
     escHtml
   } from './markdown/transforms';
   import { createEmbedHydrator } from './markdown/embeds';
+  import { renderMermaidBlocks } from './markdown/mermaid';
 
   // DOMPurify config — single shared profile for every sanitize() call
   // in this component. We allow our wikilink / tag / diagram / image
@@ -168,78 +169,16 @@
     }
   }
 
-  // ── Mermaid renderer ────────────────────────────────────────────
-  // Lazy-loaded so users who never write a mermaid block don't pay
-  // the ~1MB bundle cost. The library is pulled in only when at
-  // least one .mermaid-host placeholder is in the DOM, then cached
-  // at module scope so subsequent renders reuse the same instance.
-
+  // Mermaid + embed containers share the same DOM root — the rendered
+  // markdown lives inside `mermaidContainer` (legacy name kept so the
+  // bind:this in the template stays a stable reference). The two
+  // post-render side effects (mermaid hydration, embed hydration)
+  // each walk this container looking for their own placeholders.
+  // Mermaid lazy-loads via $lib/notes/markdown/mermaid — its module-
+  // scope state (the import Promise, the id counter) means two
+  // simultaneous renderers can't clash on diagram ids and we only
+  // fetch the ~1MB library once per session.
   let mermaidContainer: HTMLDivElement | undefined = $state();
-  // Module-scoped — the import promise persists across re-renders so
-  // we don't re-fetch on every doc keystroke.
-  let mermaidPromise: Promise<typeof import('mermaid').default> | null = null;
-  let mermaidIdCounter = 0;
-
-  // The body's theme controls mermaid's palette. We re-init mermaid
-  // when the user flips the theme so light-mode diagrams come back
-  // with the right colours; observation via MutationObserver on the
-  // <html> data-theme attribute is overkill here — we just call init
-  // before each render and pass the live theme.
-  function detectMermaidTheme(): 'dark' | 'default' {
-    if (typeof document === 'undefined') return 'default';
-    const t = document.documentElement.getAttribute('data-theme');
-    if (t === 'light') return 'default';
-    return 'dark';
-  }
-
-  async function getMermaid() {
-    if (!mermaidPromise) {
-      mermaidPromise = import('mermaid').then((m) => m.default);
-    }
-    return mermaidPromise;
-  }
-
-  async function renderMermaidBlocks() {
-    if (!mermaidContainer) return;
-    const hosts = Array.from(
-      mermaidContainer.querySelectorAll<HTMLPreElement>('pre.mermaid-host[data-mermaid-source]')
-    );
-    if (hosts.length === 0) return;
-    const mermaid = await getMermaid();
-    // initialize is idempotent — calling per render lets a theme
-    // toggle take effect without reloading the page.
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict', // no <foreignObject> raw HTML — bound to vault content
-      theme: detectMermaidTheme(),
-      fontFamily: 'inherit'
-    });
-    for (const host of hosts) {
-      const source = host.getAttribute('data-mermaid-source') ?? '';
-      const id = `mermaid-${++mermaidIdCounter}`;
-      try {
-        const { svg, bindFunctions } = await mermaid.render(id, source);
-        const wrapper = document.createElement('div');
-        wrapper.className = 'mermaid-rendered';
-        wrapper.innerHTML = svg;
-        // bindFunctions wires up click handlers in flowcharts that
-        // use `click NodeId callback "tooltip"`. Skipping it would
-        // silently break interactivity in user-authored diagrams.
-        bindFunctions?.(wrapper);
-        host.replaceWith(wrapper);
-      } catch (err) {
-        // Render failure → keep the source visible and surface a
-        // small error caption. Better than a silent blank.
-        const msg = errorMessage(err);
-        const errBox = document.createElement('div');
-        errBox.className = 'mermaid-error';
-        errBox.innerHTML =
-          `<div class="mermaid-error__caption">mermaid render failed: ${escHtml(msg)}</div>` +
-          `<pre class="mermaid-error__source"><code>${escHtml(source)}</code></pre>`;
-        host.replaceWith(errBox);
-      }
-    }
-  }
 
   // Inline note-embed hydrator — walks `.transclude-card` placeholders
   // and replaces them with rendered embed bodies. Implementation +
@@ -280,7 +219,7 @@
   $effect(() => {
     void html;
     queueMicrotask(() => {
-      void renderMermaidBlocks();
+      void renderMermaidBlocks(mermaidContainer);
     });
     if (embedTimer) clearTimeout(embedTimer);
     embedTimer = setTimeout(() => {
