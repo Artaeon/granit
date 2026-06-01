@@ -458,6 +458,22 @@
       rendering = false;
       return;
     }
+    // Module-scope LRU cache hit — survives component remount, so a
+    // tab switch back to a note with unchanged content paints
+    // instantly instead of re-running marked + purify (~50–150ms on
+    // a 600-line doc). Cache is keyed by the raw body string; the
+    // value is the post-purify HTML. The Map's insertion order is
+    // exploited as the LRU ordering — delete-then-set on hit moves
+    // the entry to the tail, the head is evicted when we cross the
+    // cap. See HTML_CACHE_CAP below.
+    const cached = HTML_CACHE.get(src);
+    if (cached !== undefined) {
+      HTML_CACHE.delete(src);
+      HTML_CACHE.set(src, cached);
+      html = cached;
+      rendering = false;
+      return;
+    }
     rendering = true;
     try {
       // Yield to the browser so the loading state paints before
@@ -489,6 +505,17 @@
       const sanitized = purify(postprocess(out));
       if (myGen !== renderGen) return;
       html = sanitized;
+      // Memoize for future tab switches / dup renders. Evict the
+      // oldest entry once we exceed the cap; insertion order is
+      // the LRU dimension because cache hits above re-insert at the
+      // tail. Cap is small (~20) — markdown HTML for a 600-line
+      // doc is typically 100–500 KB, so 20 × 500 KB = ~10 MB worst
+      // case, well below any reasonable budget for a single tab.
+      HTML_CACHE.set(src, sanitized);
+      if (HTML_CACHE.size > HTML_CACHE_CAP) {
+        const oldest = HTML_CACHE.keys().next().value;
+        if (oldest !== undefined) HTML_CACHE.delete(oldest);
+      }
     } catch (e) {
       if (myGen !== renderGen) return;
       const msg = errorMessage(e);
@@ -612,6 +639,17 @@
   // The wikilink in the header still triggers onWikilink so the
   // user can jump into the embedded note for full edit access.
   const embedCache = new Map<string, string>();
+
+  // Top-level parse-and-sanitize cache. Keyed by the raw body
+  // string; value is the post-purify HTML ready to assign to the
+  // template. Module-scope so a tab switch / route remount /
+  // unmount-then-mount on the same content paints instantly (no
+  // re-parse, no re-sanitize). LRU semantics via insertion order:
+  // a cache hit moves the entry to the tail, evictions take the
+  // head. Cap is intentionally small because markdown HTML for a
+  // big note is hundreds of KB — see computeHtml for the math.
+  const HTML_CACHE_CAP = 20;
+  const HTML_CACHE = new Map<string, string>();
 
   async function hydrateEmbeds() {
     if (!mermaidContainer) return;
