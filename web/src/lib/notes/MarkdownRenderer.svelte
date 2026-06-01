@@ -4,6 +4,12 @@
   import { api } from '$lib/api';
   import { errorMessage } from '$lib/util/errorMessage';
   import WikilinkHoverPreview from './WikilinkHoverPreview.svelte';
+  import {
+    preprocess,
+    postprocess,
+    escAttr,
+    escHtml
+  } from './markdown/transforms';
 
   // DOMPurify config — single shared profile for every sanitize() call
   // in this component. We allow our wikilink / tag / diagram / image
@@ -36,395 +42,6 @@
 
   let { body, onWikilink }: { body: string; onWikilink?: (target: string) => void } = $props();
 
-  // Pre-process the source so wikilinks survive as inline tokens marked
-  // doesn't recognize natively. The sentinels MUST use characters that
-  // never appear in normal markdown — particularly NOT the pipe `|`,
-  // which doubles as the GFM table cell delimiter. The previous
-  // sentinel form `WL[target|display]` shredded any wikilink-in-table
-  // because marked saw the embedded `|` as a column boundary mid-cell.
-  // Using NUL () for both bracket markers and the
-  // target/display separator is safe — it never appears in source
-  // markdown and survives marked unchanged.
-  const WIKI_OPEN = 'WL';
-  const WIKI_CLOSE = '';
-  const WIKI_SEP = '';
-  const TAG_OPEN = 'TG';
-  const TAG_CLOSE = '';
-  const DIAGRAM_OPEN = 'DG';
-  const DIAGRAM_CLOSE = '';
-  const IMG_OPEN = 'IM';
-  const IMG_CLOSE = '';
-
-  // Strip YAML frontmatter so marked doesn't render it as a horizontal
-  // rule + paragraph. Some note GETs include frontmatter, others don't —
-  // be defensive either way.
-  function stripFrontmatter(src: string): string {
-    if (!src.startsWith('---')) return src;
-    const end = src.indexOf('\n---', 3);
-    if (end === -1) return src;
-    return src.slice(end + 4).replace(/^\r?\n/, '');
-  }
-
-  // Footnote sentinels. Sandwich the ref id between SO/SI control bytes
-  // (\x0E and \x0F) to keep them distinct from the WL/TG/DG/IM markers
-  // above. Footnotes use Pandoc/PHP-Markdown-Extra syntax: `[^id]`
-  // inline reference, `[^id]: text` line-start definition.
-  const FNR_OPEN = '\x0EFNR\x0F';
-  const FNR_CLOSE = '\x0E/FNR\x0F';
-  // Highlight sentinel — pre-/postprocess pair turns ==text== into
-  // <mark>. Same control-char sandwich as the others so marked sees
-  // it as opaque text and never tokenizes it.
-  const HL_OPEN = '\x0EHL\x0F';
-  const HL_CLOSE = '\x0E/HL\x0F';
-
-  // Diagrams + image transclusions stashed during preprocess and
-  // restored as styled elements in postprocess. Module-scoped so the
-  // helpers can share state across one render pass — $derived re-runs
-  // the whole function so there's no cross-render leakage.
-  let diagramCache: { kind: string; source: string }[] = [];
-  let imageCache: string[] = [];
-  // Footnote state: defs is the line-start `[^id]: body` map; refs is
-  // the order of first-occurrence references so we can number them in
-  // appearance order regardless of definition order in the source.
-  let footnoteDefs: Map<string, string> = new Map();
-  let footnoteRefOrder: string[] = [];
-
-  // Image extensions we know how to embed via the file API. Anything
-  // else (PDF, audio, video, .canvas) falls through to the plain
-  // wikilink path so the user at least gets a click target.
-  const IMAGE_EXTS = /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)$/i;
-
-  function preprocess(src: string): string {
-    let s = stripFrontmatter(src);
-    // Footnote definitions FIRST so subsequent passes don't try to
-    // tokenize the definition body (which is just markdown that ends
-    // up rendered in the footnote section, not inline). Match line-
-    // start `[^id]: text` taking the rest of the line as the body —
-    // simple form; pandoc allows multi-line continuations but those
-    // are rare in practice and a single-line def covers the common
-    // case. Strip the line entirely from the doc; postprocess
-    // reinjects the footnotes section at the bottom.
-    footnoteDefs = new Map();
-    footnoteRefOrder = [];
-    s = s.replace(/^\[\^([^\]\s]+)\]:[ \t]+(.*)$/gm, (_, id: string, body: string) => {
-      footnoteDefs.set(String(id), String(body).trim());
-      return ''; // remove the def line — keeps the visible body clean
-    });
-    // Footnote references: replace `[^id]` (inline) with a sentinel
-    // pair carrying the id. Order of first-appearance drives the
-    // displayed number (matches Pandoc behaviour). A reference whose
-    // id has no matching definition stays sentinel-wrapped — postprocess
-    // renders it as a clearly-broken superscript so the user sees the
-    // gap rather than a silent disappearance.
-    s = s.replace(/\[\^([^\]\s]+)\]/g, (_, id: string) => {
-      const sid = String(id);
-      if (!footnoteRefOrder.includes(sid)) footnoteRefOrder.push(sid);
-      return `${FNR_OPEN}${sid}${FNR_CLOSE}`;
-    });
-    // Carve out granit-specific fenced blocks (diagram/mermaid/mindmap/
-    // chart/flow) BEFORE wikilink+tag substitution so their bodies
-    // don't get clobbered.
-    diagramCache = [];
-    s = s.replace(/```(diagram|mermaid|mindmap|chart|flow)\n([\s\S]*?)```/g, (_, kind, source) => {
-      diagramCache.push({ kind: String(kind), source: String(source) });
-      return `${DIAGRAM_OPEN}${diagramCache.length - 1}${DIAGRAM_CLOSE}`;
-    });
-    // Image transclusions: `![[file.png]]` → <img>. Matches Obsidian
-    // semantics. Has to run BEFORE the wikilink rule below, otherwise
-    // the leading `!` would be stripped and the image rendered as a
-    // plain link. The wikilink rule lives one regex below, so
-    // matching `!\[\[...\]\]` first wins.
-    imageCache = [];
-    s = s.replace(/!\[\[([^\]\n]+?)\]\]/g, (_, inner) => {
-      const target = String(inner).split('|')[0].trim();
-      if (!IMAGE_EXTS.test(target)) {
-        // Non-image transclusion (note embed, PDF, etc.): fall back to
-        // a styled placeholder card; we don't have an embed render
-        // pipeline yet but at least show the link clearly.
-        imageCache.push(target);
-        return `${IMG_OPEN}note:${imageCache.length - 1}${IMG_CLOSE}`;
-      }
-      imageCache.push(target);
-      return `${IMG_OPEN}img:${imageCache.length - 1}${IMG_CLOSE}`;
-    });
-    // Wikilinks `[[X]]` / `[[X|Y]]` → sentinel. The `` separator
-    // avoids the table-pipe collision that previously broke every
-    // dashboard table containing wikilinks.
-    s = s.replace(/\[\[([^\]\n]+?)\]\]/g, (_, inner) => {
-      const parts = String(inner).split('|');
-      const target = parts[0].trim();
-      const display = (parts.length > 1 ? parts[parts.length - 1] : parts[0]).trim();
-      return `${WIKI_OPEN}${target}${WIKI_SEP}${display}${WIKI_CLOSE}`;
-    });
-    // Avoid replacing # tags inside fenced code blocks
-    const fences: string[] = [];
-    s = s.replace(/```[\s\S]*?```/g, (m) => {
-      fences.push(m);
-      return `F${fences.length - 1}`;
-    });
-    s = s.replace(/(^|[\s(])#([\p{L}\p{N}_/-]+)/gu, (_, pre, tag) => `${pre}${TAG_OPEN}${tag}${TAG_CLOSE}`);
-    s = s.replace(/F(\d+)/g, (_, i) => fences[Number(i)]);
-    // Highlights: ==text== → <mark>text</mark>. Sentinel-wrapped so
-    // marked doesn't see the bare ==…== (which it'd pass through as
-    // text but might mangle inside list items in some edge cases).
-    // Re-fence-shielded above already, so we won't match inside code.
-    s = s.replace(/==([^=\n][^=]*?)==/g, (_, inner) => `${HL_OPEN}${inner}${HL_CLOSE}`);
-    return s;
-  }
-
-  // Obsidian callouts: `> [!note] Title` (optionally `[!note]+` /
-  // `[!note]-` for default-collapsed). Marked turns the markdown into
-  // a plain blockquote with literal `[!type]` text inside. Postprocess
-  // hoists the `[!type]` marker into a class on the blockquote and
-  // pulls the title into a styled header. Keeps the user's content
-  // verbatim while making the callout actually look like one.
-  const CALLOUT_TYPES: Record<string, { label: string; tone: string }> = {
-    note: { label: 'Note', tone: 'info' },
-    info: { label: 'Info', tone: 'info' },
-    tip: { label: 'Tip', tone: 'success' },
-    success: { label: 'Success', tone: 'success' },
-    quote: { label: 'Quote', tone: 'subtext' },
-    abstract: { label: 'Abstract', tone: 'subtext' },
-    summary: { label: 'Summary', tone: 'subtext' },
-    todo: { label: 'TODO', tone: 'primary' },
-    question: { label: 'Question', tone: 'primary' },
-    warning: { label: 'Warning', tone: 'warning' },
-    caution: { label: 'Caution', tone: 'warning' },
-    danger: { label: 'Danger', tone: 'error' },
-    error: { label: 'Error', tone: 'error' },
-    failure: { label: 'Failure', tone: 'error' },
-    bug: { label: 'Bug', tone: 'error' },
-    example: { label: 'Example', tone: 'accent' },
-  };
-
-  function rewriteCallouts(html: string): string {
-    // Match the callout `[!type]` marker + the SAME LINE only as the
-    // title. Marked emits the full callout body inside a single <p>
-    // when there are no blank lines between the `> [!note]` header
-    // and the body lines, which means a naive `[^<]*` greedy capture
-    // dragged body content into the title and produced an empty
-    // body. Splitting at the first newline keeps the title as the
-    // first line and pushes everything after into the body section.
-    return html.replace(
-      /<blockquote>\s*<p>\[!([a-zA-Z]+)\]([+-]?)([^<]*)<\/p>([\s\S]*?)<\/blockquote>/g,
-      (_match, rawType: string, _toggle: string, head: string, rest: string) => {
-        const t = rawType.toLowerCase();
-        const meta = CALLOUT_TYPES[t] ?? { label: rawType, tone: 'subtext' };
-        // First line is the title; remaining lines belong in the body
-        // (re-wrapped in a <p> so spacing matches a normal paragraph).
-        const newlineIdx = head.search(/\r?\n/);
-        let title: string;
-        let leftover: string;
-        if (newlineIdx === -1) {
-          title = head.trim();
-          leftover = '';
-        } else {
-          title = head.slice(0, newlineIdx).trim();
-          leftover = head.slice(newlineIdx).trim();
-        }
-        const headerTitle = title || meta.label;
-        const bodyParagraph = leftover
-          ? `<p>${escHtml(leftover)}</p>`
-          : '';
-        return (
-          `<blockquote class="callout callout--${meta.tone}">` +
-          `<div class="callout__header"><span class="callout__icon" aria-hidden="true">●</span>${escHtml(headerTitle)}</div>` +
-          bodyParagraph +
-          rest +
-          `</blockquote>`
-        );
-      }
-    );
-  }
-
-  function postprocess(html: string): string {
-    let s = html;
-    // Diagrams → styled cards. `mermaid` blocks become <pre> placeholders
-    // that the post-render effect (below) hydrates with rendered SVG.
-    // Other diagram kinds (mindmap/chart/flow) keep the source-card
-    // fallback because we don't have a renderer for them yet.
-    const dgRe = new RegExp(`${esc(DIAGRAM_OPEN)}(\\d+)${esc(DIAGRAM_CLOSE)}`, 'g');
-    s = s.replace(dgRe, (_, idx: string) => {
-      const d = diagramCache[Number(idx)];
-      if (!d) return '';
-      if (d.kind === 'mermaid') {
-        // Carry the source on a data attribute so the hydrator can
-        // pick it up after the {@html} drop. Wrapped in <pre> for
-        // graceful degradation: if the lazy-import or the render call
-        // fails, the user sees their source code, not a blank box.
-        return (
-          `<pre class="mermaid-host" data-mermaid-source="${escAttr(d.source)}">` +
-          `<code>${escHtml(d.source)}</code></pre>`
-        );
-      }
-      return (
-        `<div class="diagram-card">` +
-        `<div class="diagram-card__header">${escHtml(d.kind)}<span class="diagram-card__hint"> · render in TUI</span></div>` +
-        `<pre class="diagram-card__source"><code>${escHtml(d.source)}</code></pre>` +
-        `</div>`
-      );
-    });
-    // Image transclusions → <img>; non-image transclusions → placeholder.
-    const imRe = new RegExp(`${esc(IMG_OPEN)}(img|note):(\\d+)${esc(IMG_CLOSE)}`, 'g');
-    s = s.replace(imRe, (_, kind: string, idx: string) => {
-      const target = imageCache[Number(idx)];
-      if (!target) return '';
-      if (kind === 'img') {
-        // Resolve via the file API. Encode each segment so `Files/My
-        // Image.png` round-trips correctly.
-        const encoded = target.split('/').map(encodeURIComponent).join('/');
-        return `<img class="note-image" src="/api/v1/files/${encoded}" alt="${escAttr(target)}" loading="lazy">`;
-      }
-      // Note transclusion — render a clickable card so the user can
-      // jump to the embedded note. Real inline-render is a future
-      // upgrade; a working link beats a literal `!WL[...]` blob.
-      return (
-        `<div class="transclude-card">` +
-        `<div class="transclude-card__label">embed</div>` +
-        `<a class="wikilink" data-wikilink="${escAttr(target)}">${escHtml(target)}</a>` +
-        `</div>`
-      );
-    });
-    // Wikilinks → anchors. The new sentinel uses  between target
-    // and display, so the target may safely contain `|`, hyphens,
-    // spaces — none of which collide with marked's tokenizer.
-    // Highlights → <mark>. The HL sentinel is fence-shielded by the
-    // preprocess step so we won't ever match inside code blocks.
-    const hlRe = new RegExp(`${esc(HL_OPEN)}([\\s\\S]*?)${esc(HL_CLOSE)}`, 'g');
-    s = s.replace(hlRe, (_, inner: string) => `<mark class="md-highlight">${escHtml(inner)}</mark>`);
-    const wlRe = new RegExp(
-      `${esc(WIKI_OPEN)}([^${esc(WIKI_SEP)}]+)${esc(WIKI_SEP)}([^${esc(WIKI_CLOSE)}]+)${esc(WIKI_CLOSE)}`,
-      'g'
-    );
-    s = s.replace(wlRe, (_, target: string, display: string) =>
-      `<a class="wikilink" data-wikilink="${escAttr(target)}">${escHtml(display)}</a>`
-    );
-    // Tags → spans
-    const tgRe = new RegExp(`${esc(TAG_OPEN)}([^${esc(TAG_CLOSE)}]+)${esc(TAG_CLOSE)}`, 'g');
-    s = s.replace(tgRe, (_, tag: string) => `<span class="hashtag">#${escHtml(tag)}</span>`);
-    // Footnote references: superscript anchor that jumps to the
-    // matching <li id="fn-<id>"> in the footnotes section. Includes a
-    // back-link (↩) on the definition side so the reader can hop both
-    // directions, matching Pandoc's default footnote rendering.
-    const fnrRe = new RegExp(`${esc(FNR_OPEN)}([^${esc(FNR_CLOSE)[0]}]+?)${esc(FNR_CLOSE)}`, 'g');
-    s = s.replace(fnrRe, (_, id: string) => {
-      const idx = footnoteRefOrder.indexOf(id);
-      const num = idx === -1 ? '?' : String(idx + 1);
-      const safeId = escAttr(id);
-      const broken = !footnoteDefs.has(id);
-      const cls = broken ? 'footnote-ref footnote-ref--broken' : 'footnote-ref';
-      const title = broken ? `unresolved footnote: ${escHtml(id)}` : '';
-      return `<sup class="${cls}"><a href="#fn-${safeId}" id="fnref-${safeId}" title="${title}">[${num}]</a></sup>`;
-    });
-    // Footnote definitions → ordered list at the bottom. Only emit the
-    // section when at least one ref was seen; a doc with definitions
-    // but no refs is probably mid-edit (user wrote the def first), so
-    // hide them rather than dumping orphan footnotes that look like
-    // garbage trailing text.
-    if (footnoteRefOrder.length > 0) {
-      const items: string[] = [];
-      for (const id of footnoteRefOrder) {
-        const body = footnoteDefs.get(id) ?? '<em class="footnote-missing">no definition</em>';
-        const safeId = escAttr(id);
-        // Body has been through marked already? No — we stripped the
-        // definition line in preprocess, so body is raw markdown.
-        // Inline-render it through marked.parseInline so `**bold**` and
-        // links inside footnotes work, but we don't get nested <p>
-        // wrappers that would break the <li> layout.
-        let rendered: string;
-        try {
-          rendered = marked.parseInline(body, { async: false }) as string;
-        } catch {
-          rendered = escHtml(body);
-        }
-        items.push(
-          `<li id="fn-${safeId}" class="footnote-item">${rendered} ` +
-            `<a class="footnote-back" href="#fnref-${safeId}" title="back to text">↩</a></li>`
-        );
-      }
-      s += `<hr class="footnote-sep"><ol class="footnote-list">${items.join('')}</ol>`;
-    }
-    // Obsidian callouts last so the regex sees the final tree.
-    s = rewriteCallouts(s);
-    // Inject heading line metadata so the Outline panel + reading-
-    // progress tracker can map headings → source line and observe
-    // them with IntersectionObserver. We pair headings in
-    // appearance order with the headings parsed from the source body
-    // (cheap O(n)). Only adds attributes when no existing id/data-
-    // heading-line is present, so footnote headings (none) or
-    // user-authored ones survive untouched.
-    s = injectHeadingMeta(s, body);
-    return s;
-  }
-
-  // Build a list of heading lines from the source body, fence-aware.
-  // Returns parallel arrays: line numbers (1-based), heading text.
-  // The text is normalised (collapsed whitespace, lowercased) so the
-  // slug below is stable across the same heading reappearing later.
-  function collectHeadingMetaFromBody(src: string): { line: number; slug: string }[] {
-    const out: { line: number; slug: string }[] = [];
-    if (!src) return out;
-    const stripped = stripFrontmatter(src);
-    const offset = src.length - stripped.length;
-    // Compute line offset from frontmatter byte stripping. Cheap: count
-    // newlines in the stripped portion of the source.
-    const removed = src.slice(0, offset);
-    const lineOffset = removed ? removed.split('\n').length - 1 : 0;
-    const lines = stripped.split('\n');
-    let inFence = false;
-    const slugCounts = new Map<string, number>();
-    for (let i = 0; i < lines.length; i++) {
-      const t = lines[i];
-      if (/^```/.test(t.trim()) || /^~~~/.test(t.trim())) {
-        inFence = !inFence;
-        continue;
-      }
-      if (inFence) continue;
-      const m = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*$/.exec(t);
-      if (!m) continue;
-      const text = m[2].trim();
-      const baseSlug = text
-        .toLowerCase()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .slice(0, 80) || 'h';
-      const n = slugCounts.get(baseSlug) ?? 0;
-      slugCounts.set(baseSlug, n + 1);
-      const slug = n === 0 ? baseSlug : `${baseSlug}-${n}`;
-      out.push({ line: i + 1 + lineOffset, slug });
-    }
-    return out;
-  }
-
-  function injectHeadingMeta(rendered: string, src: string): string {
-    const meta = collectHeadingMetaFromBody(src);
-    if (meta.length === 0) return rendered;
-    let i = 0;
-    return rendered.replace(/<(h[1-6])(\b[^>]*)>/g, (m, tag: string, attrs: string) => {
-      // Skip headings inside callout/embed cards — their bodies pass
-      // through marked too and we don't want phantom doubles in the
-      // observer. Cheap heuristic: marked never inserts an existing
-      // id/data-heading-line on a heading, so if one's already there
-      // we trust it (e.g. embed-card sub-render).
-      if (/\sid=|\sdata-heading-line=/.test(attrs)) return m;
-      if (i >= meta.length) return m;
-      const { line, slug } = meta[i++];
-      return `<${tag} id="h-${slug}" data-heading-line="${line}" data-heading-slug="${slug}"${attrs}>`;
-    });
-  }
-
-  function esc(s: string): string {
-    return s.replace(/[\\^$*+?.()|[\]{}]/g, '\\$&');
-  }
-  function escAttr(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-  }
-  function escHtml(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  // marked options — GFM, tables, breaks
-  marked.setOptions({ gfm: true, breaks: false });
 
   // Render is wrapped in try/catch so a malformed token (corner-case
   // marked bug, half-edited fence, weird unicode) shows the source
@@ -488,11 +105,15 @@
         }
       });
       if (myGen !== renderGen) return;
-      const pre = preprocess(src);
+      // Preprocess + carry the state object through to postprocess
+      // so the carved-out caches (diagrams, images, footnotes) are
+      // scoped to THIS render pass. Concurrent renders (split-view)
+      // each carry their own state and can't clobber each other.
+      const { preprocessed, state } = preprocess(src);
       // marked.parse with { async: true } returns a Promise and the
       // library yields between blocks, so a long doc no longer pins
       // the main thread for the whole parse.
-      const out = (await marked.parse(pre, { async: true })) as string;
+      const out = (await marked.parse(preprocessed, { async: true })) as string;
       if (myGen !== renderGen) return;
       // purify() is the load-bearing XSS defence — marked itself
       // dropped its `sanitize` option in v7 and explicitly recommends
@@ -502,7 +123,7 @@
       // execute on device B without this layer. PURIFY_CONFIG keeps
       // our data-wikilink / data-tag etc. hooks alive so click
       // delegation still works after sanitisation.
-      const sanitized = purify(postprocess(out));
+      const sanitized = purify(postprocess(out, state, src));
       if (myGen !== renderGen) return;
       html = sanitized;
       // Memoize for future tab switches / dup renders. Evict the
@@ -680,13 +301,18 @@
           // level of embed is enough; deeper embeds appear as plain
           // wikilink cards inside the embedded content.
           const stripped = (full.body ?? '').replace(/!\[\[[^\]]+\]\]/g, '');
-          const pre = preprocess(stripped);
+          // Recursive render of the embedded note's body. preprocess
+          // returns its own TransformState so the embed render
+          // doesn't share carved-out caches with the parent pass.
+          const { preprocessed: embedPre, state: embedState } = preprocess(stripped);
           // Same sanitisation pass as the top-level body. The embed
           // is just a recursive call into the same render — anything
           // unsafe in target.md should be neutralised here BEFORE we
           // assign to aside.innerHTML below, since innerHTML doesn't
           // re-trigger the framework's render-time defences.
-          bodyHtml = purify(postprocess(marked.parse(pre, { async: false }) as string));
+          bodyHtml = purify(
+            postprocess(marked.parse(embedPre, { async: false }) as string, embedState, stripped)
+          );
           embedCache.set(target, bodyHtml);
         }
         if (!bodyHtml) continue;
