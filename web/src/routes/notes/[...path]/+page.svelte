@@ -140,6 +140,18 @@
   let previewDropped = 0;
   $effect(() => {
     void body;
+    // First-paint fast path: when bodyForPreview is still empty but
+    // body has loaded, sync synchronously instead of waiting for the
+    // next rAF. Without this, opening a note flashes an empty
+    // preview for ~16ms while the throttle's first frame is
+    // pending — visible as a brief blank on every load and tab
+    // switch. After init, bodyForPreview tracks body via the rAF
+    // path, so this branch fires at most once per mount + once per
+    // explicit clear-then-type cycle.
+    if (bodyForPreview === '' && body !== '') {
+      bodyForPreview = body;
+      return;
+    }
     if (previewBodyRaf) {
       previewDropped++;
       return;
