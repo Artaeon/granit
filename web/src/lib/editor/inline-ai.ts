@@ -217,8 +217,21 @@ export function streamInlineAI(view: EditorView, req: InlineAIRequest): boolean 
     replaceTo = anchor;
   }
 
+  // Capture the controller locally so the onDone/onError callbacks
+  // can compare against THIS request's controller, not whatever the
+  // module-level activeAbort happens to point at by the time they
+  // fire. Without this, a rapid resend would:
+  //   1. abort the first stream (signal becomes aborted)
+  //   2. install a new activeAbort
+  //   3. the first stream's late onError fires → sets activeAbort=null
+  //   4. the new stream is now orphaned — rejectInlineAI() can't kill it.
+  // The two fixes below mirror the chatSessionManager hardening from
+  // PR A6 (commit bfb7d10a): signal.aborted check + controller===
+  // captured guard.
   activeAbort?.abort();
-  activeAbort = new AbortController();
+  const controller = new AbortController();
+  activeAbort = controller;
+  const signal = controller.signal;
 
   view.dispatch({
     effects: setInlineAI.of({
@@ -252,8 +265,12 @@ export function streamInlineAI(view: EditorView, req: InlineAIRequest): boolean 
     {
       onChunk: t.onChunk,
       onDone: () => {
+        // Race fix: silence late callbacks once our own controller is
+        // aborted. A newer request has already installed its own
+        // ghost state — we must not dispatch over it.
+        if (signal.aborted) return;
         t.flush();
-        activeAbort = null;
+        if (activeAbort === controller) activeAbort = null;
         // Mark the ghost as "done streaming" so the host's action bar
         // flips from Stop → Keep/Try again/Discard. Keep `active: true`
         // so the ghost stays rendered until the user commits or rejects.
@@ -262,8 +279,12 @@ export function streamInlineAI(view: EditorView, req: InlineAIRequest): boolean 
         req.onSettled?.({ ok: true, text: state?.text ?? '' });
       },
       onError: (err) => {
+        // Race fix: same signal.aborted guard. A network error that
+        // arrives after our own abort must not write `_error:_` over
+        // a newer stream's freshly-installed ghost.
+        if (signal.aborted) return;
         t.flush();
-        activeAbort = null;
+        if (activeAbort === controller) activeAbort = null;
         // Keep the ghost active so the action bar stays visible with
         // an inline error and a Try again button. Any partial text
         // that streamed before the failure is preserved — the user
@@ -276,7 +297,7 @@ export function streamInlineAI(view: EditorView, req: InlineAIRequest): boolean 
         console.warn('inline-ai:', err.message);
       }
     },
-    activeAbort.signal
+    signal
   );
   return true;
 }
