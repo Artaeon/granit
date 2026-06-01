@@ -239,15 +239,27 @@
       previewProgress = Math.max(0, Math.min(1, c.scrollTop / denom));
       // Tick every heading whose top is above the viewport's top
       // quarter (matches Outline's active-heading bias).
+      //
+      // Two layout-cost optimisations on top of the rAF coalescer:
+      //   1. Skip headings already in visitedHeadings — avoids the
+      //      getBoundingClientRect call for lines we've already
+      //      recorded. On a long doc the visited set grows
+      //      monotonically as the user reads down, so most scroll
+      //      frames touch ZERO new reads.
+      //   2. Break on the first heading below the cutoff. Headings
+      //      are in document order so once we see one with top >
+      //      cutoff, every later one is also below — no point
+      //      forcing N-k more layout flushes.
       const cTop = c.getBoundingClientRect().top;
       const cutoff = cTop + c.clientHeight * 0.25;
       const els = c.querySelectorAll<HTMLElement>('[data-heading-line]');
       for (const el of els) {
+        const ln = parseInt(el.dataset.headingLine ?? '', 10);
+        if (!Number.isFinite(ln)) continue;
+        if (visitedHeadings.has(ln)) continue;
         const top = el.getBoundingClientRect().top;
-        if (top <= cutoff) {
-          const ln = parseInt(el.dataset.headingLine ?? '', 10);
-          if (Number.isFinite(ln)) markVisited(ln);
-        }
+        if (top > cutoff) break;
+        markVisited(ln);
       }
     });
   }
