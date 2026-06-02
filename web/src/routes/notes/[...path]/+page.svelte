@@ -1625,6 +1625,17 @@
       <!-- EditorAIBar removed — the inline AI menu (Cmd-/ / "/ai") is
            the only AI entry point now. See $lib/notes/InlineAIMenu.svelte
            and its trigger registration in editorAIExtensions above. -->
+      {#snippet previewBody()}
+        {#if dayActivitySegments && dailyDate}
+          <MarkdownRenderer body={dayActivitySegments.before} onWikilink={navigateWikilink} />
+          <DayActivityInline date={dailyDate} />
+          <MarkdownRenderer body={dayActivitySegments.after} onWikilink={navigateWikilink} />
+        {:else}
+          <!-- Throttled body — rAF-coalesced via bodyForPreview above.
+               Multiple keystrokes in one frame produce one parse, not 5+. -->
+          <MarkdownRenderer body={bodyForPreview} onWikilink={navigateWikilink} />
+        {/if}
+      {/snippet}
       <div class="flex-1 min-h-0 p-2 sm:p-3">
         {#if viewMode === 'edit'}
           <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
@@ -1641,16 +1652,7 @@
                   onPrepend={(text) => { body = text + body; dirty = true; }}
                 />
               {/if}
-              {#if dayActivitySegments && dailyDate}
-                <MarkdownRenderer body={dayActivitySegments.before} onWikilink={navigateWikilink} />
-                <DayActivityInline date={dailyDate} />
-                <MarkdownRenderer body={dayActivitySegments.after} onWikilink={navigateWikilink} />
-              {:else}
-                <!-- Throttled body — rAF-coalesced via bodyForPreview
-                     above. Multiple keystrokes in one frame produce
-                     one parse, not 5+. -->
-                <MarkdownRenderer body={bodyForPreview} onWikilink={navigateWikilink} />
-              {/if}
+              {@render previewBody()}
             </div>
           </div>
         {:else}
@@ -1658,13 +1660,7 @@
           <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
             <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
             <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block" bind:this={previewContainer}>
-              {#if dayActivitySegments && dailyDate}
-                <MarkdownRenderer body={dayActivitySegments.before} onWikilink={navigateWikilink} />
-                <DayActivityInline date={dailyDate} />
-                <MarkdownRenderer body={dayActivitySegments.after} onWikilink={navigateWikilink} />
-              {:else}
-                <MarkdownRenderer body={bodyForPreview} onWikilink={navigateWikilink} />
-              {/if}
+              {@render previewBody()}
             </div>
           </div>
         {/if}
