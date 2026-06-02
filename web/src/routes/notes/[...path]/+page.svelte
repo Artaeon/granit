@@ -421,21 +421,21 @@
     error = '';
     draftRestored = false;
     if (!opts.force && lastLoadedPath === p) return;
-    // Reset breadcrumb-expand for the next note. Surgical-property
-    // autosave updates never swap note identity, so this only needs
-    // to run on real navigation — which is exactly when load() fires.
-    breadcrumbExpanded = false;
-    // Reset the per-load draft watermark so the first keystroke on the
-    // newly-opened note triggers a draft write. Without this, opening a
-    // note whose body happens to equal the previous note's last drafted
-    // body would skip the very first draft persistence.
-    lastDraftedBody = null;
     // Same-note reloads (WS-triggered note.changed) must not clobber
     // in-flight typing. Snapshot the body before the await; if the user
     // types during the fetch, abort the body overwrite and let the
     // auto-save effect persist their edits. For navigation to a
     // different note (note?.path !== p), we always want to overwrite.
     const isSameNoteReload = note?.path === p;
+    // Reset breadcrumb-expand only on real navigation. A same-note
+    // WS reload (sync from another device, metadata reindex) must
+    // not collapse a deep-path breadcrumb the user expanded by hand.
+    if (!isSameNoteReload) breadcrumbExpanded = false;
+    // Reset the per-load draft watermark so the first keystroke on the
+    // newly-opened note triggers a draft write. Without this, opening a
+    // note whose body happens to equal the previous note's last drafted
+    // body would skip the very first draft persistence.
+    lastDraftedBody = null;
     // Snapshot from the EDITOR, not the bound `body` mirror. The
     // bind:value write from CodeMirror's updateListener is microtask-
     // deferred; on a slow render frame the parent's `body` can lag
