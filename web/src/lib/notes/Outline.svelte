@@ -18,7 +18,6 @@
   always knows where they are in a long doc.
 -->
 <script lang="ts">
-  import { untrack } from 'svelte';
   import { parseBody, type ParsedHeading } from '$lib/util/bodyParse';
 
   let {
@@ -203,11 +202,15 @@
       container.removeEventListener('scroll', onScrollOrResize);
       window.removeEventListener('resize', onScrollOrResize);
       if (raf) cancelAnimationFrame(raf);
-      // Reset so the next mount starts clean (no flash of the previous
-      // doc's active line).
-      untrack(() => {
-        observedActiveLine = null;
-      });
+      // Deliberately DON'T reset observedActiveLine. The cleanup runs
+      // on every body-change effect re-run, not just unmount; resetting
+      // here flashed the active heading from "current" to "cursor
+      // fallback" and back per keystroke (the next observer fires
+      // ~16ms later and re-populates). Line numbers stay stable across
+      // most edits, so the stale value remains visually correct between
+      // observer cycles. On note swap the `{#if headings.length === 0}`
+      // branch hides the list anyway, so a stale active-line tick
+      // isn't visible.
     };
   });
 </script>
