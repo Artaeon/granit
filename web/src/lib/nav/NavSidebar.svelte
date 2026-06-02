@@ -24,12 +24,12 @@
   import Logo from '$lib/components/Logo.svelte';
   import NavIcon from '$lib/components/NavIcon.svelte';
   import NavItem from './NavItem.svelte';
+  import NavFooter from './NavFooter.svelte';
   import ProfileSwitcher from './ProfileSwitcher.svelte';
   import {
     sections,
     today,
     essentials,
-    settingsItem,
     nav,
     type NavItem as NavLink
   } from './config';
@@ -37,18 +37,12 @@
   import {
     collapsedSections,
     toggleSection,
-    sidebarCompact,
-    toggleSidebarCompact,
     hiddenSections
   } from '$lib/stores/sidebar-ui';
   import { sabbath, SABBATH_HIDE_MODULES } from '$lib/stores/sabbath';
   import { modulesStore } from '$lib/stores/modules';
-  import { theme, nextTheme, themeLabel } from '$lib/stores/theme';
-  import { auth } from '$lib/stores/auth';
-  import { wsConnected } from '$lib/ws';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { aiStatus } from '$lib/stores/ai-status';
-  import { api } from '$lib/api';
   import { rightPaneStore, toggleRightPane } from '$lib/stores/rightPane';
 
   type Props = {
@@ -405,145 +399,5 @@
     {/each}
   </nav>
 
-  <!-- Footer rail. Settings, theme, sabbath, compact toggle, sign
-       out. Tightened from py-3 to py-2 and theme button shrunk —
-       it's a meta surface, not a content one. -->
-  <div class="border-t border-surface1 {isCompact ? 'px-1.5 py-2 space-y-1' : 'px-2 py-2 space-y-1'}">
-    <!-- Settings + Profile moved up to the brand-area row on
-         2026-05-25 per user feedback. Theme also moved into the
-         icon row below to slim the footer footprint. -->
-
-    <!-- Sabbath row. Mark 2:27: "the sabbath was made for man." A
-         split layout: the icon+label opens the /sabbath landing
-         (verse, time-remaining, schedule); the "→" pill toggles
-         sabbath state in place. Two distinct intents, one row.
-         Compact mode collapses both into a single icon-button
-         that just toggles, since hover-tooltips do most of the
-         explaining and a side-by-side button row doesn't fit.
-         Auto-clears at midnight via a read-time check in the
-         store, so a forgotten 'on' state recovers the next
-         morning by itself. -->
-    {#if isCompact}
-      <button
-        onclick={() => sabbath.toggle()}
-        title={$sabbath ? 'Sabbath mode is on — tap to exit' : 'Enter sabbath mode (hides work modules for today)'}
-        class="w-full flex justify-center items-center px-2 py-2 rounded text-sm transition-colors {$sabbath ? 'bg-success text-on-primary hover:opacity-90' : 'text-dim hover:bg-surface0 hover:text-text'}"
-      >
-        <svg viewBox="0 0 24 24" class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          {#if $sabbath}
-            <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5L12 2zM12 14v8M9 22h6"/>
-          {:else}
-            <path d="M12 2l2 5h5l-4 3 1.5 5L12 12l-4.5 3L9 10 5 7h5z"/>
-          {/if}
-        </svg>
-      </button>
-    {:else}
-      <div class="flex items-stretch gap-1 rounded {$sabbath ? 'bg-success text-on-primary' : ''}">
-        <a
-          href="/sabbath"
-          onclick={navigate}
-          class="flex-1 flex items-center gap-3 px-3 py-1 rounded-l transition-colors {$sabbath ? 'hover:opacity-90' : 'text-xs text-dim hover:bg-surface0 hover:text-subtext'}"
-        >
-          <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            {#if $sabbath}
-              <path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5L12 2zM12 14v8M9 22h6"/>
-            {:else}
-              <path d="M12 2l2 5h5l-4 3 1.5 5L12 12l-4.5 3L9 10 5 7h5z"/>
-            {/if}
-          </svg>
-          <span class="flex-1 text-left">{$sabbath ? 'Sabbath on' : 'Sabbath'}</span>
-        </a>
-        <button
-          onclick={() => sabbath.toggle()}
-          title={$sabbath ? 'tap to exit sabbath' : 'enter sabbath now'}
-          aria-label={$sabbath ? 'exit sabbath' : 'enter sabbath'}
-          class="px-2 py-1 rounded-r transition-colors {$sabbath ? 'hover:opacity-90' : 'text-dim hover:bg-surface0 hover:text-subtext'}"
-        >
-          <span class="text-sm">{$sabbath ? '×' : '→'}</span>
-        </button>
-      </div>
-    {/if}
-
-    <!-- Compact icon row: theme cycle · sidebar-collapse · sign-out
-         · live/offline pip. Was four full-width rows; now a single
-         horizontal strip so the footer reads as a meta utility bar
-         rather than a continuation of the nav. Compact mode keeps
-         the icons centred vertically (one per row) since the rail
-         is too narrow for a horizontal strip. -->
-    {#if isCompact}
-      <button
-        onclick={() => theme.set(nextTheme($theme))}
-        title={`Theme: ${themeLabel($theme)} — tap to cycle`}
-        aria-label="Cycle theme"
-        class="w-full flex justify-center items-center px-2 py-1.5 rounded text-dim hover:bg-surface0 hover:text-text transition-colors"
-      >
-        <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          {#if $theme === 'dark'}
-            <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>
-          {:else if $theme === 'light'}
-            <circle cx="12" cy="12" r="4"/>
-            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
-          {:else}
-            <circle cx="12" cy="12" r="9"/>
-            <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>
-          {/if}
-        </svg>
-      </button>
-      <button
-        onclick={toggleSidebarCompact}
-        title="Expand sidebar"
-        aria-label="Expand sidebar"
-        class="hidden md:flex w-full justify-center items-center px-2 py-1.5 rounded text-dim hover:bg-surface0 hover:text-text transition-colors"
-      >
-        <svg viewBox="0 0 24 24" class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </button>
-      <div class="flex justify-center pt-0.5" title={$wsConnected ? 'live' : 'offline'}>
-        <span class="w-2 h-2 rounded-full {$wsConnected ? 'bg-success' : 'bg-dim'}"></span>
-      </div>
-    {:else}
-      <div class="flex items-center gap-1 px-1">
-        <button
-          onclick={() => theme.set(nextTheme($theme))}
-          title={`Theme: ${themeLabel($theme)} — tap to cycle`}
-          aria-label="Cycle theme"
-          class="w-8 h-8 flex items-center justify-center rounded text-dim hover:bg-surface0 hover:text-text transition-colors"
-        >
-          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            {#if $theme === 'dark'}
-              <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>
-            {:else if $theme === 'light'}
-              <circle cx="12" cy="12" r="4"/>
-              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
-            {:else}
-              <circle cx="12" cy="12" r="9"/>
-              <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>
-            {/if}
-          </svg>
-        </button>
-        <button
-          onclick={toggleSidebarCompact}
-          title="Collapse to icons"
-          aria-label="Collapse sidebar"
-          class="hidden md:flex w-8 h-8 items-center justify-center rounded text-dim hover:bg-surface0 hover:text-text transition-colors"
-        >
-          <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-        <span class="flex-1"></span>
-        <button
-          onclick={async () => { try { await api.authLogout(); } catch {} auth.clear(); }}
-          title="Sign out"
-          class="text-[11px] text-dim hover:text-error transition-colors px-2 py-1"
-        >sign out</button>
-        <span
-          class="ml-1 w-2 h-2 rounded-full flex-shrink-0 {$wsConnected ? 'bg-success' : 'bg-dim'}"
-          title={$wsConnected ? 'live' : 'offline'}
-          aria-label={$wsConnected ? 'live' : 'offline'}
-        ></span>
-      </div>
-    {/if}
-  </div>
+  <NavFooter {isCompact} onNavigate={navigate} />
 </div>
