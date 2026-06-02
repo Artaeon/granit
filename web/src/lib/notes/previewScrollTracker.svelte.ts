@@ -14,14 +14,10 @@
 //                    every heading that has passed above the
 //                    viewport's top quarter.
 //
-// Pulled out of +page.svelte so the route's reactive graph isn't
-// holding both the editor side (body, save, autosave) AND the
-// reader side (scroll, headings, visited) in the same script.
-//
-// The page keeps `previewContainer` as a `bind:this` lvalue since
-// Svelte's binding requires it. Everything else moves here; the
-// page wires two thin $effects (loadFor on note-path change,
-// attach when the container ref appears).
+// The page wires two thin $effects: loadFor on note-path change,
+// attach when the container ref appears. Their order is not
+// guaranteed across separate $effect blocks — see `loadedForPath`
+// below for why that matters.
 
 import {
   loadVisitedMap,
@@ -32,16 +28,12 @@ import {
 export interface PreviewScrollTracker {
   readonly visitedHeadings: Set<number>;
   readonly previewProgress: number;
-  /** Mark a single heading as visited and persist. No-op on
-   *  unknown path or already-visited line. */
-  markVisited(notePath: string | null, line: number): void;
   /** Drop the in-memory + on-disk visited set for `notePath`. */
   resetVisited(notePath: string | null): void;
-  /** Load the visited set for `notePath` (or clear if null). Call
-   *  inside a page-level $effect that tracks note?.path. */
+  /** Load the visited set for `notePath` (or clear if null). Page
+   *  calls inside a $effect that tracks note?.path. */
   loadFor(notePath: string | null): void;
-  /** Attach the scroll listener + run an initial tick so a fresh
-   *  load with the user at the top still marks the first heading.
+  /** Attach the scroll listener + run an initial deferred tick.
    *  Returns the cleanup the caller must return from its $effect. */
   attach(container: HTMLElement, getNotePath: () => string | null): () => void;
 }
@@ -49,12 +41,14 @@ export interface PreviewScrollTracker {
 export function createPreviewScrollTracker(): PreviewScrollTracker {
   let visitedHeadings = $state<Set<number>>(new Set());
   let previewProgress = $state(0);
-
-  function markVisited(notePath: string | null, line: number) {
-    if (!notePath) return;
-    if (visitedHeadings.has(line)) return;
-    visitedHeadings = recordVisitedLine(notePath, line);
-  }
+  // The note-path whose visited set is currently loaded into
+  // `visitedHeadings`. attach()'s scroll handler refuses to record
+  // ticks unless the active container's notePath matches — without
+  // this, the unguaranteed order of the loadFor + attach effects
+  // on a note swap could fire the initial scroll tick against the
+  // PREVIOUS note's visited set, writing phantom visit data into
+  // the new note's storage.
+  let loadedForPath: string | null = null;
 
   function resetVisited(notePath: string | null) {
     if (!notePath) return;
@@ -63,6 +57,7 @@ export function createPreviewScrollTracker(): PreviewScrollTracker {
   }
 
   function loadFor(notePath: string | null) {
+    loadedForPath = notePath;
     if (!notePath) {
       visitedHeadings = new Set();
       return;
@@ -79,9 +74,15 @@ export function createPreviewScrollTracker(): PreviewScrollTracker {
         raf = 0;
         const denom = Math.max(1, container.scrollHeight - container.clientHeight);
         previewProgress = Math.max(0, Math.min(1, container.scrollTop / denom));
+        // Only record visited ticks against the path whose set is
+        // actually loaded. Drops the walk entirely on a not-yet-
+        // matched path — cheap, and avoids any chance of writing
+        // line numbers from a fresh DOM into a stale storage slot.
+        const notePath = getNotePath();
+        if (!notePath || notePath !== loadedForPath) return;
         // Tick every heading whose top is above the viewport's top
         // quarter (matches Outline's active-heading bias). Two
-        // layout-cost optimisations on top of the rAF coalescer:
+        // layout-cost optimisations:
         //   1. Skip headings already in visitedHeadings — avoids the
         //      getBoundingClientRect call for lines we've already
         //      recorded. On a long doc the visited set grows
@@ -89,11 +90,9 @@ export function createPreviewScrollTracker(): PreviewScrollTracker {
         //      frames touch ZERO new reads.
         //   2. Break on the first heading below the cutoff. Headings
         //      are in document order so once we see one with top >
-        //      cutoff, every later one is also below — no point
-        //      forcing N-k more layout flushes.
+        //      cutoff, every later one is also below.
         const cTop = container.getBoundingClientRect().top;
         const cutoff = cTop + container.clientHeight * 0.25;
-        const notePath = getNotePath();
         const els = container.querySelectorAll<HTMLElement>('[data-heading-line]');
         for (const el of els) {
           const ln = parseInt(el.dataset.headingLine ?? '', 10);
@@ -101,7 +100,7 @@ export function createPreviewScrollTracker(): PreviewScrollTracker {
           if (visitedHeadings.has(ln)) continue;
           const top = el.getBoundingClientRect().top;
           if (top > cutoff) break;
-          markVisited(notePath, ln);
+          visitedHeadings = recordVisitedLine(notePath, ln);
         }
       });
     };
@@ -109,9 +108,8 @@ export function createPreviewScrollTracker(): PreviewScrollTracker {
     container.addEventListener('scroll', onScroll, { passive: true });
     // Defer the initial tick by one frame so layout has settled. The
     // immediate variant thrashed when re-toggling preview onto a
-    // cache-hit body: html was already in the DOM, so onScroll's
-    // getBoundingClientRect walk fired in the same tick as the
-    // {@html} mount.
+    // cache-hit body — html landed in the DOM in the same tick as
+    // the getBoundingClientRect walk.
     const initRaf = requestAnimationFrame(onScroll);
     return () => {
       container.removeEventListener('scroll', onScroll);
@@ -127,7 +125,6 @@ export function createPreviewScrollTracker(): PreviewScrollTracker {
     get previewProgress() {
       return previewProgress;
     },
-    markVisited,
     resetVisited,
     loadFor,
     attach
