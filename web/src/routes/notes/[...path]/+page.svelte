@@ -17,6 +17,7 @@
   import { getDraft, setDraft, clearDraft, draftDivergesFromServer } from '$lib/notes/drafts';
   import { rememberScroll, recallScroll } from '$lib/notes/noteHistory';
   import { createPreviewScrollTracker } from '$lib/notes/previewScrollTracker.svelte';
+  import { installNoteShortcuts } from '$lib/notes/noteKeyboardShortcuts.svelte';
   import { openAIOverlay, aiOverlayPinned } from '$lib/stores/ai-overlay';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
@@ -899,30 +900,6 @@
     })
   ];
 
-  // Global "?" handler — opens the shortcuts cheat sheet from
-  // anywhere on the note view, but ONLY when the user isn't typing
-  // into an input or the editor (otherwise they couldn't ever type
-  // a literal question mark in their notes). The cheap detection
-  // looks at the active element's tag + role; any input/textarea/
-  // contenteditable is treated as "user is typing".
-  $effect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== '?' || e.shiftKey === false) return;
-      const el = document.activeElement as HTMLElement | null;
-      if (!el) return;
-      const tag = el.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea') return;
-      if (el.isContentEditable) return;
-      // CodeMirror's editable surface is a contenteditable div, so the
-      // check above already covers the editor. Outside of that, on the
-      // note layout (sidebars, toolbar buttons), `?` is free.
-      e.preventDefault();
-      helpOpen = true;
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  });
-
   async function navigateWikilink(target: string) {
     // Best-effort flush of any pending edit. We never block navigation on
     // the save result — the localStorage draft (setDraft, debounce 600ms)
@@ -1138,70 +1115,24 @@
     return `${Math.round(sec / 3600)}h ago`;
   });
 
-  // Mod-/ to cycle view modes (edit → split → preview → edit). A
-  // common shortcut in markdown editors (Typora, Obsidian) — the
-  // keymap stays inside the editor so we install a window-level
-  // handler that ignores the event when the focused element isn't
-  // CodeMirror's editable surface (otherwise typing '/' in a form
-  // would cycle the view, hostile UX).
-  $effect(() => {
-    function onKey(e: KeyboardEvent) {
-      const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
-      const mod = isMac ? e.metaKey : e.ctrlKey;
-      const el = document.activeElement as HTMLElement | null;
-      const tag = el?.tagName?.toLowerCase();
-      const inInput = tag === 'input' || tag === 'textarea';
-
-      // Mod-/ — cycle view mode (edit → split → preview).
-      if (mod && e.key === '/' && !e.shiftKey && !e.altKey) {
-        if (inInput) return;
-        e.preventDefault();
-        viewModes.cycleViewMode();
-        return;
-      }
-
-      // Mod-Shift-Z — toggle focus mode. Always live (even with the
-      // editor focused) since it's a visibility toggle and doesn't
-      // collide with any default editor binding.
-      if (mod && e.shiftKey && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        viewModes.toggleFocusMode();
-        return;
-      }
-
-      // Mod-Shift-R — toggle reading mode (preview + focus + serif
-      // typography). The reverse-toggle restores whatever view +
-      // focus state the user had before, so it composes with the
-      // user's normal setup rather than clobbering it.
-      if (mod && e.shiftKey && e.key.toLowerCase() === 'r') {
-        e.preventDefault();
-        viewModes.toggleReadingMode();
-        return;
-      }
-
-      // Mod-Shift-P — open slideshow / presentation mode. The
-      // overlay's own Esc handler closes it; we don't need a
-      // toggle here.
-      if (mod && e.shiftKey && e.key.toLowerCase() === 'p') {
-        e.preventDefault();
-        if (note) presentationOpen = true;
-        return;
-      }
-
-      // Mod-Shift-←/→ — jump to previous / next daily note. Only on
-      // daily notes (otherwise the chord has no obvious target). Skip
-      // when typing into a non-editor input.
-      if (mod && e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-        if (!isDaily || !dailyDate || (inInput && el !== editor?.getDOM())) return;
-        e.preventDefault();
-        const delta = e.key === 'ArrowLeft' ? -1 : 1;
-        void gotoDaily(shiftDate(dailyDate, delta));
-        return;
-      }
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
+  // All window-level keyboard shortcuts (? / Mod-/ / Mod-Shift-Z /
+  // Mod-Shift-R / Mod-Shift-P / Mod-Shift-←/→) live in a single
+  // installer. See $lib/notes/noteKeyboardShortcuts for the wiring
+  // contract; the page just plumbs current state via getters so
+  // the installer stays free of the page's reactive scope.
+  $effect(() =>
+    installNoteShortcuts({
+      viewModes,
+      getEditorDOM: () => editor?.getDOM?.(),
+      getIsDaily: () => isDaily,
+      getDailyDate: () => dailyDate,
+      hasNote: () => note !== null,
+      shiftDate,
+      gotoDaily,
+      openHelp: () => { helpOpen = true; },
+      openPresentation: () => { presentationOpen = true; }
+    })
+  );
 
   function jumpToLine(lineNum: number) {
     editor?.scrollToLine(lineNum);
