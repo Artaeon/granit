@@ -419,6 +419,10 @@
     error = '';
     draftRestored = false;
     if (!opts.force && lastLoadedPath === p) return;
+    // Reset breadcrumb-expand for the next note. Surgical-property
+    // autosave updates never swap note identity, so this only needs
+    // to run on real navigation — which is exactly when load() fires.
+    breadcrumbExpanded = false;
     // Reset the per-load draft watermark so the first keystroke on the
     // newly-opened note triggers a draft write. Without this, opening a
     // note whose body happens to equal the previous note's last drafted
@@ -1434,13 +1438,12 @@
   // recomputing the prefix in markup. When the user expands a
   // collapsed deep path we flip `breadcrumbExpanded` to render every
   // segment instead of first/…/last.
+  // Reset is folded into load() — the only path that swaps note
+  // identity. The previous version used a $effect tracking
+  // `note?.path`, which depended on the autosave path NEVER
+  // reassigning `note` (it doesn't — surgical mutation), an
+  // invariant that's brittle to encode as a reactive dep.
   let breadcrumbExpanded = $state(false);
-  $effect(() => {
-    // Reset on note change so the next note doesn't inherit the
-    // expanded state from a previous deep path.
-    void note?.path;
-    breadcrumbExpanded = false;
-  });
   interface Crumb { label: string; href: string }
   let allCrumbs = $derived.by<Crumb[]>(() => {
     if (!note) return [];
