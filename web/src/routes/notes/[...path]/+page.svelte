@@ -14,7 +14,6 @@
   import Drawer from '$lib/components/Drawer.svelte';
   import { toast } from '$lib/components/toast';
   import { scheduleFlashcards } from '$lib/util/scheduleFlashcards';
-  import { errorMessage } from '$lib/util/errorMessage';
   import { getDraft, setDraft, clearDraft, draftDivergesFromServer } from '$lib/notes/drafts';
   import {
     loadVisitedMap,
@@ -27,6 +26,7 @@
   import { openAIOverlay, aiOverlayPinned } from '$lib/stores/ai-overlay';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
+  import { offerAIChapterGeneration } from '$lib/notes/aiChapterGeneration';
   import PrintPreview from '$lib/notes/PrintPreview.svelte';
   import HistoryPanel from '$lib/notes/HistoryPanel.svelte';
   import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
@@ -905,11 +905,6 @@
     save: (o) => save(o)
   });
 
-  // True while api.generateChapter is in flight. Used by the wikilink
-  // → AI-chapter flow to gate against re-entry (double-clicks /
-  // different wikilink clicks during the 30+ second LLM round-trip).
-  // See offerAIChapterGenerationFor for the actual usage.
-  let chapterGenerating = $state(false);
   let printOpen = $state(false);
   let historyOpen = $state(false);
   // Focus mode (Mod-Shift-Z) — hides the app sidebar, info panel,
@@ -1052,83 +1047,19 @@
     // gets nested under <parent>/<slug>.md and the wikilink would
     // still resolve to nothing on the next click.
     const targetPath = title + '.md';
-    if (await offerAIChapterGenerationFor(title, targetPath)) {
+    const handled = await offerAIChapterGeneration({
+      parentPath: note?.path ?? '',
+      parentBody: body ?? '',
+      chapterTitle: title,
+      targetPath
+    });
+    if (handled) {
       // The offer either navigated us to the new note or stayed
       // put (user declined). Either way the navigation decision is
       // already made.
       return;
     }
     goto(`/notes/${encodeURIComponent(title + '.md')}${hash}`);
-  }
-
-  // offerAIChapterGenerationFor: shows a confirm dialog when the
-  // current note looks like an outline (3+ wikilinks AND >= 80 chars
-  // of prose body). On confirm, calls the generate-chapter endpoint
-  // with the current note as parent context + the explicit target
-  // path the wikilink resolves to, then navigates to the new note.
-  //
-  // Returns true when the navigation has been handled (success OR
-  // user chose to abort entirely); false to let the caller fall
-  // through to the standard "open empty note" path.
-  async function offerAIChapterGenerationFor(
-    chapterTitle: string,
-    targetPath: string
-  ): Promise<boolean> {
-    if (!note || !note.path) return false;
-    // Re-entry guard: chapter generation can take 30+ seconds. While
-    // it's in flight the wikilink stays clickable and the user might
-    // double-tap or click a different wikilink, kicking off a second
-    // generation. The persistent toast (sticky ttl=0) tells the user
-    // the request is alive; this flag prevents duplicate fires.
-    if (chapterGenerating) {
-      toast.info('Another chapter is still generating — please wait.');
-      return true;
-    }
-    const outline = body ?? '';
-    // Heuristic gate: parent must have at least 3 wikilinks (so it
-    // really is a TOC-like note) and >= 80 chars of non-fluff
-    // content. Below that the model has nothing to ground in and
-    // we'd produce a generic chapter anyway.
-    const wikilinkCount = (outline.match(/\[\[/g) ?? []).length;
-    if (wikilinkCount < 3 || outline.trim().length < 80) return false;
-    const ok = confirm(
-      `The note "${chapterTitle}" doesn't exist yet.\n\n` +
-      `Generate it with AI using this outline as context?\n\n` +
-      `(This typically takes 15-60 seconds — a banner will show progress.)`
-    );
-    if (!ok) {
-      // User explicitly declined — fall through to the standard
-      // "open empty" path so they can write the chapter manually.
-      return false;
-    }
-    chapterGenerating = true;
-    // Sticky toast (ttl=0) so the user sees ongoing progress instead
-    // of the previous fire-and-forget 4-second info that vanished
-    // mid-call, leaving them staring at a still page wondering if
-    // the app froze (the actual user complaint).
-    const toastId = toast.info(`Generating "${chapterTitle}"…`, { ttl: 0 });
-    try {
-      const r = await api.generateChapter({
-        parentPath: note.path,
-        chapterTitle,
-        targetPath, // ← critical: tells the server where to save
-        save: true
-      });
-      if (r.path) {
-        toast.success(`Wrote ${r.path}`);
-        goto(`/notes/${encodeURIComponent(r.path)}`);
-        return true;
-      }
-      // No path returned — server didn't save for some reason.
-      // Fall through to empty-note creation so the user isn't stranded.
-      return false;
-    } catch (e) {
-      toast.error('Generation failed: ' + errorMessage(e));
-      return false;
-    } finally {
-      toast.dismiss(toastId);
-      chapterGenerating = false;
-    }
   }
 
   $effect(() => {
