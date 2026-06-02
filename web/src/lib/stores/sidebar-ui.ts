@@ -20,21 +20,39 @@
 // the same source instead of passing state down and toggles back
 // up.
 //
-// Default-collapse everything except Daily. The original default
-// was "all expanded", which surfaced 25+ items at once and made
-// the sidebar feel like a phonebook. Daily stays expanded because
-// it's the morning/tasks/calendar cluster every user lives in. The
-// others get expanded as needed and the choice persists. Existing
-// users keep whatever they had.
+// Default-expand the work pillars (Plan + Life) and collapse the
+// reference pillars (Spiritual + Knowledge + AI). The earlier
+// default collapsed everything which hid Finance behind a header
+// — users on Today never saw it unless they remembered to click.
+// Surfacing Plan + Life trades a slightly longer rail for
+// discoverability of the user's primary work surfaces.
+//
+// Storage key is versioned: v2 carries the new default. v1 is
+// migrated on first read so users whose only state is the old
+// "collapse everything" default get the new layout without losing
+// any deliberate toggles. Users with a custom set keep what they
+// had — migration is "default-equivalence detection", not blind
+// overwrite.
 
 import { writable } from 'svelte/store';
 import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
 
-const COLLAPSED_KEY = 'granit.sidebar.collapsed';
+const COLLAPSED_KEY_V1 = 'granit.sidebar.collapsed';
+const COLLAPSED_KEY = 'granit.sidebar.collapsed.v2';
 const COMPACT_KEY = 'granit.sidebar.compact';
 const HIDDEN_KEY = 'granit.sidebar.hidden';
 
 const DEFAULT_COLLAPSED: Record<string, boolean> = {
+  spiritual: true,
+  knowledge: true,
+  ai: true
+};
+
+// Old default before the v2 reorg. Used purely for migration —
+// if the user's v1 state matches this exactly, they never
+// customized; replace with the v2 default. Includes 'daily' even
+// though the section is gone, since v1 users may have toggled it.
+const OLD_DEFAULT_COLLAPSED: Record<string, boolean> = {
   plan: true,
   spiritual: true,
   life: true,
@@ -42,7 +60,32 @@ const DEFAULT_COLLAPSED: Record<string, boolean> = {
   ai: true
 };
 
+function sameMap(a: Record<string, boolean>, b: Record<string, boolean>): boolean {
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  for (const k of ak) if (a[k] !== b[k]) return false;
+  return true;
+}
+
 function loadCollapsed(): Record<string, boolean> {
+  if (typeof window !== 'undefined' && window.localStorage?.getItem(COLLAPSED_KEY) === null) {
+    const v1 = window.localStorage.getItem(COLLAPSED_KEY_V1);
+    if (v1) {
+      try {
+        const parsed = JSON.parse(v1) as Record<string, boolean>;
+        // User customized — keep their map, but strip the dropped
+        // 'daily' key since the section no longer exists.
+        if (!sameMap(parsed, OLD_DEFAULT_COLLAPSED)) {
+          delete parsed.daily;
+          return parsed;
+        }
+        // User had the exact old default — fall through to new default.
+      } catch {
+        // Bad JSON — fall through to new default.
+      }
+    }
+  }
   return loadStored<Record<string, boolean>>(COLLAPSED_KEY, { ...DEFAULT_COLLAPSED });
 }
 
