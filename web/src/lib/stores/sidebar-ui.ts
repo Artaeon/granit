@@ -68,6 +68,14 @@ function sameMap(a: Record<string, boolean>, b: Record<string, boolean>): boolea
   return true;
 }
 
+function dropV1Key(): void {
+  try {
+    window.localStorage.removeItem(COLLAPSED_KEY_V1);
+  } catch {
+    // Quota / private-mode failures — harmless; v1 just lingers.
+  }
+}
+
 function loadCollapsed(): Record<string, boolean> {
   if (typeof window !== 'undefined' && window.localStorage?.getItem(COLLAPSED_KEY) === null) {
     const v1 = window.localStorage.getItem(COLLAPSED_KEY_V1);
@@ -78,6 +86,8 @@ function loadCollapsed(): Record<string, boolean> {
         // 'daily' key since the section no longer exists.
         if (!sameMap(parsed, OLD_DEFAULT_COLLAPSED)) {
           delete parsed.daily;
+          saveStored(COLLAPSED_KEY, parsed); // freeze v2 so we never re-migrate
+          dropV1Key();
           return parsed;
         }
         // User had the exact old default — fall through to new default.
@@ -85,6 +95,13 @@ function loadCollapsed(): Record<string, boolean> {
         // Bad JSON — fall through to new default.
       }
     }
+    // Either no v1 key, v1 matched the old default, or v1 was unparseable.
+    // Either way, write the new default to v2 and clean up v1 so this
+    // migration block becomes dead code on the next boot.
+    const fresh = { ...DEFAULT_COLLAPSED };
+    saveStored(COLLAPSED_KEY, fresh);
+    if (v1) dropV1Key();
+    return fresh;
   }
   return loadStored<Record<string, boolean>>(COLLAPSED_KEY, { ...DEFAULT_COLLAPSED });
 }
