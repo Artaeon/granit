@@ -69,6 +69,17 @@
   let rendering = $state(false);
   let renderGen = 0;
 
+  // Top-level parse-and-sanitize cache. Keyed by the raw body
+  // string; value is the post-purify HTML ready to assign to the
+  // template. Module-scope so a tab switch / route remount /
+  // unmount-then-mount on the same content paints instantly (no
+  // re-parse, no re-sanitize). LRU semantics via insertion order:
+  // a cache hit moves the entry to the tail, evictions take the
+  // head. Cap is intentionally small because markdown HTML for a
+  // big note is hundreds of KB.
+  const HTML_CACHE_CAP = 20;
+  const HTML_CACHE = new Map<string, string>();
+
   async function computeHtml(src: string): Promise<void> {
     const myGen = ++renderGen;
     if (!src) {
@@ -76,14 +87,10 @@
       rendering = false;
       return;
     }
-    // Module-scope LRU cache hit — survives component remount, so a
-    // tab switch back to a note with unchanged content paints
+    // Module-scope LRU cache hit (see HTML_CACHE declaration above):
+    // a tab switch back to a note with unchanged content paints
     // instantly instead of re-running marked + purify (~50–150ms on
-    // a 600-line doc). Cache is keyed by the raw body string; the
-    // value is the post-purify HTML. The Map's insertion order is
-    // exploited as the LRU ordering — delete-then-set on hit moves
-    // the entry to the tail, the head is evicted when we cross the
-    // cap. See HTML_CACHE_CAP below.
+    // a 600-line doc).
     const cached = HTML_CACHE.get(src);
     if (cached !== undefined) {
       HTML_CACHE.delete(src);
@@ -189,17 +196,6 @@
     getContainer: () => mermaidContainer,
     purify
   });
-
-  // Top-level parse-and-sanitize cache. Keyed by the raw body
-  // string; value is the post-purify HTML ready to assign to the
-  // template. Module-scope so a tab switch / route remount /
-  // unmount-then-mount on the same content paints instantly (no
-  // re-parse, no re-sanitize). LRU semantics via insertion order:
-  // a cache hit moves the entry to the tail, evictions take the
-  // head. Cap is intentionally small because markdown HTML for a
-  // big note is hundreds of KB — see computeHtml for the math.
-  const HTML_CACHE_CAP = 20;
-  const HTML_CACHE = new Map<string, string>();
 
   // Re-run after every html update. Two kinds of work happen here:
   //
