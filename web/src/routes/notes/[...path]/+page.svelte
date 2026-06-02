@@ -22,11 +22,11 @@
     rememberScroll,
     recallScroll
   } from '$lib/notes/noteHistory';
-  import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import { openAIOverlay, aiOverlayPinned } from '$lib/stores/ai-overlay';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { offerAIChapterGeneration } from '$lib/notes/aiChapterGeneration';
+  import { createViewModeController } from '$lib/notes/viewModes.svelte';
   import {
     parseDailyDate,
     shiftDate,
@@ -58,9 +58,18 @@
   import { recordOpenNote, updateOpenNoteScroll } from '$lib/stores/open-note';
   import { registerActiveEditor } from '$lib/stores/active-editor';
 
-  type ViewMode = 'edit' | 'preview' | 'split';
-  const VIEW_KEY = 'granit.note.viewMode';
-  let viewMode = $state<ViewMode>('edit');
+  // viewMode + focusMode + readingMode now live in a single
+  // controller. See $lib/notes/viewModes for the contract; the
+  // page reads ctrl.viewMode etc. via reactive getters and routes
+  // every mutation through ctrl methods so persistence + the
+  // prior-state snapshot logic for reading-mode stay together.
+  const viewModes = createViewModeController();
+  // Reactive aliases — template + downstream consumers read these
+  // by name. Assignments go through the controller methods
+  // (viewModes.toggleFocusMode, etc.).
+  let viewMode = $derived(viewModes.viewMode);
+  let focusMode = $derived(viewModes.focusMode);
+  let readingMode = $derived(viewModes.readingMode);
 
   // Viewport tracking for the rail/tree mount strategy. Tailwind's
   // lg breakpoint is 1024px (left tree threshold) and xl is 1280px
@@ -85,10 +94,7 @@
   let isXl = $state(
     typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches
   );
-  // Restore preference once at mount.
   onMount(() => {
-    const v = loadStoredString(VIEW_KEY, '');
-    if (v === 'edit' || v === 'preview' || v === 'split') viewMode = v;
     // Boot the pinned-notes store so the toolbar's pin star (and any
     // other pin-aware surface mounted after this) reflects the
     // server-authoritative list without each component re-fetching.
@@ -120,10 +126,6 @@
       remove(xlMql, onXl);
     };
   });
-  function setViewMode(m: ViewMode) {
-    viewMode = m;
-    saveStoredString(VIEW_KEY, m);
-  }
 
   let note = $state<Note | null>(null);
   let body = $state('');
@@ -924,49 +926,6 @@
 
   let printOpen = $state(false);
   let historyOpen = $state(false);
-  // Focus mode (Mod-Shift-Z) — hides the app sidebar, info panel,
-  // and toolbar so the editor takes the full viewport. Persisted to
-  // localStorage so the user's preference survives reloads.
-  const FOCUS_KEY = 'granit.note.focus';
-  let focusMode = $state(
-    typeof localStorage !== 'undefined' && localStorage.getItem(FOCUS_KEY) === '1'
-  );
-  $effect(() => {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(FOCUS_KEY, focusMode ? '1' : '0'); } catch {}
-  });
-
-  // Reading mode — distraction-free preview with serif typography
-  // and narrower max-width. Combo: viewMode='preview' + focusMode=true
-  // + a CSS class on the preview pane. Toggle via Mod-Shift-R; flip
-  // back to whatever the user had before. We remember the prior
-  // view + focus state so toggling reading off restores them.
-  const READING_KEY = 'granit.note.reading';
-  let readingMode = $state(
-    typeof localStorage !== 'undefined' && localStorage.getItem(READING_KEY) === '1'
-  );
-  let priorView: ViewMode | null = null;
-  let priorFocus: boolean | null = null;
-  function setReadingMode(on: boolean) {
-    if (on === readingMode) return;
-    if (on) {
-      // Snapshot the user's current state so we can restore it.
-      priorView = viewMode;
-      priorFocus = focusMode;
-      viewMode = 'preview';
-      focusMode = true;
-    } else if (priorView !== null) {
-      viewMode = priorView;
-      focusMode = priorFocus ?? false;
-      priorView = null;
-      priorFocus = null;
-    }
-    readingMode = on;
-    try { localStorage.setItem(READING_KEY, on ? '1' : '0'); } catch {}
-  }
-  function toggleReadingMode() {
-    setReadingMode(!readingMode);
-  }
   let helpOpen = $state(false);
   // Audio mode — read-aloud player for the current note. Browser
   // SpeechSynthesis only, no backend. Closed by default; opens via
@@ -1262,10 +1221,7 @@
       if (mod && e.key === '/' && !e.shiftKey && !e.altKey) {
         if (inInput) return;
         e.preventDefault();
-        const order: ViewMode[] = ['edit', 'split', 'preview'];
-        const idx = order.indexOf(viewMode);
-        const next = order[(idx + 1) % order.length];
-        setViewMode(next);
+        viewModes.cycleViewMode();
         return;
       }
 
@@ -1274,7 +1230,7 @@
       // collide with any default editor binding.
       if (mod && e.shiftKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
-        focusMode = !focusMode;
+        viewModes.toggleFocusMode();
         return;
       }
 
@@ -1284,7 +1240,7 @@
       // user's normal setup rather than clobbering it.
       if (mod && e.shiftKey && e.key.toLowerCase() === 'r') {
         e.preventDefault();
-        toggleReadingMode();
+        viewModes.toggleReadingMode();
         return;
       }
 
@@ -1588,7 +1544,7 @@
         onOpenTreeDrawer={() => (treeDrawerOpen = true)}
         onOpenInfoDrawer={() => (infoDrawerOpen = true)}
         onExpandBreadcrumbs={() => (breadcrumbExpanded = true)}
-        onSetViewMode={setViewMode}
+        onSetViewMode={viewModes.setViewMode}
         onTogglePin={togglePin}
         onGotoDaily={gotoDaily}
         onShiftDate={shiftDate}
@@ -1879,8 +1835,8 @@
     onOpenPrint={() => (printOpen = true)}
     onOpenPresentation={() => (presentationOpen = true)}
     onToggleAudio={() => (audioOpen = !audioOpen)}
-    onToggleReadingMode={toggleReadingMode}
-    onToggleFocusMode={() => (focusMode = !focusMode)}
+    onToggleReadingMode={viewModes.toggleReadingMode}
+    onToggleFocusMode={viewModes.toggleFocusMode}
     onScheduleFlashcards={runScheduleFlashcards}
     onOpenHelp={() => (helpOpen = true)}
   />
