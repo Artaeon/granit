@@ -576,6 +576,11 @@
   }
 
   let lastSavedAt = $state<number | null>(null);
+  // Single 1s tick that both relative-time labels (saveStatus in
+  // the header + lastSavedDisplay in the status bar) derive from.
+  // Previously each surface had its own setInterval (1s + 5s) plus
+  // a manual `void nowTick` keep-alive — now there's one interval
+  // and both labels stay reactive purely through $derived deps.
   let nowTick = $state(Date.now());
   let saveFailed = $state(false);
   // Consecutive save-failure counter. Resets to 0 on any success.
@@ -863,14 +868,15 @@
     }
   });
 
-  // Save status label that updates with the live tick.
+  // Save status label that updates with the live tick. nowTick is
+  // read implicitly via the subtraction so the derivation tracks
+  // it without a `void nowTick` dance.
   let saveStatus = $derived.by(() => {
-    void nowTick; // keep it reactive
     if (saving) return 'saving…';
     if (saveFailed && dirty) return 'retry?';
     if (dirty) return 'unsaved';
     if (!lastSavedAt) return 'saved';
-    const ago = Math.floor((Date.now() - lastSavedAt) / 1000);
+    const ago = Math.floor((nowTick - lastSavedAt) / 1000);
     if (ago < 4) return 'saved';
     if (ago < 60) return `saved ${ago}s ago`;
     if (ago < 3600) return `saved ${Math.floor(ago / 60)}m ago`;
@@ -1221,24 +1227,17 @@
   let cursorCol = $state(1);
   let cursorSelLen = $state(0);
 
-  // Last-saved relative time for the status bar. Re-derived every
-  // time `lastSavedAt` ticks; the status bar reads it directly.
-  let lastSavedDisplay = $state('—');
-  $effect(() => {
-    function tick() {
-      if (!lastSavedAt) {
-        lastSavedDisplay = '—';
-        return;
-      }
-      const sec = Math.round((Date.now() - lastSavedAt) / 1000);
-      if (sec < 5) lastSavedDisplay = 'just now';
-      else if (sec < 60) lastSavedDisplay = `${sec}s ago`;
-      else if (sec < 3600) lastSavedDisplay = `${Math.round(sec / 60)}m ago`;
-      else lastSavedDisplay = `${Math.round(sec / 3600)}h ago`;
-    }
-    tick();
-    const id = setInterval(tick, 5000);
-    return () => clearInterval(id);
+  // Last-saved relative time for the status bar. Shares the same
+  // 1s nowTick as saveStatus above — the previous 5s setInterval
+  // here was redundant; the actual displayed value only changes
+  // on second/minute/hour boundaries anyway.
+  let lastSavedDisplay = $derived.by(() => {
+    if (!lastSavedAt) return '—';
+    const sec = Math.round((nowTick - lastSavedAt) / 1000);
+    if (sec < 5) return 'just now';
+    if (sec < 60) return `${sec}s ago`;
+    if (sec < 3600) return `${Math.round(sec / 60)}m ago`;
+    return `${Math.round(sec / 3600)}h ago`;
   });
 
   // Mod-/ to cycle view modes (edit → split → preview → edit). A
