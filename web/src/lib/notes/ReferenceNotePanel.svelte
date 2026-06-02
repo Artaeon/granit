@@ -77,16 +77,21 @@
 
   // Restore previously-pinned reference on currentPath change. If
   // we change to a new note that doesn't have a saved ref, clear
-  // the panel rather than carry over the old one.
+  // the panel rather than carry over the old one. Both branches
+  // must invalidate any in-flight pickReference — without the gen
+  // bump in the clear branch, a slow fetch from the previous note's
+  // saved ref would resolve into the now-cleared panel.
   $effect(() => {
     if (!currentPath) return;
     const saved = loadStoredString(refKey(currentPath), '');
     if (saved && saved !== currentPath) {
       void pickReference(saved, /*persist*/ false);
     } else {
+      pickGen++;
       activePath = null;
       activeBody = '';
       activeTitle = '';
+      activeLoading = false;
     }
   });
 
