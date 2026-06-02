@@ -37,6 +37,7 @@ export const essentials: NavItem[] = [
   { href: '/tasks', label: 'Tasks', icon: 'tasks' },
   { href: '/calendar', label: 'Calendar', icon: 'calendar' },
   { href: '/notes', label: 'Notes', icon: 'notes' },
+  { href: '/habits', label: 'Habits', icon: 'habits', moduleId: 'habit_tracker' },
   { href: '/jots', label: 'Jots', icon: 'jots', moduleId: 'jots' },
   { href: '/morning', label: 'Morning', icon: 'morning', moduleId: 'morning' }
 ];
@@ -54,14 +55,13 @@ const HIDDEN_NAV: NavItem[] = [
   { href: '/review/maintenance', label: 'Maintenance', icon: 'wrench' }
 ];
 
+// Section order is work-first: the planning + life pillars sit
+// above reference/spiritual surfaces so a glance down the rail
+// hits the user's most-actioned groups before the reference
+// material. Habits used to be its own one-item "Daily" section
+// — it's now folded into essentials since one item never
+// justified its own header.
 export const sections: NavSection[] = [
-  {
-    id: 'daily',
-    label: 'Daily',
-    items: [
-      { href: '/habits', label: 'Habits', icon: 'habits', moduleId: 'habit_tracker' }
-    ]
-  },
   {
     id: 'plan',
     label: 'Plan',
@@ -71,16 +71,6 @@ export const sections: NavSection[] = [
       { href: '/deadlines', label: 'Deadlines', icon: 'deadline', moduleId: 'deadlines' },
       { href: '/projects', label: 'Projects', icon: 'projects', moduleId: 'projects' },
       { href: '/ventures', label: 'Ventures', icon: 'ventures', moduleId: 'ventures' }
-    ]
-  },
-  {
-    id: 'spiritual',
-    label: 'Spiritual',
-    items: [
-      { href: '/scripture', label: 'Scripture', icon: 'scripture', moduleId: 'scripture' },
-      { href: '/scripture/plans', label: 'Plans', icon: 'plans', moduleId: 'scripture' },
-      { href: '/prayer', label: 'Prayer', icon: 'prayer', moduleId: 'prayer' },
-      { href: '/roots', label: 'Roots', icon: 'roots', moduleId: 'roots' }
     ]
   },
   {
@@ -95,11 +85,22 @@ export const sections: NavSection[] = [
     ]
   },
   {
+    id: 'spiritual',
+    label: 'Spiritual',
+    items: [
+      { href: '/scripture', label: 'Scripture', icon: 'scripture', moduleId: 'scripture' },
+      { href: '/scripture/plans', label: 'Plans', icon: 'plans', moduleId: 'scripture' },
+      { href: '/prayer', label: 'Prayer', icon: 'prayer', moduleId: 'prayer' },
+      { href: '/roots', label: 'Roots', icon: 'roots', moduleId: 'roots' }
+    ]
+  },
+  {
     id: 'knowledge',
     label: 'Knowledge',
     items: [
       { href: '/notes/graph', label: 'Graph', icon: 'graph' },
       { href: '/search', label: 'Search', icon: 'search' },
+      { href: '/stats', label: 'Stats', icon: 'stats' },
       { href: '/books', label: 'Books', icon: 'books', moduleId: 'books' },
       { href: '/templates', label: 'Templates', icon: 'templates' },
       { href: '/objects', label: 'Objects', icon: 'objects', moduleId: 'objects' },
