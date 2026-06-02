@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { goto, beforeNavigate } from '$app/navigation';
   import { page } from '$app/stores';
-  import { api, type Note , todayISO } from '$lib/api';
+  import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import Editor from '$lib/editor/Editor.svelte';
   import NotesTree from '$lib/notes/NotesTree.svelte';
@@ -26,7 +26,7 @@
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import { openAIOverlay, aiOverlayPinned } from '$lib/stores/ai-overlay';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
-  import type { ExtractRequest } from '$lib/editor/extract-note';
+  import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import PrintPreview from '$lib/notes/PrintPreview.svelte';
   import HistoryPanel from '$lib/notes/HistoryPanel.svelte';
   import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
@@ -896,13 +896,15 @@
   });
 
   // ----- Extract-to-note (Mod-Shift-X) -----
-  // The Editor component fires onExtract with the selection + an
-  // apply() callback; we show the dialog, the user names the new note,
-  // and on confirm we POST /notes then call apply(title) which
-  // replaces the original selection with [[title]]. The apply is
-  // gated on the API call SUCCEEDING — if create fails, the source
-  // note isn't mutated and the user can retry without dead links.
-  let extractRequest = $state<ExtractRequest | null>(null);
+  // Controller owns the ExtractRequest state machine + create-then-
+  // replace flow. See $lib/notes/extractToNote for the contract.
+  // We pass getNote/save as closures so the controller stays free
+  // of route state while we keep autosave in the page.
+  const extractCtl = createExtractController({
+    getNote: () => note,
+    save: (o) => save(o)
+  });
+
   // True while api.generateChapter is in flight. Used by the wikilink
   // → AI-chapter flow to gate against re-entry (double-clicks /
   // different wikilink clicks during the 30+ second LLM round-trip).
@@ -1014,44 +1016,6 @@
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   });
-
-  function handleExtract(req: ExtractRequest) {
-    extractRequest = req;
-  }
-
-  function dismissExtract() {
-    extractRequest?.cancel();
-    extractRequest = null;
-  }
-
-  async function confirmExtract(args: { title: string; path: string; tags: string[] }) {
-    if (!extractRequest || !note) return;
-    const { title, path, tags } = args;
-    const sourceTitle = note.title || note.path;
-    const body = `${extractRequest.text.trim()}
-
----
-*Extracted from [[${sourceTitle}]] on ${todayISO()}*
-`;
-    // Frontmatter: title + extraction provenance + optional tags.
-    // Tags are written only when present so a no-tag extract doesn't
-    // get a `tags: []` line cluttering the file.
-    const frontmatter: Record<string, unknown> = {
-      title,
-      extracted_from: note.path,
-      extracted_at: new Date().toISOString()
-    };
-    if (tags.length > 0) frontmatter.tags = tags;
-    try {
-      await api.createNote({ path, frontmatter, body });
-    } catch (e) {
-      throw e instanceof Error ? e : new Error(String(e));
-    }
-    extractRequest.apply(title);
-    extractRequest = null;
-    await save({ silent: true });
-    toast.success(`Extracted to [[${title}]]`);
-  }
 
   async function navigateWikilink(target: string) {
     // Best-effort flush of any pending edit. We never block navigation on
@@ -1811,7 +1775,7 @@
            and its trigger registration in editorAIExtensions above. -->
       <div class="flex-1 min-h-0 p-2 sm:p-3">
         {#if viewMode === 'edit'}
-          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
+          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
         {:else if viewMode === 'preview'}
           <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4" bind:this={previewContainer}>
             <div class="max-w-3xl mx-auto">
@@ -1840,7 +1804,7 @@
         {:else}
           <!-- split (desktop only) -->
           <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
+            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
             <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block" bind:this={previewContainer}>
               {#if dayActivitySegments && dailyDate}
                 <MarkdownRenderer body={dayActivitySegments.before} onWikilink={navigateWikilink} />
@@ -1902,10 +1866,10 @@
      ExtractRequest is null when no extraction is in flight, so the
      dialog renders nothing. -->
 <ExtractToNoteDialog
-  request={extractRequest}
+  request={extractCtl.request}
   sourcePath={note?.path ?? ''}
-  onConfirm={confirmExtract}
-  onDismiss={dismissExtract}
+  onConfirm={extractCtl.confirm}
+  onDismiss={extractCtl.dismiss}
 />
 
 <!-- Print preview overlay. Renders nothing while closed; mounted at
