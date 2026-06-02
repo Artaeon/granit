@@ -76,7 +76,21 @@
   // panel when overriding header/footer for this one document.
   let configOpen = $state(false);
   let savingConfig = $state(false);
-  let configDirty = $state(false);
+  // Baseline snapshot of the last known-saved values. configDirty
+  // is derived by comparing the live state against this baseline,
+  // so writing into header/footer/mode during the onMount server
+  // load doesn't falsely mark the form as dirty (which it used to:
+  // the localStorage write-through effects flipped configDirty=true
+  // immediately after `loaded=true; configDirty=false`, because the
+  // server-load reassignment had changed the tracked values). Reset
+  // the baseline after every successful save so the "save" button
+  // disables again.
+  let baselineHeader = $state('');
+  let baselineFooter = $state('');
+  let baselineMode = $state<Mode>('standard');
+  let configDirty = $derived(
+    header !== baselineHeader || footer !== baselineFooter || mode !== baselineMode
+  );
 
   // "Sign document" — appends a tamper-detection footer to the
   // printed document with a SHA-256 of the body, generated-at
@@ -166,30 +180,35 @@
       // entirely to the localStorage values we already loaded.
     }
     loaded = true;
-    configDirty = false;
+    // Snapshot the post-load values as the baseline. configDirty
+    // is now `derived(header !== baselineHeader || …)`, so until
+    // the user edits a field the form reads as clean.
+    baselineHeader = header;
+    baselineFooter = footer;
+    baselineMode = mode;
   });
 
   // localStorage is the warm cache — every change writes through so
   // the next open paints instantly with the latest values, even
   // before the server confirms. Server save is explicit (button) to
   // avoid round-tripping on every keystroke.
+  // Pure write-through to localStorage. configDirty is derived from
+  // baseline comparison (above), so these effects no longer carry
+  // any dirty-tracking responsibility.
   $effect(() => {
     void header;
     if (!loaded) return;
     try { localStorage.setItem(HEADER_KEY, header); } catch {}
-    configDirty = true;
   });
   $effect(() => {
     void footer;
     if (!loaded) return;
     try { localStorage.setItem(FOOTER_KEY, footer); } catch {}
-    configDirty = true;
   });
   $effect(() => {
     void mode;
     if (!loaded) return;
     try { localStorage.setItem(MODE_KEY, mode); } catch {}
-    configDirty = true;
   });
   $effect(() => {
     void signatureOn;
@@ -278,7 +297,10 @@
     savingConfig = true;
     try {
       await api.putPrintConfig({ header, footer, mode });
-      configDirty = false;
+      // Re-snapshot baseline so configDirty derives back to false.
+      baselineHeader = header;
+      baselineFooter = footer;
+      baselineMode = mode;
       toast.success('Print defaults saved');
     } catch (e) {
       toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
