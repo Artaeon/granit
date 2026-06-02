@@ -27,6 +27,13 @@
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { offerAIChapterGeneration } from '$lib/notes/aiChapterGeneration';
+  import {
+    parseDailyDate,
+    shiftDate,
+    splitDayActivity,
+    formatRelativeDailyLabel,
+    todayLocalISO
+  } from '$lib/notes/dailyNote';
   import PrintPreview from '$lib/notes/PrintPreview.svelte';
   import HistoryPanel from '$lib/notes/HistoryPanel.svelte';
   import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
@@ -1396,53 +1403,18 @@
   }
 
   // ----- Daily-note navigation -----
-  // A note is "daily" when its basename is YYYY-MM-DD.md OR its frontmatter
-  // has type=daily. When daily, expose prev/next-day jumps in the header.
-  const dailyDateRe = /(\d{4}-\d{2}-\d{2})\.md$/;
-  let dailyDate = $derived.by(() => {
-    if (!note) return null;
-    const m = note.path.match(dailyDateRe);
-    if (m) return m[1];
-    if (note.frontmatter && (note.frontmatter as Record<string, unknown>).type === 'daily') {
-      const d = (note.frontmatter as Record<string, unknown>).date;
-      if (typeof d === 'string') return d.slice(0, 10);
-    }
-    return null;
-  });
+  // A note is "daily" when its basename is YYYY-MM-DD.md OR its
+  // frontmatter has type=daily. The detection + date math live in
+  // $lib/notes/dailyNote — here we just thread the derived values
+  // through the reactive graph. dayActivitySegments derives from
+  // bodyForPreview (the rAF-throttled mirror) so a fast typist on
+  // a daily note doesn't pay for indexOf + slice per keystroke.
+  let dailyDate = $derived(parseDailyDate(note));
   let isDaily = $derived(dailyDate !== null);
+  let dayActivitySegments = $derived(
+    isDaily ? splitDayActivity(bodyForPreview) : null
+  );
 
-  // Day-activity marker — the daily-note template seeds the line
-  // `<!-- granit:day-activity -->` under the `## Day overview`
-  // section so the renderer can substitute a live aggregated feed
-  // in place at preview time. The marker stays in the underlying
-  // markdown (so external editors round-trip it unchanged); the
-  // content is recomputed every render.
-  const DAY_ACTIVITY_MARKER = '<!-- granit:day-activity -->';
-  let dayActivitySegments = $derived.by(() => {
-    if (!isDaily || !dailyDate) return null;
-    // Derives from bodyForPreview (the rAF-throttled mirror) so a
-    // fast typist on a daily note doesn't pay for indexOf + two
-    // string slices per keystroke. The .before/.after segments
-    // flow into MarkdownRenderer, which only needs the throttled
-    // value anyway.
-    const src = bodyForPreview;
-    const idx = src.indexOf(DAY_ACTIVITY_MARKER);
-    if (idx < 0) return null;
-    return {
-      before: src.slice(0, idx),
-      after: src.slice(idx + DAY_ACTIVITY_MARKER.length)
-    };
-  });
-
-  function shiftDate(iso: string, days: number): string {
-    const [y, m, d] = iso.split('-').map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() + days);
-    const yy = dt.getFullYear();
-    const mm = String(dt.getMonth() + 1).padStart(2, '0');
-    const dd = String(dt.getDate()).padStart(2, '0');
-    return `${yy}-${mm}-${dd}`;
-  }
   async function gotoDaily(date: string) {
     if (dirty) void save({ silent: true });
     try {
@@ -1497,16 +1469,7 @@
 
   let dailyLabel = $derived.by(() => {
     if (!dailyDate) return '';
-    const today = new Date();
-    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const yesterday = shiftDate(todayIso, -1);
-    const tomorrow = shiftDate(todayIso, 1);
-    if (dailyDate === todayIso) return 'today';
-    if (dailyDate === yesterday) return 'yesterday';
-    if (dailyDate === tomorrow) return 'tomorrow';
-    const [y, m, d] = dailyDate.split('-').map(Number);
-    const dt = new Date(y, m - 1, d);
-    return dt.toLocaleDateString(undefined, { weekday: 'long' });
+    return formatRelativeDailyLabel(dailyDate, todayLocalISO());
   });
 </script>
 
