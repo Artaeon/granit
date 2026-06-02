@@ -15,13 +15,8 @@
   import { toast } from '$lib/components/toast';
   import { scheduleFlashcards } from '$lib/util/scheduleFlashcards';
   import { getDraft, setDraft, clearDraft, draftDivergesFromServer } from '$lib/notes/drafts';
-  import {
-    loadVisitedMap,
-    recordVisitedLine,
-    clearVisitedFor,
-    rememberScroll,
-    recallScroll
-  } from '$lib/notes/noteHistory';
+  import { rememberScroll, recallScroll } from '$lib/notes/noteHistory';
+  import { createPreviewScrollTracker } from '$lib/notes/previewScrollTracker.svelte';
   import { openAIOverlay, aiOverlayPinned } from '$lib/stores/ai-overlay';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
@@ -240,90 +235,30 @@
   // surface 'how far through am I'. Cheap, no polling.
   let readProgress = $state(0);
 
-  // Preview-pane scroll container. Bound below to the rendered
-  // preview viewport (when viewMode === 'preview' or 'split'). The
-  // Outline panel uses it as the IntersectionObserver root for
-  // active-heading tracking, and the per-heading checkpoint logic
-  // below treats every heading that scrolls past the top crosshair
-  // as "visited" (persisted per note path).
+  // Preview-pane scroll container. Bound via bind:this below — must
+  // stay an lvalue here. Outline uses it as the IntersectionObserver
+  // root for active-heading tracking; the previewScrollTracker uses
+  // it for the heading-checkpoint walk + progress bar.
   let previewContainer = $state<HTMLElement | null>(null);
-  // Active heading line in the preview, surfaced upward by Outline.
-  // We don't strictly need it on the page, but it lets us drive the
-  // visited-checkpoint logic from a single source of truth: every
-  // heading the reader passes through with a downward scroll gets
-  // ticked as visited.
-  // Visited-section tracking — persisted per note path under
-  // granit.note.visited. See $lib/notes/noteHistory for the cap
-  // logic + LRU trim. The local Set mirrors the on-disk slice for
-  // the current note so render reads are O(1).
-  let visitedHeadings = $state<Set<number>>(new Set());
-  $effect(() => {
-    const p = note?.path;
-    if (!p) { visitedHeadings = new Set(); return; }
-    visitedHeadings = new Set(loadVisitedMap()[p] ?? []);
-  });
-  function markVisited(line: number) {
-    if (!note) return;
-    if (visitedHeadings.has(line)) return;
-    visitedHeadings = recordVisitedLine(note.path, line);
-  }
+
+  // Scroll-side state (visited headings + preview progress) lives
+  // in the tracker. See $lib/notes/previewScrollTracker for the
+  // attach() + loadFor() contract. We wire two thin effects: load
+  // the visited set when the active note path changes, attach the
+  // scroll listener while a container ref exists.
+  const previewScroll = createPreviewScrollTracker();
+  let visitedHeadings = $derived(previewScroll.visitedHeadings);
+  let previewProgress = $derived(previewScroll.previewProgress);
   function resetVisited() {
-    if (!note) return;
-    visitedHeadings = new Set();
-    clearVisitedFor(note.path);
+    previewScroll.resetVisited(note?.path ?? null);
   }
-  // Preview-pane reading progress (0..1). Different surface from the
-  // editor's `readProgress` because the user can scroll preview
-  // independently in split mode. Also fuels the heading-checkpoint
-  // marker — every time the preview scrolls, we tick any heading
-  // whose top crossed above the viewport's top quarter.
-  let previewProgress = $state(0);
-  let previewProgressRaf = 0;
-  function onPreviewScroll() {
-    if (!previewContainer) return;
-    if (previewProgressRaf) return;
-    previewProgressRaf = requestAnimationFrame(() => {
-      previewProgressRaf = 0;
-      const c = previewContainer!;
-      const denom = Math.max(1, c.scrollHeight - c.clientHeight);
-      previewProgress = Math.max(0, Math.min(1, c.scrollTop / denom));
-      // Tick every heading whose top is above the viewport's top
-      // quarter (matches Outline's active-heading bias).
-      //
-      // Two layout-cost optimisations on top of the rAF coalescer:
-      //   1. Skip headings already in visitedHeadings — avoids the
-      //      getBoundingClientRect call for lines we've already
-      //      recorded. On a long doc the visited set grows
-      //      monotonically as the user reads down, so most scroll
-      //      frames touch ZERO new reads.
-      //   2. Break on the first heading below the cutoff. Headings
-      //      are in document order so once we see one with top >
-      //      cutoff, every later one is also below — no point
-      //      forcing N-k more layout flushes.
-      const cTop = c.getBoundingClientRect().top;
-      const cutoff = cTop + c.clientHeight * 0.25;
-      const els = c.querySelectorAll<HTMLElement>('[data-heading-line]');
-      for (const el of els) {
-        const ln = parseInt(el.dataset.headingLine ?? '', 10);
-        if (!Number.isFinite(ln)) continue;
-        if (visitedHeadings.has(ln)) continue;
-        const top = el.getBoundingClientRect().top;
-        if (top > cutoff) break;
-        markVisited(ln);
-      }
-    });
-  }
-  // Re-attach the scroll listener whenever the container ref or
-  // view mode changes. Using onPreviewScroll directly so the rAF
-  // throttle stays per-handler.
+  $effect(() => {
+    previewScroll.loadFor(note?.path ?? null);
+  });
   $effect(() => {
     const c = previewContainer;
     if (!c) return;
-    c.addEventListener('scroll', onPreviewScroll, { passive: true });
-    // Initial tick so a doc that loads with the user at top still
-    // marks the first heading visible.
-    onPreviewScroll();
-    return () => c.removeEventListener('scroll', onPreviewScroll);
+    return previewScroll.attach(c, () => note?.path ?? null);
   });
   let editor:
     | {
