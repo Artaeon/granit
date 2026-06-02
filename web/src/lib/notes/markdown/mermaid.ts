@@ -67,10 +67,21 @@ export async function renderMermaidBlocks(container: HTMLElement | undefined): P
     fontFamily: 'inherit'
   });
   for (const host of hosts) {
+    // Detachment guard: the await inside this loop yields the event
+    // loop. If a body update lands during the yield (common during
+    // streaming AI responses where the renderer's html effect fires
+    // per-token), MarkdownRenderer's {@html} replaces the whole
+    // container's children before the await resolves. The `host` ref
+    // we captured is now disconnected; replaceWith on a node with no
+    // parent throws and would leave half-rendered diagrams.
+    // The next render pass (already scheduled) walks the fresh
+    // hosts, so skipping detached ones is safe.
+    if (!host.isConnected) continue;
     const source = host.getAttribute('data-mermaid-source') ?? '';
     const id = `mermaid-${++mermaidIdCounter}`;
     try {
       const { svg, bindFunctions } = await mermaid.render(id, source);
+      if (!host.isConnected) continue;
       const wrapper = document.createElement('div');
       wrapper.className = 'mermaid-rendered';
       wrapper.innerHTML = svg;
@@ -80,6 +91,7 @@ export async function renderMermaidBlocks(container: HTMLElement | undefined): P
       bindFunctions?.(wrapper);
       host.replaceWith(wrapper);
     } catch (err) {
+      if (!host.isConnected) continue;
       // Render failure → keep the source visible and surface a
       // small error caption. Better than a silent blank.
       const msg = errorMessage(err);
