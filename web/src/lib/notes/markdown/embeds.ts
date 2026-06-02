@@ -82,10 +82,17 @@ export function createEmbedHydrator(opts: EmbedHydratorOptions) {
           // Recursive render via the same transforms pipeline. Each
           // call gets its own TransformState so the inner render
           // can't trample the outer's footnote refs / diagram caches.
+          //
+          // CRITICAL: async parse. The previous { async: false }
+          // synchronously blocked the main thread per embed for the
+          // entire marked.parse + DOMPurify pass — hundreds of ms
+          // each on a large embedded note, serialized inside the
+          // `for` loop. Clicking "read view" on a note with even one
+          // big embed froze the UI; the user-visible "freeze when I
+          // click read view" bug we kept chasing was here.
           const { preprocessed, state } = preprocess(stripped);
-          bodyHtml = opts.purify(
-            postprocess(marked.parse(preprocessed, { async: false }) as string, state, stripped)
-          );
+          const rawHtml = (await marked.parse(preprocessed, { async: true })) as string;
+          bodyHtml = opts.purify(postprocess(rawHtml, state, stripped));
           embedCache.set(target, bodyHtml);
         }
         if (!bodyHtml) continue;
