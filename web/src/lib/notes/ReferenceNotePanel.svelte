@@ -108,8 +108,20 @@
     return out.slice(0, 30);
   });
 
+  // Generation counter. Every pickReference call captures the bump;
+  // after each await it bails if the captured gen no longer matches
+  // the current one. Without this, a rapid second pick (or a
+  // currentPath-driven auto-restore that fires while a wikilink-
+  // driven pick is still in flight) lets the LATER-arriving fetch
+  // clobber the more recent selection's activeBody/activeTitle.
+  // Compare with the cmpAbort pattern used by compareNotes below;
+  // we use a counter rather than an AbortController because
+  // api.getNote doesn't accept a signal.
+  let pickGen = 0;
+
   async function pickReference(path: string, persist = true) {
     if (!path) return;
+    const myGen = ++pickGen;
     activePath = path;
     activeError = '';
     if (persist && currentPath) saveStoredString(refKey(currentPath), path);
@@ -127,26 +139,34 @@
     activeTitle = '';
     try {
       const note = await api.getNote(path);
+      if (myGen !== pickGen) return; // newer pick already in flight
       activeBody = note.body ?? '';
       activeTitle = note.title || path.replace(/\.md$/, '');
-      // LRU insert — evict oldest if > 5.
+      // LRU insert — evict oldest if > 5. Safe to cache even on a
+      // superseded request: the body is correct for `path`, just
+      // not what the user is looking at right now.
       bodyCache.set(path, { body: activeBody, title: activeTitle });
       if (bodyCache.size > 5) {
         const oldest = bodyCache.keys().next().value;
         if (oldest) bodyCache.delete(oldest);
       }
     } catch (e) {
+      if (myGen !== pickGen) return;
       activeError = e instanceof Error ? e.message : String(e);
     } finally {
-      activeLoading = false;
+      if (myGen === pickGen) activeLoading = false;
     }
   }
 
   function clearReference() {
+    // Bump gen so an in-flight pickReference can't write its result
+    // onto a cleared panel.
+    pickGen++;
     activePath = null;
     activeBody = '';
     activeTitle = '';
     activeError = '';
+    activeLoading = false;
     if (currentPath) saveStoredString(refKey(currentPath), undefined);
   }
 
