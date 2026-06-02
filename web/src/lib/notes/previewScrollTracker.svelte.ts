@@ -107,10 +107,16 @@ export function createPreviewScrollTracker(): PreviewScrollTracker {
     };
 
     container.addEventListener('scroll', onScroll, { passive: true });
-    onScroll(); // initial tick for an at-top load
+    // Defer the initial tick by one frame so layout has settled. The
+    // immediate variant thrashed when re-toggling preview onto a
+    // cache-hit body: html was already in the DOM, so onScroll's
+    // getBoundingClientRect walk fired in the same tick as the
+    // {@html} mount.
+    const initRaf = requestAnimationFrame(onScroll);
     return () => {
       container.removeEventListener('scroll', onScroll);
       if (raf) cancelAnimationFrame(raf);
+      cancelAnimationFrame(initRaf);
     };
   }
 
