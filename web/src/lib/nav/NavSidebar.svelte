@@ -305,33 +305,23 @@
       {/if}
     {/if}
 
-    <!-- Today sits at the absolute top of the essentials tier, no
-         header since it's the always-on home. Rendered with the
-         same prominent styling as the other essentials so the
-         visual hierarchy reads cleanly: home + 5 daily-core items
-         + the section list below. -->
+    <!-- Today + daily-core essentials. No section header (they ARE
+         the headline). Position alone signals priority — earlier
+         we also bumped the text size, but that made Tasks/Notes
+         feel oversized next to the section items below. A small
+         visual separator drops below the group to mark the
+         transition into the section list. Pin action suppressed:
+         they're already top-tier, pinning would just duplicate. -->
     <NavItem
       item={today}
       {isCompact}
-      tier="essential"
       showPinAction={false}
       onNavigate={navigate}
     />
-
-    <!-- Essentials — Tier 1. The 5 daily-core surfaces (tasks,
-         calendar, notes, jots, morning) rendered with heavier visual
-         weight than the sections below so the eye lands on them
-         first. No section header (they ARE the headline). A small
-         visual separator drops below the group to mark the
-         transition into Tier 2. -->
     {#each essentialItems as item (item.href)}
-      <!-- Pin action suppressed on essentials: they're already
-           top-tier, a "pin to top" toggle would be tautological
-           and the duplicate Pinned-row would be visual noise. -->
       <NavItem
         {item}
         {isCompact}
-        tier="essential"
         showPinAction={false}
         onNavigate={navigate}
       />
