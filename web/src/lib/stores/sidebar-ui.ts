@@ -27,18 +27,27 @@
 // Surfacing Plan + Life trades a slightly longer rail for
 // discoverability of the user's primary work surfaces.
 //
-// Storage key is versioned: v2 carries the new default. v1 is
-// migrated on first read so users whose only state is the old
-// "collapse everything" default get the new layout without losing
-// any deliberate toggles. Users with a custom set keep what they
-// had — migration is "default-equivalence detection", not blind
-// overwrite.
+// Storage key is versioned. v3 carries the current default.
+// v1 + v2 are best-effort cleaned up on first read so the
+// localStorage view stays tidy. We DO NOT attempt to migrate
+// old values into the new key — the previous attempt (v2's
+// "preserve customizations from v1") left users on intermediate
+// layouts stuck on whatever was written when an earlier commit
+// set defaults that no longer apply. Defaults change rarely;
+// bumping the version is the simplest correct mechanism.
+//
+// If a user wants to force the current default at any time:
+//   localStorage.removeItem('granit.sidebar.collapsed.v3')
+//   location.reload()
 
 import { writable } from 'svelte/store';
 import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
 
-const COLLAPSED_KEY_V1 = 'granit.sidebar.collapsed';
-const COLLAPSED_KEY = 'granit.sidebar.collapsed.v2';
+const COLLAPSED_KEY = 'granit.sidebar.collapsed.v3';
+const LEGACY_COLLAPSED_KEYS = [
+  'granit.sidebar.collapsed', // v1
+  'granit.sidebar.collapsed.v2'
+];
 const COMPACT_KEY = 'granit.sidebar.compact';
 const HIDDEN_KEY = 'granit.sidebar.hidden';
 
@@ -48,59 +57,26 @@ const DEFAULT_COLLAPSED: Record<string, boolean> = {
   ai: true
 };
 
-// Old default before the v2 reorg. Used purely for migration —
-// if the user's v1 state matches this exactly, they never
-// customized; replace with the v2 default. Includes 'daily' even
-// though the section is gone, since v1 users may have toggled it.
-const OLD_DEFAULT_COLLAPSED: Record<string, boolean> = {
-  plan: true,
-  spiritual: true,
-  life: true,
-  knowledge: true,
-  ai: true
-};
-
-function sameMap(a: Record<string, boolean>, b: Record<string, boolean>): boolean {
-  const ak = Object.keys(a);
-  const bk = Object.keys(b);
-  if (ak.length !== bk.length) return false;
-  for (const k of ak) if (a[k] !== b[k]) return false;
-  return true;
-}
-
-function dropV1Key(): void {
-  try {
-    window.localStorage.removeItem(COLLAPSED_KEY_V1);
-  } catch {
-    // Quota / private-mode failures — harmless; v1 just lingers.
+function dropLegacyKeys(): void {
+  if (typeof window === 'undefined') return;
+  for (const k of LEGACY_COLLAPSED_KEYS) {
+    try {
+      window.localStorage.removeItem(k);
+    } catch {
+      // Quota / private-mode failures — harmless; the keys just
+      // linger as unused JSON.
+    }
   }
 }
 
 function loadCollapsed(): Record<string, boolean> {
   if (typeof window !== 'undefined' && window.localStorage?.getItem(COLLAPSED_KEY) === null) {
-    const v1 = window.localStorage.getItem(COLLAPSED_KEY_V1);
-    if (v1) {
-      try {
-        const parsed = JSON.parse(v1) as Record<string, boolean>;
-        // User customized — keep their map, but strip the dropped
-        // 'daily' key since the section no longer exists.
-        if (!sameMap(parsed, OLD_DEFAULT_COLLAPSED)) {
-          delete parsed.daily;
-          saveStored(COLLAPSED_KEY, parsed); // freeze v2 so we never re-migrate
-          dropV1Key();
-          return parsed;
-        }
-        // User had the exact old default — fall through to new default.
-      } catch {
-        // Bad JSON — fall through to new default.
-      }
-    }
-    // Either no v1 key, v1 matched the old default, or v1 was unparseable.
-    // Either way, write the new default to v2 and clean up v1 so this
-    // migration block becomes dead code on the next boot.
+    // Fresh install (or version bump). Write the current default
+    // and clear out any stale legacy keys so we don't carry forward
+    // intermediate-commit state.
     const fresh = { ...DEFAULT_COLLAPSED };
     saveStored(COLLAPSED_KEY, fresh);
-    if (v1) dropV1Key();
+    dropLegacyKeys();
     return fresh;
   }
   return loadStored<Record<string, boolean>>(COLLAPSED_KEY, { ...DEFAULT_COLLAPSED });
