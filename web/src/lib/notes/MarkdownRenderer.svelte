@@ -69,14 +69,20 @@
   let rendering = $state(false);
   let renderGen = 0;
 
-  // Top-level parse-and-sanitize cache. Keyed by the raw body
-  // string; value is the post-purify HTML ready to assign to the
-  // template. Module-scope so a tab switch / route remount /
-  // unmount-then-mount on the same content paints instantly (no
-  // re-parse, no re-sanitize). LRU semantics via insertion order:
-  // a cache hit moves the entry to the tail, evictions take the
-  // head. Cap is intentionally small because markdown HTML for a
-  // big note is hundreds of KB.
+  // Parse-and-sanitize cache, INSTANCE-scope. Keyed by the raw body
+  // string; value is the post-purify HTML. LRU semantics via Map
+  // insertion order — a hit re-inserts to the tail, evictions take
+  // the head.
+  //
+  // This used to be module-scope (shared across every renderer in
+  // the app). That caused a freeze under a real workload: a streaming
+  // AI summary renders a fresh body string every rAF tick — 60+
+  // insertions/sec — turning the 20-entry cache over in under a
+  // second and evicting the user's preview cache on every AI stream.
+  // The preview was forced to re-parse on its next paint while the
+  // summary stream was still active. Instance-scope keeps each
+  // renderer's cache isolated; cross-tab/cross-mount instant repaint
+  // is lost but that was nice-to-have, not a correctness path.
   const HTML_CACHE_CAP = 20;
   const HTML_CACHE = new Map<string, string>();
 
