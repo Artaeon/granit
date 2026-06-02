@@ -3,7 +3,7 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { modulesStore } from '$lib/stores/modules';
-  import { sections as navSections, type NavItem } from '$lib/nav/config';
+  import { sections as navSections, essentials as navEssentials, type NavItem } from '$lib/nav/config';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
 
@@ -64,9 +64,17 @@
   };
   type SectionView = { id: string; label: string; rows: Row[] };
 
+  // Essentials is rendered as the first synthetic section so the
+  // Habits / Jots / Morning module toggles appear with their nav
+  // peers instead of getting orphaned into "Other".
+  const ALL_GROUPS = [
+    { id: 'essentials', label: 'Essentials', items: navEssentials },
+    ...navSections
+  ];
+
   let view = $derived.by<SectionView[]>(() => {
     const moduleById = new Map($modulesStore.modules.map((m) => [m.id, m]));
-    return navSections.map((s) => ({
+    return ALL_GROUPS.map((s) => ({
       id: s.id,
       label: s.label,
       rows: s.items.map((item): Row => {
@@ -206,7 +214,7 @@
          (e.g. a backend-only module, or a future module registered
          after a release). Without this, a new module appearing in
          the API response would be invisible to the user. -->
-    {@const navModuleIds = new Set(navSections.flatMap((s) => s.items.map((i) => i.moduleId).filter(Boolean)))}
+    {@const navModuleIds = new Set(ALL_GROUPS.flatMap((s) => s.items.map((i) => i.moduleId).filter(Boolean)))}
     {@const orphans = $modulesStore.modules.filter((m) => !navModuleIds.has(m.id))}
     {#if orphans.length > 0}
       <section class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4 mb-3">
