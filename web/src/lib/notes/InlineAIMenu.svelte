@@ -79,6 +79,18 @@
   let historyKey = $derived(`granit.ai.history.${notePath}`);
   let history = $state<string[]>(loadHistory());
   let historyIdx = $state(-1); // -1 = live input; 0 = most recent
+  // Keep `history` in sync with `historyKey` if the parent passes a new
+  // notePath without remounting the menu. Without this, the displayed
+  // recents would be note A's while pushHistory writes to note B's
+  // bucket (loadHistory re-reads historyKey on every call). Cheap —
+  // the menu's lifecycle is short and historyKey only changes when
+  // the parent navigates between notes while the menu is open, which
+  // is rare but real.
+  $effect(() => {
+    void historyKey;
+    history = loadHistory();
+    historyIdx = -1;
+  });
 
   // Cross-source recents — prompts the user wrote in the global chat
   // overlay that this note's per-note history hasn't already seen.
@@ -116,8 +128,15 @@
     try {
       const lib = await api.getAIPrompts();
       libraryAll = lib.entries ?? [];
-    } catch {
+    } catch (e) {
       libraryAll = [];
+      // Library is a discoverability surface — a silent empty list
+      // looks like "user has no saved prompts" rather than "fetch
+      // failed". A console.warn at least leaves breadcrumbs for the
+      // user when they ask why their library is gone. Same shape as
+      // the inline-ai stream error path.
+      // eslint-disable-next-line no-console
+      console.warn('inline-ai library:', e instanceof Error ? e.message : String(e));
     }
   }
 
