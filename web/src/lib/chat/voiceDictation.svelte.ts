@@ -57,7 +57,6 @@ export function createVoiceDictation(opts: VoiceDictationOptions): VoiceDictatio
     if (!r) return;
     const cur = opts.getInput();
     voiceBaseline = cur.endsWith(' ') || cur.length === 0 ? cur : cur + ' ';
-    recognition = r;
     r.continuous = true;
     r.interimResults = true;
     r.lang = navigator.language || 'en-US';
@@ -85,11 +84,18 @@ export function createVoiceDictation(opts: VoiceDictationOptions): VoiceDictatio
     };
     try {
       r.start();
+      // Only adopt the recognition instance after start() succeeds.
+      // If permission is denied / device busy / etc., start() throws
+      // — keeping the assignment inside the try means a failed start
+      // doesn't leave us holding a dangling recognition reference
+      // that a future onend handler could still see and try to restart.
+      recognition = r;
       recording = true;
     } catch {
       // Permission denied / device busy / etc. — drop silently;
       // recording stays false so the button label doesn't get
-      // stuck mid-toggle.
+      // stuck mid-toggle. recognition stays null so stop() / onend
+      // are no-ops.
     }
   }
 
