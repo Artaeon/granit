@@ -134,8 +134,26 @@
     }
   }
 
+  // Confirmation gate. Restore is a destructive action — the live
+  // body gets overwritten. The pre-restore body IS snapshotted
+  // automatically (the backend's restore handler self-snaps before
+  // overwrite), so the action is reversible — but the user has no
+  // way to know that without a prompt. A single Esc/Cancel exits;
+  // the confirm button issues the actual restore.
+  let confirmingRestore = $state(false);
+
+  function requestRestore() {
+    if (!selectedTs || restoring) return;
+    confirmingRestore = true;
+  }
+
+  function cancelRestore() {
+    confirmingRestore = false;
+  }
+
   async function restoreSelected() {
     if (!selectedTs || restoring) return;
+    confirmingRestore = false;
     restoring = true;
     try {
       const restored = await api.restoreHistoryVersion(notePath, selectedTs);
@@ -178,6 +196,13 @@
     if (!open) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
+        // Esc inside the confirm prompt cancels the prompt, not the
+        // whole panel — so a user mid-double-take can back out
+        // without losing their selection state.
+        if (confirmingRestore) {
+          cancelRestore();
+          return;
+        }
         close();
         return;
       }
@@ -239,7 +264,7 @@
       {/if}
       <div class="flex-1"></div>
       <button
-        onclick={restoreSelected}
+        onclick={requestRestore}
         disabled={!selectedTs || restoring}
         class="px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded text-sm font-medium bg-primary text-on-primary disabled:opacity-50"
         title="Replace the current note with this version"
@@ -365,6 +390,40 @@
             </div>
           </section>
         {/if}
+      </div>
+    {/if}
+
+    {#if confirmingRestore}
+      <!-- Restore confirmation. Renders inside the history dialog so
+           the keyboard nav (Esc) still bubbles to the parent close
+           handler. Backdrop is a sibling element with pointer-events
+           so a click outside the prompt dismisses without restoring. -->
+      <div
+        class="absolute inset-0 z-10 flex items-center justify-center bg-base/70 backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Confirm restore"
+        onclick={(e) => { if (e.target === e.currentTarget) cancelRestore(); }}
+      >
+        <div class="bg-surface0 border border-surface1 rounded-lg shadow-lg p-5 max-w-sm w-full mx-4">
+          <h3 class="text-base font-semibold text-text mb-2">Overwrite current note?</h3>
+          <p class="text-sm text-subtext leading-relaxed mb-4">
+            Replaces your current body with the selected version. Your
+            current body is auto-backed-up first, so you can restore it
+            from this list afterwards.
+          </p>
+          <div class="flex items-center justify-end gap-2">
+            <button
+              onclick={cancelRestore}
+              class="px-3 py-1.5 rounded text-sm text-subtext hover:text-text hover:bg-surface1"
+            >Cancel</button>
+            <button
+              onclick={restoreSelected}
+              autofocus
+              class="px-3 py-1.5 rounded text-sm font-medium bg-primary text-on-primary"
+            >Restore</button>
+          </div>
+        </div>
       </div>
     {/if}
   </div>
