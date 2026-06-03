@@ -1139,14 +1139,6 @@
   //    Without coalescing, we'd schedule two `load()` calls and
   //    flash the editor twice. Same trailing-edge pattern that
   //    NotesTree.svelte adopted in 8cf45ba.
-  // Live-body read helper. Reads CodeMirror's state.doc directly so
-  // the "is the user currently typing?" check is immune to the
-  // Svelte microtask lag on bind:value. Falls back to `body` only
-  // when the editor isn't mounted (preview-only view) — same shape
-  // as before, just with the right truth source.
-  function liveBody(): string {
-    return editor?.getContent?.() ?? body;
-  }
   let wsReloadTimer: ReturnType<typeof setTimeout> | null = null;
   function scheduleWsReload(p: string) {
     if (wsReloadTimer) clearTimeout(wsReloadTimer);
@@ -1154,8 +1146,12 @@
       wsReloadTimer = null;
       // Re-evaluate the guards at the moment of reload — the user
       // could have started typing during the coalesce window.
+      // `editor?.getContent?.() ?? body` reads CodeMirror's state.doc
+      // directly so the "is the user currently typing?" check is
+      // immune to the Svelte microtask lag on bind:value (same shape
+      // as every other liveness check in this file).
       if (!note || note.path !== p) return;
-      if (liveBody() !== prev || saving) return;
+      if ((editor?.getContent?.() ?? body) !== prev || saving) return;
       if (lastSavedAt && Date.now() - lastSavedAt < OWN_SAVE_QUIET_MS) return;
       void load(p, { force: true });
     }, WS_RELOAD_COALESCE_MS);
@@ -1164,11 +1160,10 @@
     const off = onWsEvent((ev) => {
       if (ev.type !== 'note.changed') return;
       if (!note || ev.path !== note.path) return;
-      // Cheap synchronous-only guards here; the timed evaluation
-      // re-checks the rest at fire time. liveBody() reads the
-      // editor's doc directly so in-flight typing that hasn't
-      // propagated to `body` yet still suppresses the reload.
-      if (liveBody() !== prev || saving) return;
+      // Cheap synchronous-only guards; the timed evaluation re-checks
+      // the rest at fire time. The editor-content read suppresses
+      // reloads while in-flight typing hasn't propagated to `body`.
+      if ((editor?.getContent?.() ?? body) !== prev || saving) return;
       if (lastSavedAt && Date.now() - lastSavedAt < OWN_SAVE_QUIET_MS) return;
       scheduleWsReload(note.path);
     });
