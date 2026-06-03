@@ -181,14 +181,18 @@ func commitSnapshotToManifest(dir string, snap Snapshot) error {
 		// Rebuild from scan if the manifest was missing or corrupt.
 		// This is the upgrade path for existing notes that predate
 		// the manifest, and the recovery path for any time the file
-		// gets clobbered.
+		// gets clobbered. The scan READS THE NEW SNAPSHOT FILE THAT
+		// SNAP JUST WROTE, so the result already contains `snap` at
+		// the head — no prepend below.
 		m, err = rebuildManifestFromDir(dir)
 		if err != nil {
 			return err
 		}
+	} else {
+		// Manifest loaded cleanly — it does NOT contain the new
+		// snapshot yet, so prepend it (the list is newest-first).
+		m.Snapshots = append([]Snapshot{snap}, m.Snapshots...)
 	}
-	// Prepend the new snapshot (the list is newest-first).
-	m.Snapshots = append([]Snapshot{snap}, m.Snapshots...)
 	// Retention: evict the oldest entries beyond the cap and delete
 	// their underlying files. The cap is per-note; evict from the
 	// tail of the slice (oldest end).
