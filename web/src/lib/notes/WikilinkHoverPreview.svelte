@@ -18,6 +18,7 @@
 -->
 <script lang="ts" module>
 	import { api } from '$lib/api';
+	import { onWsEvent } from '$lib/ws';
 	import { extractFirstParagraph, stripInlineMarkdown } from './wikilinkPreview';
 
 	// Module-scoped promise cache. Lives for the duration of the page
@@ -31,6 +32,29 @@
 		body: string; // already stripped of frontmatter + capped
 	}
 	const cache = new Map<string, Promise<PreviewData | null>>();
+
+	// Vault edits invalidate the cache. Previously a successful resolve
+	// stayed cached forever, so editing the previewed note's body and
+	// re-hovering still showed the old paragraph; a failed resolve
+	// (transient 500, target didn't exist yet) stayed cached as null,
+	// so creating the target later kept showing "No note matches"
+	// until full page reload. Module-load subscription fires once per
+	// session; the listener is bounded and cheap.
+	if (typeof window !== 'undefined') {
+		onWsEvent((ev) => {
+			if (
+				ev.type === 'note.changed' ||
+				ev.type === 'note.removed' ||
+				ev.type === 'vault.rescanned'
+			) {
+				// Cache keys are user-typed wikilink targets, not paths,
+				// so we can't selectively invalidate by ev.path. Clear
+				// the whole map — it rebuilds on next hover and the cap
+				// is at most dozens of entries.
+				cache.clear();
+			}
+		});
+	}
 
 	export function fetchPreview(rawTarget: string): Promise<PreviewData | null> {
 		// Strip the optional block-level fragment ([[Note#Heading]]).
@@ -62,6 +86,13 @@
 			}
 		})();
 		cache.set(target, p);
+		// Evict failed lookups so a later hover retries instead of
+		// being permanently stuck on the cached null. Race-safe:
+		// only delete if THIS promise is still the cached one (a
+		// successful refetch may have replaced it between resolves).
+		void p.then((result) => {
+			if (result === null && cache.get(target) === p) cache.delete(target);
+		});
 		return p;
 	}
 </script>
