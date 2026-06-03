@@ -41,7 +41,7 @@
     inlineAITriggerExtension,
     type InlineAITriggerEvent
   } from '$lib/editor/inline-ai-trigger';
-  import { inlineAIObserver, rejectInlineAI, type InlineAIState } from '$lib/editor/inline-ai';
+  import { acceptInlineAI, inlineAIObserver, rejectInlineAI, type InlineAIState } from '$lib/editor/inline-ai';
   import type { EditorView } from '@codemirror/view';
   import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
@@ -803,11 +803,23 @@
   $effect(() => {
     if (typeof window === 'undefined') return;
     const flush = () => {
+      // If a streamed AI ghost is sitting unaccepted, commit it into
+      // the doc before snapshotting the draft. Ghost text lives in
+      // CodeMirror's StateField, not the parent's `body` mirror, and
+      // is invisible to getContent() until accepted. Without this
+      // step the user's just-finished AI suggestion is silently
+      // discarded when the tab closes / OS suspends the page. The
+      // user can still undo via Cmd-Z when they return.
+      const view = editor?.getView?.();
+      const accepted = view ? acceptInlineAI(view) : false;
       // Pull from the editor's view state — `body` may be lagging
       // when the OS suspends the tab. This is the last-resort save
       // path before everything goes away; reading the wrong source
-      // here costs the user their final keystrokes.
-      if (note && dirty) setDraft(note.path, editor?.getContent?.() ?? body, note.modTime);
+      // here costs the user their final keystrokes. The `accepted`
+      // fallback covers the case where the ghost was the ONLY
+      // pending change (no prior dirty=true), so the dirty check
+      // would otherwise short-circuit and skip the draft write.
+      if (note && (dirty || accepted)) setDraft(note.path, editor?.getContent?.() ?? body, note.modTime);
     };
     const onVis = () => { if (document.visibilityState === 'hidden') flush(); };
     window.addEventListener('beforeunload', flush);
