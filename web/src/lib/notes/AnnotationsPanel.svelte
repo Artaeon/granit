@@ -259,11 +259,9 @@
   // don't auto-scroll on every cursor move (jarring) — only when
   // the user clicks the "scroll to active line" affordance via
   // the parent.
-  let activeCardId = $derived.by(() => {
-    if (activeLine == null) return null;
-    const hit = items.find((x) => x.lineNum === activeLine);
-    return hit?.id ?? null;
-  });
+  let activeCardId = $derived(
+    activeLine == null ? null : items.find((x) => x.lineNum === activeLine)?.id ?? null
+  );
 </script>
 
 <div class="space-y-2">

@@ -1180,10 +1180,9 @@
     }
     return null;
   });
-  let wordGoalPct = $derived.by(() => {
-    if (!wordGoal) return 0;
-    return Math.min(100, Math.round((wordCount / wordGoal) * 100));
-  });
+  let wordGoalPct = $derived(
+    wordGoal ? Math.min(100, Math.round((wordCount / wordGoal) * 100)) : 0
+  );
 
   // Cursor position state — populated by the Editor's onCursor
   // callback. line:col is 1-indexed (matches what every editor
