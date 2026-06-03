@@ -40,7 +40,7 @@
 //   localStorage.removeItem('granit.sidebar.collapsed.v3')
 //   location.reload()
 
-import { writable } from 'svelte/store';
+import { derived, get, writable } from 'svelte/store';
 import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
 
 const COLLAPSED_KEY = 'granit.sidebar.collapsed.v3';
@@ -82,28 +82,65 @@ function loadCollapsed(): Record<string, boolean> {
   return loadStored<Record<string, boolean>>(COLLAPSED_KEY, { ...DEFAULT_COLLAPSED });
 }
 
-export const collapsedSections = writable<Record<string, boolean>>(loadCollapsed());
+// Persisted collapse state. Direct writes here update localStorage.
+// NOT consumed by the UI directly — see `collapsedSections` below
+// for the effective state that overlays the transient store.
+const persistedCollapsed = writable<Record<string, boolean>>(loadCollapsed());
+
+// Transient force-expanded overrides, set by the layout's
+// auto-expand-active-section effect. Pure in-memory; cleared whenever
+// the user navigates away from the section. Decoupling this from the
+// persisted store fixes a real bug: previously expandSectionTransient
+// mutated the same store toggleSection wrote to localStorage, so an
+// auto-expanded section followed by a user toggle of any OTHER section
+// silently persisted the auto-expand and overwrote the user's
+// collapse preference.
+const transientExpanded = writable<Record<string, boolean>>({});
+
+// Effective collapse state the UI reads. A section is collapsed if
+// it's persistently collapsed AND not transiently expanded.
+export const collapsedSections = derived(
+  [persistedCollapsed, transientExpanded],
+  ([$p, $t]) => {
+    const out = { ...$p };
+    for (const id of Object.keys($t)) if ($t[id]) delete out[id];
+    return out;
+  }
+);
 
 export function toggleSection(id: string): void {
-  collapsedSections.update((cur) => {
+  // Read the effective collapse state so the chevron always flips
+  // what the user sees, regardless of which underlying store holds
+  // the current value. Then clear any transient override since the
+  // user has just expressed an explicit preference.
+  const isEffectivelyCollapsed = !!get(collapsedSections)[id];
+  persistedCollapsed.update((cur) => {
     const next = { ...cur };
-    if (next[id]) delete next[id];
-    else next[id] = true;
+    if (isEffectivelyCollapsed) delete next[id]; // user wants it expanded
+    else next[id] = true; // user wants it collapsed
     saveStored(COLLAPSED_KEY, next);
+    return next;
+  });
+  transientExpanded.update((cur) => {
+    if (!cur[id]) return cur;
+    const next = { ...cur };
+    delete next[id];
     return next;
   });
 }
 
-// Force-expand a section without persisting the change, so closing
-// it again — and going elsewhere — restores the user's preference.
-// Used by the auto-expand-active-section effect in the layout.
+// Force-expand a section without persisting the change. The layout
+// effect calls this for the section containing the active route;
+// closing the section or navigating away clears the override.
 export function expandSectionTransient(id: string): void {
-  collapsedSections.update((cur) => {
-    if (!cur[id]) return cur;
-    const next = { ...cur };
-    next[id] = false;
-    return next;
-  });
+  if (!get(persistedCollapsed)[id]) return; // already expanded — nothing to do
+  transientExpanded.update((cur) => (cur[id] ? cur : { ...cur, [id]: true }));
+}
+
+// Drop every transient override. The layout calls this on each route
+// change before re-setting the override for the new section.
+export function clearTransientExpands(): void {
+  transientExpanded.update((cur) => (Object.keys(cur).length === 0 ? cur : {}));
 }
 
 export const sidebarCompact = writable<boolean>(loadStoredString(COMPACT_KEY, '0') === '1');

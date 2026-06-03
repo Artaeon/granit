@@ -31,7 +31,11 @@
   import { modulesStore } from '$lib/stores/modules';
   import { sabbath, SABBATH_HIDE_MODULES } from '$lib/stores/sabbath';
   import { startNavBadges } from '$lib/stores/nav-badges';
-  import { expandSectionTransient, sidebarCompact } from '$lib/stores/sidebar-ui';
+  import {
+    expandSectionTransient,
+    clearTransientExpands,
+    sidebarCompact
+  } from '$lib/stores/sidebar-ui';
   import {
     rightPaneStore,
     toggleRightPane,
@@ -90,12 +94,14 @@
   // Auto-expand the section containing the active route. Without
   // this the user can land on /goals (collapsed-by-default Plan
   // section) and the sidebar misleads them about where they are.
-  // The expand is transient — closing the section again and going
-  // elsewhere restores the user's persisted preference.
+  // The expand lives in a separate transient store layered over the
+  // persisted collapse state; navigating away clears it so the
+  // user's persisted preference takes over again.
   $effect(() => {
     const path = $page.url.pathname;
-    if (path === '/') return;
     untrack(() => {
+      clearTransientExpands();
+      if (path === '/') return;
       for (const s of sections) {
         const inSection = s.items.some((it) => path === it.href || path.startsWith(it.href + '/'));
         if (inSection) expandSectionTransient(s.id);
