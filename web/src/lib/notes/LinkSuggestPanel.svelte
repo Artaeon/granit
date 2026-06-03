@@ -51,6 +51,28 @@
   let lastFiredAt = $state<number | null>(null);
   let abort: AbortController | null = null;
 
+  // The panel is hosted inside a <details> in NoteInfoRail, which only
+  // hides DOM — it never destroys the component. So a note switch
+  // doesn't unmount us. Without this reset, the previous note's tags
+  // / links / dismissed-set / lastFiredAt all leak into the new note:
+  // the "Suggest again" button still shows note A's timestamp, the
+  // chips are still note A's, and a dismissed tag from A silently
+  // suppresses the same tag on B even when B's content would
+  // legitimately surface it. Cancel any in-flight request too so a
+  // pending refetch from A can't land into B's empty state.
+  $effect(() => {
+    void notePath;
+    tags = [];
+    links = [];
+    dismissed = new Set();
+    error = null;
+    warning = null;
+    lastFiredAt = null;
+    abort?.abort();
+    abort = null;
+    loading = false;
+  });
+
   async function fire() {
     if (loading) return;
     if (!notePath || body.trim().length < 30) {
