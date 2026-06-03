@@ -604,10 +604,15 @@
       saveFailed = true;
       saveFailCount++;
       lastSaveError = msg;
-      // Explicit save (Mod-S) → toast. Silent autosave failures are
-      // surfaced by the sticky banner below; a second toast per
-      // failing autosave would just nag the user.
-      if (!opts.silent) toast.error(`save failed: ${msg}`);
+      // Explicit save (Mod-S) → always toast.
+      // Silent autosave → toast ONLY on the first failure of a burst
+      // (saveFailCount transitioned 0 → 1 by the increment above).
+      // Subsequent silent failures stay quiet — the sticky banner is
+      // their surface — but a single transient failure that recovers
+      // immediately would otherwise be invisible to the user.
+      if (!opts.silent || saveFailCount === 1) {
+        toast.error(`save failed: ${msg}`);
+      }
       return false;
     } finally {
       saving = false;
