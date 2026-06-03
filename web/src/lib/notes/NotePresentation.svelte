@@ -57,7 +57,16 @@
   // the note title as the synthesised first slide's title.
   type Slide = { title: string; body: string; level: number };
 
+  // Skip the heading scan while the deck is closed. The derivation
+  // walks every line of `body` (split + fence tracking + regex per
+  // line) every time `body` mutates, which on a long note in the
+  // editor's hot typing path is real wasted work — the presentation
+  // overlay is mounted at the page root but only rendered behind
+  // `{#if open}`, so the slides array is unread 99% of the time.
+  // Returning [] when closed keeps `total`/`current` stable and the
+  // open-time recompute is a single sub-ms scan.
   let slides = $derived.by<Slide[]>(() => {
+    if (!open) return [];
     const src = stripFrontmatter(body);
     if (!src.trim()) return [];
     const lines = src.split('\n');
