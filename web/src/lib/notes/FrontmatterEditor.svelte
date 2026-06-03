@@ -6,7 +6,7 @@
     onChange
   }: {
     frontmatter: Record<string, unknown>;
-    onChange?: (next: Record<string, unknown>) => void | Promise<void>;
+    onChange?: (next: Record<string, unknown>) => void | Promise<unknown>;
   } = $props();
 
   let editingKey = $state<string | null>(null);
