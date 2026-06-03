@@ -1173,12 +1173,21 @@
     };
   });
 
+  // Drive the status-bar counters off the rAF-throttled mirror, not
+  // the raw `body`. Each derivation here allocates a new array per
+  // keystroke (trim+split for wordCount, split for lineCount), which
+  // is O(N) in body length. On a 100 KB note that's ~3–8 ms per
+  // keystroke just to refresh the status bar — a real contributor to
+  // the editor-freeze the user reports on long notes. The status bar
+  // can absolutely tolerate one frame of lag (16 ms); pinning it to
+  // bodyForPreview coalesces the work with the preview parse instead
+  // of firing it 60–200×/s on a fast typer.
   let wordCount = $derived.by(() => {
-    const t = body.trim();
+    const t = bodyForPreview.trim();
     return t ? t.split(/\s+/).length : 0;
   });
-  let charCount = $derived(body.length);
-  let lineCount = $derived(body ? body.split('\n').length : 0);
+  let charCount = $derived(bodyForPreview.length);
+  let lineCount = $derived(bodyForPreview ? bodyForPreview.split('\n').length : 0);
   // Reading time at ~225 wpm — average silent reading speed. Floor of
   // 1 minute so a short note doesn't read "0 min". Hidden under 50
   // words because "<1 min" on a tiny note is noise.
