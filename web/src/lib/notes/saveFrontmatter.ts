@@ -22,6 +22,7 @@ export interface SaveFrontmatterState {
   note: Note | null;
   body: string;
   prev: string;
+  saving: boolean;
   dirty: boolean;
   error: string;
   lastSavedAt: number | null;

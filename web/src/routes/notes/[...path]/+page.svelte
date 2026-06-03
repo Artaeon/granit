@@ -24,6 +24,7 @@
   import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
   import { parseTagsField, addSuggestedTag, insertSuggestedLink } from '$lib/notes/frontmatterTagOps';
   import { saveFrontmatter as saveFrontmatterFn } from '$lib/notes/saveFrontmatter';
+  import { saveNote as saveNoteFn } from '$lib/notes/saveNote';
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
   import {
     parseDailyDate,
@@ -652,150 +653,13 @@
     return () => clearInterval(t);
   });
 
+  // Body+frontmatter save now lives in $lib/notes/saveNote — see
+  // there for the conflict / draft / surgical-mutation contract.
+  // Thin wrapper just plumbs in the shared state proxy and clears
+  // the draftRestored badge on success.
   async function save(opts: { silent?: boolean } = {}): Promise<boolean> {
-    if (!note || !dirty || saving) return !dirty;
-    saving = true;
-    error = '';
-    // Capture the body at the start of the save. If the user types
-    // during the await, body will diverge from sentBody — we must NOT
-    // mark the editor clean in that case, or those keystrokes are lost
-    // forever (server only got sentBody, prev=body would mask the gap,
-    // and the next typing wouldn't trigger a fresh save). Compare body
-    // to sentBody after the await to decide whether more work remains.
-    const sentBody = body;
-    // Capture the note we started saving so we can detect navigation
-    // mid-await. With the surgical-mutation strategy, mutating after
-    // the user has navigated to another note would silently corrupt
-    // the new note's modTime/size/links/title with values from the
-    // old note's save response. Identity check on the proxy survives
-    // intermediate property mutations and only fails on reassignment.
-    const savedNote = note;
-    // Optimistic-concurrency: send the etag captured on load (or the
-    // last successful save). The backend 412s if the file on disk has
-    // moved forward since — we surface that as a toast and leave the
-    // note dirty so no work is lost. `forceNextSave` is the user's
-    // "overwrite anyway" opt-in after they've seen the conflict.
-    const etagToSend = forceNextSave ? undefined : (noteEtag ?? undefined);
-    try {
-      const { data: updated, etag: newEtag } = await api.putNoteWithEtag(
-        note.path,
-        { frontmatter: note.frontmatter as Record<string, unknown>, body: sentBody },
-        etagToSend
-      );
-      // Navigation guard: if the user moved to another note while we
-      // were awaiting, the server-side save still succeeded for the
-      // original note — we just stop applying its response to the
-      // active state. The localStorage draft was already cleared
-      // when we entered save() with prev=sentBody (next pass), and
-      // a fresh load() ran for the new path.
-      if (!note || note !== savedNote) {
-        return true;
-      }
-      // Refresh the concurrency token from the response so the next
-      // save is again guarded against foreign edits between now and
-      // then. Clear the force-flag (it was a one-shot opt-in) and
-      // any pending frontmatter — the body save is the canonical
-      // "we are anchored again" event and any pending tag/field
-      // change should be re-toggled by the user against the new
-      // base rather than blindly re-fired against stale state.
-      noteEtag = newEtag;
-      forceNextSave = false;
-      pendingFrontmatter = null;
-      // ─────────────────────────────────────────────────────────────────
-      // CRITICAL: surgical property mutation instead of `note = updated`.
-      //
-      // The previous code reassigned the whole `note` object, which
-      // invalidated every reactive consumer of `note` even when only
-      // the modTime changed. The notes view passes `note.path` to
-      // ~10 panels (AskThisNotePanel, SectionQuestionsPanel,
-      // LocalGraph, BacklinksPanel, ReferenceNotePanel, LinkSuggestPanel,
-      // AnnotationsPanel, etc.) — each of those re-evaluated its props
-      // and re-ran its own $effects, which in some panels fire API
-      // calls (api.listBacklinks, api.getNote for the reference, ...).
-      // A single autosave fanned out into a wave of work that jammed
-      // Svelte's microtask scheduler for hundreds of ms — long enough
-      // that clicks queued behind it never dispatched (the user-
-      // visible "after autosave everything freezes I can't click
-      // anywhere" symptom).
-      //
-      // Svelte 5 wraps $state objects in a Proxy with per-property
-      // reactivity. Mutating just `modTime`/`size`/`links`/`title`
-      // (the fields that actually changed during the save) invalidates
-      // only the effects that read those specific fields, not every
-      // effect that reads `note.path` (the most common case).
-      //
-      // Path, frontmatter, and body are byte-for-byte identical to
-      // what we sent — leaving them alone keeps panel identity stable
-      // through autosave.
-      note.modTime = updated.modTime;
-      note.size = updated.size;
-      note.links = updated.links;
-      note.title = updated.title;
-      prev = sentBody;
-      // Trust the editor's view state over the Svelte-bound `body`.
-      // Bind-prop writes from CodeMirror's updateListener back to
-      // `value` are microtask-deferred; during a heavy reactive
-      // cascade they may not have landed by the time we check here,
-      // making the cheap `body !== sentBody` check produce a false
-      // "clean" result while the user has in-flight keystrokes. The
-      // editor's doc is updated synchronously inside CodeMirror's
-      // dispatch — reading from it always returns the truth.
-      const liveNow = editor?.getContent?.() ?? body;
-      dirty = liveNow !== sentBody;
-      lastSavedAt = Date.now();
-      saveFailed = false;
-      saveFailCount = 0;
-      lastSaveError = '';
-      if (!dirty) {
-        clearDraft(updated.path);
-        lastDraftedBody = null;
-      } else {
-        // User typed during the save. The draft on disk still has
-        // the OLD modTime as baseModTime, which would cause the
-        // "server has newer content" branch to trip on a mid-edit
-        // reload. Refresh the draft synchronously with the post-save
-        // modTime so a crash / reload in the next 100ms (debounce
-        // window) doesn't fall into that path. Use the live editor
-        // content, not `body` — same lag concern as the dirty check.
-        setDraft(updated.path, liveNow, updated.modTime);
-      }
-      draftRestored = false;
-      if (!opts.silent && !dirty) toast.success('saved');
-      return true;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // 412 Precondition Failed — the file on disk moved forward since
-      // we loaded it. Leave the note dirty and the etag stale; the
-      // banner-driven "Overwrite anyway" path sets forceNextSave=true
-      // for one save, and "Reload server version" calls load(force:
-      // true) which discards local changes for the server's. Don't
-      // increment saveFailCount — this isn't a transient error, it's
-      // a state mismatch that needs explicit user input.
-      if (e instanceof ApiError && e.status === 412) {
-        saveFailed = true;
-        lastSaveError = 'Conflict: this note was changed elsewhere since you loaded it.';
-        if (!opts.silent) {
-          toast.warning('Conflict: this note was changed elsewhere. Choose Reload or Overwrite in the banner.');
-        }
-        return false;
-      }
-      error = msg;
-      saveFailed = true;
-      saveFailCount++;
-      lastSaveError = msg;
-      // Explicit save (Mod-S) → always toast.
-      // Silent autosave → toast ONLY on the first failure of a burst
-      // (saveFailCount transitioned 0 → 1 by the increment above).
-      // Subsequent silent failures stay quiet — the sticky banner is
-      // their surface — but a single transient failure that recovers
-      // immediately would otherwise be invisible to the user.
-      if (!opts.silent || saveFailCount === 1) {
-        toast.error(`save failed: ${msg}`);
-      }
-      return false;
-    } finally {
-      saving = false;
-    }
+    if (saving) return !dirty;
+    return saveNoteFn(opts, saveState, saveCtx, () => { draftRestored = false; });
   }
 
   let prev = $state('');
@@ -870,6 +734,7 @@
     get note() { return note; }, set note(v) { note = v; },
     get body() { return body; }, set body(v) { body = v; },
     get prev() { return prev; }, set prev(v) { prev = v; },
+    get saving() { return saving; }, set saving(v) { saving = v; },
     get dirty() { return dirty; }, set dirty(v) { dirty = v; },
     get error() { return error; }, set error(v) { error = v; },
     get lastSavedAt() { return lastSavedAt; }, set lastSavedAt(v) { lastSavedAt = v; },
