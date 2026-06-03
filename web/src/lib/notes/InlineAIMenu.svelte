@@ -279,7 +279,7 @@
   // Whenever the visible list changes (mode flip, filter), reset
   // highlight so keyboard nav starts from the top.
   $effect(() => {
-    visiblePresets.length;
+    void visiblePresets;
     highlightedIdx = 0;
   });
 
