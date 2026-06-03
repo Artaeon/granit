@@ -14,7 +14,6 @@
   import Drawer from '$lib/components/Drawer.svelte';
   import { toast } from '$lib/components/toast';
   import { scheduleFlashcards } from '$lib/util/scheduleFlashcards';
-  import { setDraft } from '$lib/notes/drafts';
   import { rememberScroll } from '$lib/notes/noteHistory';
   import { createPreviewScrollTracker } from '$lib/notes/previewScrollTracker.svelte';
   import { installNoteShortcuts } from '$lib/notes/noteKeyboardShortcuts.svelte';
@@ -26,6 +25,7 @@
   import { saveFrontmatter as saveFrontmatterFn } from '$lib/notes/saveFrontmatter';
   import { saveNote as saveNoteFn } from '$lib/notes/saveNote';
   import { loadNote as loadNoteFn } from '$lib/notes/loadNote';
+  import { installNoteAutosave } from '$lib/notes/noteAutosave.svelte';
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
   import {
     parseDailyDate,
@@ -45,7 +45,7 @@
     inlineAITriggerExtension,
     type InlineAITriggerEvent
   } from '$lib/editor/inline-ai-trigger';
-  import { acceptInlineAI, inlineAIObserver, type InlineAIState } from '$lib/editor/inline-ai';
+  import { inlineAIObserver, type InlineAIState } from '$lib/editor/inline-ai';
   import type { EditorView } from '@codemirror/view';
   import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
@@ -202,10 +202,6 @@
     if (previewBodyTimer) {
       clearTimeout(previewBodyTimer);
       previewBodyTimer = null;
-    }
-    if (draftWriteRaf) {
-      cancelAnimationFrame(draftWriteRaf);
-      draftWriteRaf = 0;
     }
   });
   let saving = $state(false);
@@ -472,68 +468,13 @@
     return saveNoteFn(opts, noteState, saveCtx, () => { draftRestored = false; });
   }
 
+  // dirty + prev are declared here so the noteState proxy below can
+  // reference them. The actual tracker effect, the autosave debounce,
+  // the rAF-coalesced draft write, the tab-hide / unload flush, and
+  // the online-retry effect are all installed by installNoteAutosave
+  // further down — see $lib/notes/noteAutosave for the contract.
   let prev = $state('');
-  $effect(() => {
-    if (body !== prev) {
-      dirty = true;
-      prev = body;
-    }
-  });
-
-  // Auto-save: debounce 2s after last edit. If save fails, the next edit
-  // re-triggers the timer so we keep retrying as the user continues typing.
-  //
-  // Hostile-UX guard: while the autocomplete picker is open (user mid-
-  // snippet like /callout, mid-wikilink, or mid-tag), saving causes the
-  // editor's doc to be re-set on the WS bounce-back, which closes the
-  // picker and interrupts what the user was composing. We back off
-  // every 1s in that case and only save once the picker is closed.
-  // This pattern preserves a single in-flight timer ref (cleaned up
-  // properly on effect re-run) instead of leaking re-scheduled timers.
-  $effect(() => {
-    void body;
-    if (!dirty || saving || !note) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const trySave = () => {
-      timer = null;
-      if (!dirty || saving || !note) return;
-      // Unresolved conflict — re-PUTting would just bounce off 412
-      // again. Wait for the user to choose Reload or Overwrite via
-      // the conflict banner.
-      if (conflictDetected) return;
-      if (editor?.isCompletionActive?.()) {
-        // Picker open — back off and re-check in 1s.
-        timer = setTimeout(trySave, 1000);
-        return;
-      }
-      save({ silent: true });
-    };
-    timer = setTimeout(trySave, AUTOSAVE_DEBOUNCE_MS);
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  });
-
-  // Persist the body to localStorage with rAF coalescing. Prior
-  // iterations: a 600ms debounce reset on every keystroke and never
-  // fired during continuous typing, losing everything since the last
-  // pause on a crash; then a fully-synchronous per-keystroke write
-  // restored that guarantee but charged O(N) doc.toString + O(N)
-  // JSON.stringify + a blocking localStorage.setItem per character,
-  // which on a 100 KB note compounded into the editor-freeze the
-  // user reported. The rAF path collapses N keystrokes per frame
-  // into one write — at most 16 ms of typing is at risk on a hard
-  // crash, and the pagehide / beforeunload flush below still
-  // captures the latest body on tab-close exactly.
-  //
-  // Skip when the body hasn't actually changed since the last write.
-  // The effect re-runs whenever `note` is reassigned (every successful
-  // save creates a new note reference), and writing the same body to
-  // localStorage in that case is wasted work — for a multi-MB note
-  // the JSON.stringify + setItem can take 10ms+, which adds up when
-  // a save bounces every 2s.
   let lastDraftedBody: string | null = null;
-  let draftWriteRaf = 0;
 
   // Single mutable view onto the page's note-pipeline $state.
   // Every save/load/frontmatter helper in $lib/notes accepts this
@@ -559,90 +500,27 @@
     get draftRestored() { return draftRestored; }, set draftRestored(v) { draftRestored = v; }
   };
   const saveCtx = { getLiveBody: () => editor?.getContent?.() ?? body };
-  $effect(() => {
-    void body;
-    if (!note || !dirty) return;
-    // Coalesce N keystrokes per frame into a single draft write.
-    // The previous per-keystroke effect ran editor.getContent()
-    // (O(N) doc.toString()), JSON.stringify(body) (O(N) escape +
-    // allocation), and a synchronous localStorage.setItem (main-
-    // thread blocking I/O) on every typed character — measured at
-    // 5–15 ms per keystroke for a 100 KB note, the dominant cost
-    // behind the freeze the user reported on long notes. The
-    // pagehide / beforeunload flush below still catches tab-close
-    // exactly; the only loss-case the coalescer introduces is a
-    // hard crash mid-frame, which costs at most one frame (≤16 ms)
-    // of typing — well below human-perceptible data loss and the
-    // same trade-off bodyForPreview makes for the preview path.
-    if (draftWriteRaf) return;
-    // Capture the path the schedule was for. If `note` swaps between
-    // schedule and fire (e.g. SPA navigation lands a new note in the
-    // same frame the user finished typing), the pending rAF must NOT
-    // commit the old body under the new path.
-    const scheduledPath = note.path;
-    draftWriteRaf = requestAnimationFrame(() => {
-      draftWriteRaf = 0;
-      if (!note || !dirty || note.path !== scheduledPath) return;
-      // Read the editor's authoritative content. The body mirror
-      // can lag CodeMirror's actual doc during a slow reactive
-      // frame, and writing the stale mirror to localStorage was
-      // the silent-data-loss path: the user typed "ABCDEF" but
-      // only "AB" landed in the draft, so a crash before the next
-      // autosave restored "AB".
-      const current = editor?.getContent?.() ?? body;
-      if (lastDraftedBody === current) return;
-      lastDraftedBody = current;
-      setDraft(note.path, current, note.modTime);
-    });
-  });
 
-  // Force-flush draft on tab hide / before unload. Belt-and-suspenders
-  // since we already write synchronously per keystroke — but covers
-  // the unlikely case of a body change that hasn't propagated to the
-  // $effect yet (e.g. an in-flight CodeMirror dispatch the moment
-  // the OS suspends the page). localStorage writes are synchronous,
-  // so this guarantees the latest body lands before the page goes away.
-  $effect(() => {
-    if (typeof window === 'undefined') return;
-    const flush = () => {
-      // If a streamed AI ghost is sitting unaccepted, commit it into
-      // the doc before snapshotting the draft. Ghost text lives in
-      // CodeMirror's StateField, not the parent's `body` mirror, and
-      // is invisible to getContent() until accepted. Without this
-      // step the user's just-finished AI suggestion is silently
-      // discarded when the tab closes / OS suspends the page. The
-      // user can still undo via Cmd-Z when they return.
-      const view = editor?.getView?.();
-      const accepted = view ? acceptInlineAI(view) : false;
-      // Pull from the editor's view state — `body` may be lagging
-      // when the OS suspends the tab. This is the last-resort save
-      // path before everything goes away; reading the wrong source
-      // here costs the user their final keystrokes. The `accepted`
-      // fallback covers the case where the ghost was the ONLY
-      // pending change (no prior dirty=true), so the dirty check
-      // would otherwise short-circuit and skip the draft write.
-      if (note && (dirty || accepted)) setDraft(note.path, editor?.getContent?.() ?? body, note.modTime);
-    };
-    const onVis = () => { if (document.visibilityState === 'hidden') flush(); };
-    window.addEventListener('beforeunload', flush);
-    window.addEventListener('pagehide', flush);
-    document.addEventListener('visibilitychange', onVis);
-    return () => {
-      window.removeEventListener('beforeunload', flush);
-      window.removeEventListener('pagehide', flush);
-      document.removeEventListener('visibilitychange', onVis);
-    };
-  });
-
-  // When the network comes back, retry any pending save. Skip when a
-  // conflict is unresolved — silently re-PUTting would just hit 412
-  // again. The conflict banner is the user's required next step.
-  $effect(() => {
-    const onOnline = () => {
-      if (saveFailed && dirty && !saving && !conflictDetected) save({ silent: true });
-    };
-    window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
+  // Install dirty + autosave + draft-rAF + tab-hide flush + online
+  // retry — six effects worth of plumbing live in noteAutosave so
+  // this surface keeps the deps wiring at one glance.
+  installNoteAutosave({
+    getNote: () => note,
+    getBody: () => body,
+    getLiveBody: () => editor?.getContent?.() ?? body,
+    getDirty: () => dirty,
+    getSaving: () => saving,
+    getSaveFailed: () => saveFailed,
+    getConflictDetected: () => conflictDetected,
+    getPrev: () => prev,
+    setDirty: (v) => { dirty = v; },
+    setPrev: (v) => { prev = v; },
+    getLastDraftedBody: () => lastDraftedBody,
+    setLastDraftedBody: (v) => { lastDraftedBody = v; },
+    getEditorView: () => editor?.getView?.(),
+    isCompletionActive: () => editor?.isCompletionActive?.() ?? false,
+    save: (o) => save(o),
+    autosaveDebounceMs: AUTOSAVE_DEBOUNCE_MS
   });
 
   // Best-effort flush on SPA navigation. We can't synchronously block
