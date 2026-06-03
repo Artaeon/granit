@@ -3,17 +3,20 @@
   import { api, type ChatMessage , todayISO } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
-  import { classifyAiError } from '$lib/util/aiErrors';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { loadStored, saveStored } from '$lib/util/storage';
   import {
-    AGENT_MODES,
     GENERIC_MODES,
     PERSONAS,
     findMode,
     loadModeId,
     persistModeId
   } from '$lib/ai/agents';
+  import {
+    createChatSessionManager,
+    type ChatSessionRefs,
+    type PreludeBundle
+  } from '$lib/chat/chatSessionManager.svelte';
 
   // Multi-turn chat with the configured LLM. History lives in localStorage
   // (one current conversation; the user "saves" via "save as note" to keep
@@ -73,45 +76,75 @@
     });
   });
 
+  // Refs the chat-session manager reads + writes. /chat doesn't
+  // surface mentions, RAG hits, or quick-action results yet (Commits
+  // B/C in the migration plan) — the empty getters/no-op setters keep
+  // the manager's contract satisfied without growing this surface
+  // ahead of need.
+  const chatRefs: ChatSessionRefs = {
+    get input() { return input; },
+    set input(v) { input = v; },
+    get busy() { return busy; },
+    set busy(v) { busy = v; },
+    get messages() { return messages; },
+    set messages(v) { messages = v; },
+    get mentionedRefs() { return []; },
+    set mentionedRefs(_v) {},
+    get lastRagHits() { return []; },
+    set lastRagHits(_v) {},
+    get perTurnRagHits() { return {}; },
+    set perTurnRagHits(_v) {},
+    get quickTitle() { return ''; },
+    set quickTitle(_v) {},
+    get quickResult() { return ''; },
+    set quickResult(_v) {}
+  };
+
+  // Per-turn prelude — just the mode's system prompt. AIOverlay's
+  // prelude also folds in AI memory, RAG hits, and page context;
+  // /chat is intentionally route-agnostic, so those stay empty.
+  async function buildChatPrelude(_text: string, _isFirstTurn: boolean): Promise<PreludeBundle> {
+    return {
+      messages: [{ role: 'system', content: mode.system }],
+      ragHits: [],
+      notePathForStream: null
+    };
+  }
+
+  const chat = createChatSessionManager({
+    refs: chatRefs,
+    buildPrelude: buildChatPrelude,
+    chatStream: api.chatStream,
+    // Slash commands aren't wired on /chat yet — Commit C in the
+    // migration plan adds them. For now every text submit goes
+    // through the streaming path.
+    handleSlashCommand: () => false,
+    // The save-on-change $effect below (the legacy STORAGE_KEY
+    // path) persists messages after every mutation, so the
+    // manager's autoSaveThread hook is a no-op until Commit B
+    // migrates this route to history.ts.
+    autoSaveThread: () => {},
+    awaitSave: () => Promise.resolve(),
+    resetForClear: () => {},
+    getScrollEl: () => scrollEl
+  });
+
   async function send(e?: Event) {
     e?.preventDefault();
-    const text = input.trim();
-    if (!text || busy) return;
-    busy = true;
-    const userMsg: ChatMessage = { role: 'user', content: text };
-    messages = [...messages, userMsg];
-    input = '';
-    try {
-      // Prepend the mode's system prompt on every turn (matches the
-      // AIOverlay's pattern). The server is stateless and we ship the
-      // whole history each request, so we add it fresh each time —
-      // letting the user change mode mid-conversation simply switches
-      // the posture for subsequent turns without contaminating prior
-      // ones with conflicting system messages.
-      const sys: ChatMessage = { role: 'system', content: mode.system };
-      const r = await api.chat([sys, ...messages]);
-      messages = [...messages, r.message];
-    } catch (err) {
-      // Surface the server error inline so the user can see what went
-      // wrong (e.g. "no API key set"). Drop the user's message back into
-      // the input so they can retry without re-typing. The classifier
-      // turns raw "ollama: 404 …" noise into a one-line headline plus
-      // an Open-Settings CTA; raw is still available behind "details".
-      const msg = errorMessage(err);
-      console.error('[chat] send failed:', msg);
-      const hint = classifyAiError(msg);
-      toast.error(hint.headline, { action: hint.cta, details: hint.raw });
-      messages = messages.slice(0, -1);
-      input = text;
-    } finally {
-      busy = false;
-      tick().then(() => inputEl?.focus());
-    }
+    // Manager.send swallows server errors and writes `_error: ...`
+    // into the assistant slot — same shape AIOverlay has, so a
+    // failure is visible in-line without rolling back the user's
+    // message. The aiErrors classifier toasts that we used to fire
+    // here move out of scope; the next round can surface them
+    // through the manager's onError hook when /chat unifies with
+    // the overlay's error pipeline.
+    await chat.send();
+    tick().then(() => inputEl?.focus());
   }
 
   function reset() {
     if (messages.length > 0 && !confirm('Clear the current conversation?')) return;
-    messages = [];
+    chat.clearChat();
     input = '';
   }
 
