@@ -141,6 +141,17 @@
   // even when 5+ keystrokes fall inside one 16ms frame.
   let bodyForPreview = $state('');
   let previewBodyRaf = 0;
+  let previewBodyTimer: ReturnType<typeof setTimeout> | null = null;
+  // Bodies above this size switch from rAF (16 ms) coalescing to a
+  // 250 ms idle debounce for the preview mirror. At rAF cadence a
+  // 100 KB note triggers ~60 marked.parse + synchronous DOMPurify
+  // sweeps per second in MarkdownRenderer — each ~50–200 ms — and
+  // the queue compounds faster than it drains. Settling on typing-
+  // pause is the standard preview UX for long-form editors; the
+  // editor's textarea stays at full rAF responsiveness because the
+  // CodeMirror view never reads bodyForPreview.
+  const PREVIEW_HEAVY_BODY = 32 * 1024;
+  const PREVIEW_HEAVY_DEBOUNCE_MS = 250;
   $effect(() => {
     // First-paint fast path: when bodyForPreview is still empty but
     // body has loaded, sync synchronously instead of waiting for the
@@ -153,6 +164,22 @@
     if (bodyForPreview === '' && body !== '') {
       bodyForPreview = body;
       return;
+    }
+    if (body.length >= PREVIEW_HEAVY_BODY) {
+      if (previewBodyRaf) {
+        cancelAnimationFrame(previewBodyRaf);
+        previewBodyRaf = 0;
+      }
+      if (previewBodyTimer) clearTimeout(previewBodyTimer);
+      previewBodyTimer = setTimeout(() => {
+        previewBodyTimer = null;
+        bodyForPreview = body;
+      }, PREVIEW_HEAVY_DEBOUNCE_MS);
+      return;
+    }
+    if (previewBodyTimer) {
+      clearTimeout(previewBodyTimer);
+      previewBodyTimer = null;
     }
     if (previewBodyRaf) return;
     previewBodyRaf = requestAnimationFrame(() => {
@@ -171,6 +198,10 @@
     if (previewBodyRaf) {
       cancelAnimationFrame(previewBodyRaf);
       previewBodyRaf = 0;
+    }
+    if (previewBodyTimer) {
+      clearTimeout(previewBodyTimer);
+      previewBodyTimer = null;
     }
     if (draftWriteRaf) {
       cancelAnimationFrame(draftWriteRaf);
