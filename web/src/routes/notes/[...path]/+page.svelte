@@ -352,6 +352,13 @@
     notFound = false;
     draftRestored = false;
     if (!opts.force && lastLoadedPath === p) return;
+    // Clear the stale-note concurrency token up-front. If the fetch
+    // below throws (network blip, 5xx, abort), the previous note's
+    // etag would otherwise linger on the freshly-navigated path and
+    // get sent as If-Match on the next save → spurious 412 on a note
+    // that had no real conflict. A successful load refills it from
+    // the response a few lines down.
+    noteEtag = null;
     // Same-note reloads (WS-triggered note.changed) must not clobber
     // in-flight typing. Snapshot the body before the await; if the user
     // types during the fetch, abort the body overwrite and let the
