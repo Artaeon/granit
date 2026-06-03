@@ -254,7 +254,17 @@ export function streamInlineAI(view: EditorView, req: InlineAIRequest): boolean 
   // rAF throttle on chunk → at most one StateField update per frame
   // regardless of token rate. Without this, long streams thrash the
   // editor at hundreds of dispatches per second.
+  //
+  // The signal.aborted guard inside the paint closure handles a
+  // subtle race: a rapid Cmd-R (regenerate) aborts the previous
+  // stream and installs a fresh one with text:'' on the StateField;
+  // the previous stream's throttle, however, may still have a paint
+  // RAF scheduled — without the guard, that scheduled paint fires
+  // ONE more frame later and writes the OLD accumulator over the
+  // newly-installed empty text, producing a one-frame flash of
+  // stale text before the new stream resumes.
   const t = rafThrottle((full) => {
+    if (signal.aborted) return;
     const display = full.replace(/^\s+/, '');
     view.dispatch({ effects: setInlineAI.of({ text: display }) });
   });
