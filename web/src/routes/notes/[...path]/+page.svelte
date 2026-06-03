@@ -125,7 +125,6 @@
   let bodyForPreview = $state('');
   let previewBodyRaf = 0;
   $effect(() => {
-    void body;
     // First-paint fast path: when bodyForPreview is still empty but
     // body has loaded, sync synchronously instead of waiting for the
     // next rAF. Without this, opening a note flashes an empty
@@ -916,7 +915,6 @@
   let saveFlash = $state(false);
   let saveFlashTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
-    void lastSavedAt;
     if (!lastSavedAt) return;
     saveFlash = true;
     if (saveFlashTimer) clearTimeout(saveFlashTimer);
