@@ -1233,11 +1233,50 @@
 
   async function saveFrontmatter(next: Record<string, unknown>) {
     if (!note) return;
+    // Snapshot what we sent so a body keystroke during the await
+    // doesn't get falsely marked clean below.
+    const sentBody = body;
+    const savedNote = note;
+    const etagToSend = forceNextSave ? undefined : (noteEtag ?? undefined);
     try {
-      const updated = await api.putNote(note.path, { frontmatter: next, body });
-      note = updated;
-      prev = body;
+      const { data: updated, etag: newEtag } = await api.putNoteWithEtag(
+        note.path,
+        { frontmatter: next, body: sentBody },
+        etagToSend
+      );
+      if (!note || note !== savedNote) return;
+      // Surgical mutation (same invariant as save() above) — full
+      // reassignment fans out a re-render across every panel keyed
+      // off note.path. Frontmatter is the only field that actually
+      // changed locally; body wasn't touched server-side beyond what
+      // we sent, modTime/size/title come back from the response.
+      note.frontmatter = updated.frontmatter;
+      note.modTime = updated.modTime;
+      note.size = updated.size;
+      note.title = updated.title;
+      noteEtag = newEtag;
+      forceNextSave = false;
+      const liveNow = editor?.getContent?.() ?? body;
+      // dirty stays true if the user typed during the await — the
+      // body we sent matches sentBody, but the editor has moved on.
+      dirty = liveNow !== sentBody;
+      prev = sentBody;
+      if (!dirty) {
+        clearDraft(updated.path);
+        lastSavedAt = Date.now();
+        saveFailed = false;
+        saveFailCount = 0;
+        lastSaveError = '';
+      } else {
+        setDraft(updated.path, liveNow, updated.modTime);
+      }
     } catch (e) {
+      if (e instanceof ApiError && e.status === 412) {
+        saveFailed = true;
+        lastSaveError = 'Conflict: this note was changed elsewhere since you loaded it.';
+        toast.warning('Conflict: this note was changed elsewhere. Choose Reload or Overwrite in the banner.');
+        return;
+      }
       error = e instanceof Error ? e.message : String(e);
     }
   }
