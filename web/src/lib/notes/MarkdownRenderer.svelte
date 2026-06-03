@@ -1,7 +1,6 @@
 <script lang="ts">
   import { marked } from 'marked';
   import DOMPurify from 'dompurify';
-  import { api } from '$lib/api';
   import { errorMessage } from '$lib/util/errorMessage';
   import WikilinkHoverPreview from './WikilinkHoverPreview.svelte';
   import {

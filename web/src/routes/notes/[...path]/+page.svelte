@@ -441,6 +441,7 @@
       } else if (draft) {
         // Draft matches server — stale, clean up.
         clearDraft(p);
+        lastDraftedBody = null;
       }
 
       note = fresh;
@@ -718,6 +719,7 @@
       lastSaveError = '';
       if (!dirty) {
         clearDraft(updated.path);
+        lastDraftedBody = null;
       } else {
         // User typed during the save. The draft on disk still has
         // the OLD modTime as baseModTime, which would cause the
@@ -1329,6 +1331,7 @@
       prev = sentBody;
       if (!dirty) {
         clearDraft(updated.path);
+        lastDraftedBody = null;
         lastSavedAt = Date.now();
       } else {
         setDraft(updated.path, liveNow, updated.modTime);
