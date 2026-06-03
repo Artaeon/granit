@@ -154,6 +154,9 @@ export function createChatHistoryManager(opts: ChatHistoryManagerOptions): ChatH
     refs.quickResult = '';
     refs.lastRagHits = [];
     refs.perTurnRagHits = {};
+    // expandedSources is keyed by message index — meaningless for a
+    // fresh thread. Same reasoning as loadSavedThread below.
+    refs.expandedSources = {};
     opts.refocusInput();
   }
 
@@ -176,6 +179,12 @@ export function createChatHistoryManager(opts: ChatHistoryManagerOptions): ChatH
     refs.quickResult = '';
     refs.lastRagHits = [];
     refs.perTurnRagHits = {};
+    // expandedSources is keyed by message index. Swapping the
+    // messages array means indices that used to point at assistant
+    // messages may now point at user messages (or be out of range);
+    // a stray "Sources" reveal then renders on the wrong row.
+    // Clear so the new thread starts collapsed.
+    refs.expandedSources = {};
     refs.historyOpen = false;
     refreshPinnedIndex();
     opts.scrollToBottom();
