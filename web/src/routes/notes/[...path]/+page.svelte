@@ -1397,6 +1397,23 @@
            this note. Renders nothing when frontmatter has neither
            field, or none of the deadlines match. -->
       <NoteDeadlinesStrip frontmatter={note.frontmatter ?? null} />
+      {#if draftRestored}
+        <!-- Persistent affordance while editing on top of a localStorage
+             draft. Previously the user only saw a 3s toast, then nothing —
+             they couldn't tell "why are my changes here?" when revisiting
+             a recovered note. Clears on next successful save. -->
+        <div class="px-3 py-1.5 text-xs flex items-center gap-2 bg-warning/15 border-b border-warning/30 text-text">
+          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0 text-warning" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>
+          </svg>
+          <span class="flex-1">Editing a restored draft from this browser — saves on disk reflect what's typed here.</span>
+          <button
+            onclick={() => (draftRestored = false)}
+            class="px-1.5 py-0.5 text-[10px] text-dim hover:text-text"
+            aria-label="dismiss"
+          >dismiss</button>
+        </div>
+      {/if}
       <!-- Repeated-save-failure banner. Goes sticky after the 2nd
            consecutive failure — earlier failures are surfaced via
            the per-failure toast. The threshold avoids alarming the
