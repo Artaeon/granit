@@ -68,9 +68,21 @@
   // Pre-existing pins on essentials silently dedup; the user's
   // intent ("keep this visible") is already satisfied by the
   // higher-tier surface.
+  // Set of hrefs that live in a hidden section — pre-computed once
+  // per hiddenSections change so pinnedItems can match in O(1).
+  let hiddenHrefs = $derived.by(() => {
+    const out = new Set<string>();
+    for (const s of sections) {
+      if (!$hiddenSections[s.id]) continue;
+      for (const it of s.items) out.add(it.href);
+    }
+    return out;
+  });
+
   let pinnedItems = $derived.by(() => {
     void $modulesStore;
     void $sabbath;
+    void hiddenHrefs;
     if ($sidebarPins.length === 0) return [] as NavLink[];
     const byHref = new Map(nav.map((n) => [n.href, n]));
     const essentialHrefs = new Set(essentials.map((e) => e.href));
@@ -79,6 +91,11 @@
       .filter((it): it is NavLink => {
         if (!it) return false;
         if (essentialHrefs.has(it.href)) return false; // already in Essentials
+        // Respect Settings → Sidebar Views: if the user has hidden
+        // a whole section, a pre-existing pin to one of its routes
+        // also disappears from the Pinned rail. The escape hatch for
+        // "I don't want AI in my nav at all" was leaking through pins.
+        if (hiddenHrefs.has(it.href)) return false;
         if (it.moduleId) {
           if (!modulesStore.isEnabled(it.moduleId)) return false;
           if ($sabbath && SABBATH_HIDE_MODULES.includes(it.moduleId)) return false;
