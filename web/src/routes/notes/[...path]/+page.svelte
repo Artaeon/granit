@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { goto, beforeNavigate } from '$app/navigation';
   import { page } from '$app/stores';
-  import { api, type Note } from '$lib/api';
+  import { api, ApiError, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import Editor from '$lib/editor/Editor.svelte';
   import NotesTree from '$lib/notes/NotesTree.svelte';
@@ -160,6 +160,13 @@
   let saving = $state(false);
   let dirty = $state(false);
   let error = $state('');
+  // True when the requested path 404s on load. Distinct from `error`
+  // so we can render a "create this note?" affordance instead of an
+  // error banner — a 404 on this surface is almost always the user
+  // following an unresolved wikilink or typing a URL for a note
+  // they're about to create.
+  let notFound = $state(false);
+  let creatingNote = $state(false);
   let lastLoadedPath = $state('');
 
   // Inline AI menu — populated by the inline-ai-trigger extension when
@@ -326,6 +333,7 @@
 
   async function load(p: string, opts: { force?: boolean } = {}) {
     error = '';
+    notFound = false;
     draftRestored = false;
     if (!opts.force && lastLoadedPath === p) return;
     // Same-note reloads (WS-triggered note.changed) must not clobber
@@ -472,7 +480,15 @@
         toast.warning('offline — showing your local draft');
         return;
       }
-      error = msg;
+      // 404 from getNote means the note path doesn't exist yet —
+      // almost always the user following an unresolved wikilink or
+      // navigating to a path they're about to create. Surface a
+      // create-affordance instead of an error banner.
+      if (e instanceof ApiError && e.status === 404) {
+        notFound = true;
+      } else {
+        error = msg;
+      }
       note = null;
       body = '';
       prev = '';
@@ -485,6 +501,32 @@
       // p` returns early. The user concludes the page is frozen and
       // hits reload.
       lastLoadedPath = '';
+    }
+  }
+
+  // Title inferred from the path for the not-found state. Strips the
+  // .md extension and the folder prefix so "/notes/projects/foo.md"
+  // shows as "foo".
+  let notFoundTitle = $derived.by(() => {
+    const path = $page.params.path ?? '';
+    if (!path) return '';
+    return decodeURIComponent(path).split('/').pop()?.replace(/\.md$/, '') ?? '';
+  });
+
+  async function createMissingNote() {
+    const path = decodeURIComponent($page.params.path ?? '');
+    if (!path || creatingNote) return;
+    const cleanPath = path.endsWith('.md') ? path : path + '.md';
+    creatingNote = true;
+    try {
+      await api.createNote({ path: cleanPath, body: '' });
+      notFound = false;
+      lastLoadedPath = '';
+      await load(cleanPath, { force: true });
+    } catch (e) {
+      toast.error(`Couldn't create note: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      creatingNote = false;
     }
   }
 
@@ -1295,7 +1337,41 @@
 
   <!-- Center: editor -->
   <div class="flex-1 flex flex-col min-w-0">
-    {#if error && !note}
+    {#if notFound && !note}
+      <!-- Empty / not-found state. Shows the would-be title with a
+           one-click "Create" affordance — far better than the
+           previous bare "loading…" or the error banner that fired
+           when getNote 404'd. The clean-tree drawer link gives the
+           user an escape if they didn't actually mean to create. -->
+      <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle sticky top-0 z-20">
+        <a
+          href="/notes"
+          aria-label="back to notes"
+          class="w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0"
+        >
+          <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </a>
+        <h1 class="text-base font-semibold text-text flex-1 truncate">{notFoundTitle || 'New note'}</h1>
+      </header>
+      <div class="flex-1 flex items-center justify-center p-8">
+        <div class="max-w-md text-center">
+          <div class="text-base text-text mb-1">This note doesn't exist yet</div>
+          <div class="text-sm text-dim mb-5">
+            Create <code class="text-subtext">{decodeURIComponent($page.params.path ?? '')}</code>
+            with an empty body and start writing.
+          </div>
+          <button
+            onclick={createMissingNote}
+            disabled={creatingNote}
+            class="px-4 py-2 rounded bg-primary text-on-primary text-sm font-medium hover:opacity-90 disabled:opacity-60"
+          >
+            {creatingNote ? 'Creating…' : 'Create note'}
+          </button>
+        </div>
+      </div>
+    {:else if error && !note}
       <!-- Stuck-on-error escape header. When the load failed and we
            have no note to render, the normal header below is hidden
            too — without this the user has no UI to navigate away
