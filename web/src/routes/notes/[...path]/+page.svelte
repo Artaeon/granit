@@ -3,7 +3,7 @@
   import { goto, beforeNavigate } from '$app/navigation';
   import { page } from '$app/stores';
   import { api, ApiError, type Note } from '$lib/api';
-  import { onWsEvent } from '$lib/ws';
+  import { installWsReload } from '$lib/notes/wsReload.svelte';
   import Editor from '$lib/editor/Editor.svelte';
   import NotesTree from '$lib/notes/NotesTree.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
@@ -1153,74 +1153,23 @@
     return () => window.removeEventListener('beforeunload', handler);
   });
 
-  // Live-reload current note from WS, but never clobber unsaved edits
-  // OR our own just-completed save.
-  //
-  // The own-save guard (lastSavedAt within ~3s) suppresses the reload
-  // that the server fires back after WE save: even when bodies match
-  // byte-for-byte, the body=serverBody assignment in load() can
-  // disturb the editor's autocomplete state (re-running the value
-  // effect, even with an equality guard, occasionally clobbers a
-  // mid-snippet picker). Skipping our own bounce-back keeps the
-  // composing user's flow intact.
-  //
-  // Reloads from a cross-device save still come through — the user's
-  // own save sets lastSavedAt within milliseconds before the bounce-
-  // back, so the 3s window is short enough that an external edit
-  // arriving moments later still wins.
-  //
-  // Two correctness guards on top of the original lastSavedAt window:
-  //
-  // 1. body !== prev — the SYNCHRONOUS "user typed something we
-  //    haven't saved yet" signal. The `dirty` flag is updated by an
-  //    $effect that runs in a microtask AFTER body changes, leaving
-  //    a small race window where a WS event arriving mid-keystroke
-  //    saw `dirty=false` and triggered load(). The reload then
-  //    overwrote the user's keystrokes with the server's body
-  //    (which itself was the pre-edit version). Comparing body to
-  //    prev directly catches the in-flight typing without waiting
-  //    for the effect microtask.
-  //
-  // 2. Coalesce reloads to a single trailing-edge call per ~600ms.
-  //    The server fires `note.changed` from BOTH the PUT handler
-  //    AND the file-watcher (after the PUT writes the file), so a
-  //    single autosave produces ≥2 WS events in close succession.
-  //    Without coalescing, we'd schedule two `load()` calls and
-  //    flash the editor twice. Same trailing-edge pattern that
-  //    NotesTree.svelte adopted in 8cf45ba.
-  let wsReloadTimer: ReturnType<typeof setTimeout> | null = null;
-  function scheduleWsReload(p: string) {
-    if (wsReloadTimer) clearTimeout(wsReloadTimer);
-    wsReloadTimer = setTimeout(() => {
-      wsReloadTimer = null;
-      // Re-evaluate the guards at the moment of reload — the user
-      // could have started typing during the coalesce window.
-      // `editor?.getContent?.() ?? body` reads CodeMirror's state.doc
-      // directly so the "is the user currently typing?" check is
-      // immune to the Svelte microtask lag on bind:value (same shape
-      // as every other liveness check in this file).
-      if (!note || note.path !== p) return;
-      if ((editor?.getContent?.() ?? body) !== prev || saving) return;
-      if (lastSavedAt && Date.now() - lastSavedAt < OWN_SAVE_QUIET_MS) return;
-      void load(p, { force: true });
-    }, WS_RELOAD_COALESCE_MS);
-  }
-  onMount(() => {
-    const off = onWsEvent((ev) => {
-      if (ev.type !== 'note.changed') return;
-      if (!note || ev.path !== note.path) return;
-      // Cheap synchronous-only guards; the timed evaluation re-checks
-      // the rest at fire time. The editor-content read suppresses
-      // reloads while in-flight typing hasn't propagated to `body`.
-      if ((editor?.getContent?.() ?? body) !== prev || saving) return;
-      if (lastSavedAt && Date.now() - lastSavedAt < OWN_SAVE_QUIET_MS) return;
-      scheduleWsReload(note.path);
-    });
-    return () => {
-      off();
-      if (wsReloadTimer) { clearTimeout(wsReloadTimer); wsReloadTimer = null; }
-    };
-  });
+  // Live-reload current note from WS via a small controller that
+  // coalesces note.changed bursts (PUT handler + file watcher fire
+  // separately) and honours every clobber guard: unsaved edits, an
+  // in-flight save, our own just-completed save bouncing back.
+  // See $lib/notes/wsReload for the contract.
+  onMount(() =>
+    installWsReload({
+      getActivePath: () => note?.path ?? null,
+      getLiveBody: () => editor?.getContent?.() ?? body,
+      getSavedBody: () => prev,
+      isSaving: () => saving,
+      getLastSavedAt: () => lastSavedAt,
+      reload: (p) => void load(p, { force: true }),
+      ownSaveQuietMs: OWN_SAVE_QUIET_MS,
+      coalesceMs: WS_RELOAD_COALESCE_MS
+    })
+  );
 
   // Drive the status-bar counters off the rAF-throttled mirror, not
   // the raw `body`. Each derivation here allocates a new array per
