@@ -22,6 +22,7 @@
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
+  import { parseTagsField, addSuggestedTag, insertSuggestedLink } from '$lib/notes/frontmatterTagOps';
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
   import {
     parseDailyDate,
@@ -1320,56 +1321,27 @@
   }
 
   // ----- Link-suggester glue -----
-  // Tags chip → append to frontmatter.tags (de-duplicated).
-  // Link chip → insert markup at the editor cursor; if the editor isn't
-  // mounted (e.g. preview view), append to the end of the body so the
-  // user still gets a working insertion.
-  //
-  // Frontmatter `tags:` lands as either an array (idiomatic) or a
-  // string (legacy / hand-typed YAML, e.g. `tags: a, b, c`). One
-  // helper handles both shapes so the existingTagList derivation and
-  // the addSuggestedTag append-path agree on the parse.
-  function parseTagsField(fm: Record<string, unknown> | undefined | null): string[] {
-    if (!fm) return [];
-    const t = fm.tags;
-    if (Array.isArray(t)) return t.map((x) => String(x));
-    if (typeof t === 'string') return t.split(/[,\s]+/).filter(Boolean);
-    return [];
-  }
+  // Tags chip → append to frontmatter.tags (de-duplicated, via the
+  // existing saveFrontmatter pipeline). Link chip → insert at editor
+  // cursor or append to body if the editor is unmounted (preview view).
+  // Pure helpers live in $lib/notes/frontmatterTagOps.
   let existingTagList = $derived(
     parseTagsField(note?.frontmatter as Record<string, unknown> | undefined)
   );
 
-  async function addSuggestedTag(tag: string) {
+  async function addSuggestedTagPage(tag: string) {
     if (!note) return;
-    const clean = tag.trim().replace(/^#/, '').toLowerCase();
-    if (!clean) return;
-    const fm = { ...(note.frontmatter ?? {}) } as Record<string, unknown>;
-    const arr = parseTagsField(fm);
-    if (arr.includes(clean)) {
-      toast.success(`#${clean} already on this note`);
-      return;
-    }
-    arr.push(clean);
-    fm.tags = arr;
-    // Only toast success when the save actually committed. Before
-    // saveFrontmatter exposed an outcome, a 412 silently dropped the
-    // tag (saveFrontmatter swallows the error and shows the conflict
-    // banner) but the success toast fired anyway — the user saw both
-    // "Conflict" and "+ #tag" simultaneously, and the chip vanished
-    // from the suggester even though no save happened.
-    if (await saveFrontmatter(fm)) toast.success(`+ #${clean}`);
+    await addSuggestedTag(tag, { note, saveFrontmatter });
   }
 
-  function insertSuggestedLink(markup: string) {
-    if (editor?.insertAtCursor) {
-      editor.insertAtCursor(' ' + markup + ' ');
-    } else {
-      // Fallback: append + mark dirty so save picks it up.
-      body = body + (body.endsWith('\n') ? '' : '\n') + markup + '\n';
-      dirty = true;
-    }
-    toast.success('link inserted');
+  function insertSuggestedLinkPage(markup: string) {
+    insertSuggestedLink(markup, {
+      insertAtCursor: editor?.insertAtCursor,
+      appendToBody: (m) => {
+        body = body + (body.endsWith('\n') ? '' : '\n') + m + '\n';
+        dirty = true;
+      }
+    });
   }
 
   // ----- Daily-note navigation -----
@@ -1465,8 +1437,8 @@
     onNavigateWikilink={navigateWikilink}
     onResetVisited={resetVisited}
     onSaveFrontmatter={saveFrontmatter}
-    onAddSuggestedTag={addSuggestedTag}
-    onInsertSuggestedLink={insertSuggestedLink}
+    onAddSuggestedTag={addSuggestedTagPage}
+    onInsertSuggestedLink={insertSuggestedLinkPage}
   />
 {/snippet}
 
