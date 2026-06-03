@@ -815,15 +815,17 @@
     };
   });
 
-  // Persist the body to localStorage on every change — synchronously,
-  // no debounce. The previous 600ms (and even the 100ms we tried) had
-  // a real bug: during continuous typing the timer reset every
-  // keystroke and never fired, so a crash mid-paragraph lost
-  // everything since the last typing pause. localStorage.setItem is
-  // sub-millisecond for typical note sizes, so writing on every
-  // keystroke costs ~30ms/sec at fastest realistic typing speeds —
-  // imperceptible. This is the bulletproof guarantee: every visible
-  // keystroke is on disk before the next paint.
+  // Persist the body to localStorage with rAF coalescing. Prior
+  // iterations: a 600ms debounce reset on every keystroke and never
+  // fired during continuous typing, losing everything since the last
+  // pause on a crash; then a fully-synchronous per-keystroke write
+  // restored that guarantee but charged O(N) doc.toString + O(N)
+  // JSON.stringify + a blocking localStorage.setItem per character,
+  // which on a 100 KB note compounded into the editor-freeze the
+  // user reported. The rAF path collapses N keystrokes per frame
+  // into one write — at most 16 ms of typing is at risk on a hard
+  // crash, and the pagehide / beforeunload flush below still
+  // captures the latest body on tab-close exactly.
   //
   // Skip when the body hasn't actually changed since the last write.
   // The effect re-runs whenever `note` is reassigned (every successful
