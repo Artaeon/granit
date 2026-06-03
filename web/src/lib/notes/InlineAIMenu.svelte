@@ -25,7 +25,7 @@
   user's eye on the document, not on a side panel.
 -->
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import { api, type ChatMessage, type AIPromptEntry } from '$lib/api';
   import { streamInlineAI } from '$lib/editor/inline-ai';
   import type { InlineAITriggerEvent } from '$lib/editor/inline-ai-trigger';
@@ -388,6 +388,16 @@
   // that focus.
   let effectiveNotePath = $derived(scope === 'note' ? notePath : '');
 
+  // Set when the menu is closed (either explicitly or by parent-driven
+  // unmount). runPreset/runCustomPrompt await on buildContextMessages
+  // BEFORE consumeTriggerRange + streamInlineAI; if the user clicks
+  // outside the editor (or otherwise dismisses the menu) during that
+  // await, the chain would otherwise still strip the trigger range
+  // and start a stream against a torn-down menu — orphaned ghost
+  // text in the editor.
+  let closed = false;
+  onDestroy(() => { closed = true; });
+
   // ── submit ──────────────────────────────────────────────────────
 
   async function runPreset(p: Preset) {
@@ -401,6 +411,7 @@
       if (hasSelection && p.systemForSelection) {
         const system = extra ? p.systemForSelection + '\n\nAdditional instruction: ' + extra : p.systemForSelection;
         const messages = await buildContextMessages(system);
+        if (closed) return;
         // Selection-surround: include ~600 chars before and ~300 chars
         // after the selection as read-only context so the rewrite
         // stays coherent with what's around it. Without this the AI
@@ -425,6 +436,7 @@
       } else if (p.systemForCursor) {
         const system = extra ? p.systemForCursor + '\n\nAdditional instruction: ' + extra : p.systemForCursor;
         const messages = await buildContextMessages(system);
+        if (closed) return;
         if (p.wholeNote) {
           messages.push({
             role: 'user',
@@ -476,6 +488,7 @@
           'no preamble, no commentary, no quoted block. Preserve markdown structure unless the ' +
           'instruction explicitly says otherwise.';
         const messages = await buildContextMessages(system);
+        if (closed) return;
         const surround = readSelectionSurround(view, event.selection.from, event.selection.to);
         messages.push({
           role: 'user',
@@ -499,6 +512,7 @@
           'instruction and insert the result into the note. Return ONLY the text to insert, ' +
           'no preamble, no commentary, no surrounding quotes. Use markdown where appropriate.';
         const messages = await buildContextMessages(system);
+        if (closed) return;
         // Include the surrounding context so the model knows what to anchor against.
         const cur = event.pos;
         const start = Math.max(0, cur - 1500);
@@ -666,6 +680,11 @@
     const onResize = () => clampToViewport();
     const onDocClick = (e: MouseEvent) => {
       if (!menuEl) return;
+      // Only the primary button closes the menu on outside-click.
+      // Right-click in the editor would otherwise dismiss the menu
+      // before the OS spell-check menu opened, eating the chance to
+      // act on the menu's current state.
+      if (e.button !== 0) return;
       if (e.target instanceof Node && menuEl.contains(e.target)) return;
       onClose();
     };
