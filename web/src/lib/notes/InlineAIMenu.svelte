@@ -624,16 +624,16 @@
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      // If the prompt input has text AND the visible preset list is
-      // narrower than the full set (the query matched a subset), the
-      // user is filtering — Enter picks the highlighted preset. If
-      // the query filtered nothing OR is empty OR cleared the list,
-      // Enter runs the prompt as a custom Ask. This gives both
-      // "type a thought, hit Enter" and "type to filter, arrow,
-      // Enter" patterns. Prior condition (`=== PRESETS.length`) was
-      // inverted — it was true only when input was non-empty AND
-      // nothing was filtered, which is the contradiction case.
-      const filtering = promptInput.trim().length > 0 && visiblePresets.length > 0 && visiblePresets.length < PRESETS.length;
+      // If the prompt input has text AND there's still at least one
+      // preset visible, the user is filtering — Enter picks the
+      // highlighted preset. If the query cleared the list (matched
+      // nothing), Enter runs the prompt as a custom Ask. This gives
+      // both "type a thought, hit Enter" and "type to filter,
+      // arrow, Enter" patterns. The earlier comparison against
+      // `PRESETS.length` was always true in practice (mode-filter
+      // narrows visiblePresets BELOW the unfiltered total before any
+      // query runs), so it added complexity without doing work.
+      const filtering = promptInput.trim().length > 0 && visiblePresets.length > 0;
       if (filtering) {
         // Filtered list — interpret Enter as picking the highlighted preset.
         const p = visiblePresets[highlightedIdx];
