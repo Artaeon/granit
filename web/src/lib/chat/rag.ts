@@ -63,16 +63,19 @@ export function invalidateRagIndex(): void {
 
 export async function loadRagIndex(): Promise<void> {
   if (ragIndexLoaded) return;
-  try {
-    const r = await api.listNotes({ limit: 5000 });
-    ragIndex = r.notes.map((n) => ({
-      path: n.path,
-      title: n.title || n.path.replace(/\.md$/, ''),
-      modTime: n.modTime
-    }));
-  } finally {
-    ragIndexLoaded = true;
-  }
+  // Only flip the loaded flag on actual success. The previous shape
+  // used `finally`, so a transient 5xx / network blip during the
+  // first send left ragIndex empty AND ragIndexLoaded=true — the
+  // next retrieveForRag short-circuited the retry path forever for
+  // the tab session, and the user got silent zero-hit RAG for the
+  // rest of the session even after the network recovered.
+  const r = await api.listNotes({ limit: 5000 });
+  ragIndex = r.notes.map((n) => ({
+    path: n.path,
+    title: n.title || n.path.replace(/\.md$/, ''),
+    modTime: n.modTime
+  }));
+  ragIndexLoaded = true;
 }
 
 // Wire vault-mutation events to invalidate the cache once the module
