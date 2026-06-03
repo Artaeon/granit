@@ -18,7 +18,7 @@
   import { rememberScroll, recallScroll } from '$lib/notes/noteHistory';
   import { createPreviewScrollTracker } from '$lib/notes/previewScrollTracker.svelte';
   import { installNoteShortcuts } from '$lib/notes/noteKeyboardShortcuts.svelte';
-  import { openAIOverlay, aiOverlayPinned } from '$lib/stores/ai-overlay';
+  import { openResearchMode as openResearchModeFor } from '$lib/notes/researchMode';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
@@ -123,10 +123,6 @@
   // Autosave debounce — fires `save({silent: true})` 2 s after the
   // last keystroke when the picker isn't open.
   const AUTOSAVE_DEBOUNCE_MS = 2000;
-  // Cap on the body excerpt seeded into the AI overlay's Research
-  // Mode context. Bigger excerpts pay for themselves at the model
-  // tier but cost overlay context budget elsewhere.
-  const RESEARCH_EXCERPT_MAX = 800;
 
   let note = $state<Note | null>(null);
   let body = $state('');
@@ -1223,38 +1219,11 @@
     infoDrawerOpen = false;
   }
 
-  // Research Mode — pins the AI overlay as a side rail seeded with
-  // this note's context, framed as exploration rather than action.
-  // Stays visible while the user navigates the note + backlinks +
-  // annotations so the AI is the running thinking partner. Mirrors
-  // the ProjectDetail Research Mode button; the body excerpt gives
-  // the AI enough to engage without dumping the full note unless
-  // the user asks.
+  // Research Mode — see $lib/notes/researchMode for the AI overlay
+  // seeding contract. The page just forwards the active note + body.
   function openResearchMode(): void {
     if (!note) return;
-    // Trim first, then measure + slice the trimmed text. The ellipsis
-    // marker should reflect whether content was actually truncated,
-    // not whether the raw body (which may include leading/trailing
-    // whitespace) crosses the cap.
-    const trimmed = (body ?? '').trim();
-    const excerpt = trimmed.slice(0, RESEARCH_EXCERPT_MAX);
-    const truncated = trimmed.length > RESEARCH_EXCERPT_MAX;
-    const lines = [
-      `I'm in research mode on this note:`,
-      '',
-      `- ${note.title || note.path}`
-    ];
-    const tags = (note.tags ?? []);
-    if (tags.length > 0) lines.push(`- tags: ${tags.map((t) => '#' + t).join(' ')}`);
-    if (excerpt) {
-      lines.push('', 'Excerpt:', excerpt + (truncated ? '…' : ''));
-    }
-    lines.push(
-      '',
-      `Help me think about this. What angles haven't I considered? What questions should I be asking? Don't rush to recommendations — explore with me.`
-    );
-    aiOverlayPinned.set(true);
-    openAIOverlay({ text: lines.join('\n'), send: false });
+    openResearchModeFor(note, body);
   }
 
   async function saveFrontmatter(next: Record<string, unknown>): Promise<boolean> {
