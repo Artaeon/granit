@@ -180,8 +180,15 @@ export function createAIContextManager(
       ) {
         autoMode = '';
         modeId = loadModeId();
+        // Only reset the auto-switch guard when WE owned the mode
+        // (autoMode was set and we reverted it). If the user had
+        // manually picked a mode inside the scope (selectMode clears
+        // autoMode), `lastAutoSwitchedFor` still pins the scope key
+        // — preserving it across the leave keeps the re-entry guard
+        // honest, so coming back doesn't yank them out of their
+        // chosen mode.
+        lastAutoSwitchedFor = '';
       }
-      lastAutoSwitchedFor = '';
     }
   });
 
