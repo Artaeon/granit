@@ -102,6 +102,27 @@
     }
   }
 
+  // Set when a WS reload fires while the user is mid-edit / composing.
+  // load() would otherwise replace items[] wholesale and leave the
+  // user's editText / composerText pointing at a row whose live
+  // server text has just changed — saving back would clobber the
+  // remote edit. Defer the reload; flush it when the user finishes.
+  let pendingReload = false;
+  function isBusyLocally(): boolean {
+    return editingId !== null || composing;
+  }
+  function maybeReload() {
+    if (isBusyLocally()) {
+      pendingReload = true;
+      return;
+    }
+    pendingReload = false;
+    void load();
+  }
+  function flushPendingReload() {
+    if (pendingReload) maybeReload();
+  }
+
   // Reload when the active note changes. WS broadcasts on
   // .granit/annotations.json fire from any tab — we re-read on
   // each one so cross-tab edits surface here too.
@@ -113,7 +134,7 @@
   onMount(() => {
     return onWsEvent((ev) => {
       if (ev.type === 'state.changed' && ev.path === '.granit/annotations.json') {
-        load();
+        maybeReload();
       }
     });
   });
@@ -144,6 +165,7 @@
       insertSortedByLine(created);
       composing = false;
       composerText = '';
+      flushPendingReload();
     } catch (err) {
       toast.error('Couldn\'t save annotation: ' + errorMessage(err));
     }
@@ -157,6 +179,7 @@
   function cancelEdit() {
     editingId = null;
     editText = '';
+    flushPendingReload();
   }
   async function saveEdit() {
     if (!editingId) return;
@@ -166,6 +189,7 @@
       const updated = await api.patchAnnotation(editingId, { text, color: editColor });
       items = items.map((x) => (x.id === updated.id ? updated : x));
       editingId = null;
+      flushPendingReload();
     } catch (err) {
       toast.error('Couldn\'t update: ' + errorMessage(err));
     }
@@ -394,7 +418,7 @@
           <div class="flex-1"></div>
           <button
             type="button"
-            onclick={() => (composing = false)}
+            onclick={() => { composing = false; flushPendingReload(); }}
             class="text-xs px-2 py-1 text-dim hover:text-text"
           >
             Cancel
