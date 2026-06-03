@@ -61,6 +61,19 @@ export interface NoteList {
   offset: number;
 }
 
+// One historical snapshot of a note's body. Surfaced by
+// api.listHistory; the body itself is fetched lazily via
+// api.getHistoryVersion when the user selects an entry to preview.
+export interface NoteVersion {
+  /** ISO-8601 UTC timestamp of when the prior content was snapped. */
+  timestamp: string;
+  /** Byte length of the snapshotted content (for the size badge). */
+  size: number;
+  /** First 16 hex chars of SHA-256(content) — short fingerprint and
+   *  dedup hint. */
+  hash: string;
+}
+
 // Concept-graph payload — whole-vault wikilink network shaped for the
 // force-directed view at /notes/graph. `degree` is the GLOBAL degree
 // (computed before the limit-clip on the server) so a node's visual
@@ -1521,6 +1534,23 @@ export const api = {
   },
   createNote: (body: { path: string; frontmatter?: Record<string, unknown>; body: string }) =>
     req<Note>('/notes', { method: 'POST', body: JSON.stringify(body) }),
+
+  // Note history — snapshots are written on every save (the backend
+  // does this automatically). The chi router needed two non-history
+  // prefixes (/history-version/* and /history-restore/*) because
+  // wildcards must be terminal, hence the slightly awkward path
+  // shape. See internal/history/history.go for the storage layout.
+  listHistory: (path: string) =>
+    req<{ path: string; versions: NoteVersion[] }>(`/history/${encodeURI(path)}`),
+  getHistoryVersion: (path: string, timestamp: string) =>
+    req<{ path: string; timestamp: string; body: string }>(
+      `/history-version/${encodeURI(path)}?ts=${encodeURIComponent(timestamp)}`
+    ),
+  restoreHistoryVersion: (path: string, timestamp: string) =>
+    req<Note>(`/history-restore/${encodeURI(path)}`, {
+      method: 'POST',
+      body: JSON.stringify({ timestamp })
+    }),
   // Per-vault print defaults at .granit/print-config.json. Header /
   // footer / mode used by the note-print preview overlay; backed by
   // the server so they survive across browsers and devices.

@@ -23,7 +23,7 @@
   import { onMount } from 'svelte';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
-  import { req } from '$lib/api';
+  import { api, type NoteVersion } from '$lib/api';
   import { lineDiff, diffStats, type DiffLine } from '$lib/util/lineDiff';
   import { relativeTime } from '$lib/util/relativeTime';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
@@ -39,7 +39,7 @@
     return relativeTime(iso) || iso;
   }
 
-  type Version = { timestamp: string; size: number; hash: string };
+  type Version = NoteVersion;
 
   let {
     open = $bindable(false),
@@ -101,10 +101,6 @@
     void loadVersions();
   });
 
-  // All three calls go through `req` from $lib/api so the bearer
-  // token from localStorage gets attached as Authorization. The
-  // earlier raw-fetch + credentials:'include' version 401'd because
-  // this app authenticates via Bearer token, not cookies.
   async function loadVersions() {
     loading = true;
     loadError = '';
@@ -112,9 +108,7 @@
     selectedTs = null;
     selectedBody = '';
     try {
-      const data = await req<{ versions: Version[] }>(
-        `/history/${notePath}`
-      );
+      const data = await api.listHistory(notePath);
       versions = data.versions ?? [];
       if (versions.length > 0) {
         await selectVersion(versions[0].timestamp);
@@ -131,9 +125,7 @@
     bodyLoading = true;
     selectedBody = '';
     try {
-      const data = await req<{ body: string }>(
-        `/history-version/${notePath}?ts=${encodeURIComponent(ts)}`
-      );
+      const data = await api.getHistoryVersion(notePath, ts);
       selectedBody = data.body ?? '';
     } catch (err) {
       toast.error(`Couldn't load version: ${errorMessage(err)}`);
@@ -146,16 +138,9 @@
     if (!selectedTs || restoring) return;
     restoring = true;
     try {
-      const data = await req<{ body: string }>(
-        `/history-restore/${notePath}`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ timestamp: selectedTs })
-        }
-      );
-      const newBody = data.body ?? '';
+      const restored = await api.restoreHistoryVersion(notePath, selectedTs);
       toast.success('Restored. Pre-restore content is in history.');
-      onRestore?.(newBody);
+      onRestore?.(restored.body ?? '');
       await loadVersions();
     } catch (err) {
       toast.error(`Restore failed: ${errorMessage(err)}`);
