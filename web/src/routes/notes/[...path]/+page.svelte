@@ -799,6 +799,31 @@
   let printOpen = $state(false);
   let historyOpen = $state(false);
   let helpOpen = $state(false);
+
+  // Snapshot count for the current note — surfaces history existence
+  // via a small chip in NoteHeader. Refreshes on note swap and after
+  // every successful save (modTime ticks). The listHistory endpoint
+  // is O(1) since the v3 manifest sidecar, so re-fetching per save is
+  // cheap.
+  let versionCount = $state(0);
+  let versionCountGen = 0;
+  $effect(() => {
+    const path = note?.path;
+    void note?.modTime;
+    if (!path) {
+      versionCount = 0;
+      return;
+    }
+    const myGen = ++versionCountGen;
+    void (async () => {
+      try {
+        const data = await api.listHistory(path);
+        if (myGen === versionCountGen) versionCount = data.versions?.length ?? 0;
+      } catch {
+        if (myGen === versionCountGen) versionCount = 0;
+      }
+    })();
+  });
   // Audio mode — read-aloud player for the current note. Browser
   // SpeechSynthesis only, no backend. Closed by default; opens via
   // the toolbar button.
@@ -1343,6 +1368,8 @@
         onOpenResearchMode={openResearchMode}
         onToggleOverflow={() => (overflowOpen = !overflowOpen)}
         onSave={() => save()}
+        {versionCount}
+        onOpenHistory={() => (historyOpen = true)}
       />
       {#if isDaily && note}
         {@const np = note.path}

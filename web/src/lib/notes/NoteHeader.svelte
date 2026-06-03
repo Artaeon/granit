@@ -54,6 +54,11 @@
     onOpenResearchMode: () => void;
     onToggleOverflow: () => void;
     onSave: () => void;
+    /** Backed-up snapshot count for the current note. 0 hides the
+     *  chip entirely so a brand-new note doesn't show "0v". */
+    versionCount?: number;
+    /** Opens the HistoryPanel overlay. */
+    onOpenHistory?: () => void;
   }
 
   let {
@@ -87,7 +92,9 @@
     onDispatchAI,
     onOpenResearchMode,
     onToggleOverflow,
-    onSave
+    onSave,
+    versionCount = 0,
+    onOpenHistory
   }: Props = $props();
 </script>
 
@@ -305,6 +312,24 @@
     title="More actions"
     class="w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-lg leading-none"
   >⋯</button>
+  <!-- Version chip — surfaces the per-save snapshot history that
+       was previously invisible until the overflow menu's "History"
+       item was opened. Hidden when no versions exist (brand-new
+       note). Click opens HistoryPanel. -->
+  {#if versionCount > 0 && onOpenHistory}
+    <button
+      onclick={onOpenHistory}
+      title={`${versionCount} backup${versionCount === 1 ? '' : 's'} — click to browse`}
+      aria-label={`${versionCount} backups`}
+      class="hidden sm:inline-flex items-center gap-1 px-2 h-8 rounded text-[11px] font-medium text-subtext hover:text-text hover:bg-surface0 transition-colors flex-shrink-0"
+    >
+      <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/>
+        <polyline points="12 7 12 12 15 14"/>
+      </svg>
+      <span class="tabular-nums">{versionCount}v</span>
+    </button>
+  {/if}
   <!-- Save button. Stays primary — it's the always-on signal of
        whether the buffer is dirty, saving, or saved cleanly. -->
   <button
