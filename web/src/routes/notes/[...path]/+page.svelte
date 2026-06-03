@@ -374,11 +374,15 @@
     const liveAtStart = editor?.getContent?.() ?? body;
     lastLoadedPath = p;
     try {
-      const fresh = await api.getNote(p);
+      const { data: fresh, etag: freshEtag } = await api.getNoteWithEtag(p);
       if (isSameNoteReload) {
         const liveNow = editor?.getContent?.() ?? body;
         if (liveNow !== liveAtStart) return;
       }
+      // Anchor the optimistic-concurrency token. save() sends this back
+      // as `If-Match`; a foreign edit since this load surfaces as 412.
+      noteEtag = freshEtag;
+      forceNextSave = false;
       const serverBody = fresh.body ?? '';
 
       // Restore a local draft if it diverges from the server. We ALWAYS
@@ -542,6 +546,21 @@
   }
 
   let lastSavedAt = $state<number | null>(null);
+  // ETag from the most recent successful load / save. Sent as `If-Match`
+  // on every PUT so a concurrent edit from another tab / TUI / sync
+  // surfaces as a 412 instead of being silently overwritten. Reset to
+  // null whenever the active note changes — a fresh load() will refill
+  // it from the response. Bumped on every successful save() so a long
+  // edit session stays anchored to the latest server state.
+  let noteEtag = $state<string | null>(null);
+  // When the user has chosen to overwrite a detected conflict, the next
+  // save skips the If-Match header. The flag clears after one save so
+  // a subsequent edit is again guarded.
+  let forceNextSave = $state(false);
+  // Derived from the last save error — drives the conflict banner.
+  // The 412 catch branch in save() sets lastSaveError to a string
+  // starting with "Conflict:"; nothing else uses that prefix.
+  let conflictDetected = $derived(saveFailed && lastSaveError.startsWith('Conflict'));
   // Single 1s tick that both relative-time labels (saveStatus in
   // the header + lastSavedDisplay in the status bar) derive from.
   // Previously each surface had its own setInterval (1s + 5s) plus
@@ -580,8 +599,18 @@
     // old note's save response. Identity check on the proxy survives
     // intermediate property mutations and only fails on reassignment.
     const savedNote = note;
+    // Optimistic-concurrency: send the etag captured on load (or the
+    // last successful save). The backend 412s if the file on disk has
+    // moved forward since — we surface that as a toast and leave the
+    // note dirty so no work is lost. `forceNextSave` is the user's
+    // "overwrite anyway" opt-in after they've seen the conflict.
+    const etagToSend = forceNextSave ? undefined : (noteEtag ?? undefined);
     try {
-      const updated = await api.putNote(note.path, { frontmatter: note.frontmatter as Record<string, unknown>, body: sentBody });
+      const { data: updated, etag: newEtag } = await api.putNoteWithEtag(
+        note.path,
+        { frontmatter: note.frontmatter as Record<string, unknown>, body: sentBody },
+        etagToSend
+      );
       // Navigation guard: if the user moved to another note while we
       // were awaiting, the server-side save still succeeded for the
       // original note — we just stop applying its response to the
@@ -591,6 +620,11 @@
       if (!note || note !== savedNote) {
         return true;
       }
+      // Refresh the concurrency token from the response so the next
+      // save is again guarded against foreign edits between now and
+      // then. Clear the force-flag (it was a one-shot opt-in).
+      noteEtag = newEtag;
+      forceNextSave = false;
       // ─────────────────────────────────────────────────────────────────
       // CRITICAL: surgical property mutation instead of `note = updated`.
       //
@@ -653,6 +687,21 @@
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      // 412 Precondition Failed — the file on disk moved forward since
+      // we loaded it. Leave the note dirty and the etag stale; the
+      // banner-driven "Overwrite anyway" path sets forceNextSave=true
+      // for one save, and "Reload server version" calls load(force:
+      // true) which discards local changes for the server's. Don't
+      // increment saveFailCount — this isn't a transient error, it's
+      // a state mismatch that needs explicit user input.
+      if (e instanceof ApiError && e.status === 412) {
+        saveFailed = true;
+        lastSaveError = 'Conflict: this note was changed elsewhere since you loaded it.';
+        if (!opts.silent) {
+          toast.warning('Conflict: this note was changed elsewhere. Choose Reload or Overwrite in the banner.');
+        }
+        return false;
+      }
       error = msg;
       saveFailed = true;
       saveFailCount++;
@@ -697,6 +746,10 @@
     const trySave = () => {
       timer = null;
       if (!dirty || saving || !note) return;
+      // Unresolved conflict — re-PUTting would just bounce off 412
+      // again. Wait for the user to choose Reload or Overwrite via
+      // the conflict banner.
+      if (conflictDetected) return;
       if (editor?.isCompletionActive?.()) {
         // Picker open — back off and re-check in 1s.
         timer = setTimeout(trySave, 1000);
@@ -767,10 +820,12 @@
     };
   });
 
-  // When the network comes back, retry any pending save.
+  // When the network comes back, retry any pending save. Skip when a
+  // conflict is unresolved — silently re-PUTting would just hit 412
+  // again. The conflict banner is the user's required next step.
   $effect(() => {
     const onOnline = () => {
-      if (saveFailed && dirty && !saving) save({ silent: true });
+      if (saveFailed && dirty && !saving && !conflictDetected) save({ silent: true });
     };
     window.addEventListener('online', onOnline);
     return () => window.removeEventListener('online', onOnline);
@@ -1501,6 +1556,39 @@
           >dismiss</button>
         </div>
       {/if}
+      <!-- Conflict banner — the file on disk moved forward since we
+           loaded it (412 Precondition Failed from putNote's If-Match
+           guard). Two explicit choices, never silent overwrite:
+           Reload server version (discard local changes for the
+           server's body), or Overwrite anyway (skip If-Match on the
+           next save and stomp the server's version). Lives above the
+           transient-failure banner so it can't be hidden behind it. -->
+      {#if conflictDetected && note}
+        <div
+          role="status"
+          class="px-3 sm:px-4 py-2 border-b border-warning bg-warning/10 text-text text-xs sm:text-sm flex items-center gap-3"
+        >
+          <span class="flex-shrink-0 text-warning" aria-hidden="true">⚠</span>
+          <span class="flex-1 min-w-0">
+            <strong class="font-semibold">Conflict</strong> — this note was changed elsewhere (another tab, TUI, or sync) since you opened it. Your local edits are safe; choose how to resolve.
+          </span>
+          <button
+            type="button"
+            onclick={() => { lastLoadedPath = ''; void load(note!.path, { force: true }); }}
+            class="px-2.5 py-1 rounded bg-surface0 hover:bg-surface1 text-text font-medium flex-shrink-0"
+          >
+            Reload server version
+          </button>
+          <button
+            type="button"
+            onclick={() => { forceNextSave = true; void save({ silent: false }); }}
+            disabled={saving}
+            class="px-2.5 py-1 rounded bg-warning/30 hover:bg-warning/40 text-text font-medium flex-shrink-0 disabled:opacity-50"
+          >
+            {saving ? 'overwriting…' : 'Overwrite anyway'}
+          </button>
+        </div>
+      {/if}
       <!-- Repeated-save-failure banner. Goes sticky after the 2nd
            consecutive failure — earlier failures are surfaced via
            the per-failure toast. The threshold avoids alarming the
@@ -1509,7 +1597,7 @@
            manual "retry now" button so the user has agency rather
            than waiting on the silent autosave loop. Drafts on
            localStorage protect their content meanwhile. -->
-      {#if saveFailCount >= 2 && note}
+      {#if saveFailCount >= 2 && !conflictDetected && note}
         <div
           role="status"
           class="px-3 sm:px-4 py-2 border-b border-error bg-surface0 text-error text-xs sm:text-sm flex items-center gap-3"

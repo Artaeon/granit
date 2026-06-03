@@ -41,6 +41,31 @@ export async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
+// Variant that also returns the ETag header alongside the parsed body.
+// Used by callers that participate in optimistic-concurrency control
+// (currently: the notes editor's load → save → conflict-detect loop).
+// Same error semantics as req(): non-2xx throws ApiError.
+export async function reqWithEtag<T>(path: string, init: RequestInit = {}): Promise<{ data: T; etag: string | null }> {
+  const headers = new Headers(init.headers);
+  const tok = getToken();
+  if (tok) headers.set('Authorization', `Bearer ${tok}`);
+  if (init.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  const res = await fetch(`/api/v1${path}`, { ...init, headers });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try {
+      const body = await res.json();
+      if (body?.error) msg = body.error;
+    } catch {}
+    throw new ApiError(res.status, msg);
+  }
+  const etag = res.headers.get('ETag');
+  if (res.status === 204) return { data: undefined as T, etag };
+  return { data: (await res.json()) as T, etag };
+}
+
 // ---- types ----
 
 export interface Note {
@@ -1509,6 +1534,11 @@ export const api = {
     return req<NoteList>(`/notes${suffix}`);
   },
   getNote: (path: string) => req<Note>(`/notes/${encodeURI(path)}`),
+  // Same fetch but also returns the ETag for optimistic-concurrency
+  // round-trips on subsequent putNote calls. The editor uses this on
+  // load() so save() can pass `If-Match` and the backend can detect
+  // a foreign edit between load and save (concurrent tab, TUI, sync).
+  getNoteWithEtag: (path: string) => reqWithEtag<Note>(`/notes/${encodeURI(path)}`),
   // Concept-graph fetch — backs the force-directed view at /notes/graph.
   // Filters compose: a tag+folder pair narrows to notes that match
   // BOTH (plus their direct neighbours, server-side). `limit` caps
@@ -1527,6 +1557,18 @@ export const api = {
     const headers: Record<string, string> = {};
     if (etag) headers['If-Match'] = etag;
     return req<Note>(`/notes/${encodeURI(path)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+      headers
+    });
+  },
+  // Same PUT but exposes the response ETag so the caller can refresh
+  // its concurrency token after a successful save. Used by the notes
+  // editor's autosave loop.
+  putNoteWithEtag: (path: string, body: { frontmatter?: Record<string, unknown>; body: string }, etag?: string) => {
+    const headers: Record<string, string> = {};
+    if (etag) headers['If-Match'] = etag;
+    return reqWithEtag<Note>(`/notes/${encodeURI(path)}`, {
       method: 'PUT',
       body: JSON.stringify(body),
       headers
