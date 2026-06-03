@@ -424,6 +424,18 @@
       body = serverBody;
       prev = body;
       dirty = false;
+      // A successful load is the canonical "we are anchored to the
+      // server again" event — reset every error/conflict flag so a
+      // stale 412 from a previous version can't keep conflictDetected
+      // sticky and silently disable the autosave loop. The conflict
+      // banner's "Reload server version" button reaches this branch;
+      // without these resets, the user types after reload and
+      // nothing saves (the trySave bail-on-conflictDetected guard
+      // would short-circuit forever).
+      saveFailed = false;
+      saveFailCount = 0;
+      lastSaveError = '';
+      pendingFrontmatter = null;
       treeDrawerOpen = false;
       infoDrawerOpen = false;
       // Restore the scroll position (per-note, pixel-accurate). Defer
@@ -557,6 +569,12 @@
   // save skips the If-Match header. The flag clears after one save so
   // a subsequent edit is again guarded.
   let forceNextSave = $state(false);
+  // Frontmatter that hit 412 — held verbatim so the conflict banner's
+  // Overwrite button can re-run saveFrontmatter() with the original
+  // payload + forceNextSave. Without this, an Overwrite after a tag-
+  // chip conflict ran the body-save path and silently dropped the
+  // pending frontmatter edit.
+  let pendingFrontmatter = $state<Record<string, unknown> | null>(null);
   // Derived from the last save error — drives the conflict banner.
   // The 412 catch branch in save() sets lastSaveError to a string
   // starting with "Conflict:"; nothing else uses that prefix.
@@ -622,9 +640,14 @@
       }
       // Refresh the concurrency token from the response so the next
       // save is again guarded against foreign edits between now and
-      // then. Clear the force-flag (it was a one-shot opt-in).
+      // then. Clear the force-flag (it was a one-shot opt-in) and
+      // any pending frontmatter — the body save is the canonical
+      // "we are anchored again" event and any pending tag/field
+      // change should be re-toggled by the user against the new
+      // base rather than blindly re-fired against stale state.
       noteEtag = newEtag;
       forceNextSave = false;
+      pendingFrontmatter = null;
       // ─────────────────────────────────────────────────────────────────
       // CRITICAL: surgical property mutation instead of `note = updated`.
       //
@@ -1268,6 +1291,7 @@
       note.title = updated.title;
       noteEtag = newEtag;
       forceNextSave = false;
+      pendingFrontmatter = null;
       const liveNow = editor?.getContent?.() ?? body;
       // dirty stays true if the user typed during the await — the
       // body we sent matches sentBody, but the editor has moved on.
@@ -1284,6 +1308,10 @@
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 412) {
+        // Hold the pending frontmatter so the banner's "Overwrite
+        // anyway" routes BACK through saveFrontmatter — not the
+        // body-save path — preserving the user's tag/field change.
+        pendingFrontmatter = next;
         saveFailed = true;
         lastSaveError = 'Conflict: this note was changed elsewhere since you loaded it.';
         toast.warning('Conflict: this note was changed elsewhere. Choose Reload or Overwrite in the banner.');
@@ -1632,7 +1660,22 @@
           </button>
           <button
             type="button"
-            onclick={() => { forceNextSave = true; void save({ silent: false }); }}
+            onclick={() => {
+              forceNextSave = true;
+              // Route Overwrite back through the SAME save shape that
+              // hit 412. If the conflict was a tag-chip / frontmatter
+              // change, replaying through save() (body) would drop the
+              // user's intended edit and stomp the server's body too;
+              // we re-run saveFrontmatter with the held next-payload
+              // and forceNextSave so the originally-attempted change
+              // is the one that lands.
+              if (pendingFrontmatter) {
+                const next = pendingFrontmatter;
+                void saveFrontmatter(next);
+              } else {
+                void save({ silent: false });
+              }
+            }}
             disabled={saving}
             class="px-2.5 py-1 rounded bg-warning/30 hover:bg-warning/40 text-text font-medium flex-shrink-0 disabled:opacity-50"
           >
