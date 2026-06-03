@@ -217,7 +217,7 @@ export function createChatHistoryManager(opts: ChatHistoryManagerOptions): ChatH
     );
     if (!hasUser || !hasAssistant) return;
     savingThread = true;
-    savePromise = (async () => {
+    const p = (async () => {
       try {
         const t = upsertThread({
           id: refs.activeThreadId || undefined,
@@ -240,17 +240,22 @@ export function createChatHistoryManager(opts: ChatHistoryManagerOptions): ChatH
         throw e;
       } finally {
         savingThread = false;
-        // Clear the promise once settled so awaitSave doesn't keep
-        // awaiting an already-resolved promise on every subsequent
-        // send (one wasted microtask per call grew the longer the
-        // session ran, harmless but not free).
-        savePromise = null;
       }
     })();
+    savePromise = p;
+    // Settle-cleanup is scheduled AFTER the outer assignment so the
+    // `savePromise = null` actually sticks. The previous shape put
+    // the null inside the IIFE's finally — but upsertThread is
+    // synchronous, so the IIFE body ran to completion (including the
+    // null) BEFORE the outer `savePromise = p` line executed, leaving
+    // savePromise permanently holding the resolved promise.
+    void p.finally(() => {
+      if (savePromise === p) savePromise = null;
+    });
     // Swallow the unhandled rejection at the IIFE boundary —
     // awaitSave() consumers still see the error via the await, but
     // a caller that doesn't await shouldn't crash the page.
-    savePromise.catch(() => {});
+    p.catch(() => {});
   }
 
   async function awaitSave(): Promise<void> {

@@ -619,7 +619,9 @@
   // Slash-command picker — extracted to $lib/components/SlashCommandPicker.svelte.
   // Owns the dropdown UI, filter logic, and keyboard navigation. The
   // parent keeps the open flag so Esc-from-anywhere can dismiss it
-  // (see onKey below) and so onInputKey can chain mention → slash →
+  // (the onEscape callback wired into installOverlayShortcuts above
+  // unwinds picker → history → overlay in order) and so onInputKey
+  // can chain mention → slash →
   // fall-through-send in the right order.
   let slashPickerOpen = $state(false);
   let slashPickerRef: SlashCommandPicker | undefined = $state();
