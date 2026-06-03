@@ -204,6 +204,14 @@ export function createChatSessionManager(
       // chunk that grows the doc by 500px no longer yanks a user
       // who's already scrolled away.
       const t = rafThrottle((full) => {
+        // Race fix #3 — drop a scheduled paint frame if the stream
+        // was aborted between schedule and fire. Otherwise an
+        // already-queued rAF callback from a stream we just
+        // cancelled writes its stale accumulator into the NEW
+        // send's assistant slot, briefly replacing the new partial
+        // with the old one. signal.aborted is the same identity
+        // the onDone/onError handlers below already gate on.
+        if (signal.aborted) return;
         acc = full;
         refs.messages = refs.messages.map((m, i) =>
           i === assistantIdx ? { ...m, content: full } : m
@@ -262,6 +270,12 @@ export function createChatSessionManager(
   }
 
   function sendFollowup(prompt: string): void {
+    // Don't clobber the user's current input when a stream is in
+    // flight — send() bails on `refs.busy`, but writing to refs.input
+    // BEFORE the bail wipes whatever the user was typing while
+    // waiting for the prior reply. Mirror the same guard at the
+    // outer boundary so the input mutation is also blocked.
+    if (refs.busy) return;
     refs.input = prompt;
     void send();
   }
