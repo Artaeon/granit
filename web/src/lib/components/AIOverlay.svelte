@@ -405,16 +405,29 @@
   // shape — the backend evolves it independently.
   let snapshotData = $state<unknown>(null);
 
+  // Monotonic counters for stale-response guards. Without these, a
+  // rapid close→reopen could fire two concurrent loadSnapshot calls;
+  // the slower (earlier) one then resolves LAST and clobbers fresh
+  // data with stale data. Same shape elsewhere in the code base
+  // (BacklinksPanel, chatSessionManager, MarkdownRenderer).
+  let snapshotGen = 0;
+  let statusGen = 0;
+
   async function loadSnapshot() {
     if (snapshotLoading) return;
+    const myGen = ++snapshotGen;
     snapshotLoading = true;
     try {
       const r = await api.getAISnapshot();
+      if (myGen !== snapshotGen) return;
       snapshotData = r.snapshot ?? null;
-    } catch {
+    } catch (e) {
+      if (myGen !== snapshotGen) return;
       snapshotData = null;
+      // eslint-disable-next-line no-console
+      console.warn('[ai-overlay] snapshot load failed:', errorMessage(e));
     } finally {
-      snapshotLoading = false;
+      if (myGen === snapshotGen) snapshotLoading = false;
     }
   }
 
@@ -557,15 +570,20 @@
   );
 
   async function loadStatus() {
+    const myGen = ++statusGen;
     try {
       const s = await api.getAIStatus();
+      if (myGen !== statusGen) return;
       statusInfo = {
         provider: s.global_provider,
         model: s.global_model,
         sabbath: !!s.sabbath_active
       };
-    } catch {
+    } catch (e) {
+      if (myGen !== statusGen) return;
       statusInfo = null;
+      // eslint-disable-next-line no-console
+      console.warn('[ai-overlay] status load failed:', errorMessage(e));
     }
   }
 
