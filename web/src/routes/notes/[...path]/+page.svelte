@@ -50,7 +50,7 @@
   import NoteOverflowMenu from '$lib/notes/NoteOverflowMenu.svelte';
   import NoteInfoRail from '$lib/notes/NoteInfoRail.svelte';
   import NoteHeader from '$lib/notes/NoteHeader.svelte';
-  import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
+  import { ensurePinnedLoaded, pinnedNotes, togglePin as togglePinPath } from '$lib/notes/pinnedNotes';
   import { recordOpenNote, updateOpenNoteScroll } from '$lib/stores/open-note';
   import { registerActiveEditor } from '$lib/stores/active-editor';
 
@@ -339,23 +339,19 @@
   // updates via its onCountChange prop.
   let annotationCount = $state(0);
 
-  let pinned = $state<Set<string>>(new Set());
+  // Read the pinned set straight off the shared store — same source
+  // of truth the notes tree, dashboard widget, and TUI all subscribe
+  // to. ensurePinnedLoaded() (called in onMount above) handles the
+  // initial fetch + the WS subscription that keeps the store fresh
+  // when another tab / device toggles a pin, so this surface no
+  // longer needs its own load + re-fetch wiring.
+  let pinned = $derived($pinnedNotes);
   let pinBusy = $state(false);
-
-  async function loadPinned() {
-    try {
-      const r = await api.listPinned();
-      pinned = new Set(r.pinned.map((p) => p.path));
-    } catch {}
-  }
-
   async function togglePin() {
     if (!note) return;
     pinBusy = true;
     try {
-      const want = !pinned.has(note.path);
-      const r = await api.setPinned(note.path, want);
-      pinned = new Set(r.pinned.map((p) => p.path));
+      await togglePinPath(note.path);
     } finally {
       pinBusy = false;
     }
@@ -1155,14 +1151,6 @@
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  });
-
-  // Pinned set — refresh on mount + on WS changes.
-  onMount(() => {
-    loadPinned();
-    return onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') loadPinned();
-    });
   });
 
   // Live-reload current note from WS, but never clobber unsaved edits
