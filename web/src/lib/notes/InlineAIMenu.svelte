@@ -610,12 +610,16 @@
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      // If the prompt input has text AND the focused preset's id is
-      // not what the user is filtering toward, run the prompt as a
-      // custom Ask. If the prompt is empty, run the highlighted
-      // preset. This gives both "type a thought, hit Enter" and
-      // "type to filter, arrow, Enter" patterns.
-      const filtering = promptInput.trim().length > 0 && visiblePresets.length === PRESETS.length;
+      // If the prompt input has text AND the visible preset list is
+      // narrower than the full set (the query matched a subset), the
+      // user is filtering — Enter picks the highlighted preset. If
+      // the query filtered nothing OR is empty OR cleared the list,
+      // Enter runs the prompt as a custom Ask. This gives both
+      // "type a thought, hit Enter" and "type to filter, arrow,
+      // Enter" patterns. Prior condition (`=== PRESETS.length`) was
+      // inverted — it was true only when input was non-empty AND
+      // nothing was filtered, which is the contradiction case.
+      const filtering = promptInput.trim().length > 0 && visiblePresets.length > 0 && visiblePresets.length < PRESETS.length;
       if (filtering) {
         // Filtered list — interpret Enter as picking the highlighted preset.
         const p = visiblePresets[highlightedIdx];
