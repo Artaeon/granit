@@ -31,6 +31,7 @@
     derivePageAgent,
     buildPageAgentTarget
   } from '$lib/chat/pageContext';
+  import { installOverlayShortcuts } from '$lib/chat/overlayShortcuts';
   import {
     createQuickActionService,
     type QuickActionRefs
@@ -531,44 +532,29 @@
     }
   });
 
-  // Global Mod+J shortcut + Esc to close. Fires from anywhere
-  // including inside text inputs / contentEditable editors —
-  // "ask AI about the note I'm currently writing" is the killer
-  // use case, so we deliberately steal the keystroke from
-  // editors. Mod+J has no strong default in inputs (browsers use
-  // it for downloads, which we override the same way Mod+P
-  // overrides print).
-  function onKey(e: KeyboardEvent) {
-    if (open && e.key === 'Escape') {
-      e.preventDefault();
-      // Layered Esc dismissal: close the most-recently-opened
-      // sub-surface first so a single Esc never accidentally throws
-      // away the user's whole panel state. Order: pickers (mention,
-      // slash, mode) → history slide-over → the overlay itself.
-      if (mentionPickerOpen) {
-        mentionPickerOpen = false;
-      } else if (slashPickerOpen) {
-        slashPickerOpen = false;
-      } else if (modePickerOpen) {
-        modePickerOpen = false;
-      } else if (historyOpen) {
-        historyOpen = false;
-        refocusComposer();
-      } else {
-        close();
+  // Mod+J / Esc / Mod+1..9 — wired through installOverlayShortcuts
+  // so the listener attach/detach + textarea-guard live in one
+  // tested module. The layered Esc dismissal stays here because it
+  // owns the picker / history state.
+  onMount(() =>
+    installOverlayShortcuts({
+      isOpen: () => open,
+      toggle,
+      selectMode: (id) => aiCtx.selectMode(id),
+      onEscape: () => {
+        // Order: pickers (mention, slash, mode) → history slide-
+        // over → the overlay itself. So a single Esc only ever
+        // unwinds one layer.
+        if (mentionPickerOpen) mentionPickerOpen = false;
+        else if (slashPickerOpen) slashPickerOpen = false;
+        else if (modePickerOpen) modePickerOpen = false;
+        else if (historyOpen) {
+          historyOpen = false;
+          refocusComposer();
+        } else close();
       }
-      return;
-    }
-    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'j') {
-      e.preventDefault();
-      toggle();
-    }
-  }
-
-  onMount(() => {
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
+    })
+  );
 
   async function loadStatus() {
     try {
@@ -961,28 +947,10 @@
   // surfaces outside the composer (Esc handlers, starter-button
   // strip, send() prelude builder) need to read or mutate them.
 
-  // Mode quick-switch: Mod+1..9 picks the matching entry by
-  // position in AGENT_MODES (generic modes first, then personas).
-  // Power-user shortcut; only fires while the overlay is open +
-  // the user isn't typing into the chat input (numbers there
-  // should land as numbers, not mode jumps). Entries beyond
-  // position 9 are reachable via the picker only — keypad-style
-  // 1..9 is the practical ceiling for a single-key shortcut.
-  $effect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod || e.shiftKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
-      if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) return;
-      const idx = parseInt(e.key, 10);
-      if (Number.isNaN(idx) || idx < 1 || idx > Math.min(9, AGENT_MODES.length)) return;
-      e.preventDefault();
-      aiCtx.selectMode(AGENT_MODES[idx - 1].id);
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
+  // Mode quick-switch (Mod+1..9) lives inside installOverlayShortcuts
+  // above — the previous in-line $effect duplicated the listener and
+  // shadowed the global onKey symbol, which the latest audit flagged
+  // as a foot-gun for future edits.
 </script>
 
 {#if open}
