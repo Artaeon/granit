@@ -74,6 +74,23 @@
 
   let activeLine = $derived(observedActiveLine ?? cursorActiveLine);
 
+  // Reset observedActiveLine when scrollContainer changes identity
+  // (note swap, view-mode flip preview ↔ split). Without this, A's
+  // last observed heading line briefly persists against B's fresh
+  // DOM before the observer's first measure repopulates — visible
+  // as a momentary wrong-heading highlight if B has a heading on
+  // the same line number. Tracking container identity rather than
+  // body keeps the reset out of the per-keystroke hot path that
+  // caused the flicker fixed in b43de2ce.
+  let lastSeenContainer: HTMLElement | null | undefined = undefined;
+  $effect(() => {
+    const c = scrollContainer ?? null;
+    if (lastSeenContainer !== undefined && lastSeenContainer !== c) {
+      observedActiveLine = null;
+    }
+    lastSeenContainer = c;
+  });
+
   // (Re)attach the IntersectionObserver whenever `body` changes.
   //
   // A prior version tracked a `structuralKey` (the heading-line set)
@@ -202,15 +219,12 @@
       container.removeEventListener('scroll', onScrollOrResize);
       window.removeEventListener('resize', onScrollOrResize);
       if (raf) cancelAnimationFrame(raf);
-      // Deliberately DON'T reset observedActiveLine. The cleanup runs
-      // on every body-change effect re-run, not just unmount; resetting
-      // here flashed the active heading from "current" to "cursor
-      // fallback" and back per keystroke (the next observer fires
-      // ~16ms later and re-populates). Line numbers stay stable across
-      // most edits, so the stale value remains visually correct between
-      // observer cycles. On note swap the `{#if headings.length === 0}`
-      // branch hides the list anyway, so a stale active-line tick
-      // isn't visible.
+      // Note swap / view-mode flip is handled by the
+      // lastSeenContainer effect above. We deliberately don't
+      // reset observedActiveLine here: this cleanup also fires on
+      // every body-change effect re-run, and resetting per keystroke
+      // flashed the active heading from "current" to cursor fallback
+      // and back within one frame.
     };
   });
 </script>
