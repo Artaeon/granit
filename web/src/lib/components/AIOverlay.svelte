@@ -24,6 +24,14 @@
   import { buildPrelude } from '$lib/chat/prelude';
   import { commitParsedAction } from '$lib/chat/commitAction';
   import {
+    deriveCurrentNotePath,
+    deriveCurrentProjectName,
+    deriveCurrentGoalId,
+    deriveOnCalendarPage,
+    derivePageAgent,
+    buildPageAgentTarget
+  } from '$lib/chat/pageContext';
+  import {
     createQuickActionService,
     type QuickActionRefs
   } from '$lib/chat/quickActionService.svelte';
@@ -420,78 +428,18 @@
   // (the effect re-fires the moment attachNote flips false). The
   // open-transition is the right moment to make the call.
   let attachNote = $state(false);
-  // $derived view of the current path so the chip + outgoing
-  // chatStream call always reflect the page the user is on, even
-  // if they navigate while the overlay is open.
-  const currentNotePath = $derived.by(() => {
-    const p = $page.url.pathname;
-    if (!p.startsWith('/notes/')) return '';
-    return decodeURIComponent(p.slice('/notes/'.length));
-  });
-  // Same shape for the projects route. When set, the first turn of
-  // a new thread pulls the project's description + open-task list
-  // into a system message so the assistant is grounded without the
-  // user re-explaining what project they're talking about.
-  const currentProjectName = $derived.by(() => {
-    const p = $page.url.pathname;
-    // /projects (list view) selects a project via the ?p=<name>
-    // query param — that's the canonical "I'm looking at project X"
-    // signal because the project detail opens as a drawer, not a
-    // separate route. Without this, PM mode never auto-fired on
-    // the most common path users actually use.
-    if (p === '/projects' || p.startsWith('/projects?')) {
-      const q = $page.url.searchParams.get('p');
-      return q ? decodeURIComponent(q) : '';
-    }
-    // Older /projects/<name>/ deep links (if anything still routes
-    // there) also count. Strip any trailing path so /projects/X/edit
-    // still resolves to X.
-    if (p.startsWith('/projects/')) {
-      const tail = p.slice('/projects/'.length);
-      const name = tail.split('/')[0];
-      if (name) return decodeURIComponent(name);
-    }
-    return '';
-  });
-  // Goal page selection — /goals?focus=<id>. When set, the
-  // sidebar enters Goal Manager mode and injects a per-goal
-  // prelude on first turn (mirror of the project flow). The
-  // page uses ?focus rather than a path segment so there's no
-  // pathname-tail to parse — just check the searchParam.
-  const currentGoalId = $derived.by(() => {
-    const p = $page.url.pathname;
-    if (!p.startsWith('/goals')) return '';
-    return $page.url.searchParams.get('focus') ?? '';
-  });
-  // Calendar page — no specific entity to focus on. Presence
-  // alone (path starts with /calendar) is enough to enter the
-  // Calendar Manager mode and inject the date-window prelude.
-  const onCalendarPage = $derived($page.url.pathname.startsWith('/calendar'));
-  // Page-agent launcher — drives the "Run X Agent" sidebar entry
-  // point. Each entity page (/tasks /projects /goals /calendar) owns
-  // its own embedded agent dialog; the sidebar opens it by navigating
-  // there with ?agent=1. Returns null on pages without an agent so
-  // the button hides cleanly.
-  const pageAgent = $derived.by(() => {
-    const p = $page.url.pathname;
-    if (p.startsWith('/tasks')) return { path: '/tasks', label: 'Task Agent', glyph: 'TA' };
-    if (p === '/projects' || p.startsWith('/projects?') || p.startsWith('/projects/')) {
-      return {
-        path: '/projects',
-        label: currentProjectName ? `Project Agent · ${currentProjectName}` : 'Project Agent',
-        glyph: 'PA'
-      };
-    }
-    if (p.startsWith('/goals')) return { path: '/goals', label: 'Goal Agent', glyph: 'GA' };
-    if (p.startsWith('/calendar')) return { path: '/calendar', label: 'Calendar Agent', glyph: 'CA' };
-    return null;
-  });
+  // Page-context derivations — the route-parsing logic lives in
+  // pageContext.ts as pure functions; we just wire $page through
+  // them so the chip / mode auto-switch / page-agent button stay
+  // reactive as the user navigates while the overlay is open.
+  const currentNotePath = $derived(deriveCurrentNotePath($page.url.pathname));
+  const currentProjectName = $derived(deriveCurrentProjectName($page.url.pathname, $page.url.searchParams));
+  const currentGoalId = $derived(deriveCurrentGoalId($page.url.pathname, $page.url.searchParams));
+  const onCalendarPage = $derived(deriveOnCalendarPage($page.url.pathname));
+  const pageAgent = $derived(derivePageAgent($page.url.pathname, currentProjectName));
   function launchPageAgent() {
     if (!pageAgent) return;
-    const params = new URLSearchParams($page.url.searchParams);
-    params.set('agent', '1');
-    const qs = params.toString();
-    void goto(`${pageAgent.path}${qs ? '?' + qs : ''}`, { keepFocus: true });
+    void goto(buildPageAgentTarget(pageAgent.path, $page.url.searchParams), { keepFocus: true });
     close();
   }
 
