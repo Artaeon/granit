@@ -14,8 +14,8 @@
   import Drawer from '$lib/components/Drawer.svelte';
   import { toast } from '$lib/components/toast';
   import { scheduleFlashcards } from '$lib/util/scheduleFlashcards';
-  import { getDraft, setDraft, clearDraft, draftDivergesFromServer } from '$lib/notes/drafts';
-  import { rememberScroll, recallScroll } from '$lib/notes/noteHistory';
+  import { setDraft } from '$lib/notes/drafts';
+  import { rememberScroll } from '$lib/notes/noteHistory';
   import { createPreviewScrollTracker } from '$lib/notes/previewScrollTracker.svelte';
   import { installNoteShortcuts } from '$lib/notes/noteKeyboardShortcuts.svelte';
   import { openResearchMode as openResearchModeFor } from '$lib/notes/researchMode';
@@ -25,6 +25,7 @@
   import { parseTagsField, addSuggestedTag, insertSuggestedLink } from '$lib/notes/frontmatterTagOps';
   import { saveFrontmatter as saveFrontmatterFn } from '$lib/notes/saveFrontmatter';
   import { saveNote as saveNoteFn } from '$lib/notes/saveNote';
+  import { loadNote as loadNoteFn } from '$lib/notes/loadNote';
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
   import {
     parseDailyDate,
@@ -44,7 +45,7 @@
     inlineAITriggerExtension,
     type InlineAITriggerEvent
   } from '$lib/editor/inline-ai-trigger';
-  import { acceptInlineAI, inlineAIObserver, rejectInlineAI, type InlineAIState } from '$lib/editor/inline-ai';
+  import { acceptInlineAI, inlineAIObserver, type InlineAIState } from '$lib/editor/inline-ai';
   import type { EditorView } from '@codemirror/view';
   import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
@@ -377,212 +378,21 @@
 
   let draftRestored = $state(false);
 
+  // Load now lives in $lib/notes/loadNote — see there for the
+  // draft-reconciliation contract, the "always prefer the draft"
+  // rule on divergence, and the 404 / network-error fallbacks.
   async function load(p: string, opts: { force?: boolean } = {}) {
-    error = '';
-    notFound = false;
-    draftRestored = false;
-    if (!opts.force && lastLoadedPath === p) return;
-    // Clear the stale-note concurrency token up-front. If the fetch
-    // below throws (network blip, 5xx, abort), the previous note's
-    // etag would otherwise linger on the freshly-navigated path and
-    // get sent as If-Match on the next save → spurious 412 on a note
-    // that had no real conflict. A successful load refills it from
-    // the response a few lines down.
-    noteEtag = null;
-    // Same-note reloads (WS-triggered note.changed) must not clobber
-    // in-flight typing. Snapshot the body before the await; if the user
-    // types during the fetch, abort the body overwrite and let the
-    // auto-save effect persist their edits. For navigation to a
-    // different note (note?.path !== p), we always want to overwrite.
-    const isSameNoteReload = note?.path === p;
-    // Reset breadcrumb-expand only on real navigation. A same-note
-    // WS reload (sync from another device, metadata reindex) must
-    // not collapse a deep-path breadcrumb the user expanded by hand.
-    if (!isSameNoteReload) breadcrumbExpanded = false;
-    // Cancel any in-flight inline-AI stream on real navigation. The
-    // streaming controller in inline-ai.ts is module-scope; without
-    // this kill, a stream started on note A keeps dispatching ghost
-    // tokens into the editor view after it's been retargeted to
-    // note B, and the tokens land at the original anchor offset in
-    // an unrelated doc. Same-note reloads keep the ghost so an
-    // unrelated WS rescan can't yank it from under the user.
-    if (!isSameNoteReload) {
-      const view = editor?.getView?.();
-      if (view) rejectInlineAI(view);
-    }
-    // Reset the per-load draft watermark so the first keystroke on the
-    // newly-opened note triggers a draft write. Without this, opening a
-    // note whose body happens to equal the previous note's last drafted
-    // body would skip the very first draft persistence.
-    lastDraftedBody = null;
-    // Snapshot from the EDITOR, not the bound `body` mirror. The
-    // bind:value write from CodeMirror's updateListener is microtask-
-    // deferred; on a slow render frame the parent's `body` can lag
-    // the actual doc by 10s of ms. If a WS reload fires inside that
-    // lag window we'd false-positive "no in-flight edits", replace
-    // the editor with the server's older body, and silently discard
-    // every keystroke the user added after the last autosave.
-    // editor.getContent() reads CodeMirror's state.doc directly,
-    // which is updated synchronously inside dispatch().
-    const liveAtStart = editor?.getContent?.() ?? body;
-    lastLoadedPath = p;
-    try {
-      const { data: fresh, etag: freshEtag } = await api.getNoteWithEtag(p);
-      if (isSameNoteReload) {
-        const liveNow = editor?.getContent?.() ?? body;
-        if (liveNow !== liveAtStart) return;
-      }
-      // Anchor the optimistic-concurrency token. save() sends this back
-      // as `If-Match`; a foreign edit since this load surfaces as 412.
-      noteEtag = freshEtag;
-      forceNextSave = false;
-      const serverBody = fresh.body ?? '';
-
-      // Restore a local draft if it diverges from the server. We ALWAYS
-      // prefer the draft when it has unsaved typing, even when the
-      // server's modTime is newer — losing the user's work silently is
-      // worse than the rare case of overwriting a TUI/other-device edit.
-      // The most common reason the server is "newer" while a draft
-      // diverges is the user typing during the autosave (the draft was
-      // written with the pre-save modTime, then save bumped the server's
-      // modTime; the draft's body has the keystrokes that came in after
-      // the save fired). Discarding it is exactly the wrong move.
-      //
-      // We still warn the user when the modTime says they may be
-      // working from a stale base, so they can manually reconcile if
-      // they actually have a multi-device conflict (the rare case).
-      const draft = getDraft(p);
-      if (draft && draftDivergesFromServer(draft, serverBody)) {
-        const serverNewer = new Date(fresh.modTime) > new Date(draft.baseModTime);
-        prev = draft.body;
-        body = draft.body;
-        note = fresh;
-        dirty = true;
-        draftRestored = true;
-        treeDrawerOpen = false;
-        infoDrawerOpen = false;
-        if (serverNewer) {
-          toast.warning('Restored unsaved draft — server moved forward since your last edit. Your version will overwrite on next save.');
-        } else {
-          toast.info('Restored unsaved draft');
-        }
-        save({ silent: true });
-        return;
-      } else if (draft) {
-        // Draft matches server — stale, clean up.
-        clearDraft(p);
-        lastDraftedBody = null;
-      }
-
-      note = fresh;
-      body = serverBody;
-      prev = body;
-      dirty = false;
-      // A successful load is the canonical "we are anchored to the
-      // server again" event — reset every error/conflict flag so a
-      // stale 412 from a previous version can't keep conflictDetected
-      // sticky and silently disable the autosave loop. The conflict
-      // banner's "Reload server version" button reaches this branch;
-      // without these resets, the user types after reload and
-      // nothing saves (the trySave bail-on-conflictDetected guard
-      // would short-circuit forever).
-      saveFailed = false;
-      saveFailCount = 0;
-      lastSaveError = '';
-      pendingFrontmatter = null;
-      treeDrawerOpen = false;
-      infoDrawerOpen = false;
-      // Restore the scroll position (per-note, pixel-accurate). Defer
-      // a frame so the editor has finished mounting and the scroller
-      // has its content height — without the defer the setScrollTop
-      // call lands at 0 because the doc just got swapped.
-      const remembered = recallScroll(p);
-      if (remembered > 0) {
-        requestAnimationFrame(() => {
-          editor?.setScrollTop?.(remembered);
-        });
-      }
-      // ?line=<n> — incoming jump from /search. Wins over remembered
-      // scroll position so a user clicking a search hit lands on the
-      // matched line, not yesterday's reading position. We let the
-      // editor mount fully before dispatching the scroll.
-      const lineParam = $page.url.searchParams.get('line');
-      if (lineParam) {
-        const ln = parseInt(lineParam, 10);
-        if (Number.isFinite(ln) && ln > 0) {
-          requestAnimationFrame(() => editor?.scrollToLine?.(ln));
-        }
-      }
-      // Block-level wikilink target — when arriving via [[Note#H]] the
-      // url hash carries the heading text. Scroll to the matching
-      // line, overriding any remembered scroll position. Only fires
-      // when the hash is non-empty so the regular reopen flow keeps
-      // its remembered position. Heading-match is case-insensitive
-      // and whitespace-collapsed so "  Plan  " in the hash still
-      // matches "## Plan" in the body.
-      const rawHash = $page.url.hash ? decodeURIComponent($page.url.hash.slice(1)) : '';
-      if (rawHash) {
-        const target = rawHash.toLowerCase().replace(/\s+/g, ' ').trim();
-        const lines = (body ?? '').split('\n');
-        let found = -1;
-        let inFence = false;
-        for (let i = 0; i < lines.length; i++) {
-          const t = lines[i].trim();
-          if (t.startsWith('```') || t.startsWith('~~~')) { inFence = !inFence; continue; }
-          if (inFence) continue;
-          const m = /^(#{1,6})\s+(.+?)\s*$/.exec(t);
-          if (m && m[2].toLowerCase().replace(/\s+/g, ' ').trim() === target) {
-            found = i + 1; // CodeMirror is 1-based
-            break;
-          }
-        }
-        if (found > 0) {
-          requestAnimationFrame(() => editor?.scrollToLine?.(found));
-        }
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // If we have a local draft, surface it instead of an error so an
-      // offline reload doesn't lose work.
-      const draft = getDraft(p);
-      if (draft) {
-        prev = draft.body;
-        body = draft.body;
-        note = {
-          path: p,
-          title: p.split('/').pop()!.replace(/\.md$/, ''),
-          modTime: new Date().toISOString(),
-          size: draft.body.length,
-          frontmatter: {},
-          body: draft.body
-        } as Note;
-        dirty = true;
-        draftRestored = true;
-        toast.warning('offline — showing your local draft');
-        return;
-      }
-      // 404 from getNote means the note path doesn't exist yet —
-      // almost always the user following an unresolved wikilink or
-      // navigating to a path they're about to create. Surface a
-      // create-affordance instead of an error banner.
-      if (e instanceof ApiError && e.status === 404) {
-        notFound = true;
-      } else {
-        error = msg;
-      }
-      note = null;
-      body = '';
-      prev = '';
-      dirty = false;
-      // Critical: drop the dedupe guard so a refetch of the SAME path
-      // is allowed. Without this, the user lands on a 404/network-error
-      // note, the page renders the error banner, and any subsequent
-      // navigation back to that URL (browser back, retry click,
-      // sidebar re-click) silently no-ops because `lastLoadedPath ===
-      // p` returns early. The user concludes the page is frozen and
-      // hits reload.
-      lastLoadedPath = '';
-    }
+    return loadNoteFn(p, opts, noteState, {
+      getLiveBody: () => editor?.getContent?.() ?? body,
+      getEditorView: () => editor?.getView?.(),
+      scrollToLine: (n) => editor?.scrollToLine?.(n),
+      setScrollTop: (top) => editor?.setScrollTop?.(top),
+      closeDrawers: () => { treeDrawerOpen = false; infoDrawerOpen = false; },
+      setBreadcrumbExpanded: (v) => { breadcrumbExpanded = v; },
+      getLineParam: () => $page.url.searchParams.get('line'),
+      getRawHash: () => $page.url.hash ? decodeURIComponent($page.url.hash.slice(1)) : '',
+      save: (o) => save(o)
+    });
   }
 
   // Title inferred from the path for the not-found state. Strips the
@@ -659,7 +469,7 @@
   // the draftRestored badge on success.
   async function save(opts: { silent?: boolean } = {}): Promise<boolean> {
     if (saving) return !dirty;
-    return saveNoteFn(opts, saveState, saveCtx, () => { draftRestored = false; });
+    return saveNoteFn(opts, noteState, saveCtx, () => { draftRestored = false; });
   }
 
   let prev = $state('');
@@ -725,12 +535,11 @@
   let lastDraftedBody: string | null = null;
   let draftWriteRaf = 0;
 
-  // Single mutable view onto the page's save-side $state. Helpers
-  // in $lib/notes/saveFrontmatter (and future save/load extractions)
-  // accept this proxy so they can read and write each field
-  // reactively without each call site re-spelling the same 14
-  // getters/setters.
-  const saveState = {
+  // Single mutable view onto the page's note-pipeline $state.
+  // Every save/load/frontmatter helper in $lib/notes accepts this
+  // proxy so they can read and write each field reactively without
+  // re-spelling the same getter/setter pairs at every call site.
+  const noteState = {
     get note() { return note; }, set note(v) { note = v; },
     get body() { return body; }, set body(v) { body = v; },
     get prev() { return prev; }, set prev(v) { prev = v; },
@@ -744,7 +553,10 @@
     get saveFailed() { return saveFailed; }, set saveFailed(v) { saveFailed = v; },
     get saveFailCount() { return saveFailCount; }, set saveFailCount(v) { saveFailCount = v; },
     get lastSaveError() { return lastSaveError; }, set lastSaveError(v) { lastSaveError = v; },
-    get lastDraftedBody() { return lastDraftedBody; }, set lastDraftedBody(v) { lastDraftedBody = v; }
+    get lastDraftedBody() { return lastDraftedBody; }, set lastDraftedBody(v) { lastDraftedBody = v; },
+    get notFound() { return notFound; }, set notFound(v) { notFound = v; },
+    get lastLoadedPath() { return lastLoadedPath; }, set lastLoadedPath(v) { lastLoadedPath = v; },
+    get draftRestored() { return draftRestored; }, set draftRestored(v) { draftRestored = v; }
   };
   const saveCtx = { getLiveBody: () => editor?.getContent?.() ?? body };
   $effect(() => {
@@ -1116,9 +928,9 @@
 
   // Frontmatter save lives in $lib/notes/saveFrontmatter — see
   // there for the conflict + draft + surgical-mutation contract.
-  // The page just plumbs its reactive state via saveState above.
+  // The page just plumbs its reactive state via noteState above.
   async function saveFrontmatter(next: Record<string, unknown>): Promise<boolean> {
-    return saveFrontmatterFn(next, saveState, saveCtx);
+    return saveFrontmatterFn(next, noteState, saveCtx);
   }
 
   // ----- Link-suggester glue -----
