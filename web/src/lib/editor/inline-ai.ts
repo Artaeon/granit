@@ -348,22 +348,6 @@ export function regenerateInlineAI(view: EditorView): boolean {
   return streamInlineAI(view, s.request);
 }
 
-/** Whether a ghost is currently rendered. Cheap O(1) field read so
- *  hosts can poll from a $derived to drive status pills. */
-export function isInlineAIActive(view: EditorView | undefined): boolean {
-  if (!view) return false;
-  const s = view.state.field(inlineAIField, false);
-  return !!s && s.active;
-}
-
-/** Snapshot of the current ghost state. Hosts use this to render a
- *  "streaming N chars" pill or expose a regenerate button. */
-export function getInlineAIState(view: EditorView | undefined): InlineAIState | null {
-  if (!view) return null;
-  const s = view.state.field(inlineAIField, false);
-  return s ?? null;
-}
-
 /** Observer extension — fires `onChange` whenever the inline-ai state
  *  transitions in a way the host care about (active flips, streaming
  *  flips, anchor moves, text grows). Hosts use this to drive a Svelte
@@ -435,7 +419,7 @@ function buildContinueMessages(view: EditorView): ChatMessage[] {
   ];
 }
 
-export function continueWriting(view: EditorView): boolean {
+function continueWriting(view: EditorView): boolean {
   const cur = view.state.selection.main;
   if (cur.from !== cur.to) return false;
   return streamInlineAI(view, {
