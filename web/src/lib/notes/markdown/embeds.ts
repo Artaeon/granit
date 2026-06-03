@@ -26,6 +26,7 @@
 
 import { marked } from 'marked';
 import { api } from '$lib/api';
+import { onWsEvent } from '$lib/ws';
 import { preprocess, postprocess, escAttr, escHtml } from './transforms';
 
 export interface EmbedHydratorOptions {
@@ -43,6 +44,25 @@ export interface EmbedHydratorOptions {
  *  negative so an unresolved embed doesn't refire api.listNotes on
  *  every render. */
 const embedCache = new Map<string, string>();
+
+// Vault edits invalidate the cache. Without this, a `![[Foo]]` that
+// resolved before keeps showing the OLD body of Foo even after Foo
+// was edited in another tab, and a `![[Foo]]` cached as missing
+// keeps the empty placeholder forever even after Foo is created.
+// Per-target invalidation would require a target→path index we
+// don't maintain; the map is bounded by per-session embed sites
+// (dozens at most), so clearing wholesale costs nothing meaningful.
+if (typeof window !== 'undefined') {
+  onWsEvent((ev) => {
+    if (
+      ev.type === 'note.changed' ||
+      ev.type === 'note.removed' ||
+      ev.type === 'vault.rescanned'
+    ) {
+      embedCache.clear();
+    }
+  });
+}
 
 /** Build a hydrator bound to a specific MarkdownRenderer instance's
  *  container. Returns a single hydrateEmbeds() function the caller
