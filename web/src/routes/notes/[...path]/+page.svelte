@@ -172,6 +172,10 @@
       cancelAnimationFrame(previewBodyRaf);
       previewBodyRaf = 0;
     }
+    if (draftWriteRaf) {
+      cancelAnimationFrame(draftWriteRaf);
+      draftWriteRaf = 0;
+    }
   });
   let saving = $state(false);
   let dirty = $state(false);
@@ -828,18 +832,42 @@
   // the JSON.stringify + setItem can take 10ms+, which adds up when
   // a save bounces every 2s.
   let lastDraftedBody: string | null = null;
+  let draftWriteRaf = 0;
   $effect(() => {
     void body;
     if (!note || !dirty) return;
-    // Read the editor's authoritative content. The body mirror can
-    // lag CodeMirror's actual doc during a slow reactive frame, and
-    // writing the stale mirror to localStorage was the silent-data-
-    // loss path: the user typed "ABCDEF" but only "AB" landed in the
-    // draft, so a crash before the next autosave restored "AB".
-    const current = editor?.getContent?.() ?? body;
-    if (lastDraftedBody === current) return;
-    lastDraftedBody = current;
-    setDraft(note.path, current, note.modTime);
+    // Coalesce N keystrokes per frame into a single draft write.
+    // The previous per-keystroke effect ran editor.getContent()
+    // (O(N) doc.toString()), JSON.stringify(body) (O(N) escape +
+    // allocation), and a synchronous localStorage.setItem (main-
+    // thread blocking I/O) on every typed character — measured at
+    // 5–15 ms per keystroke for a 100 KB note, the dominant cost
+    // behind the freeze the user reported on long notes. The
+    // pagehide / beforeunload flush below still catches tab-close
+    // exactly; the only loss-case the coalescer introduces is a
+    // hard crash mid-frame, which costs at most one frame (≤16 ms)
+    // of typing — well below human-perceptible data loss and the
+    // same trade-off bodyForPreview makes for the preview path.
+    if (draftWriteRaf) return;
+    // Capture the path the schedule was for. If `note` swaps between
+    // schedule and fire (e.g. SPA navigation lands a new note in the
+    // same frame the user finished typing), the pending rAF must NOT
+    // commit the old body under the new path.
+    const scheduledPath = note.path;
+    draftWriteRaf = requestAnimationFrame(() => {
+      draftWriteRaf = 0;
+      if (!note || !dirty || note.path !== scheduledPath) return;
+      // Read the editor's authoritative content. The body mirror
+      // can lag CodeMirror's actual doc during a slow reactive
+      // frame, and writing the stale mirror to localStorage was
+      // the silent-data-loss path: the user typed "ABCDEF" but
+      // only "AB" landed in the draft, so a crash before the next
+      // autosave restored "AB".
+      const current = editor?.getContent?.() ?? body;
+      if (lastDraftedBody === current) return;
+      lastDraftedBody = current;
+      setDraft(note.path, current, note.modTime);
+    });
   });
 
   // Force-flush draft on tab hide / before unload. Belt-and-suspenders
