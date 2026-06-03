@@ -116,8 +116,16 @@
   // Also bounces sabbath-hidden modules — typing /tasks during
   // Sabbath should redirect to home with a soft message rather than
   // letting the user back-door past the discipline.
+  //
+  // Wait for $modulesStore.loaded before deciding. modulesStore.isEnabled
+  // defaults to `true` for unknown ids while the API request is in
+  // flight, so without this guard a deep link to /finance on a slow
+  // network would render briefly, then the module status would arrive,
+  // and if the module IS enabled the guard would still re-evaluate —
+  // but the cold path can produce a spurious redirect when the user
+  // navigates DURING the load. Cheap, correct, no race.
   $effect(() => {
-    void $modulesStore; // re-run when modules state arrives/changes
+    if (!$modulesStore.loaded) return;
     void $sabbath;
     const path = $page.url.pathname;
     const match = nav.find(
