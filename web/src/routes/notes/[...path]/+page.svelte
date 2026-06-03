@@ -1341,23 +1341,28 @@
   // Link chip → insert markup at the editor cursor; if the editor isn't
   // mounted (e.g. preview view), append to the end of the body so the
   // user still gets a working insertion.
-  let existingTagList = $derived.by<string[]>(() => {
-    const fm = note?.frontmatter as Record<string, unknown> | undefined;
+  //
+  // Frontmatter `tags:` lands as either an array (idiomatic) or a
+  // string (legacy / hand-typed YAML, e.g. `tags: a, b, c`). One
+  // helper handles both shapes so the existingTagList derivation and
+  // the addSuggestedTag append-path agree on the parse.
+  function parseTagsField(fm: Record<string, unknown> | undefined | null): string[] {
     if (!fm) return [];
     const t = fm.tags;
     if (Array.isArray(t)) return t.map((x) => String(x));
     if (typeof t === 'string') return t.split(/[,\s]+/).filter(Boolean);
     return [];
-  });
+  }
+  let existingTagList = $derived(
+    parseTagsField(note?.frontmatter as Record<string, unknown> | undefined)
+  );
 
   async function addSuggestedTag(tag: string) {
     if (!note) return;
     const clean = tag.trim().replace(/^#/, '').toLowerCase();
     if (!clean) return;
     const fm = { ...(note.frontmatter ?? {}) } as Record<string, unknown>;
-    let arr: string[] = [];
-    if (Array.isArray(fm.tags)) arr = (fm.tags as unknown[]).map((x) => String(x));
-    else if (typeof fm.tags === 'string') arr = fm.tags.split(/[,\s]+/).filter(Boolean);
+    const arr = parseTagsField(fm);
     if (arr.includes(clean)) {
       toast.success(`#${clean} already on this note`);
       return;
