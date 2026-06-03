@@ -137,12 +137,6 @@
   // even when 5+ keystrokes fall inside one 16ms frame.
   let bodyForPreview = $state('');
   let previewBodyRaf = 0;
-  // Diagnostic counter — number of body changes the throttle has
-  // dropped since the last flush. Each flush logs the count (when
-  // hunt mode is on) so the user can SEE the coalescer working
-  // instead of guessing. A keyboard mash that produces 30 changes
-  // in one frame logs '{dropped: 29}', proving 30 → 1.
-  let previewDropped = 0;
   $effect(() => {
     void body;
     // First-paint fast path: when bodyForPreview is still empty but
@@ -157,20 +151,10 @@
       bodyForPreview = body;
       return;
     }
-    if (previewBodyRaf) {
-      previewDropped++;
-      return;
-    }
+    if (previewBodyRaf) return;
     previewBodyRaf = requestAnimationFrame(() => {
       previewBodyRaf = 0;
       bodyForPreview = body;
-      if (freezeHuntOn() && previewDropped > 0) {
-        console.warn('[freeze-hunt] body-throttle:flush', {
-          dropped: previewDropped,
-          bytes: body.length
-        });
-      }
-      previewDropped = 0;
     });
     // Note: NO cleanup return here. $effect cleanup fires on every
     // dep change, not just unmount — cancelling the pending rAF on
@@ -541,21 +525,6 @@
     return () => clearInterval(t);
   });
 
-  // [freeze-hunt] diagnostic flag — flip on at runtime via the
-  // browser console with `localStorage.setItem('granit.freeze-hunt','1')`
-  // then reload. Logs save-path timing markers + WS reload coalesce
-  // hits so we can see what's happening on the next freeze report.
-  // No-op when off; flag is read inside save() so toggling takes
-  // effect for the next save attempt without a reload.
-  function freezeHuntOn(): boolean {
-    try {
-      return typeof localStorage !== 'undefined'
-        && localStorage.getItem('granit.freeze-hunt') === '1';
-    } catch {
-      return false;
-    }
-  }
-
   async function save(opts: { silent?: boolean } = {}): Promise<boolean> {
     if (!note || !dirty || saving) return !dirty;
     saving = true;
@@ -574,12 +543,8 @@
     // old note's save response. Identity check on the proxy survives
     // intermediate property mutations and only fails on reassignment.
     const savedNote = note;
-    const hunting = freezeHuntOn();
-    const t0 = hunting ? performance.now() : 0;
-    if (hunting) console.warn('[freeze-hunt] save:start', { path: note.path, bytes: sentBody.length, silent: !!opts.silent });
     try {
       const updated = await api.putNote(note.path, { frontmatter: note.frontmatter as Record<string, unknown>, body: sentBody });
-      if (hunting) console.warn('[freeze-hunt] save:put-returned', { ms: (performance.now() - t0).toFixed(1) });
       // Navigation guard: if the user moved to another note while we
       // were awaiting, the server-side save still succeeded for the
       // original note — we just stop applying its response to the
@@ -648,16 +613,6 @@
       }
       draftRestored = false;
       if (!opts.silent && !dirty) toast.success('saved');
-      if (hunting) {
-        // Defer one frame so the post-save reactivity wave has had a
-        // chance to fire — the timing here tells us how long the
-        // reactive cascade took, which is the suspected freeze
-        // surface. Logs the total wall-clock between save start and
-        // the next paint after all effects ran.
-        requestAnimationFrame(() => {
-          console.warn('[freeze-hunt] save:reactive-cascade-done', { totalMs: (performance.now() - t0).toFixed(1) });
-        });
-      }
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -1028,7 +983,6 @@
       if (!note || note.path !== p) return;
       if (liveBody() !== prev || saving) return;
       if (lastSavedAt && Date.now() - lastSavedAt < 3000) return;
-      if (freezeHuntOn()) console.warn('[freeze-hunt] ws-reload:fire', { path: p });
       void load(p, { force: true });
     }, 600);
   }
@@ -1041,11 +995,7 @@
       // editor's doc directly so in-flight typing that hasn't
       // propagated to `body` yet still suppresses the reload.
       if (liveBody() !== prev || saving) return;
-      if (lastSavedAt && Date.now() - lastSavedAt < 3000) {
-        if (freezeHuntOn()) console.warn('[freeze-hunt] ws-reload:suppress-own-bounce', { ageMs: Date.now() - (lastSavedAt ?? 0) });
-        return;
-      }
-      if (freezeHuntOn()) console.warn('[freeze-hunt] ws-reload:schedule', { path: note.path });
+      if (lastSavedAt && Date.now() - lastSavedAt < 3000) return;
       scheduleWsReload(note.path);
     });
     return () => {
