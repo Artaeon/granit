@@ -521,10 +521,12 @@ func findBacklinkContexts(sourceContent, targetRelPath string, byTitle, byBase m
 			// `[[folder/note.md]]` — author wrote the full path.
 			resolved = link
 		default:
+			// Reached only when the outer switch's `HasSuffix(link, ".md")`
+			// case did NOT match — link has no `.md` suffix here.
 			base := strings.TrimSuffix(filepath.Base(link), filepath.Ext(link))
 			if p := byBase[base]; p != "" {
 				resolved = p
-			} else if !strings.HasSuffix(link, ".md") {
+			} else {
 				// `[[folder/note]]` — extension omitted but path written
 				// in full. Try with .md appended.
 				resolved = link + ".md"
