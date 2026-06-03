@@ -673,6 +673,19 @@
     viewportPos = { left, top };
   }
 
+  // Re-clamp whenever the visible content set changes — the library
+  // load is async (~50ms post-mount) and adds a chunk of vertical
+  // height; without this the menu can mount inside the viewport then
+  // overflow the bottom once the library cards render. Same effect
+  // applies when the user types a query that grows/shrinks the
+  // visible preset list. tick() defers to the post-render frame so
+  // the measurement reflects the new height.
+  $effect(() => {
+    void visiblePresets;
+    void libraryFiltered;
+    tick().then(clampToViewport);
+  });
+
   onMount(() => {
     promptEl?.focus();
     refreshCrossRecents();
