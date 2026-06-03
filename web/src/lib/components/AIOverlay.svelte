@@ -198,7 +198,8 @@
     runBriefing,
     runSynopsis,
     runTriage,
-    runDeadlines
+    runDeadlines,
+    cancel: cancelQuickAction
   } = quickActions;
 
   // Save-note service — owns the save / copy / library flows.
@@ -498,6 +499,12 @@
     // Abort any in-flight chat stream via the session manager's
     // controller. cancelInflight() is a no-op when nothing's running.
     cancelInflight();
+    // Quick-action fetches are an independent abort lifecycle from
+    // chat streams. Without this, hitting Esc on a slow Briefing
+    // call left the fetch running; on completion it flipped busy=false
+    // and wrote quickResult, which then resurfaced when the user
+    // reopened the panel — a ghost result they explicitly cancelled.
+    cancelQuickAction();
     if (voice.recording) stopVoice();
     // When pinned, the close button instead unpins (so the user
     // gets an obvious "remove this panel" action). Without this,
