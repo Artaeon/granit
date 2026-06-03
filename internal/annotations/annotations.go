@@ -294,6 +294,93 @@ func clipAnchor(s string) string {
 	return s
 }
 
+// Reflow updates LineNum for every annotation tied to notePath so
+// each annotation points at the line whose content best matches its
+// stored AnchorText. Called after a note body is written so
+// annotations don't permanently drift when surrounding edits shift
+// line numbers — without this, inserting a paragraph above an
+// anchored line silently moves the annotation card to the wrong
+// passage and there's no path back without manual editing.
+//
+// Algorithm per annotation in the named note:
+//
+//   - AnchorText empty (legacy rows): skip.
+//   - Current LineNum-line already matches the anchor: no change.
+//   - Scan all lines, collect matches, pick the one closest to the
+//     original LineNum (closest-wins when the same passage repeats).
+//   - Zero matches: leave LineNum untouched so the orphaned card
+//     stays visible — the user can re-anchor or delete it.
+//
+// Match is "trimmed line starts with anchor OR equals it" (anchor
+// was clipped to AnchorPreviewLen at write time, so the live line
+// is typically the longer string). Returns the number of
+// annotations whose LineNum changed.
+func Reflow(vaultRoot, notePath, body string) (int, error) {
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	s, err := LoadAll(vaultRoot)
+	if err != nil {
+		return 0, err
+	}
+	// Early exit: nothing references this note, no work needed and
+	// no SaveAll write on a hot path that fires once per save.
+	hasAny := false
+	for _, a := range s.Annotations {
+		if a.NotePath == notePath {
+			hasAny = true
+			break
+		}
+	}
+	if !hasAny {
+		return 0, nil
+	}
+	lines := strings.Split(body, "\n")
+	changed := 0
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for i := range s.Annotations {
+		a := &s.Annotations[i]
+		if a.NotePath != notePath || a.AnchorText == "" {
+			continue
+		}
+		if a.LineNum >= 1 && a.LineNum <= len(lines) && lineMatchesAnchor(lines[a.LineNum-1], a.AnchorText) {
+			continue
+		}
+		bestLine := 0
+		bestDist := len(lines) + 1
+		for li, ln := range lines {
+			if !lineMatchesAnchor(ln, a.AnchorText) {
+				continue
+			}
+			dist := li + 1 - a.LineNum
+			if dist < 0 {
+				dist = -dist
+			}
+			if dist < bestDist {
+				bestDist = dist
+				bestLine = li + 1
+			}
+		}
+		if bestLine == 0 || bestLine == a.LineNum {
+			continue
+		}
+		a.LineNum = bestLine
+		a.UpdatedAt = now
+		changed++
+	}
+	if changed == 0 {
+		return 0, nil
+	}
+	return changed, SaveAll(vaultRoot, s)
+}
+
+func lineMatchesAnchor(line, anchor string) bool {
+	t := strings.TrimSpace(line)
+	if t == "" || anchor == "" {
+		return false
+	}
+	return t == anchor || strings.HasPrefix(t, anchor)
+}
+
 // ErrNotFound is returned by Patch when the supplied ID doesn't
 // match any stored annotation. Callers map to 404.
 var ErrNotFound = errors.New("annotations: not found")

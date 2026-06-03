@@ -244,6 +244,20 @@ func (s *Server) handlePutNote(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Reflow margin annotations so each anchored card tracks the
+	// post-edit line of its passage. AnchorText was snapshotted at
+	// create time; this scan finds the line whose content best
+	// matches the anchor and patches LineNum. No-op on notes with
+	// zero annotations (cheap early-exit inside Reflow). Failure to
+	// reflow is logged but doesn't fail the write — the worst case
+	// is the annotation card drifts until next save.
+	if reflowed, rerr := annotations.Reflow(s.cfg.Vault.Root, path, b.Body); rerr == nil {
+		if reflowed > 0 {
+			s.hub.Broadcast(wshub.Event{Type: "state.changed", Path: ".granit/annotations.json"})
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "annotations reflow %s: %v\n", path, rerr)
+	}
 	// Notify the autocommit manager — debounces internally and
 	// no-ops when disabled or vault isn't a git repo, so this is
 	// always a cheap call regardless of the user's setup.

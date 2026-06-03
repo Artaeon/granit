@@ -160,6 +160,104 @@ func TestConcurrentAddsAllPersist(t *testing.T) {
 	}
 }
 
+func TestReflowFollowsInsertedLines(t *testing.T) {
+	dir := t.TempDir()
+	a, err := Add(dir, Annotation{
+		NotePath:   "note.md",
+		LineNum:    3,
+		AnchorText: "The wise man knows",
+		Text:       "mark",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Insert two lines above the anchored line.
+	body := "Top line one.\nTop line two.\nTop line three.\nThe wise man knows what he does not know.\nTail.\n"
+	n, err := Reflow(dir, "note.md", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("expected 1 reflow, got %d", n)
+	}
+	got, _ := ListForNote(dir, "note.md")
+	if got[0].ID != a.ID || got[0].LineNum != 4 {
+		t.Errorf("expected LineNum=4 after reflow, got %+v", got[0])
+	}
+}
+
+func TestReflowNoOpWhenLineMatches(t *testing.T) {
+	dir := t.TempDir()
+	Add(dir, Annotation{
+		NotePath: "n.md", LineNum: 2, AnchorText: "anchor here", Text: "x",
+	})
+	body := "first\nanchor here goes longer\nafter\n"
+	n, err := Reflow(dir, "n.md", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 reflows, got %d", n)
+	}
+}
+
+func TestReflowClosestWhenAmbiguous(t *testing.T) {
+	dir := t.TempDir()
+	Add(dir, Annotation{
+		NotePath: "n.md", LineNum: 5, AnchorText: "duplicate line", Text: "x",
+	})
+	// Two matches: line 2 and line 7. Original was at line 5 → 7 wins.
+	body := "a\nduplicate line\nb\nc\nd\ne\nduplicate line\nf\n"
+	n, err := Reflow(dir, "n.md", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("expected 1 reflow, got %d", n)
+	}
+	got, _ := ListForNote(dir, "n.md")
+	if got[0].LineNum != 7 {
+		t.Errorf("expected closest-wins LineNum=7, got %d", got[0].LineNum)
+	}
+}
+
+func TestReflowLeavesOrphanedAnnotationsAlone(t *testing.T) {
+	dir := t.TempDir()
+	a, _ := Add(dir, Annotation{
+		NotePath: "n.md", LineNum: 3, AnchorText: "vanished passage", Text: "x",
+	})
+	body := "totally\ndifferent\ncontent\n"
+	n, err := Reflow(dir, "n.md", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 reflows (orphan), got %d", n)
+	}
+	got, _ := ListForNote(dir, "n.md")
+	if got[0].ID != a.ID || got[0].LineNum != 3 {
+		t.Errorf("expected orphan LineNum preserved, got %+v", got[0])
+	}
+}
+
+func TestReflowSkipsOtherNotesAndEmptyAnchors(t *testing.T) {
+	dir := t.TempDir()
+	Add(dir, Annotation{
+		NotePath: "n.md", LineNum: 1, AnchorText: "", Text: "legacy",
+	})
+	Add(dir, Annotation{
+		NotePath: "other.md", LineNum: 1, AnchorText: "anchor", Text: "elsewhere",
+	})
+	body := "anchor was here\n"
+	n, err := Reflow(dir, "n.md", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 reflows (empty anchor + foreign note), got %d", n)
+	}
+}
+
 func TestSortStableAcrossSaves(t *testing.T) {
 	dir := t.TempDir()
 	// Insert in mixed order — output must come back ordered.
