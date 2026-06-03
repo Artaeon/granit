@@ -47,6 +47,11 @@
   const DEFAULT_COLOR: Color = DEFAULT_ANNOTATION_COLOR;
 
   let items = $state<NoteAnnotation[]>([]);
+  // Insert a new annotation and keep `items` sorted by line. Used by
+  // both saveNew (manual compose) and acceptSuggestion (AI accept).
+  function insertSortedByLine(created: NoteAnnotation): void {
+    items = [...items, created].sort((a, b) => a.lineNum - b.lineNum);
+  }
   // Re-fire onCountChange whenever the in-memory list shape moves.
   // Bumping it from $effect rather than from each mutation site
   // keeps every code path that sets `items` consistent — load, AI
@@ -136,7 +141,7 @@
         text,
         color: composerColor
       });
-      items = [...items, created].sort((a, b) => a.lineNum - b.lineNum);
+      insertSortedByLine(created);
       composing = false;
       composerText = '';
     } catch (err) {
@@ -224,7 +229,7 @@
         text: s.text,
         color: s.color
       });
-      items = [...items, created].sort((a, b) => a.lineNum - b.lineNum);
+      insertSortedByLine(created);
       // Drop the accepted suggestion so the row vanishes.
       aiSuggestions = aiSuggestions.filter((_, i) => i !== idx);
     } catch (err) {
