@@ -95,31 +95,18 @@
     // other pin-aware surface mounted after this) reflects the
     // server-authoritative list without each component re-fetching.
     ensurePinnedLoaded();
-    // Two MQL listeners for the lg + xl breakpoints. matchMedia is
-    // ubiquitous in our targets; the older addListener fallback covers
-    // ancient Safari just in case.
-    if (typeof window === 'undefined') return;
+    // MQL listeners for the lg + xl breakpoints.
     const lgMql = window.matchMedia('(min-width: 1024px)');
     const xlMql = window.matchMedia('(min-width: 1280px)');
     isLg = lgMql.matches;
     isXl = xlMql.matches;
     const onLg = (e: MediaQueryListEvent) => { isLg = e.matches; };
     const onXl = (e: MediaQueryListEvent) => { isXl = e.matches; };
-    function add(mql: MediaQueryList, fn: (e: MediaQueryListEvent) => void) {
-      if (typeof mql.addEventListener === 'function') mql.addEventListener('change', fn);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      else (mql as any).addListener?.(fn);
-    }
-    function remove(mql: MediaQueryList, fn: (e: MediaQueryListEvent) => void) {
-      if (typeof mql.removeEventListener === 'function') mql.removeEventListener('change', fn);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      else (mql as any).removeListener?.(fn);
-    }
-    add(lgMql, onLg);
-    add(xlMql, onXl);
+    lgMql.addEventListener('change', onLg);
+    xlMql.addEventListener('change', onXl);
     return () => {
-      remove(lgMql, onLg);
-      remove(xlMql, onXl);
+      lgMql.removeEventListener('change', onLg);
+      xlMql.removeEventListener('change', onXl);
     };
   });
 
