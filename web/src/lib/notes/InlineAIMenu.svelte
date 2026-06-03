@@ -385,8 +385,11 @@
   // Whether to pass notePath to chatStream — only for note scope.
   // In section scope we already prepended the section as a focused
   // system message; the backend's full-body auto-inject would dilute
-  // that focus.
-  let effectiveNotePath = $derived(scope === 'note' ? notePath : '');
+  // that focus. `undefined` (not `''`) so the field is omitted from
+  // the request body entirely — chatStream's notePath param is
+  // `string | undefined` and an explicit empty string would still
+  // round-trip a `"notePath": ""` the backend has to filter out.
+  let effectiveNotePath = $derived(scope === 'note' ? notePath : undefined);
 
   // Set when the menu is closed (either explicitly or by parent-driven
   // unmount). runPreset/runCustomPrompt await on buildContextMessages
