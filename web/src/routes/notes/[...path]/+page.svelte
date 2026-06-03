@@ -23,6 +23,7 @@
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
   import { parseTagsField, addSuggestedTag, insertSuggestedLink } from '$lib/notes/frontmatterTagOps';
+  import { saveFrontmatter as saveFrontmatterFn } from '$lib/notes/saveFrontmatter';
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
   import {
     parseDailyDate,
@@ -859,6 +860,28 @@
   // a save bounces every 2s.
   let lastDraftedBody: string | null = null;
   let draftWriteRaf = 0;
+
+  // Single mutable view onto the page's save-side $state. Helpers
+  // in $lib/notes/saveFrontmatter (and future save/load extractions)
+  // accept this proxy so they can read and write each field
+  // reactively without each call site re-spelling the same 14
+  // getters/setters.
+  const saveState = {
+    get note() { return note; }, set note(v) { note = v; },
+    get body() { return body; }, set body(v) { body = v; },
+    get prev() { return prev; }, set prev(v) { prev = v; },
+    get dirty() { return dirty; }, set dirty(v) { dirty = v; },
+    get error() { return error; }, set error(v) { error = v; },
+    get lastSavedAt() { return lastSavedAt; }, set lastSavedAt(v) { lastSavedAt = v; },
+    get noteEtag() { return noteEtag; }, set noteEtag(v) { noteEtag = v; },
+    get forceNextSave() { return forceNextSave; }, set forceNextSave(v) { forceNextSave = v; },
+    get pendingFrontmatter() { return pendingFrontmatter; }, set pendingFrontmatter(v) { pendingFrontmatter = v; },
+    get saveFailed() { return saveFailed; }, set saveFailed(v) { saveFailed = v; },
+    get saveFailCount() { return saveFailCount; }, set saveFailCount(v) { saveFailCount = v; },
+    get lastSaveError() { return lastSaveError; }, set lastSaveError(v) { lastSaveError = v; },
+    get lastDraftedBody() { return lastDraftedBody; }, set lastDraftedBody(v) { lastDraftedBody = v; }
+  };
+  const saveCtx = { getLiveBody: () => editor?.getContent?.() ?? body };
   $effect(() => {
     void body;
     if (!note || !dirty) return;
@@ -1226,67 +1249,11 @@
     openResearchModeFor(note, body);
   }
 
+  // Frontmatter save lives in $lib/notes/saveFrontmatter — see
+  // there for the conflict + draft + surgical-mutation contract.
+  // The page just plumbs its reactive state via saveState above.
   async function saveFrontmatter(next: Record<string, unknown>): Promise<boolean> {
-    if (!note) return false;
-    // Snapshot what we sent so a body keystroke during the await
-    // doesn't get falsely marked clean below.
-    const sentBody = body;
-    const savedNote = note;
-    const etagToSend = forceNextSave ? undefined : (noteEtag ?? undefined);
-    try {
-      const { data: updated, etag: newEtag } = await api.putNoteWithEtag(
-        note.path,
-        { frontmatter: next, body: sentBody },
-        etagToSend
-      );
-      if (!note || note !== savedNote) return false;
-      // Surgical mutation (same invariant as save() above) — full
-      // reassignment fans out a re-render across every panel keyed
-      // off note.path. Frontmatter is the only field that actually
-      // changed locally; body wasn't touched server-side beyond what
-      // we sent, modTime/size/title come back from the response.
-      note.frontmatter = updated.frontmatter;
-      note.modTime = updated.modTime;
-      note.size = updated.size;
-      note.title = updated.title;
-      noteEtag = newEtag;
-      forceNextSave = false;
-      pendingFrontmatter = null;
-      // Clear the failure flags unconditionally on a successful PUT.
-      // The previous shape gated these on `!dirty` (the user didn't
-      // type during the await), which left saveFailed=true and the
-      // failure banner sticky whenever a frontmatter save resolved
-      // a conflict but the user happened to keep typing in the body.
-      saveFailed = false;
-      saveFailCount = 0;
-      lastSaveError = '';
-      const liveNow = editor?.getContent?.() ?? body;
-      // dirty stays true if the user typed during the await — the
-      // body we sent matches sentBody, but the editor has moved on.
-      dirty = liveNow !== sentBody;
-      prev = sentBody;
-      if (!dirty) {
-        clearDraft(updated.path);
-        lastDraftedBody = null;
-        lastSavedAt = Date.now();
-      } else {
-        setDraft(updated.path, liveNow, updated.modTime);
-      }
-      return true;
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 412) {
-        // Hold the pending frontmatter so the banner's "Overwrite
-        // anyway" routes BACK through saveFrontmatter — not the
-        // body-save path — preserving the user's tag/field change.
-        pendingFrontmatter = next;
-        saveFailed = true;
-        lastSaveError = 'Conflict: this note was changed elsewhere since you loaded it.';
-        toast.warning('Conflict: this note was changed elsewhere. Choose Reload or Overwrite in the banner.');
-        return false;
-      }
-      error = e instanceof Error ? e.message : String(e);
-      return false;
-    }
+    return saveFrontmatterFn(next, saveState, saveCtx);
   }
 
   // ----- Link-suggester glue -----
