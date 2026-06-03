@@ -97,12 +97,17 @@
 		saveStored(HISTORY_KEY, history);
 		busy = true;
 		reset();
+		// Race-fix pattern mirroring chatSessionManager — see TaskAgent
+		// for the three guards (controller identity in finally,
+		// signal.aborted in throttle apply + onError).
 		abort?.abort();
-		abort = new AbortController();
+		const controller = new AbortController();
+		abort = controller;
+		const signal = controller.signal;
 		const { system, user } = buildCalendarAgentPrompt(events, intent, todayISO, knownProjects);
 		try {
-			// rAF throttle — same shape as TaskAgent + GoalAgent.
 			const calT = rafThrottle((full) => {
+				if (signal.aborted) return;
 				raw = full;
 				const block = extractJsonBlock(full);
 				if (!block) return;
@@ -121,13 +126,19 @@
 				{
 					onChunk: calT.onChunk,
 					onDone: () => { calT.flush(); },
-					onError: (err) => { calT.flush(); error = err.message; }
+					onError: (err) => {
+						if (signal.aborted) return;
+						calT.flush();
+						error = err.message;
+					}
 				},
-				abort.signal
+				signal
 			);
 		} finally {
-			busy = false;
-			abort = null;
+			if (abort === controller) {
+				busy = false;
+				abort = null;
+			}
 		}
 	}
 	function cancel() {

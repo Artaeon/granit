@@ -100,39 +100,48 @@
 		saveStored(HISTORY_KEY, history);
 		busy = true;
 		reset();
+		// Race-fix pattern mirroring chatSessionManager — see TaskAgent
+		// for the three guards (controller identity in finally,
+		// signal.aborted in throttle apply + onError).
 		abort?.abort();
-		abort = new AbortController();
+		const controller = new AbortController();
+		abort = controller;
+		const signal = controller.signal;
 		const { system, user } = buildProjectAgentPrompt(projects, intent, todayISO, knownVentures);
 		try {
+			const projT = rafThrottle((full) => {
+				if (signal.aborted) return;
+				raw = full;
+				const block = extractJsonBlock(full);
+				if (!block) return;
+				const parsed = parseProjectAgentResponse(block);
+				if (parsed.length > 0) {
+					const valid = validateProjectActions(parsed, projects);
+					proposals = mergeProjectProposals(proposals, valid) as ProposalRow[];
+				}
+			});
 			await api.chatStream(
 				[
 					{ role: 'system', content: system },
 					{ role: 'user', content: user }
 				],
 				undefined,
-				(() => {
-					// rAF throttle — same shape as the other agents.
-					const projT = rafThrottle((full) => {
-						raw = full;
-						const block = extractJsonBlock(full);
-						if (!block) return;
-						const parsed = parseProjectAgentResponse(block);
-						if (parsed.length > 0) {
-							const valid = validateProjectActions(parsed, projects);
-							proposals = mergeProjectProposals(proposals, valid) as ProposalRow[];
-						}
-					});
-					return {
-						onChunk: projT.onChunk,
-						onDone: () => { projT.flush(); },
-						onError: (err: Error) => { projT.flush(); error = err.message; }
-					};
-				})(),
-				abort.signal
+				{
+					onChunk: projT.onChunk,
+					onDone: () => { projT.flush(); },
+					onError: (err: Error) => {
+						if (signal.aborted) return;
+						projT.flush();
+						error = err.message;
+					}
+				},
+				signal
 			);
 		} finally {
-			busy = false;
-			abort = null;
+			if (abort === controller) {
+				busy = false;
+				abort = null;
+			}
 		}
 	}
 

@@ -136,8 +136,27 @@
 		saveStored(HISTORY_KEY, history);
 		busy = true;
 		reset();
+		// Race-fix pattern mirroring chatSessionManager (the inline-ai
+		// stream already adopted this — three guards close three races):
+		//
+		//   1. `abort === controller` in finally — without it, a rapid
+		//      double-Run lets the FIRST finally clobber the SECOND
+		//      run's abort handle (cancel button silently dies) and
+		//      flip busy=false mid-stream (Run button re-enables → user
+		//      can fire a third send).
+		//   2. `signal.aborted` guard inside the throttle's apply —
+		//      a scheduled rAF callback from the cancelled stream
+		//      otherwise fires ONE more frame later and overwrites the
+		//      new run's freshly-reset proposals with stale parsed
+		//      actions from the prior run's buffer.
+		//   3. `signal.aborted` guard inside onError — an abort-fetch
+		//      that races past `controller.abort()` would otherwise
+		//      paint `_error:_ The user aborted...` into the dialog
+		//      after the cancel button was clicked.
 		abort?.abort();
-		abort = new AbortController();
+		const controller = new AbortController();
+		abort = controller;
+		const signal = controller.signal;
 		const { system, user } = buildAgentPrompt(tasks, intent, todayISO, availableProjects);
 		try {
 			// rAF throttle — JSON parse + validate + merge runs per
@@ -145,6 +164,7 @@
 			// plan-day; throttle keeps the proposal list from
 			// re-rebuilding hundreds of times during a fast stream.
 			const tagT = rafThrottle((full) => {
+				if (signal.aborted) return;
 				raw = full;
 				const block = extractJsonBlock(full);
 				if (!block) return;
@@ -163,13 +183,19 @@
 				{
 					onChunk: tagT.onChunk,
 					onDone: () => { tagT.flush(); },
-					onError: (err) => { tagT.flush(); error = err.message; }
+					onError: (err) => {
+						if (signal.aborted) return;
+						tagT.flush();
+						error = err.message;
+					}
 				},
-				abort.signal
+				signal
 			);
 		} finally {
-			busy = false;
-			abort = null;
+			if (abort === controller) {
+				busy = false;
+				abort = null;
+			}
 		}
 	}
 
