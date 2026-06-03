@@ -21,30 +21,11 @@ export class ApiError extends Error {
   }
 }
 
-export async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers);
-  const tok = getToken();
-  if (tok) headers.set('Authorization', `Bearer ${tok}`);
-  if (init.body && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
-  const res = await fetch(`/api/v1${path}`, { ...init, headers });
-  if (!res.ok) {
-    let msg = res.statusText;
-    try {
-      const body = await res.json();
-      if (body?.error) msg = body.error;
-    } catch {}
-    throw new ApiError(res.status, msg);
-  }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
-}
-
-// Variant that also returns the ETag header alongside the parsed body.
-// Used by callers that participate in optimistic-concurrency control
-// (currently: the notes editor's load → save → conflict-detect loop).
-// Same error semantics as req(): non-2xx throws ApiError.
+// The single fetch + auth + error path the rest of the file rides
+// on. Returns both the parsed body and the response ETag so callers
+// that participate in optimistic-concurrency (notes editor's load
+// → save → conflict-detect loop) can round-trip the If-Match header;
+// callers that don't care use req() and ignore the etag.
 export async function reqWithEtag<T>(path: string, init: RequestInit = {}): Promise<{ data: T; etag: string | null }> {
   const headers = new Headers(init.headers);
   const tok = getToken();
@@ -64,6 +45,15 @@ export async function reqWithEtag<T>(path: string, init: RequestInit = {}): Prom
   const etag = res.headers.get('ETag');
   if (res.status === 204) return { data: undefined as T, etag };
   return { data: (await res.json()) as T, etag };
+}
+
+// Convenience wrapper for callers that don't care about the ETag.
+// Same throw-on-error semantics — this is the workhorse for the
+// rest of the API surface; only the notes editor uses reqWithEtag
+// directly.
+export async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const { data } = await reqWithEtag<T>(path, init);
+  return data;
 }
 
 // ---- types ----
@@ -1507,6 +1497,20 @@ export interface ProfilesResponse {
 
 // ---- endpoints ----
 
+// Shared PUT-note shape used by both putNoteWithEtag (etag-aware,
+// inside api below) and putNote (etag-discarding convenience). The
+// extraction sidesteps the "can't refer to `api` from inside the
+// object literal" awkwardness and keeps the wire format in one place.
+function putNoteRaw(path: string, body: { frontmatter?: Record<string, unknown>; body: string }, etag?: string) {
+  const headers: Record<string, string> = {};
+  if (etag) headers['If-Match'] = etag;
+  return reqWithEtag<Note>(`/notes/${encodeURI(path)}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+    headers
+  });
+}
+
 export const api = {
   req,
   health: () => req<{ status: string }>('/health'),
@@ -1553,26 +1557,17 @@ export const api = {
     const suffix = qs.toString() ? `?${qs}` : '';
     return req<NotesGraph>(`/notes/graph${suffix}`);
   },
-  putNote: (path: string, body: { frontmatter?: Record<string, unknown>; body: string }, etag?: string) => {
-    const headers: Record<string, string> = {};
-    if (etag) headers['If-Match'] = etag;
-    return req<Note>(`/notes/${encodeURI(path)}`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-      headers
-    });
-  },
-  // Same PUT but exposes the response ETag so the caller can refresh
-  // its concurrency token after a successful save. Used by the notes
-  // editor's autosave loop.
-  putNoteWithEtag: (path: string, body: { frontmatter?: Record<string, unknown>; body: string }, etag?: string) => {
-    const headers: Record<string, string> = {};
-    if (etag) headers['If-Match'] = etag;
-    return reqWithEtag<Note>(`/notes/${encodeURI(path)}`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-      headers
-    });
+  // PUT that exposes the response ETag — used by the notes editor's
+  // autosave loop so the next save's If-Match stays anchored to the
+  // latest server state. `etag` here is the OPTIONAL If-Match the
+  // client sends; the returned `etag` is the post-save token.
+  putNoteWithEtag: putNoteRaw,
+  // Convenience wrapper for callers that don't track concurrency
+  // tokens (dashboard quick-capture, calendar daily edit, project
+  // notes tab, etc.). Discards the returned ETag.
+  putNote: async (path: string, body: { frontmatter?: Record<string, unknown>; body: string }, etag?: string) => {
+    const { data } = await putNoteRaw(path, body, etag);
+    return data;
   },
   createNote: (body: { path: string; frontmatter?: Record<string, unknown>; body: string }) =>
     req<Note>('/notes', { method: 'POST', body: JSON.stringify(body) }),
