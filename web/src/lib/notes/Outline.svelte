@@ -119,6 +119,16 @@
     let raf = 0;
     const visibleLines = new Set<number>();
     const lineToTop = new Map<number, number>();
+    // Cache of heading line → element ref captured at observer attach
+    // time. Used by the scroll handler to avoid a per-tick
+    // querySelector('[data-heading-line=N]') over the prose container,
+    // which scaled poorly on long docs (100 headings × ~0.3-0.8 ms
+    // layout flush per call at native scroll cadence = 30-80 ms per
+    // event). The IntersectionObserver already re-keys lineToTop
+    // when visibility changes, so the scroll handler only needs the
+    // refs for the rare case where it tops up the cache between
+    // visibility transitions.
+    const lineToEl = new Map<number, HTMLElement>();
 
     const recompute = () => {
       raf = 0;
@@ -154,20 +164,25 @@
       observedActiveLine = best;
     };
 
+    // Scroll handler is rAF-coalesced AS A WHOLE. The previous
+    // version did the per-heading getBoundingClientRect walk BEFORE
+    // the rAF gate, which made the layout cost scale with scroll
+    // event cadence (native rate, often 120 Hz on trackpads).
+    let scrollRaf = 0;
     const onScrollOrResize = () => {
-      // Update top offsets cheaply (reading offsetTop is fast; we
-      // skip layout-trashing getBoundingClientRect on every tick).
-      // Containers scroll independently, so we measure relative to
-      // the container's top edge, not the viewport.
-      const cTop = container.getBoundingClientRect().top;
-      for (const [ln] of lineToTop) {
-        const el = container.querySelector(
-          `[data-heading-line="${ln}"]`
-        ) as HTMLElement | null;
-        if (!el) continue;
-        lineToTop.set(ln, el.getBoundingClientRect().top - cTop);
-      }
-      if (raf === 0) raf = requestAnimationFrame(recompute);
+      if (scrollRaf) return;
+      scrollRaf = requestAnimationFrame(() => {
+        scrollRaf = 0;
+        // One container rect for the whole walk. Containers scroll
+        // independently, so we measure relative to the container's
+        // top edge, not the viewport.
+        const cTop = container.getBoundingClientRect().top;
+        for (const [ln, el] of lineToEl) {
+          if (!el.isConnected) continue;
+          lineToTop.set(ln, el.getBoundingClientRect().top - cTop);
+        }
+        if (raf === 0) raf = requestAnimationFrame(recompute);
+      });
     };
 
     const obs = new IntersectionObserver(
@@ -206,6 +221,7 @@
       const ln = parseInt(el.dataset.headingLine ?? '', 10);
       if (!Number.isFinite(ln)) continue;
       lineToTop.set(ln, 0);
+      lineToEl.set(ln, el);
       obs.observe(el);
     }
 
@@ -219,6 +235,7 @@
       container.removeEventListener('scroll', onScrollOrResize);
       window.removeEventListener('resize', onScrollOrResize);
       if (raf) cancelAnimationFrame(raf);
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
       // Note swap / view-mode flip is handled by the
       // lastSeenContainer effect above. We deliberately don't
       // reset observedActiveLine here: this cleanup also fires on
