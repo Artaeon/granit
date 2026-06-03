@@ -49,7 +49,7 @@
     body: string;
     frontmatter: Record<string, unknown>;
     /** Save-frontmatter callback from the host. Merges + persists. */
-    onSaveFrontmatter: (next: Record<string, unknown>) => Promise<void> | void;
+    onSaveFrontmatter: (next: Record<string, unknown>) => Promise<unknown> | void;
     /** Prepend a string to the editor body (used for "save as TL;DR"). */
     onPrepend: (markdown: string) => void;
   } = $props();

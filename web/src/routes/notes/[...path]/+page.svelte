@@ -1288,8 +1288,8 @@
     openAIOverlay({ text: lines.join('\n'), send: false });
   }
 
-  async function saveFrontmatter(next: Record<string, unknown>) {
-    if (!note) return;
+  async function saveFrontmatter(next: Record<string, unknown>): Promise<boolean> {
+    if (!note) return false;
     // Snapshot what we sent so a body keystroke during the await
     // doesn't get falsely marked clean below.
     const sentBody = body;
@@ -1301,7 +1301,7 @@
         { frontmatter: next, body: sentBody },
         etagToSend
       );
-      if (!note || note !== savedNote) return;
+      if (!note || note !== savedNote) return false;
       // Surgical mutation (same invariant as save() above) — full
       // reassignment fans out a re-render across every panel keyed
       // off note.path. Frontmatter is the only field that actually
@@ -1314,6 +1314,14 @@
       noteEtag = newEtag;
       forceNextSave = false;
       pendingFrontmatter = null;
+      // Clear the failure flags unconditionally on a successful PUT.
+      // The previous shape gated these on `!dirty` (the user didn't
+      // type during the await), which left saveFailed=true and the
+      // failure banner sticky whenever a frontmatter save resolved
+      // a conflict but the user happened to keep typing in the body.
+      saveFailed = false;
+      saveFailCount = 0;
+      lastSaveError = '';
       const liveNow = editor?.getContent?.() ?? body;
       // dirty stays true if the user typed during the await — the
       // body we sent matches sentBody, but the editor has moved on.
@@ -1322,12 +1330,10 @@
       if (!dirty) {
         clearDraft(updated.path);
         lastSavedAt = Date.now();
-        saveFailed = false;
-        saveFailCount = 0;
-        lastSaveError = '';
       } else {
         setDraft(updated.path, liveNow, updated.modTime);
       }
+      return true;
     } catch (e) {
       if (e instanceof ApiError && e.status === 412) {
         // Hold the pending frontmatter so the banner's "Overwrite
@@ -1337,9 +1343,10 @@
         saveFailed = true;
         lastSaveError = 'Conflict: this note was changed elsewhere since you loaded it.';
         toast.warning('Conflict: this note was changed elsewhere. Choose Reload or Overwrite in the banner.');
-        return;
+        return false;
       }
       error = e instanceof Error ? e.message : String(e);
+      return false;
     }
   }
 
@@ -1376,8 +1383,13 @@
     }
     arr.push(clean);
     fm.tags = arr;
-    await saveFrontmatter(fm);
-    toast.success(`+ #${clean}`);
+    // Only toast success when the save actually committed. Before
+    // saveFrontmatter exposed an outcome, a 412 silently dropped the
+    // tag (saveFrontmatter swallows the error and shows the conflict
+    // banner) but the success toast fired anyway — the user saw both
+    // "Conflict" and "+ #tag" simultaneously, and the chip vanished
+    // from the suggester even though no save happened.
+    if (await saveFrontmatter(fm)) toast.success(`+ #${clean}`);
   }
 
   function insertSuggestedLink(markup: string) {

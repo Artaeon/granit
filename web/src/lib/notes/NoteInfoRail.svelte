@@ -35,7 +35,7 @@
     onJumpToLine: (line: number) => void;
     onNavigateWikilink: (target: string) => void;
     onResetVisited: () => void;
-    onSaveFrontmatter: (next: Record<string, unknown>) => void | Promise<void>;
+    onSaveFrontmatter: (next: Record<string, unknown>) => void | Promise<unknown>;
     onAddSuggestedTag: (tag: string) => void | Promise<void>;
     onInsertSuggestedLink: (markup: string) => void;
   }
