@@ -220,14 +220,40 @@ export function createChatHistoryManager(opts: ChatHistoryManagerOptions): ChatH
           refs.activeThreadId = t.id;
           persistActiveThreadId(t.id);
         }
+      } catch (e) {
+        // Surface the failure to callers awaiting awaitSave() —
+        // previously the catch happened inside the IIFE-less
+        // construction, so a quota / corruption error resolved
+        // savePromise successfully and the caller had no signal.
+        // Re-throw after the finally clears the busy flag.
+        // eslint-disable-next-line no-console
+        console.warn('[chat-history] auto-save failed:', e);
+        throw e;
       } finally {
         savingThread = false;
+        // Clear the promise once settled so awaitSave doesn't keep
+        // awaiting an already-resolved promise on every subsequent
+        // send (one wasted microtask per call grew the longer the
+        // session ran, harmless but not free).
+        savePromise = null;
       }
     })();
+    // Swallow the unhandled rejection at the IIFE boundary —
+    // awaitSave() consumers still see the error via the await, but
+    // a caller that doesn't await shouldn't crash the page.
+    savePromise.catch(() => {});
   }
 
   async function awaitSave(): Promise<void> {
-    if (savePromise) await savePromise;
+    if (savePromise) {
+      try {
+        await savePromise;
+      } catch {
+        // The error already surfaced via console.warn inside the
+        // IIFE; callers of awaitSave just need to know the wait is
+        // over. They can re-fire on the next user action.
+      }
+    }
   }
 
   // ── Replay / regenerate / edit ────────────────────────────────
