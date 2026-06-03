@@ -110,6 +110,23 @@
     };
   });
 
+  // Window after our own save during which an inbound `note.changed`
+  // WS event is suppressed — the event is almost certainly the echo
+  // of our own write bouncing through the file watcher. Used at both
+  // the synchronous fast-path and the timed coalesce. 3 s covers the
+  // worst-case file-watcher debounce + scan + broadcast latency.
+  const OWN_SAVE_QUIET_MS = 3000;
+  // Trailing-edge coalesce on `note.changed` bursts (a TUI save or
+  // sync drop can fire 5+ events in a burst). One reload per burst.
+  const WS_RELOAD_COALESCE_MS = 600;
+  // Autosave debounce — fires `save({silent: true})` 2 s after the
+  // last keystroke when the picker isn't open.
+  const AUTOSAVE_DEBOUNCE_MS = 2000;
+  // Cap on the body excerpt seeded into the AI overlay's Research
+  // Mode context. Bigger excerpts pay for themselves at the model
+  // tier but cost overlay context budget elsewhere.
+  const RESEARCH_EXCERPT_MAX = 800;
+
   let note = $state<Note | null>(null);
   let body = $state('');
   // bodyForPreview is the rAF-throttled mirror that drives the
@@ -779,7 +796,7 @@
       }
       save({ silent: true });
     };
-    timer = setTimeout(trySave, 2000);
+    timer = setTimeout(trySave, AUTOSAVE_DEBOUNCE_MS);
     return () => {
       if (timer) clearTimeout(timer);
     };
@@ -1127,12 +1144,12 @@
     wsReloadTimer = setTimeout(() => {
       wsReloadTimer = null;
       // Re-evaluate the guards at the moment of reload — the user
-      // could have started typing during the 600ms window.
+      // could have started typing during the coalesce window.
       if (!note || note.path !== p) return;
       if (liveBody() !== prev || saving) return;
-      if (lastSavedAt && Date.now() - lastSavedAt < 3000) return;
+      if (lastSavedAt && Date.now() - lastSavedAt < OWN_SAVE_QUIET_MS) return;
       void load(p, { force: true });
-    }, 600);
+    }, WS_RELOAD_COALESCE_MS);
   }
   onMount(() => {
     const off = onWsEvent((ev) => {
@@ -1143,7 +1160,7 @@
       // editor's doc directly so in-flight typing that hasn't
       // propagated to `body` yet still suppresses the reload.
       if (liveBody() !== prev || saving) return;
-      if (lastSavedAt && Date.now() - lastSavedAt < 3000) return;
+      if (lastSavedAt && Date.now() - lastSavedAt < OWN_SAVE_QUIET_MS) return;
       scheduleWsReload(note.path);
     });
     return () => {
@@ -1244,8 +1261,8 @@
     // not whether the raw body (which may include leading/trailing
     // whitespace) crosses the cap.
     const trimmed = (body ?? '').trim();
-    const excerpt = trimmed.slice(0, 800);
-    const truncated = trimmed.length > 800;
+    const excerpt = trimmed.slice(0, RESEARCH_EXCERPT_MAX);
+    const truncated = trimmed.length > RESEARCH_EXCERPT_MAX;
     const lines = [
       `I'm in research mode on this note:`,
       '',
