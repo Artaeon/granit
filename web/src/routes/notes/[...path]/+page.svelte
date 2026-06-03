@@ -41,7 +41,7 @@
     inlineAITriggerExtension,
     type InlineAITriggerEvent
   } from '$lib/editor/inline-ai-trigger';
-  import { inlineAIObserver, type InlineAIState } from '$lib/editor/inline-ai';
+  import { inlineAIObserver, rejectInlineAI, type InlineAIState } from '$lib/editor/inline-ai';
   import type { EditorView } from '@codemirror/view';
   import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
@@ -346,6 +346,17 @@
     // WS reload (sync from another device, metadata reindex) must
     // not collapse a deep-path breadcrumb the user expanded by hand.
     if (!isSameNoteReload) breadcrumbExpanded = false;
+    // Cancel any in-flight inline-AI stream on real navigation. The
+    // streaming controller in inline-ai.ts is module-scope; without
+    // this kill, a stream started on note A keeps dispatching ghost
+    // tokens into the editor view after it's been retargeted to
+    // note B, and the tokens land at the original anchor offset in
+    // an unrelated doc. Same-note reloads keep the ghost so an
+    // unrelated WS rescan can't yank it from under the user.
+    if (!isSameNoteReload) {
+      const view = editor?.getView?.();
+      if (view) rejectInlineAI(view);
+    }
     // Reset the per-load draft watermark so the first keystroke on the
     // newly-opened note triggers a draft write. Without this, opening a
     // note whose body happens to equal the previous note's last drafted
