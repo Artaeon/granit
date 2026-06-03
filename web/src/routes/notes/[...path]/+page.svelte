@@ -871,7 +871,8 @@
   // tries to push edits over the wire faster than the 2s debounce would.
   beforeNavigate(() => {
     if (dirty && !saving && note) {
-      // Body is already in localStorage via setDraft (debounce 600ms).
+      // Body is already in localStorage via setDraft (synchronous
+      // per-keystroke write — see the draft effect comment).
       // Fire-and-forget the save; it'll race the navigation but either
       // outcome is safe (draft still on disk).
       void save({ silent: true });
@@ -1004,7 +1005,7 @@
 
   async function navigateWikilink(target: string) {
     // Best-effort flush of any pending edit. We never block navigation on
-    // the save result — the localStorage draft (setDraft, debounce 600ms)
+    // the save result — the localStorage draft (synchronous per-keystroke)
     // already preserves the body, and beforeNavigate flushes again. If the
     // user is offline, save will fail; the draft is still on disk and gets
     // retried automatically when 'online' fires.

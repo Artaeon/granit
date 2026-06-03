@@ -93,10 +93,11 @@
       rendering = false;
       return;
     }
-    // Module-scope LRU cache hit (see HTML_CACHE declaration above):
-    // a tab switch back to a note with unchanged content paints
+    // Instance-scope LRU cache hit (see HTML_CACHE declaration above):
+    // a view-mode toggle or rapid keystroke-then-revert paints
     // instantly instead of re-running marked + purify (~50–150ms on
-    // a 600-line doc).
+    // a 600-line doc). Cross-instance sharing was reverted on purpose
+    // — see the cap-comment above.
     const cached = HTML_CACHE.get(src);
     if (cached !== undefined) {
       HTML_CACHE.delete(src);

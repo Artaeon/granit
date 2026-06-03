@@ -225,9 +225,8 @@ export function streamInlineAI(view: EditorView, req: InlineAIRequest): boolean 
   //   2. install a new activeAbort
   //   3. the first stream's late onError fires → sets activeAbort=null
   //   4. the new stream is now orphaned — rejectInlineAI() can't kill it.
-  // The two fixes below mirror the chatSessionManager hardening from
-  // PR A6 (commit bfb7d10a): signal.aborted check + controller===
-  // captured guard.
+  // The signal.aborted check inside onDone/onError + the
+  // controller=== identity guard below close the race.
   activeAbort?.abort();
   const controller = new AbortController();
   activeAbort = controller;
