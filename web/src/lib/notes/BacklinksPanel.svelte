@@ -42,27 +42,48 @@
 
   let data = $state<LinksData | null>(null);
   let loading = $state(false);
+  // Surfaced when load() rejects with a non-empty result vs. when the
+  // server genuinely reports zero backlinks. The previous empty-state
+  // ("No notes link here yet.") fired on transient backend failures
+  // too, hiding the error and looking like a successful empty query.
+  let loadError = $state<string | null>(null);
   // Per-source expansion state. By default the first source is open;
   // subsequent ones collapse with an aggregate count so the panel
   // doesn't dominate the rail on hub-style notes. Tracked by path so
   // toggling survives a reload that reorders sources.
   let expanded = $state<Record<string, boolean>>({});
 
+  // Generation counter — every load() call captures the current value
+  // and only commits if it's still the latest when the response
+  // arrives. Rapid note switching can land an old fetch into the new
+  // note's UI; the counter guards against it. Same pattern as the
+  // chat-stream / inline-AI / preview-render generation guards.
+  let loadGen = 0;
+
   async function load() {
     if (!path) return;
+    const myGen = ++loadGen;
     loading = true;
     try {
-      data = await api.req<LinksData>(`/links/${encodeURI(path)}`);
+      const fresh = await api.req<LinksData>(`/links/${encodeURI(path)}`);
+      if (myGen !== loadGen) return;
+      data = fresh;
+      loadError = null;
       // Auto-expand the first source so the user sees the most-recent
       // context immediately. Subsequent sources stay collapsed until
       // tapped — the rail isn't infinite vertical real estate.
       if (data?.backlinks?.length && expanded[data.backlinks[0].path] === undefined) {
         expanded = { ...expanded, [data.backlinks[0].path]: true };
       }
-    } catch {
-      data = { outgoing: [], backlinks: [] };
+    } catch (e) {
+      if (myGen !== loadGen) return;
+      // Don't wipe the previous data on a transient failure — the user
+      // keeps seeing what they had + an error chip with a retry path.
+      // Empty-state fallback was the silent-failure-as-no-backlinks
+      // bug.
+      loadError = e instanceof Error ? e.message : 'failed to load';
     } finally {
-      loading = false;
+      if (myGen === loadGen) loading = false;
     }
   }
 
@@ -127,9 +148,33 @@
   });
 </script>
 
-{#if loading && !data}
+{#if loadError && !data}
+  <div class="text-xs px-2 py-1 flex items-center gap-2">
+    <span class="text-error">⚠</span>
+    <span class="flex-1 text-error/90 truncate" title={loadError}>Couldn't load backlinks.</span>
+    <button
+      type="button"
+      onclick={() => void load()}
+      class="px-1.5 py-0.5 text-[10px] text-dim hover:text-text border border-surface1 rounded"
+    >retry</button>
+  </div>
+{:else if loading && !data}
   <div class="text-xs text-dim italic px-2 py-1">loading…</div>
 {:else if data}
+  {#if loadError}
+    <!-- Soft error: we still have prior data to show, but the latest
+         refetch failed. A thin inline chip surfaces it without
+         clobbering the panel. -->
+    <div class="text-[10px] text-error/80 px-2 py-1 mb-1 flex items-center gap-1.5">
+      <span aria-hidden="true">⚠</span>
+      <span class="flex-1 truncate" title={loadError}>refresh failed (showing previous results)</span>
+      <button
+        type="button"
+        onclick={() => void load()}
+        class="text-dim hover:text-text underline-offset-2 hover:underline"
+      >retry</button>
+    </div>
+  {/if}
   {#if data.backlinks.length > 0}
     {#if mentionCount > data.backlinks.length}
       <!-- Show aggregate only when contexts add detail beyond the
@@ -166,7 +211,12 @@
             </button>
             {#if isOpen}
               <ul class="ml-4 mt-0.5 space-y-0.5 border-l border-surface1 pl-2.5">
-                {#each ctxs as ctx (ctx.line)}
+                <!-- Key by line+index, not bare line: two `[[Target]]`
+                     mentions on the same source line produce duplicate
+                     ctx.line values from findBacklinkContexts, which
+                     Svelte's keyed-each rejects as a duplicate key
+                     and either throws or silently drops a row. -->
+                {#each ctxs as ctx, i (`${ctx.line}:${i}`)}
                   <li>
                     <a
                       href={backlinkHref(bl.path, ctx.line)}
