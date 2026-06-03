@@ -415,11 +415,11 @@
           <div class="flex items-center justify-end gap-2">
             <button
               onclick={cancelRestore}
+              autofocus
               class="px-3 py-1.5 rounded text-sm text-subtext hover:text-text hover:bg-surface1"
             >Cancel</button>
             <button
               onclick={restoreSelected}
-              autofocus
               class="px-3 py-1.5 rounded text-sm font-medium bg-primary text-on-primary"
             >Restore</button>
           </div>
