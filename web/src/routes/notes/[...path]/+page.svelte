@@ -499,10 +499,7 @@
   // Consecutive save-failure counter. Resets to 0 on any success.
   // Used by the in-page banner below to show a sticky, dismiss-only-
   // by-fixing surface so the user always knows when their edits
-  // aren't reaching the server. Previously this was silent after the
-  // first toast (lastShownSilentError gated subsequent ones), which
-  // is exactly how the freeze went undiagnosed: the autosave kept
-  // failing, drafts kept queueing, but the UI looked fine.
+  // aren't reaching the server.
   let saveFailCount = $state(0);
   let lastSaveError = $state('');
 
@@ -607,23 +604,15 @@
       saveFailed = true;
       saveFailCount++;
       lastSaveError = msg;
-      // First failure: toast it. Subsequent: the sticky banner below
-      // is the surface; the toast would just nag.
-      if (!opts.silent || !lastShownSilentError) {
-        toast.error(`save failed: ${msg}`);
-        lastShownSilentError = true;
-      }
+      // Explicit save (Mod-S) → toast. Silent autosave failures are
+      // surfaced by the sticky banner below; a second toast per
+      // failing autosave would just nag the user.
+      if (!opts.silent) toast.error(`save failed: ${msg}`);
       return false;
     } finally {
       saving = false;
     }
   }
-  let lastShownSilentError = $state(false);
-  // Reset the "silent error already shown" gate when the user manages a
-  // successful interaction (so a second outage shows a toast again).
-  $effect(() => {
-    if (!saveFailed) lastShownSilentError = false;
-  });
 
   let prev = $state('');
   $effect(() => {
