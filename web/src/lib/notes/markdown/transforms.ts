@@ -33,15 +33,21 @@
 import { marked } from 'marked';
 
 // ── Sentinel pairs ─────────────────────────────────────────────
-export const WIKI_OPEN = 'WL';
-export const WIKI_CLOSE = '';
-export const WIKI_SEP = '';
-export const TAG_OPEN = 'TG';
-export const TAG_CLOSE = '';
-export const DIAGRAM_OPEN = 'DG';
-export const DIAGRAM_CLOSE = '';
-export const IMG_OPEN = 'IM';
-export const IMG_CLOSE = '';
+// C0 control bytes — never appear in user markdown, survive marked
+// tokenisation as opaque text, and stay out of attribute values.
+// The previous plaintext / empty-string forms (`WL`/``/``, etc.)
+// produced regexes like `/WL([^]+)([^]+)/` whose greedy capture ran
+// across whole paragraphs and false-matched any user text containing
+// the bare `WL`/`TG`/`DG`/`IM` substrings.
+export const WIKI_OPEN = '\x01';
+export const WIKI_SEP = '\x02';
+export const WIKI_CLOSE = '\x03';
+export const TAG_OPEN = '\x04';
+export const TAG_CLOSE = '\x05';
+export const DIAGRAM_OPEN = '\x06';
+export const DIAGRAM_CLOSE = '\x07';
+export const IMG_OPEN = '\x10';
+export const IMG_CLOSE = '\x11';
 // Footnote sentinels — sandwich the id between SO/SI (\x0E and \x0F)
 // to keep them distinct from the WL/TG/DG/IM markers above.
 export const FNR_OPEN = '\x0EFNR\x0F';
