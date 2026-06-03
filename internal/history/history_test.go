@@ -32,15 +32,8 @@ func TestSnap_FirstSnapshotWritesFile(t *testing.T) {
 		t.Errorf("size: got %d want 5", snap.Size)
 	}
 	histDir := filepath.Join(dir, ".granit/history/foo.md.versions")
-	entries, err := os.ReadDir(histDir)
-	if err != nil {
-		t.Fatalf("history dir not created: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Errorf("expected 1 snapshot file, got %d", len(entries))
-	}
-	if !strings.HasSuffix(entries[0].Name(), ".md") {
-		t.Errorf("expected .md suffix, got %s", entries[0].Name())
+	if got := countSnapshotFiles(t, histDir); got != 1 {
+		t.Errorf("expected 1 snapshot file, got %d", got)
 	}
 }
 
@@ -60,9 +53,8 @@ func TestSnap_DedupsIdenticalContent(t *testing.T) {
 		t.Errorf("expected dedup (nil snapshot), got %+v", snap)
 	}
 	histDir := filepath.Join(dir, ".granit/history/foo.md.versions")
-	entries, _ := os.ReadDir(histDir)
-	if len(entries) != 1 {
-		t.Errorf("expected 1 entry after dedup, got %d", len(entries))
+	if got := countSnapshotFiles(t, histDir); got != 1 {
+		t.Errorf("expected 1 entry after dedup, got %d", got)
 	}
 }
 
@@ -76,10 +68,26 @@ func TestSnap_NewContentWritesNewSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	histDir := filepath.Join(dir, ".granit/history/foo.md.versions")
-	entries, _ := os.ReadDir(histDir)
-	if len(entries) != 2 {
-		t.Errorf("expected 2 snapshot entries, got %d", len(entries))
+	if got := countSnapshotFiles(t, histDir); got != 2 {
+		t.Errorf("expected 2 snapshot entries, got %d", got)
 	}
+}
+
+// countSnapshotFiles returns the number of *.md snapshot files in
+// the directory, ignoring the .manifest.json sidecar.
+func countSnapshotFiles(t *testing.T, dir string) int {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("history dir not created: %v", err)
+	}
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+			n++
+		}
+	}
+	return n
 }
 
 func TestSnap_RejectsPathTraversal(t *testing.T) {

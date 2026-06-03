@@ -43,6 +43,7 @@ package history
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -68,6 +69,32 @@ const historyRoot = ".granit/history"
 // payload. The UI only ever shows ~100 entries at once and lazy-
 // loads older ones; raising this is fine.
 const MaxVersionsListed = 500
+
+// MaxVersionsKept is the retention cap per note. After every successful
+// Snap, snapshots beyond this count are pruned (oldest first). Before
+// this cap existed, .versions dirs grew unbounded — a 600-line note
+// edited daily for two years held ~700 snapshots × ~30 KB each = ~20 MB
+// per note. The cap trades long-tail history for predictable disk use;
+// 100 versions covers ~3 months of daily editing.
+const MaxVersionsKept = 100
+
+// manifestName is the sidecar JSON file inside each .versions
+// directory. Lets List() return the snapshot metadata without
+// re-reading every file from disk — N file reads + hash recompute per
+// call became visible on heavily-edited notes. The manifest is
+// rebuilt from scan on first read after upgrade and whenever the file
+// goes missing/corrupt, so the on-disk snapshot files remain the
+// source of truth.
+const manifestName = ".manifest.json"
+
+// manifest is the on-disk shape of the sidecar. Snapshots are sorted
+// newest-first so the UI's primary path is a slice copy with no
+// extra work. UpdatedAt is for debugging; the source of truth is
+// always the snapshot file set on disk.
+type manifest struct {
+	Snapshots []Snapshot `json:"snapshots"`
+	UpdatedAt time.Time  `json:"updatedAt"`
+}
 
 // Snapshot represents one historical version of a note.
 type Snapshot struct {
@@ -123,60 +150,100 @@ func Snap(vaultRoot, relPath string, oldContent []byte) (*Snapshot, error) {
 	if err := atomicio.WriteNote(target, string(oldContent)); err != nil {
 		return nil, fmt.Errorf("history: write %s: %w", target, err)
 	}
-	return &Snapshot{
+	snap := Snapshot{
 		Timestamp: now,
 		Size:      int64(len(oldContent)),
 		Hash:      hash,
-	}, nil
+	}
+	// Update manifest + apply retention. Manifest failures are
+	// non-fatal — the snapshot file is on disk and the next List()
+	// will rebuild from scan. Surface the error path so callers can
+	// log it, but never abort the save chain over manifest housekeeping.
+	if err := commitSnapshotToManifest(dir, snap); err != nil {
+		// Stamp the error onto the returned snapshot? No — the
+		// caller (PUT handler) treats Snap's return value as
+		// authoritative for "what landed". Logging is the caller's
+		// job once a sink exists; for now, best-effort is correct.
+		_ = err
+	}
+	return &snap, nil
+}
+
+// commitSnapshotToManifest appends a fresh snapshot to the sidecar
+// manifest, applies the MaxVersionsKept retention cap (deleting the
+// snapshot files for evicted entries), and atomically writes the
+// updated manifest. Idempotent under crash: a half-finished prune
+// can be re-detected on the next call because the manifest's view
+// matches whatever survived on disk after the rebuild path runs.
+func commitSnapshotToManifest(dir string, snap Snapshot) error {
+	m, err := loadManifest(dir)
+	if err != nil {
+		// Rebuild from scan if the manifest was missing or corrupt.
+		// This is the upgrade path for existing notes that predate
+		// the manifest, and the recovery path for any time the file
+		// gets clobbered.
+		m, err = rebuildManifestFromDir(dir)
+		if err != nil {
+			return err
+		}
+	}
+	// Prepend the new snapshot (the list is newest-first).
+	m.Snapshots = append([]Snapshot{snap}, m.Snapshots...)
+	// Retention: evict the oldest entries beyond the cap and delete
+	// their underlying files. The cap is per-note; evict from the
+	// tail of the slice (oldest end).
+	if MaxVersionsKept > 0 && len(m.Snapshots) > MaxVersionsKept {
+		evicted := m.Snapshots[MaxVersionsKept:]
+		m.Snapshots = m.Snapshots[:MaxVersionsKept]
+		for _, e := range evicted {
+			fnStamp := canonicalToFilename(e.Timestamp.UTC().Format("2006-01-02T15:04:05.000Z"))
+			_ = os.Remove(filepath.Join(dir, fnStamp+".md"))
+		}
+	}
+	m.UpdatedAt = time.Now().UTC()
+	return saveManifest(dir, m)
 }
 
 // List returns the snapshots for `relPath` in descending timestamp
 // order (newest first). At most MaxVersionsListed entries are
 // returned. Missing history directory returns an empty slice, not
 // an error — a never-edited note legitimately has no history.
+//
+// Reads the sidecar manifest if present; otherwise rebuilds from a
+// directory scan and persists the manifest so the next call is fast.
 func List(vaultRoot, relPath string) ([]Snapshot, error) {
 	dir, err := dirFor(vaultRoot, relPath)
 	if err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	if _, err := os.Stat(dir); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return []Snapshot{}, nil
 		}
 		return nil, err
 	}
-	var out []Snapshot
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		stamp := strings.TrimSuffix(e.Name(), ".md")
-		t, ok := parseStamp(stamp)
-		if !ok {
-			continue
-		}
-		// Read just enough to compute size + hash. The UI never
-		// renders the body in the list view — it asks for the body
-		// only when the user clicks "Preview" on a specific entry.
-		full := filepath.Join(dir, e.Name())
-		data, err := os.ReadFile(full)
-		if err != nil {
-			continue
-		}
-		out = append(out, Snapshot{
-			Timestamp: t,
-			Size:      int64(len(data)),
-			Hash:      hashOf(data),
-		})
+	if m, err := loadManifest(dir); err == nil && m != nil {
+		return capList(m.Snapshots), nil
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].Timestamp.After(out[j].Timestamp)
-	})
-	if len(out) > MaxVersionsListed {
-		out = out[:MaxVersionsListed]
+	// No usable manifest — fall back to a scan and persist the
+	// result so the next call is O(1) read.
+	m, err := rebuildManifestFromDir(dir)
+	if err != nil {
+		return nil, err
 	}
-	return out, nil
+	_ = saveManifest(dir, m) // best-effort; List still returns the data
+	return capList(m.Snapshots), nil
+}
+
+func capList(snaps []Snapshot) []Snapshot {
+	if len(snaps) > MaxVersionsListed {
+		snaps = snaps[:MaxVersionsListed]
+	}
+	// Copy so callers can't mutate the underlying manifest cache
+	// (we don't currently cache, but the contract should hold).
+	out := make([]Snapshot, len(snaps))
+	copy(out, snaps)
+	return out
 }
 
 // Read returns the content of a specific snapshot, identified by
@@ -269,6 +336,72 @@ func canonicalToFilename(s string) string {
 	// Date prefix has no colons; only the time portion does. We can
 	// just blanket-replace.
 	return strings.ReplaceAll(s, ":", "-")
+}
+
+// loadManifest reads and parses the sidecar manifest. Returns a
+// nil-or-error if the file is missing or unreadable; the caller
+// recovers via rebuildManifestFromDir.
+func loadManifest(dir string) (*manifest, error) {
+	data, err := os.ReadFile(filepath.Join(dir, manifestName))
+	if err != nil {
+		return nil, err
+	}
+	var m manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("history: parse manifest: %w", err)
+	}
+	return &m, nil
+}
+
+// saveManifest atomically writes the manifest via atomicio (same
+// crash-safe rename pattern as note writes). Errors propagate so
+// the caller can decide whether to log.
+func saveManifest(dir string, m *manifest) error {
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return fmt.Errorf("history: marshal manifest: %w", err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return atomicio.WriteNote(filepath.Join(dir, manifestName), string(data))
+}
+
+// rebuildManifestFromDir scans the .versions directory and builds a
+// fresh manifest from disk. Used on first read after upgrade (existing
+// notes have no sidecar yet) and as a recovery path when the manifest
+// goes missing/corrupt. The snapshot files themselves remain the
+// authoritative source; the manifest is purely an index.
+func rebuildManifestFromDir(dir string) (*manifest, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var snaps []Snapshot
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		stamp := strings.TrimSuffix(e.Name(), ".md")
+		t, ok := parseStamp(stamp)
+		if !ok {
+			continue
+		}
+		full := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(full)
+		if err != nil {
+			continue
+		}
+		snaps = append(snaps, Snapshot{
+			Timestamp: t,
+			Size:      int64(len(data)),
+			Hash:      hashOf(data),
+		})
+	}
+	sort.Slice(snaps, func(i, j int) bool {
+		return snaps[i].Timestamp.After(snaps[j].Timestamp)
+	})
+	return &manifest{Snapshots: snaps, UpdatedAt: time.Now().UTC()}, nil
 }
 
 func parseStamp(s string) (time.Time, bool) {
