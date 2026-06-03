@@ -70,13 +70,13 @@ function dropLegacyKeys(): void {
 }
 
 function loadCollapsed(): Record<string, boolean> {
+  // Always cull legacy keys — users who landed on v3 before the
+  // cleanup logic was added still have v1/v2 lingering. Idempotent.
+  dropLegacyKeys();
   if (typeof window !== 'undefined' && window.localStorage?.getItem(COLLAPSED_KEY) === null) {
-    // Fresh install (or version bump). Write the current default
-    // and clear out any stale legacy keys so we don't carry forward
-    // intermediate-commit state.
+    // Fresh install (or version bump). Write the current default.
     const fresh = { ...DEFAULT_COLLAPSED };
     saveStored(COLLAPSED_KEY, fresh);
-    dropLegacyKeys();
     return fresh;
   }
   return loadStored<Record<string, boolean>>(COLLAPSED_KEY, { ...DEFAULT_COLLAPSED });
