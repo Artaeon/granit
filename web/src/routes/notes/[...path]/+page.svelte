@@ -18,6 +18,7 @@
   import { createPreviewScrollTracker } from '$lib/notes/previewScrollTracker.svelte';
   import { installNoteShortcuts } from '$lib/notes/noteKeyboardShortcuts.svelte';
   import { openResearchMode as openResearchModeFor } from '$lib/notes/researchMode';
+  import { noteCrumbs, visibleCrumbs as visibleCrumbsFn, crumbsCollapsed as crumbsCollapsedFn } from '$lib/notes/noteBreadcrumbs';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
@@ -862,42 +863,13 @@
     }
   }
 
-  // Folder breadcrumbs — derived once so the template stays
-  // declarative. Each crumb carries its own folder filter URL so a
-  // mid-path click goes "show me everything in <root>/a/b/" without
-  // recomputing the prefix in markup. When the user expands a
-  // collapsed deep path we flip `breadcrumbExpanded` to render every
-  // segment instead of first/…/last.
-  // Reset is folded into load() — the only path that swaps note
-  // identity. The previous version used a $effect tracking
-  // `note?.path`, which depended on the autosave path NEVER
-  // reassigning `note` (it doesn't — surgical mutation), an
-  // invariant that's brittle to encode as a reactive dep.
+  // Folder breadcrumbs. Reset on real navigation is folded into
+  // load() since it's the only path that swaps note identity; the
+  // pure derivation + collapse rule lives in noteBreadcrumbs.
   let breadcrumbExpanded = $state(false);
-  interface Crumb { label: string; href: string }
-  let allCrumbs = $derived.by<Crumb[]>(() => {
-    if (!note) return [];
-    const segs = note.path.split('/').slice(0, -1);
-    return segs.map((seg, i) => ({
-      label: seg,
-      href: `/notes?folder=${encodeURIComponent(segs.slice(0, i + 1).join('/'))}`
-    }));
-  });
-  // When the path has more than 3 folder segments we collapse the
-  // middle ones into a clickable ellipsis so the bar stays one-line
-  // even on deeply-nested paths (e.g. work/projects/2026/q1/notes).
-  // Showing the first two + last keeps the most relevant context
-  // (top-level area + immediate parent) without truncating the title.
-  const CRUMB_COLLAPSE_THRESHOLD = 4;
-  let visibleCrumbs = $derived.by<Crumb[]>(() => {
-    if (breadcrumbExpanded) return allCrumbs;
-    if (allCrumbs.length <= CRUMB_COLLAPSE_THRESHOLD) return allCrumbs;
-    // Keep the first two and the last segment; expansion shows all.
-    return [...allCrumbs.slice(0, 2), ...allCrumbs.slice(-1)];
-  });
-  let crumbsCollapsed = $derived(
-    !breadcrumbExpanded && allCrumbs.length > CRUMB_COLLAPSE_THRESHOLD
-  );
+  let allCrumbs = $derived(noteCrumbs(note?.path));
+  let visibleCrumbs = $derived(visibleCrumbsFn(allCrumbs, breadcrumbExpanded));
+  let crumbsCollapsed = $derived(crumbsCollapsedFn(allCrumbs, breadcrumbExpanded));
 
   let dailyLabel = $derived.by(() => {
     if (!dailyDate) return '';
