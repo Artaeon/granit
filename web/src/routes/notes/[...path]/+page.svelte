@@ -21,7 +21,7 @@
   import { openAIOverlay, aiOverlayPinned } from '$lib/stores/ai-overlay';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
-  import { offerAIChapterGeneration } from '$lib/notes/aiChapterGeneration';
+  import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
   import {
     parseDailyDate,
@@ -1088,52 +1088,16 @@
 
   async function navigateWikilink(target: string) {
     // Best-effort flush of any pending edit. We never block navigation on
-    // the save result — the localStorage draft (synchronous per-keystroke)
-    // already preserves the body, and beforeNavigate flushes again. If the
-    // user is offline, save will fail; the draft is still on disk and gets
-    // retried automatically when 'online' fires.
+    // the save result — the localStorage draft already preserves the body
+    // and beforeNavigate flushes again. If the user is offline, save will
+    // fail; the draft is on disk and gets retried automatically when
+    // 'online' fires. The lookup + AI-offer + goto flow lives in
+    // wikilinkNav so this surface only owns the dirty-flush + ctx wiring.
     if (dirty) void save({ silent: true });
-    // Block-level wikilink: [[Note#Heading]] — split off the fragment
-    // and pass it through the URL hash. The receiving page (i.e. this
-    // same component on a fresh mount) reads $page.url.hash and
-    // scrolls to the heading after the doc loads.
-    const [titleRaw, ...frag] = target.split('#');
-    const title = titleRaw.trim();
-    const hash = frag.length > 0 ? `#${frag.join('#').trim()}` : '';
-    try {
-      const list = await api.listNotes({ q: title, limit: 5 });
-      const exact = list.notes.find((n) => n.title.toLowerCase() === title.toLowerCase());
-      const t = exact ?? list.notes[0];
-      if (t) {
-        goto(`/notes/${encodeURIComponent(t.path)}${hash}`);
-        return;
-      }
-    } catch {}
-    // Unresolved wikilink. If the user is on a note with substantial
-    // content + multiple wikilinks (likely a research outline / study
-    // plan), offer to generate the missing chapter via AI before
-    // falling back to "open empty note". The body has to be non-
-    // trivial because we ship it as the parent-outline context.
-    //
-    // Pass the LITERAL targetPath the wikilink would resolve to —
-    // `<title>.md` at the vault root — so the saved chapter lands
-    // exactly where the wikilink expects. Otherwise the chapter
-    // gets nested under <parent>/<slug>.md and the wikilink would
-    // still resolve to nothing on the next click.
-    const targetPath = title + '.md';
-    const handled = await offerAIChapterGeneration({
+    await navigateWikilinkHelper(target, {
       parentPath: note?.path ?? '',
-      parentBody: body ?? '',
-      chapterTitle: title,
-      targetPath
+      parentBody: body ?? ''
     });
-    if (handled) {
-      // The offer either navigated us to the new note or stayed
-      // put (user declined). Either way the navigation decision is
-      // already made.
-      return;
-    }
-    goto(`/notes/${encodeURIComponent(title + '.md')}${hash}`);
   }
 
   $effect(() => {
