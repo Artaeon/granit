@@ -52,6 +52,7 @@
     smartPredicate,
     fmtEstBudget
   } from '$lib/tasks/tasksHelpers';
+  import { createPresetsController, type FilterPreset } from '$lib/tasks/tasksPresets.svelte';
 
   let tasks = $state<Task[]>([]);
   let projects = $state<Project[]>([]);
@@ -1156,95 +1157,32 @@
   // Saved filter presets — name a combination of status / q / tag /
   // project / priority / goal / deadline / view / groupBy, pin it
   // as a one-click chip above the stats row. Persisted to
-  // localStorage. Useful for "P1 this week", "Inbox", "Project X —
-  // open", etc — the kind of saved-views feature power users rely
-  // on.
-  type FilterPreset = {
-    name: string;
-    status: 'open' | 'done' | 'all';
-    q: string;
-    // Legacy string `tag` was a single tag; newer presets persist
-    // the multi-tag array directly. captureCurrentAsPreset writes
-    // both fields so older code paths reading `tag` still work,
-    // and applyPreset prefers the array when present.
-    tag: string;
-    tags?: string[];
-    project: string;
-    priority: number | '';
-    goal: string;
-    deadline: string;
-    view: View;
-    groupBy: Group;
-    // Newer fields — old presets without them load with falsy
-    // defaults via the `?? ''` reads in applyPreset.
-    sortBy?: SortBy;
-    sourceFilter?: 'all' | 'task-notes';
-    smartFilter?: SmartFilter;
-    archivedMode?: 'hide' | 'show' | 'only';
-  };
-  const PRESETS_KEY = 'granit.tasks.presets';
-  let presets = $state<FilterPreset[]>(loadStored<FilterPreset[]>(PRESETS_KEY, []));
-  function persistPresets() {
-    saveStored(PRESETS_KEY, presets);
-  }
-  function captureCurrentAsPreset() {
-    const name = prompt('Name this filter preset:', '');
-    if (!name || !name.trim()) return;
-    const trimmed = name.trim();
-    const next = presets.filter((p) => p.name !== trimmed);
-    next.unshift({
-      name: trimmed,
-      status, q, tag: tagFilters[0] ?? '', tags: [...tagFilters], project: projectFilter,
-      priority: priorityFilter, goal: goalFilter, deadline: deadlineFilter,
-      view, groupBy,
-      sortBy, sourceFilter, smartFilter, archivedMode
-    });
-    presets = next;
-    persistPresets();
-    toast.success(`Saved preset "${trimmed}"`);
-  }
-  function applyPreset(p: FilterPreset) {
-    status = p.status; q = p.q;
-    tagFilters = Array.isArray(p.tags) ? [...p.tags] : (p.tag ? [p.tag] : []);
-    projectFilter = p.project;
-    priorityFilter = p.priority; goalFilter = p.goal; deadlineFilter = p.deadline;
-    view = p.view; groupBy = p.groupBy;
-    sortBy = p.sortBy ?? 'auto';
-    sourceFilter = p.sourceFilter ?? 'all';
-    smartFilter = p.smartFilter ?? '';
-    archivedMode = p.archivedMode ?? 'hide';
-  }
-  function deletePreset(name: string) {
-    presets = presets.filter((p) => p.name !== name);
-    persistPresets();
-  }
-  function presetMatches(p: FilterPreset): boolean {
-    const presetTags = (p.tags && Array.isArray(p.tags)) ? p.tags : (p.tag ? [p.tag] : []);
-    if (presetTags.length !== tagFilters.length) return false;
-    if (presetTags.some((t, i) => t !== tagFilters[i])) return false;
-    return p.status === status && p.q === q
-      && p.project === projectFilter && p.priority === priorityFilter
-      && p.goal === goalFilter && p.deadline === deadlineFilter
-      && p.view === view && p.groupBy === groupBy
-      && (p.sortBy ?? 'auto') === sortBy
-      && (p.sourceFilter ?? 'all') === sourceFilter
-      && (p.smartFilter ?? '') === smartFilter
-      && (p.archivedMode ?? 'hide') === archivedMode;
-  }
-
-  // Built-in starter presets. Surface a few well-named common filter
-  // combos so the presets row isn't empty for first-time users. Only
-  // shown when the user has zero saved presets; once they save their
-  // own, the starter set hides. Clicking applies the combo; from
-  // there the user can tweak and "save current" to make it their own.
-  const STARTER_PRESETS: FilterPreset[] = [
-    { name: 'P1 this week', status: 'open', q: '', tag: '', project: '', priority: 1, goal: '', deadline: '', view: 'list', groupBy: 'due', smartFilter: 'thisWeek' },
-    { name: 'Inbox', status: 'open', q: '', tag: '', project: '', priority: '', goal: '', deadline: '', view: 'inbox', groupBy: 'priority' },
-    { name: 'Overdue', status: 'open', q: '', tag: '', project: '', priority: '', goal: '', deadline: '', view: 'list', groupBy: 'priority', smartFilter: 'overdue' },
-    { name: 'Quick wins', status: 'open', q: '', tag: '', project: '', priority: '', goal: '', deadline: '', view: 'quickwins', groupBy: 'priority' },
-    { name: 'Recently done', status: 'done', q: '', tag: '', project: '', priority: '', goal: '', deadline: '', view: 'review', groupBy: 'due' }
-  ];
-  let visiblePresets = $derived(presets.length > 0 ? presets : STARTER_PRESETS);
+  // localStorage. The CRUD + starter set live in
+  // $lib/tasks/tasksPresets; this page reaches them via the snapshot
+  // bridge so the controller stays decoupled from the page's let
+  // bindings.
+  const presetCtl = createPresetsController({
+    getSnapshot: () => ({
+      status, q, tagFilters: [...tagFilters], projectFilter,
+      priorityFilter, goalFilter, deadlineFilter,
+      view, groupBy, sortBy, sourceFilter, smartFilter, archivedMode
+    }),
+    applySnapshot: (s) => {
+      status = s.status;
+      q = s.q;
+      tagFilters = [...s.tagFilters];
+      projectFilter = s.projectFilter;
+      priorityFilter = s.priorityFilter;
+      goalFilter = s.goalFilter;
+      deadlineFilter = s.deadlineFilter;
+      view = s.view;
+      groupBy = s.groupBy;
+      sortBy = s.sortBy;
+      sourceFilter = s.sourceFilter;
+      smartFilter = s.smartFilter;
+      archivedMode = s.archivedMode;
+    }
+  });
 
   let stats = $derived.by(() => {
     const today = todayISO();
@@ -2188,26 +2126,26 @@
            filter state under a name; clicking a preset chip
            re-applies all stored fields. Long-press / right-click to
            delete via the small × on the active chip. -->
-      {#if visiblePresets.length > 0 || true}
+      {#if presetCtl.visiblePresets.length > 0 || true}
         <div class="px-3 py-1.5 border-b border-surface1 flex items-center gap-1.5 text-xs flex-shrink-0 flex-wrap">
           <span class="text-dim font-mono uppercase tracking-wider">presets</span>
-          {#if presets.length === 0}
+          {#if presetCtl.isShowingStarters}
             <span class="text-[10px] text-dim italic font-mono" title="Built-in starter presets — save your own and these go away">starter</span>
           {/if}
-          {#each visiblePresets as p (p.name)}
-            {@const active = presetMatches(p)}
-            {@const isStarter = presets.length === 0}
+          {#each presetCtl.visiblePresets as p (p.name)}
+            {@const active = presetCtl.matches(p)}
+            {@const isStarter = presetCtl.isShowingStarters}
             <span
               class="inline-flex items-center rounded overflow-hidden border
                 {active ? 'border-primary bg-surface1 text-primary' : 'border-surface1 bg-surface0 text-subtext hover:border-primary'}"
             >
               <button
-                onclick={() => applyPreset(p)}
+                onclick={() => presetCtl.apply(p)}
                 class="px-2 py-0.5"
               >{p.name}</button>
               {#if active && !isStarter}
                 <button
-                  onclick={() => deletePreset(p.name)}
+                  onclick={() => presetCtl.remove(p.name)}
                   title="Remove preset"
                   class="px-1.5 py-0.5 text-dim hover:text-error border-l border-surface1"
                 >×</button>
@@ -2215,7 +2153,7 @@
             </span>
           {/each}
           <button
-            onclick={captureCurrentAsPreset}
+            onclick={() => presetCtl.capture()}
             title="Save the current filters as a named preset"
             class="px-2 py-0.5 text-dim hover:text-primary border border-dashed border-surface1 hover:border-primary rounded"
           >+ save current</button>
