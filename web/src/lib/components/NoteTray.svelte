@@ -1,32 +1,26 @@
 <script lang="ts">
   /**
-   * Slim "open note" tray that lives at the bottom of every page so
-   * the user can jump back to their last-opened note from anywhere.
+   * StatusBar — the persistent thin bar at the bottom of every page.
+   *
+   * Originally just an "open note" tray; promoted to a general status
+   * bar that hosts:
+   *   • Left:   workspace switcher pills (shared workspaceStore)
+   *   • Middle: open-note chips (last-opened + pinned) — original use
+   *   • Right:  connectivity dot + AI-ready dot
    *
    * Layout
-   *   • Desktop (≥ md): 28px-tall bar pinned to the viewport bottom
-   *     with the note title + a small overflow menu + dismiss.
-   *   • Mobile (< md):  same data, but anchored *above* the existing
-   *     BottomNav (5-column thumb bar) so it doesn't steal touch
-   *     targets. iOS safe-area padding is inherited from BottomNav's
-   *     own `pb-safe` so the tray sits flush against its top border.
+   *   • Desktop (≥ md): 28px-tall bar pinned to the viewport bottom.
+   *   • Mobile (< md):  same data, anchored above the BottomNav so it
+   *     doesn't steal touch targets. iOS safe-area inherited.
    *
-   * Visibility rules
-   *   • Hidden when `trayEnabled` is false (settings opt-out).
-   *   • Hidden when there's no `lastOpenNote` AND no pinned entries.
-   *   • The lastOpenNote chip is suppressed when the user is already
-   *     looking at that note's page — re-showing it would be visual
-   *     noise (the editor itself is the affordance).
-   *   • Pinned chips render unconditionally (minus whichever is
-   *     currently active) so the user can hop between two reference
-   *     notes without the tray flickering in/out.
+   * Visibility
+   *   • Always rendered when the user is authed (left + right groups
+   *     are always relevant). The middle group self-hides per-chip
+   *     when there's nothing to show.
    *
    * Z-index
-   *   • z-20 — sits above the editor's chrome (no fixed elements
-   *     there) but below the mobile BottomNav (z-30), the AI
-   *     overlay (z-50), and modal scrims (z-40). Verified against
-   *     BottomNav.svelte and AIOverlay.svelte at component-write
-   *     time.
+   *   • z-20 — above editor chrome, below mobile BottomNav (z-30),
+   *     AI overlay (z-50), modal scrims (z-40).
    */
 
   import { page } from '$app/stores';
@@ -40,11 +34,16 @@
     isTrayPinned,
     type OpenNoteEntry
   } from '$lib/stores/open-note';
+  import { workspaceStoreSingleton } from '$lib/workspace/workspaceStore.svelte';
+  import { isOnline } from '$lib/stores/online';
+  import { aiStatus } from '$lib/stores/ai-status';
+  import { sabbath } from '$lib/stores/sabbath';
+  import { goto } from '$app/navigation';
 
-  // Decode the active note path from the URL so we can suppress the
-  // chip when the user is already on that note. Notes route is
-  // /notes/<urlencoded-path>; we strip the prefix + decodeURIComponent
-  // the rest. Returns '' when not on a note page.
+  const wsStore = workspaceStoreSingleton();
+
+  // Decode the active note path so we don't surface a "jump back" chip
+  // for the note the user is already looking at.
   let activeNotePath = $derived.by(() => {
     const p = $page.url.pathname;
     if (!p.startsWith('/notes/')) return '';
@@ -56,29 +55,19 @@
     }
   });
 
-  // The chip the tray surfaces for "jump back". Hidden when the user
-  // is on that exact note OR the store is empty.
   let lastChip = $derived.by(() => {
     if (!$lastOpenNote) return null;
     if (activeNotePath === $lastOpenNote.path) return null;
     return $lastOpenNote;
   });
 
-  // Pinned entries other than the one the user is currently viewing.
-  // Suppression keeps the strip's visual contract: every chip is a
-  // "go somewhere else" affordance.
-  let visiblePins = $derived.by(() => {
-    return $pinnedTrayNotes.filter((e) => e.path !== activeNotePath);
-  });
+  let visiblePins = $derived.by(() =>
+    $pinnedTrayNotes.filter((e) => e.path !== activeNotePath)
+  );
 
-  // The overall tray renders only when there's at least one chip to
-  // show AND the user hasn't opted out in settings.
-  let visible = $derived($trayEnabled && (!!lastChip || visiblePins.length > 0));
+  let onWorkspacePage = $derived($page.url.pathname.startsWith('/workspace'));
 
-  // Overflow menu state — a single dropdown shared between the last-
-  // open chip and any pinned chip the user opens it on. Tracked by
-  // the entry's path so multiple chips don't fight over one open
-  // state. `null` = closed.
+  // Overflow menu for note chips — single state shared between chips.
   let menuFor = $state<string | null>(null);
   function toggleMenu(path: string) {
     menuFor = menuFor === path ? null : path;
@@ -87,8 +76,6 @@
     menuFor = null;
   }
 
-  // Close the menu on outside click / Esc so it doesn't get
-  // accidentally left open after the user navigated away.
   $effect(() => {
     if (menuFor === null) return;
     const onDown = (e: MouseEvent) => {
@@ -110,7 +97,6 @@
   function hrefFor(entry: OpenNoteEntry): string {
     return '/notes/' + encodeURIComponent(entry.path);
   }
-
   function onPinToggle(entry: OpenNoteEntry) {
     if (isTrayPinned(entry.path)) unpinOpenNote(entry.path);
     else pinOpenNote(entry);
@@ -126,17 +112,20 @@
     closeMenu();
   }
 
-  // Expose the tray's reserved height as a CSS custom property on
-  // <html> so the main content's bottom padding can stack it on top
-  // of any other reserves (mobile bottom-nav, iOS safe area). The
-  // `.main-with-tray` rule in app.css consumes this var. Cleared
-  // when the tray hides so the editor reclaims those pixels.
-  // h-7 = 1.75rem (28px) — kept in sync with the class on the tray
-  // root element below.
+  function switchWorkspace(id: string) {
+    wsStore.activeId = id;
+    // Jump to /workspace so the switch is visible immediately. If the
+    // user is already there, no nav happens.
+    if (!onWorkspacePage) void goto('/workspace');
+  }
+
+  // Reserve the bar's height so the editor's bottom padding stacks it
+  // on top of any other reserves (BottomNav, iOS safe area). h-7 =
+  // 28px — kept in sync with the class on the root element below.
   const TRAY_HEIGHT = '1.75rem';
   $effect(() => {
     if (typeof document === 'undefined') return;
-    if (visible) {
+    if ($trayEnabled) {
       document.documentElement.style.setProperty('--note-tray-h', TRAY_HEIGHT);
       return () => {
         document.documentElement.style.removeProperty('--note-tray-h');
@@ -149,12 +138,9 @@
 {#snippet chip(entry: OpenNoteEntry, opts: { kind: 'last' | 'pin' })}
   {@const pinned = $pinnedTrayNotes.some((e) => e.path === entry.path)}
   {@const menuOpen = menuFor === entry.path}
-  <!-- Single chip: clickable body (navigates) + overflow trigger + ×
-       dismiss (last-open only — pins are removed via the menu so
-       the chip body stays a one-click "jump back"). -->
   <div
     class="group relative inline-flex items-center min-w-0 h-full
-           border-l border-surface1 first:border-l-0 pl-2 pr-1"
+           border-l border-surface1 pl-2 pr-1"
     data-tray-menu
   >
     <a
@@ -163,10 +149,6 @@
       class="inline-flex items-center gap-1.5 min-w-0 max-w-[12rem] md:max-w-[18rem]
              text-[11px] md:text-xs text-subtext hover:text-text transition-colors"
     >
-      <!-- Tiny doc / pin glyph so the user reads the chip-kind at a
-           glance without expanding the overflow. Last-open is a
-           doc icon; pinned is a filled star to match the sidebar
-           pin metaphor elsewhere in the app. -->
       {#if opts.kind === 'pin'}
         <svg viewBox="0 0 16 16" class="w-3 h-3 flex-shrink-0 text-warning" fill="currentColor" aria-hidden="true">
           <path d="M8 1.5l1.85 4.05L14 6.2l-3.1 2.85L11.7 13 8 10.85 4.3 13l.8-3.95L2 6.2l4.15-.65z"/>
@@ -180,7 +162,6 @@
       <span class="truncate">{entry.title || entry.path}</span>
     </a>
 
-    <!-- Overflow trigger -->
     <button
       type="button"
       onclick={() => toggleMenu(entry.path)}
@@ -197,9 +178,6 @@
       </svg>
     </button>
 
-    <!-- Last-open quick dismiss. Pins don't get this — the overflow
-         menu's "Unpin" is the explicit, less-accidental remove path
-         for pinned entries. -->
     {#if opts.kind === 'last'}
       <button
         type="button"
@@ -215,10 +193,6 @@
     {/if}
 
     {#if menuOpen}
-      <!-- Overflow menu. Opens upward (bottom-full) since the tray
-           itself is anchored to the viewport bottom — a downward
-           menu would clip off-screen. mb-1 leaves a small gap so
-           the menu visibly detaches from the chip. -->
       <div
         role="menu"
         class="absolute right-0 bottom-full mb-1 w-44 bg-mantle border border-surface1 rounded-lg shadow-xl py-1 text-sm z-10"
@@ -248,41 +222,93 @@
   </div>
 {/snippet}
 
-{#if visible}
-  <!--
-    Mobile: the BottomNav (z-30) sits flush at the viewport bottom
-    with `pb-safe`. Stacking the tray directly above means the user
-    sees [tray strip][bottomnav][safe-area] — touch targets are
-    preserved and the OS chrome doesn't clip either bar.
-
-    Desktop: nothing else lives at the bottom, so we sit at bottom:0
-    edge-to-edge. The 28px height (h-7) matches the user's "ganz
-    schmal" brief — readable but visually unobtrusive.
-  -->
-  <!-- The tray sits above the bottom-nav on mobile. When the on-
-       screen keyboard opens the bottom-nav hides (data-kb-open on
-       <html>); the tray follows so a typing user gets the whole
-       editor height. Re-appears together with the nav. -->
+{#if $trayEnabled}
   <div
     role="region"
-    aria-label="Open note tray"
+    aria-label="Status bar"
     class="note-tray note-tray-hide-on-kb fixed inset-x-0 z-20 bg-mantle border-t border-surface1
-           h-7 md:h-7 flex items-stretch overflow-x-auto"
+           h-7 md:h-7 flex items-stretch overflow-hidden"
     style="bottom: var(--note-tray-bottom, 0px);"
   >
-    {#if lastChip}
-      {@render chip(lastChip, { kind: 'last' })}
-    {/if}
-    {#each visiblePins as p (p.path)}
-      {@render chip(p, { kind: 'pin' })}
-    {/each}
+    <!-- LEFT: Workspace switcher pills. The shared workspaceStore
+         singleton means a switch here is reflected in the /workspace
+         shell immediately, and vice-versa. We render at most 4 pills
+         inline; if the user has more, the rest are reachable via the
+         /workspace tray. -->
+    <div class="flex items-stretch overflow-x-auto flex-shrink-0 max-w-[60%] md:max-w-[40%]">
+      <a
+        href="/workspace"
+        title="Open workspaces"
+        aria-label="Open workspaces"
+        class="inline-flex items-center justify-center w-7 h-full text-dim hover:text-primary hover:bg-surface0 transition-colors flex-shrink-0"
+        aria-current={onWorkspacePage ? 'page' : undefined}
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="8" height="8" rx="1"/>
+          <rect x="13" y="3" width="8" height="8" rx="1"/>
+          <rect x="3" y="13" width="8" height="8" rx="1"/>
+          <rect x="13" y="13" width="8" height="8" rx="1"/>
+        </svg>
+      </a>
+      {#each wsStore.workspaces.slice(0, 4) as w (w.id)}
+        {@const active = w.id === wsStore.activeId && onWorkspacePage}
+        <button
+          type="button"
+          onclick={() => switchWorkspace(w.id)}
+          title={`Switch to workspace "${w.name}"`}
+          class="inline-flex items-center px-2 h-full text-[11px] md:text-xs font-medium border-l border-surface1 transition-colors whitespace-nowrap
+            {active ? 'text-primary bg-surface0' : 'text-subtext hover:text-text hover:bg-surface0'}"
+        >
+          <span class="truncate max-w-[8rem]">{w.name}</span>
+        </button>
+      {/each}
+    </div>
+
+    <!-- MIDDLE: open-note chips. Grows to fill, scrolls horizontally
+         if many chips. Self-empty when nothing is open. -->
+    <div class="flex items-stretch overflow-x-auto flex-1 min-w-0">
+      {#if lastChip}
+        {@render chip(lastChip, { kind: 'last' })}
+      {/if}
+      {#each visiblePins as p (p.path)}
+        {@render chip(p, { kind: 'pin' })}
+      {/each}
+    </div>
+
+    <!-- RIGHT: indicators. Connectivity dot + AI ready dot. Tiny,
+         high-contrast, hover-tooltips for detail. -->
+    <div class="flex items-center gap-2 px-2 border-l border-surface1 flex-shrink-0">
+      <span
+        class="inline-flex items-center gap-1 text-[10px] text-dim"
+        title={$isOnline ? 'Connected' : 'Offline — changes will sync when back online'}
+      >
+        <span
+          class="w-1.5 h-1.5 rounded-full {$isOnline ? 'bg-success' : 'bg-error'}"
+          aria-hidden="true"
+        ></span>
+        <span class="hidden md:inline">{$isOnline ? 'online' : 'offline'}</span>
+      </span>
+      {#if $aiStatus}
+        <span
+          class="inline-flex items-center gap-1 text-[10px] text-dim"
+          title={$sabbath
+            ? 'AI paused — Sabbath'
+            : `AI ready — ${$aiStatus.global_model || $aiStatus.global_provider || 'default'}`}
+        >
+          <span
+            class="w-1.5 h-1.5 rounded-full {$sabbath ? 'bg-warning' : 'bg-success'}"
+            aria-hidden="true"
+          ></span>
+          <span class="hidden md:inline truncate max-w-[8rem]">
+            {$sabbath ? 'sabbath' : ($aiStatus.global_model || 'ai')}
+          </span>
+        </span>
+      {/if}
+    </div>
   </div>
 {/if}
 
 <style>
-  /* On mobile the BottomNav owns the bottom 3.5rem + safe-area.
-     Lift the tray to sit on top of it without inline-style math at
-     the call site. Desktop falls back to 0 (the @media reset). */
   .note-tray {
     --note-tray-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
   }
@@ -291,14 +317,6 @@
       --note-tray-bottom: 0px;
     }
   }
-  /* Hide the scrollbar — tray is a single-row horizontal strip; a
-     visible scrollbar would steal vertical pixels from a 28px bar. */
-  .note-tray::-webkit-scrollbar { display: none; }
-  .note-tray { scrollbar-width: none; }
-  /* When the on-screen keyboard opens (data-kb-open set by the
-     layout's visualViewport listener), the tray slides off-screen
-     together with the bottom-nav so a typing user gets the whole
-     editor height. */
   :global(html[data-kb-open]) .note-tray-hide-on-kb {
     transform: translateY(150%);
     pointer-events: none;

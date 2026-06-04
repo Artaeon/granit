@@ -20,11 +20,13 @@
   import SplitView from '$lib/workspace/SplitView.svelte';
   import PaneSlot from '$lib/workspace/PaneSlot.svelte';
   import WorkspaceTray from '$lib/workspace/WorkspaceTray.svelte';
-  import { createWorkspaceStore } from '$lib/workspace/workspaceStore.svelte';
+  import { workspaceStoreSingleton } from '$lib/workspace/workspaceStore.svelte';
   import { leaves } from '$lib/workspace/splitTree';
   import { findPane } from '$lib/workspace/paneRegistry';
 
-  const store = createWorkspaceStore();
+  // Shared module singleton so the StatusBar's workspace pills + this
+  // shell read/write the same state.
+  const store = workspaceStoreSingleton();
 
   let activeLeaves = $derived(leaves(store.active.layout));
   let canClose = $derived(activeLeaves.length > 1);

@@ -145,6 +145,17 @@ export interface WorkspaceStoreController {
   close(leafId: string): void;
 }
 
+// Module-level singleton. The StatusBar (workspace pills) and the
+// /workspace route share this instance so a switch / rename / create
+// in one surface shows up instantly in the other. Tests can still
+// call createWorkspaceStore() to build isolated instances.
+let _singleton: WorkspaceStoreController | null = null;
+export function workspaceStoreSingleton(): WorkspaceStoreController {
+  if (_singleton) return _singleton;
+  _singleton = createWorkspaceStore();
+  return _singleton;
+}
+
 export function createWorkspaceStore(): WorkspaceStoreController {
   const initial = loadInitial();
   let workspaces = $state<Workspace[]>(initial.workspaces);
