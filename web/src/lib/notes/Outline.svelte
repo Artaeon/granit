@@ -18,6 +18,7 @@
   always knows where they are in a long doc.
 -->
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { parseBody, type ParsedHeading } from '$lib/util/bodyParse';
 
   let {
@@ -106,15 +107,50 @@
   // updating after the first formatting edit. Tracking `body`
   // directly re-attaches against the live DOM.
   //
-  // Cost is acceptable because `body` flows in from the parent's
-  // bodyForPreview mirror (rAF-throttled at 60 Hz), so this effect
-  // fires at most 60 ×/sec on fast typing. The querySelectorAll
-  // walk is O(N) over a few hundred elements — well under a
-  // millisecond on commodity hardware.
+  // Cost: per body change we tear down the IntersectionObserver,
+  // run querySelectorAll over the prose container, and re-observe
+  // every heading. Each obs.observe() flushes layout. On an 80-
+  // heading note that's 10–40 ms per body change — meaningful on
+  // the typing hot path even with bodyForPreview's debounce.
+  //
+  // Strategy: one effect, two paths.
+  //   • Container first appears / changes (mount, note swap, view-
+  //     mode flip) → attach IMMEDIATELY so the visible-heading
+  //     paint isn't delayed.
+  //   • Container stable, body changes (typing) → coalesce the
+  //     re-attach at 400 ms. Active heading lies for ≤400 ms after
+  //     the user stops typing, then snaps right.
+  // Detach lives in a single ref so a re-attach always cleans the
+  // prior observer; no two-effect race that could leak observers.
+  let lastSeenContainer: HTMLElement | null = null;
+  let detachActive: (() => void) | null = null;
   $effect(() => {
     const container = scrollContainer ?? null;
-    void body; // dependency — DOM rebuilds on every body change
-    if (!container) return;
+    void body;
+    if (!container) {
+      detachActive?.();
+      detachActive = null;
+      lastSeenContainer = null;
+      return;
+    }
+    if (container !== lastSeenContainer) {
+      lastSeenContainer = container;
+      detachActive?.();
+      detachActive = attach(container);
+      return;
+    }
+    const t = setTimeout(() => {
+      detachActive?.();
+      detachActive = attach(container);
+    }, 400);
+    return () => clearTimeout(t);
+  });
+  onDestroy(() => {
+    detachActive?.();
+    detachActive = null;
+  });
+
+  function attach(container: HTMLElement): () => void {
 
     let raf = 0;
     const visibleLines = new Set<number>();
@@ -236,14 +272,12 @@
       window.removeEventListener('resize', onScrollOrResize);
       if (raf) cancelAnimationFrame(raf);
       if (scrollRaf) cancelAnimationFrame(scrollRaf);
-      // Note swap / view-mode flip is handled by the
-      // lastSeenContainer effect above. We deliberately don't
-      // reset observedActiveLine here: this cleanup also fires on
-      // every body-change effect re-run, and resetting per keystroke
-      // flashed the active heading from "current" to cursor fallback
-      // and back within one frame.
+      // We deliberately don't reset observedActiveLine here: the
+      // detach also fires on every body-coalesced re-attach, and
+      // resetting per keystroke flashed the active heading from
+      // "current" to cursor fallback and back within one frame.
     };
-  });
+  }
 </script>
 
 {#if headings.length === 0}
