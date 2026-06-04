@@ -53,21 +53,24 @@
   import { createPresetsController, type FilterPreset } from '$lib/tasks/tasksPresets.svelte';
   import { createTasksFilterState } from '$lib/tasks/tasksFilterState.svelte';
   import { createTasksViewState } from '$lib/tasks/tasksViewState.svelte';
+  import { createTasksData } from '$lib/tasks/tasksData.svelte';
 
-  let tasks = $state<Task[]>([]);
-  let projects = $state<Project[]>([]);
+  // Loaded data (dataCtl.tasks/dataCtl.projects/dataCtl.goals/dataCtl.deadlines), dataCtl.loading flag,
+  // dataCtl.parentMap/dataCtl.childCount/dataCtl.allTags/dataCtl.countOpen/dataCtl.countDone/dataCtl.stats, plus
+  // per-subtree collapse state moved into $lib/tasks/tasksData. The
+  // page still owns load() + WS subscription; both write into dataCtl.
+  const dataCtl = createTasksData();
   // Task Agent — conversational action proposer. Sees the
   // currently-filtered task list, takes a free-text intent, returns
   // a list of typed actions the user accepts per-card. Distinct
   // from Plan-day (schedules) and Stale-review (verdicts) — this
   // is the "do something for me" surface.
   let agentOpen = $state(false);
-  // Goals + deadlines drive the new group-by options and the group
+  // Goals + dataCtl.deadlines drive the new group-by options and the group
   // header titles (so a "Q3 launch (G004)" group reads as the goal's
   // title, not the bare ID). Loaded once, then refreshed alongside
   // the task list on WS events.
-  let goals = $state<Goal[]>([]);
-  let deadlines = $state<Deadline[]>([]);
+  // dataCtl.goals + dataCtl.deadlines moved into dataCtl alongside dataCtl.tasks + dataCtl.projects.
 
   // View + display state — viewMode, viewCtl.groupBy, viewCtl.sortBy, viewCtl.density,
   // viewCtl.kanbanMode/Swimlane, viewCtl.helpOpen/viewCtl.filterPanelOpen/viewCtl.moreViewsOpen, the
@@ -78,24 +81,24 @@
   // bundle filterCtl uses.
   const viewCtl = createTasksViewState({
     getFiltered: () => filterCtl.filtered,
-    getTasks: () => tasks,
-    getProjects: () => projects,
-    getGoals: () => goals,
-    getDeadlines: () => deadlines
+    getTasks: () => dataCtl.tasks,
+    getProjects: () => dataCtl.projects,
+    getGoals: () => dataCtl.goals,
+    getDeadlines: () => dataCtl.deadlines
   });
 
   // Every filter dimension + the filtered derivation + smartCounts +
   // activeFilterChips + clearAll live in $lib/tasks/tasksFilterState.
-  // The controller reads tasks / projects / view / goals / deadlines /
-  // childCount via the deps bundle below; the rest of this file reads
+  // The controller reads dataCtl.tasks / dataCtl.projects / view / dataCtl.goals / dataCtl.deadlines /
+  // dataCtl.childCount via the deps bundle below; the rest of this file reads
   // its state through filterCtl.X.
   const filterCtl = createTasksFilterState({
-    getTasks: () => tasks,
-    getProjects: () => projects,
-    getGoals: () => goals,
-    getDeadlines: () => deadlines,
+    getTasks: () => dataCtl.tasks,
+    getProjects: () => dataCtl.projects,
+    getGoals: () => dataCtl.goals,
+    getDeadlines: () => dataCtl.deadlines,
     getView: () => viewCtl.view,
-    getChildCount: () => childCount
+    getChildCount: () => dataCtl.childCount
   });
 
   // viewCtl.density + viewCtl.compactCards moved into $lib/tasks/tasksViewState.
@@ -157,7 +160,7 @@
       return group === '(untagged)' ? {} : { tags: [group] };
     }
     if (viewCtl.groupBy === 'project') {
-      const proj = projects.find((p) => p.name === group);
+      const proj = dataCtl.projects.find((p) => p.name === group);
       if (!proj) return {};
       return { projectId: proj.name };
     }
@@ -214,7 +217,7 @@
   // $lib/tasks/AskTasks.svelte — that component owns the question /
   // answer state, the streaming, the dismiss path. The parent only
   // owns the open flag (so its trigger button can flip it) and the
-  // "no tasks in current view" guard (filterCtl.filtered is the parent's
+  // "no dataCtl.tasks in current view" guard (filterCtl.filtered is the parent's
   // derivation).
   let askTasksOpen = $state(false);
   function startAskTasks() {
@@ -224,7 +227,8 @@
     }
     askTasksOpen = true;
   }
-  let loading = $state(false);
+  // dataCtl.loading flag moved into dataCtl.
+
   // URL sync: hydrate filter state from ?status=…&priority=…&… on
   // first load so refresh / shared links keep filters intact, and
   // mirror user-driven changes back into the URL via $effect.
@@ -458,13 +462,13 @@
   // a click on a scheduled / due task lands directly on its detail
   // instead of the user having to scroll-and-find. Only fires once
   // per change in the URL+task-list pairing — without that guard a
-  // re-rendered tasks list would re-open the drawer every load.
+  // re-rendered dataCtl.tasks list would re-open the drawer every load.
   let lastFocusedFromUrl = $state<string | null>(null);
   $effect(() => {
     const focusId = $page.url.searchParams.get('focus');
-    if (!focusId || tasks.length === 0) return;
+    if (!focusId || dataCtl.tasks.length === 0) return;
     if (focusId === lastFocusedFromUrl) return;
-    const t = tasks.find((x) => x.id === focusId);
+    const t = dataCtl.tasks.find((x) => x.id === focusId);
     if (t) {
       openDetail(t);
       lastFocusedFromUrl = focusId;
@@ -475,18 +479,19 @@
 
   async function load() {
     if (!$auth) return;
-    loading = true;
+    dataCtl.loading = true;
     try {
       // Honor every server-side filter we expose. The client-side
-      // `filterCtl.filtered` derivation still re-applies these (so view-specific
-      // logic like inbox/stale stays consistent), but pushing them to
-      // the server first means we don't ship the entire task graph
-      // over the wire when the user wants P1 only.
+      // filterCtl.filtered derivation still re-applies these (so the
+      // view-specific logic like inbox/stale stays consistent), but
+      // pushing them to the server first means we don't ship the
+      // entire task graph over the wire when the user wants P1 only.
       const params: Parameters<typeof api.listTasks>[0] = {};
       if (filterCtl.status !== 'all') params.status = filterCtl.status;
       // The backend endpoint accepts a single tag; for multi-tag
       // filters we pass the first to narrow the server response and
-      // AND-narrow the rest client-side in the `filterCtl.filtered` derivation.
+      // AND-narrow the rest client-side in the filterCtl.filtered
+      // derivation.
       if (filterCtl.tagFilters.length > 0) params.tag = filterCtl.tagFilters[0];
       if (filterCtl.priorityFilter !== '') params.priority = filterCtl.priorityFilter;
       if (filterCtl.projectFilter) params.project = filterCtl.projectFilter;
@@ -496,25 +501,29 @@
       if (filterCtl.archivedMode === 'only') params.archived = true;
       const [list, p, gg, dd] = await Promise.all([
         api.listTasks(params),
-        projects.length === 0 ? api.listProjects().catch(() => ({ projects: [] as Project[] })) : Promise.resolve({ projects }),
-        goals.length === 0 ? api.listGoals().catch(() => ({ goals: [] as Goal[] })) : Promise.resolve({ goals }),
-        deadlines.length === 0
+        dataCtl.projects.length === 0
+          ? api.listProjects().catch(() => ({ projects: [] as Project[] }))
+          : Promise.resolve({ projects: dataCtl.projects }),
+        dataCtl.goals.length === 0
+          ? api.listGoals().catch(() => ({ goals: [] as Goal[] }))
+          : Promise.resolve({ goals: dataCtl.goals }),
+        dataCtl.deadlines.length === 0
           ? api.listDeadlines().catch(() => ({ deadlines: [] as Deadline[] }))
-          : Promise.resolve({ deadlines })
+          : Promise.resolve({ deadlines: dataCtl.deadlines })
       ]);
-      tasks = list.tasks;
-      projects = p.projects;
-      goals = gg.goals;
-      deadlines = dd.deadlines;
+      dataCtl.tasks = list.tasks;
+      dataCtl.projects = p.projects;
+      dataCtl.goals = gg.goals;
+      dataCtl.deadlines = dd.deadlines;
     } catch {
       // 401 (stale auth) and network failures both end up here.
-      // Silently leave tasks/projects empty so the empty-state copy
-      // renders instead of the indefinite loading spinner. A later
-      // WS reconnect or filter change will retry naturally — no toast,
-      // no console noise; the comment above is the only documentation
-      // we need for the silent branch.
+      // Silently leave dataCtl.tasks/dataCtl.projects empty so the empty-state copy
+      // renders instead of the indefinite dataCtl.loading spinner. A later
+      // WS reconnect or filter change will retry naturally — no
+      // toast, no console noise; the comment above is the only
+      // documentation we need for the silent branch.
     } finally {
-      loading = false;
+      dataCtl.loading = false;
     }
   }
 
@@ -522,17 +531,17 @@
   // auth resolves (or changes) it fires; when status/filterCtl.tagFilters change
   // it fires. We don't pair it with onMount(load) — that would cause
   // a double-fetch on initial paint and (more importantly) was the
-  // source of the "stays loading" bug when an early call set
-  // loading=true before $auth was ready.
+  // source of the "stays dataCtl.loading" bug when an early call set
+  // dataCtl.loading=true before $auth was ready.
   //
   // load() is wrapped in untrack() because the function reads
-  // projects.length / goals.length / deadlines.length to decide whether
+  // dataCtl.projects.length / dataCtl.goals.length / dataCtl.deadlines.length to decide whether
   // to refetch the linkable-entity sidecars, and it reassigns those
   // arrays when fresh data lands. Without untrack, those reads would
   // become deps of THIS effect, and Svelte 5 fires reactivity on
   // $state array reassignment even when contents are equal — turning
   // a single initial fetch into a tight loop (most visible when
-  // /api/v1/deadlines returns []: deadlines.length stays 0, so every
+  // /api/v1/deadlines returns []: dataCtl.deadlines.length stays 0, so every
   // load() refires load(), saturating the page). The explicit `void`
   // list above is the source-of-truth for what should retrigger load.
   $effect(() => {
@@ -658,7 +667,7 @@
 
   // VIEW_CYCLE + VIEW_DIGIT_MAP live in $lib/tasks/tasksHelpers — same
   // vocabulary shared with the future workspace shell so the chord
-  // walks the same tab order whether tasks lives as a route or a pane.
+  // walks the same tab order whether dataCtl.tasks lives as a route or a pane.
 
   // Trigger the in-card snooze picker for the cursor task. The picker
   // is owned by TaskCard and anchored to its own snooze button (so the
@@ -835,7 +844,7 @@
   // smartCounts moved into $lib/tasks/tasksFilterState — read via
   // filterCtl.smartCounts.
 
-  // At-a-glance stats over the unfiltered open task list. Surfaced
+  // At-a-glance dataCtl.stats over the unfiltered open task list. Surfaced
   // as small chips above the list so the user always knows the
   // overall load — even when a filter is hiding most of it. Numbers
   // are debounced through $derived so they don't flicker mid-edit.
@@ -844,67 +853,12 @@
   // rendered list. Persisted to localStorage so collapse state
   // survives a refresh, but only IDs that still exist in the current
   // task list are kept (prevents the set from growing forever).
-  const COLLAPSE_KEY = 'granit.tasks.collapsed';
-  let collapsedIds = $state<Set<string>>(new Set(loadStored<string[]>(COLLAPSE_KEY, [])));
-  $effect(() => saveStored(COLLAPSE_KEY, Array.from(collapsedIds)));
-
-  // Parent map: for every task with indent > 0, finds its parent in
-  // the same notePath (the nearest preceding task with smaller
-  // indent). Built once per task-list update so the collapse logic
-  // doesn't recompute O(N²) on every render.
-  let parentMap = $derived.by(() => {
-    const m = new Map<string, string>();
-    // Group by notePath then walk in line order so the parent search
-    // is bounded to within a note.
-    const byNote: Record<string, Task[]> = {};
-    for (const t of tasks) (byNote[t.notePath] ??= []).push(t);
-    for (const list of Object.values(byNote)) {
-      list.sort((a, b) => a.lineNum - b.lineNum);
-      const stack: Task[] = [];
-      for (const t of list) {
-        const ind = t.indent ?? 0;
-        while (stack.length > 0 && (stack[stack.length - 1].indent ?? 0) >= ind) {
-          stack.pop();
-        }
-        if (stack.length > 0) m.set(t.id, stack[stack.length - 1].id);
-        stack.push(t);
-      }
-    }
-    return m;
-  });
-
-  // Inverse: parentId -> child IDs. Used to know whether a task
-  // even HAS children (so we can show the chevron) and to count
-  // them in the toggle label.
-  let childCount = $derived.by(() => {
-    const c = new Map<string, number>();
-    for (const childId of parentMap.keys()) {
-      const parent = parentMap.get(childId)!;
-      c.set(parent, (c.get(parent) ?? 0) + 1);
-    }
-    return c;
-  });
-
-  // Walk ancestry; returns true if any ancestor is collapsed.
-  function isHiddenByCollapse(taskId: string, collapsed: Set<string>): boolean {
-    let cur: string | undefined = parentMap.get(taskId);
-    while (cur) {
-      if (collapsed.has(cur)) return true;
-      cur = parentMap.get(cur);
-    }
-    return false;
-  }
-
-  function toggleCollapsed(taskId: string) {
-    const next = new Set(collapsedIds);
-    if (next.has(taskId)) next.delete(taskId);
-    else next.add(taskId);
-    collapsedIds = next;
-  }
+  // dataCtl.collapsedIds + dataCtl.parentMap + dataCtl.childCount + dataCtl.isHiddenByCollapse +
+  // dataCtl.toggleCollapsed moved into dataCtl.
 
   // Saved filter presets — name a combination of status / q / tag /
   // project / priority / goal / deadline / view / viewCtl.groupBy, pin it
-  // as a one-click chip above the stats row. Persisted to
+  // as a one-click chip above the dataCtl.stats row. Persisted to
   // localStorage. The CRUD + starter set live in
   // $lib/tasks/tasksPresets; this page reaches them via the snapshot
   // bridge so the controller stays decoupled from the page's let
@@ -942,86 +896,14 @@
     }
   });
 
-  let stats = $derived.by(() => {
-    const today = todayISO();
-    // Week boundary: completedAt within the last 7 calendar days
-    // (Sunday-relative would surprise users mid-week, so we keep it
-    // rolling-7d). Used by the "Done · 7d" chip.
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    let open = 0,
-      overdue = 0,
-      todayCount = 0,
-      doneToday = 0,
-      doneWeek = 0,
-      snoozed = 0,
-      // sumEstMin accumulates estimatedMinutes across OPEN, non-
-      // snoozed tasks. Power users budget their day in minutes —
-      // surfacing "1280m queued" tells them at a glance whether
-      // the filterCtl.filtered list is doable today (a typical focus day is
-      // ~5h = 300m). Tasks with no estimate contribute 0 — those
-      // get a separate "untouched" counter the user can act on.
-      sumEstMin = 0,
-      // Count of open non-snoozed tasks with no estimate — power-
-      // UI nudge to add estimates so the time budget chip becomes
-      // accurate. Shown only when > 0.
-      noEstCount = 0,
-      // priority accumulator for the average. Skips P0 (unset)
-      // because mixing "no priority" with P1/P2/P3 would skew
-      // the mean toward 0 and read as falsely-low urgency.
-      prioritySum = 0,
-      priorityCount = 0;
-    for (const t of tasks) {
-      const sn = isSnoozed(t);
-      if (!t.done) {
-        open++;
-        if (sn) snoozed++;
-        else {
-          const d = t.dueDate ?? (t.scheduledStart ? t.scheduledStart.slice(0, 10) : '');
-          if (d && d < today) overdue++;
-          else if (d === today) todayCount++;
-        }
-        if (t.priority >= 1 && t.priority <= 3) {
-          prioritySum += t.priority;
-          priorityCount++;
-        }
-        if (t.estimatedMinutes && t.estimatedMinutes > 0) {
-          sumEstMin += t.estimatedMinutes;
-        } else {
-          noEstCount++;
-        }
-      } else if (t.completedAt) {
-        const day = t.completedAt.slice(0, 10);
-        if (day === today) doneToday++;
-        if (new Date(t.completedAt).getTime() > sevenDaysAgo) doneWeek++;
-      }
-    }
-    const avgPriority = priorityCount > 0 ? prioritySum / priorityCount : 0;
-    return {
-      open,
-      overdue,
-      todayCount,
-      doneToday,
-      doneWeek,
-      snoozed,
-      sumEstMin,
-      noEstCount,
-      avgPriority
-    };
-  });
+  // dataCtl.stats moved into dataCtl.
 
   // viewCtl.taskComparator / viewCtl.viewCounts / viewCtl.listGroups moved into
   // $lib/tasks/tasksViewState — read via viewCtl.X.
 
   // fmtEstBudget lives in $lib/tasks/tasksHelpers.
 
-  let allTags = $derived.by(() => {
-    const s = new Set<string>();
-    for (const t of tasks) for (const tag of t.tags ?? []) s.add(tag);
-    return Array.from(s).sort();
-  });
-
-  let countOpen = $derived(tasks.filter((t) => !t.done).length);
-  let countDone = $derived(tasks.filter((t) => t.done).length);
+  // dataCtl.allTags + dataCtl.countOpen + dataCtl.countDone moved into dataCtl.
 
   // filterCtl.activeFilterCount / filterCtl.activeFilterChips / clearAll moved into
   // $lib/tasks/tasksFilterState — read via filterCtl.
@@ -1033,15 +915,15 @@
   // generic "nothing to see here". Order matches user intent: tag /
   // project / goal / search before generic fallback.
   let emptyStateSubtitle = $derived.by((): string => {
-    if (filterCtl.tagFilters.length === 1) return `No tasks tagged #${filterCtl.tagFilters[0]}.`;
-    if (filterCtl.tagFilters.length > 1) return `No tasks tagged ${filterCtl.tagFilters.map((t) => '#' + t).join(' + ')}.`;
+    if (filterCtl.tagFilters.length === 1) return `No dataCtl.tasks tagged #${filterCtl.tagFilters[0]}.`;
+    if (filterCtl.tagFilters.length > 1) return `No dataCtl.tasks tagged ${filterCtl.tagFilters.map((t) => '#' + t).join(' + ')}.`;
     if (filterCtl.projectFilter) return `No tasks in project "${filterCtl.projectFilter}".`;
     if (filterCtl.goalFilter) {
-      const g = goals.find((x) => x.id === filterCtl.goalFilter);
+      const g = dataCtl.goals.find((x) => x.id === filterCtl.goalFilter);
       return `No tasks linked to goal "${g?.title ?? filterCtl.goalFilter}".`;
     }
-    if (filterCtl.priorityFilter !== '') return `No P${filterCtl.priorityFilter} tasks here.`;
-    if (filterCtl.q.trim()) return `No tasks match "${filterCtl.q.trim()}".`;
+    if (filterCtl.priorityFilter !== '') return `No P${filterCtl.priorityFilter} dataCtl.tasks here.`;
+    if (filterCtl.q.trim()) return `No dataCtl.tasks match "${filterCtl.q.trim()}".`;
     return 'Nothing to do right now.';
   });
 
@@ -1082,9 +964,9 @@
          in DOM at all times (translated off-screen when closed), so
          the global handler can still find + focus it. -->
     <div>
-      <label class="text-xs uppercase tracking-wider text-dim mb-1 block" for="tasks-search">Search</label>
+      <label class="text-xs uppercase tracking-wider text-dim mb-1 block" for="dataCtl.tasks-search">Search</label>
       <input
-        id="tasks-search"
+        id="dataCtl.tasks-search"
         bind:value={filterCtl.q}
         placeholder="search task text or path…"
         data-page-search="1"
@@ -1101,14 +983,14 @@
             onclick={() => (filterCtl.status = v as typeof filterCtl.status)}
           >
             <span class="capitalize">{v}</span>
-            {#if v === 'open'}<span class="text-xs text-dim ml-1">{countOpen}</span>{/if}
-            {#if v === 'done'}<span class="text-xs text-dim ml-1">{countDone}</span>{/if}
+            {#if v === 'open'}<span class="text-xs text-dim ml-1">{dataCtl.countOpen}</span>{/if}
+            {#if v === 'done'}<span class="text-xs text-dim ml-1">{dataCtl.countDone}</span>{/if}
           </button>
         {/each}
       </div>
     </div>
 
-    <!-- Archived view toggle. Default hides archived tasks (soft-
+    <!-- Archived view toggle. Default hides archived dataCtl.tasks (soft-
          deleted via the TaskDetail Archive button). 'Show' includes
          them in the active list, dimmed + dashed-border so the user
          can tell archived from live. 'Only' is the archive drawer
@@ -1119,7 +1001,7 @@
         <button
           class="text-left px-3 py-2 rounded {filterCtl.archivedMode === 'hide' ? 'bg-surface1 text-text' : 'text-subtext hover:bg-surface0'}"
           onclick={() => (filterCtl.archivedMode = 'hide')}
-          title="Hide archived tasks (default)"
+          title="Hide archived dataCtl.tasks (default)"
         >Hide</button>
         <button
           class="text-left px-3 py-2 rounded {filterCtl.archivedMode === 'show' ? 'bg-surface1 text-text' : 'text-subtext hover:bg-surface0'}"
@@ -1170,12 +1052,12 @@
       </div>
     </div>
 
-    {#if projects.length > 0}
+    {#if dataCtl.projects.length > 0}
       <div>
         <div class="text-xs uppercase tracking-wider text-dim mb-2">Projects</div>
         <div class="flex flex-col gap-1 text-sm">
           <button class="text-left px-3 py-2 rounded {filterCtl.projectFilter === '' ? 'bg-surface1' : 'hover:bg-surface0'} text-subtext" onclick={() => (filterCtl.projectFilter = '')}>all</button>
-          {#each projects.slice(0, 12) as p}
+          {#each dataCtl.projects.slice(0, 12) as p}
             <button
               class="text-left px-3 py-2 rounded text-sm truncate {filterCtl.projectFilter === p.name ? 'bg-surface1 text-text' : 'text-subtext hover:bg-surface0'}"
               onclick={() => (filterCtl.projectFilter = filterCtl.projectFilter === p.name ? '' : p.name)}
@@ -1188,11 +1070,11 @@
       </div>
     {/if}
 
-    {#if allTags.length > 0}
+    {#if dataCtl.allTags.length > 0}
       <div>
         <div class="text-xs uppercase tracking-wider text-dim mb-2">Tags</div>
         <div class="flex flex-wrap gap-1">
-          {#each allTags.slice(0, 24) as t}
+          {#each dataCtl.allTags.slice(0, 24) as t}
             {@const active = filterCtl.tagFilters.includes(t)}
             <button
               class="text-xs px-2 py-1 rounded {active ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
@@ -1206,7 +1088,7 @@
       </div>
     {/if}
 
-    {#if goals.length > 0}
+    {#if dataCtl.goals.length > 0}
       <div>
         <div class="text-xs uppercase tracking-wider text-dim mb-2">Goals</div>
         <div class="flex flex-col gap-1 text-sm">
@@ -1214,7 +1096,7 @@
             class="text-left px-3 py-2 rounded {filterCtl.goalFilter === '' ? 'bg-surface1' : 'hover:bg-surface0'} text-subtext"
             onclick={() => (filterCtl.goalFilter = '')}
           >all</button>
-          {#each goals.slice(0, 12) as g}
+          {#each dataCtl.goals.slice(0, 12) as g}
             <button
               class="text-left px-3 py-2 rounded text-sm truncate {filterCtl.goalFilter === g.id ? 'bg-surface0 text-info' : 'text-subtext hover:bg-surface1'}"
               onclick={() => (filterCtl.goalFilter = filterCtl.goalFilter === g.id ? '' : g.id)}
@@ -1228,7 +1110,7 @@
       </div>
     {/if}
 
-    {#if deadlines.length > 0}
+    {#if dataCtl.deadlines.length > 0}
       <div>
         <div class="text-xs uppercase tracking-wider text-dim mb-2">Deadlines</div>
         <div class="flex flex-col gap-1 text-sm">
@@ -1236,7 +1118,7 @@
             class="text-left px-3 py-2 rounded {filterCtl.deadlineFilter === '' ? 'bg-surface1' : 'hover:bg-surface0'} text-subtext"
             onclick={() => (filterCtl.deadlineFilter = '')}
           >all</button>
-          {#each deadlines.slice(0, 12) as d}
+          {#each dataCtl.deadlines.slice(0, 12) as d}
             <button
               class="text-left px-3 py-2 rounded text-sm truncate {filterCtl.deadlineFilter === d.id ? 'bg-surface0 text-warning' : 'text-subtext hover:bg-surface1'}"
               onclick={() => (filterCtl.deadlineFilter = filterCtl.deadlineFilter === d.id ? '' : d.id)}
@@ -1257,7 +1139,7 @@
       reset filters
     </button>
 
-    <!-- Stream N — passive stats at the bottom of the panel. The
+    <!-- Stream N — passive dataCtl.stats at the bottom of the panel. The
          previous always-on stat row is gone; advanced users who want
          these live numbers find them here. avgPriority / noEstCount
          / snoozed all live here so the main chrome stays calm. -->
@@ -1266,42 +1148,42 @@
       <div class="grid grid-cols-2 gap-1.5 text-xs">
         <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums">
           <span class="text-dim">open</span>
-          <span class="text-text font-semibold">{stats.open}</span>
+          <span class="text-text font-semibold">{dataCtl.stats.open}</span>
         </div>
-        {#if stats.snoozed > 0}
+        {#if dataCtl.stats.snoozed > 0}
           <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Currently snoozed">
             <span class="text-dim">snoozed</span>
-            <span class="text-dim font-semibold">{stats.snoozed}</span>
+            <span class="text-dim font-semibold">{dataCtl.stats.snoozed}</span>
           </div>
         {/if}
-        {#if stats.doneToday > 0}
+        {#if dataCtl.stats.doneToday > 0}
           <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Completed today">
             <span class="text-dim">done today</span>
-            <span class="text-success font-semibold">{stats.doneToday}</span>
+            <span class="text-success font-semibold">{dataCtl.stats.doneToday}</span>
           </div>
         {/if}
-        {#if stats.doneWeek > 0}
+        {#if dataCtl.stats.doneWeek > 0}
           <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Completed in the last 7 days — rolling weekly velocity">
             <span class="text-dim">done · 7d</span>
-            <span class="text-success font-semibold">{stats.doneWeek}</span>
+            <span class="text-success font-semibold">{dataCtl.stats.doneWeek}</span>
           </div>
         {/if}
-        {#if stats.sumEstMin > 0}
-          <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Total estimated minutes across open non-snoozed tasks. 8h = one day-block.">
+        {#if dataCtl.stats.sumEstMin > 0}
+          <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Total estimated minutes across open non-snoozed dataCtl.tasks. 8h = one day-block.">
             <span class="text-dim">Σ est</span>
-            <span class="text-secondary font-semibold">{fmtEstBudget(stats.sumEstMin)}</span>
+            <span class="text-secondary font-semibold">{fmtEstBudget(dataCtl.stats.sumEstMin)}</span>
           </div>
         {/if}
-        {#if stats.noEstCount > 0}
-          <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Open tasks with no time estimate — add est:30m to make Σ accurate">
+        {#if dataCtl.stats.noEstCount > 0}
+          <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Open dataCtl.tasks with no time estimate — add est:30m to make Σ accurate">
             <span class="text-dim">no estimate</span>
-            <span class="text-dim font-semibold">{stats.noEstCount}</span>
+            <span class="text-dim font-semibold">{dataCtl.stats.noEstCount}</span>
           </div>
         {/if}
-        {#if stats.avgPriority > 0}
-          {@const ap = stats.avgPriority}
+        {#if dataCtl.stats.avgPriority > 0}
+          {@const ap = dataCtl.stats.avgPriority}
           {@const apTone = ap < 1.5 ? 'text-error' : ap < 2.5 ? 'text-warning' : 'text-info'}
-          <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Average priority across prioritised open tasks (1=high, 3=low)">
+          <div class="flex items-baseline justify-between px-2 py-1.5 bg-surface0 rounded font-mono tabular-nums" title="Average priority across prioritised open dataCtl.tasks (1=high, 3=low)">
             <span class="text-dim">avg pri</span>
             <span class="{apTone} font-semibold">P{ap.toFixed(1)}</span>
           </div>
@@ -1329,12 +1211,12 @@
          vertical space vs the previous two-row layout. -->
     <TasksPageHeader
       view={viewCtl.view}
-      totalCount={tasks.length}
+      totalCount={dataCtl.tasks.length}
       filteredCount={filterCtl.filtered.length}
       activeFilterCount={filterCtl.activeFilterCount}
       density={viewCtl.density}
-      todayLoad={stats.overdue + stats.todayCount}
-      todayOverdue={stats.overdue}
+      todayLoad={dataCtl.stats.overdue + dataCtl.stats.todayCount}
+      todayOverdue={dataCtl.stats.overdue}
       inboxLoad={viewCtl.viewCounts.inbox}
       moreViewsOpen={viewCtl.moreViewsOpen}
       activeOverflowLabel={viewCtl.activeOverflowLabel}
@@ -1362,7 +1244,7 @@
         noDue: filterCtl.smartCounts.noDue,
         highPriority: filterCtl.smartCounts.highPriority
       }}
-      doneCount={countDone}
+      doneCount={dataCtl.countDone}
       activeFilterCount={filterCtl.activeFilterCount}
       onSetSmart={(s) => (filterCtl.smartFilter = s)}
       onSetStatus={(s) => (filterCtl.status = s)}
@@ -1371,8 +1253,8 @@
 
     {#if viewCtl.view === 'list' || viewCtl.view === 'kanban' || viewCtl.view === 'today'}
       <!-- AI Plan-my-day. Different agent from triage/
-           deadline-detect: those operate on UNTRIAGED tasks;
-           this one looks across ALL open tasks and produces a
+           deadline-detect: those operate on UNTRIAGED dataCtl.tasks;
+           this one looks across ALL open dataCtl.tasks and produces a
            sequenced 3-7-task plan budgeted to the user's stated
            focus hours. Returns strict JSON so each row gets its
            own accept/skip controls — accepting pins the task into
@@ -1393,9 +1275,9 @@
               <button onclick={() => focusPlan.cancel()} class="text-[11px] text-warning hover:underline">cancel</button>
             {:else}
               {#if $focusPlan.plan.length > 0}
-                <button onclick={() => void focusPlan.acceptAll(tasks, load)} class="text-[11px] text-success hover:underline" title="Pin every remaining plan item back-to-back starting now">accept all</button>
+                <button onclick={() => void focusPlan.acceptAll(dataCtl.tasks, load)} class="text-[11px] text-success hover:underline" title="Pin every remaining plan item back-to-back starting now">accept all</button>
               {/if}
-              <button onclick={() => void focusPlan.run(tasks, aiFocusHours)} class="text-[11px] text-secondary hover:underline">↻ regenerate</button>
+              <button onclick={() => void focusPlan.run(dataCtl.tasks, aiFocusHours)} class="text-[11px] text-secondary hover:underline">↻ regenerate</button>
               <button onclick={() => focusPlan.dismiss()} class="text-[11px] text-dim hover:text-error">dismiss</button>
             {/if}
           </div>
@@ -1407,7 +1289,7 @@
                  the call. -->
             <ol class="space-y-1.5">
               {#each $focusPlan.plan as p (p.taskId)}
-                {@const t = tasks.find((x) => x.id === p.taskId)}
+                {@const t = dataCtl.tasks.find((x) => x.id === p.taskId)}
                 {#if t}
                   <li class="flex items-start gap-2 text-xs">
                     <span class="font-mono text-secondary tabular-nums w-5 flex-shrink-0 mt-0.5">{p.order}.</span>
@@ -1421,7 +1303,7 @@
                       {/if}
                     </div>
                     <button
-                      onclick={() => void focusPlan.acceptItem(p, tasks, load)}
+                      onclick={() => void focusPlan.acceptItem(p, dataCtl.tasks, load)}
                       class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface1 flex-shrink-0"
                       title="Pin this task into a time slot today"
                     >accept</button>
@@ -1436,7 +1318,7 @@
             {#if $focusPlan.skipped}
               <p class="text-[11px] text-dim italic mt-2 pt-2 border-t border-surface1">Skipped: {$focusPlan.skipped}</p>
             {/if}
-            <p class="text-[10px] text-dim mt-2">Context: {tasks.filter((t) => !t.done).slice(0, 30).length} open tasks shown · {aiFocusHours}h focus budget</p>
+            <p class="text-[10px] text-dim mt-2">Context: {dataCtl.tasks.filter((t) => !t.done).slice(0, 30).length} open dataCtl.tasks shown · {aiFocusHours}h focus budget</p>
           {:else}
             <!-- Streaming/fallback view: show the raw model output while
                  we wait for the JSON to close, OR if parsing fails. -->
@@ -1456,7 +1338,7 @@
 
       <!-- Quick-add bar. Type a single-line task in granit's
            parser-friendly syntax; Enter creates it in today's daily
-           note. Single most-impactful "more powerful tasks" change:
+           note. Single most-impactful "more powerful dataCtl.tasks" change:
            creating a task no longer requires opening a note. -->
       <div class="px-3 py-2 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
         <span class="text-xl text-primary leading-none flex-shrink-0" aria-hidden="true">＋</span>
@@ -1491,8 +1373,8 @@
           <span>h</span>
         </label>
         <button
-          onclick={() => void focusPlan.run(tasks, aiFocusHours)}
-          disabled={$focusPlan.busy || tasks.filter((t) => !t.done).length === 0}
+          onclick={() => void focusPlan.run(dataCtl.tasks, aiFocusHours)}
+          disabled={$focusPlan.busy || dataCtl.tasks.filter((t) => !t.done).length === 0}
           title="AI builds a sequenced day-plan budgeted to your focus hours"
           class="hidden sm:inline-flex px-3 py-2 text-sm bg-surface1 border border-surface2 text-primary rounded hover:border-primary disabled:opacity-50 flex-shrink-0 items-center gap-1.5"
         >
@@ -1516,7 +1398,7 @@
             <path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5"/>
             <path d="M12 17h0"/>
           </svg>
-          <span>Ask tasks</span>
+          <span>Ask dataCtl.tasks</span>
         </button>
       </div>
       <!-- Saved filter presets. One-click application of a stored
@@ -1617,7 +1499,7 @@
             <span class="text-dim font-mono uppercase tracking-wider select-none">sort</span>
             <select
               bind:value={viewCtl.sortBy}
-              title="How to order tasks inside each group"
+              title="How to order dataCtl.tasks inside each group"
               class="bg-surface0 border border-surface1 rounded px-2 py-0.5 text-text"
             >
               <option value="auto">auto</option>
@@ -1637,19 +1519,19 @@
             </select>
           {/if}
           <span class="flex-1"></span>
-          <!-- Tiny passive stats — done today / done 7d / est budget.
+          <!-- Tiny passive dataCtl.stats — done today / done 7d / est budget.
                Live next to the group/sort selectors so the user has
                a one-line at-a-glance signal without the previous
-               14-chip stat row. Other stats (noEstCount, avgPriority,
+               14-chip stat row. Other dataCtl.stats (noEstCount, avgPriority,
                snoozed) moved to the filter panel. -->
-          {#if stats.doneToday > 0}
-            <span class="text-success font-mono tabular-nums select-none" title="Completed today">✓ {stats.doneToday}</span>
+          {#if dataCtl.stats.doneToday > 0}
+            <span class="text-success font-mono tabular-nums select-none" title="Completed today">✓ {dataCtl.stats.doneToday}</span>
           {/if}
-          {#if stats.doneWeek > 0}
-            <span class="text-success/80 font-mono tabular-nums select-none" title="Completed in the last 7 days">7d ✓ {stats.doneWeek}</span>
+          {#if dataCtl.stats.doneWeek > 0}
+            <span class="text-success/80 font-mono tabular-nums select-none" title="Completed in the last 7 days">7d ✓ {dataCtl.stats.doneWeek}</span>
           {/if}
-          {#if stats.sumEstMin > 0}
-            <span class="text-secondary font-mono tabular-nums select-none" title="Total estimated minutes across open non-snoozed tasks. 8h = one day-block.">Σ {fmtEstBudget(stats.sumEstMin)}</span>
+          {#if dataCtl.stats.sumEstMin > 0}
+            <span class="text-secondary font-mono tabular-nums select-none" title="Total estimated minutes across open non-snoozed dataCtl.tasks. 8h = one day-block.">Σ {fmtEstBudget(dataCtl.stats.sumEstMin)}</span>
           {/if}
         </div>
       {/if}
@@ -1665,11 +1547,11 @@
     {/if}
 
     <div class="flex-1 overflow-auto p-2 sm:p-3">
-      {#if loading && tasks.length === 0}
-        <div class="text-sm text-dim">loading…</div>
+      {#if dataCtl.loading && dataCtl.tasks.length === 0}
+        <div class="text-sm text-dim">dataCtl.loading…</div>
       {:else if filterCtl.filtered.length === 0 && viewCtl.view === 'today'}
         <!-- Today view inbox-zero message. Different from a true empty
-             state — the user has tasks, just none for today. The
+             state — the user has dataCtl.tasks, just none for today. The
              tone is calm-celebratory rather than the cobwebbed
              "get to work" used by the Review view. -->
         <div class="max-w-md mx-auto py-6 text-center">
@@ -1682,8 +1564,8 @@
         </div>
       {:else if filterCtl.filtered.length === 0 && viewCtl.view === 'review'}
         <div class="bg-surface0 border border-surface1 rounded-lg p-5 text-center">
-          <p class="text-sm text-text mb-1">No tasks completed in the last 7 days.</p>
-          <p class="text-xs text-dim mb-3">The review tab shows what you've finished — once a few tasks roll through, this is where you'll spot patterns.</p>
+          <p class="text-sm text-text mb-1">No dataCtl.tasks completed in the last 7 days.</p>
+          <p class="text-xs text-dim mb-3">The review tab shows what you've finished — once a few dataCtl.tasks roll through, this is where you'll spot patterns.</p>
           <button
             type="button"
             onclick={() => (viewCtl.view = 'list')}
@@ -1693,7 +1575,7 @@
       {:else if filterCtl.filtered.length === 0 && viewCtl.view === 'inbox'}
         <div class="bg-surface0 border border-surface1 rounded-lg p-5 text-center">
           <p class="text-sm text-success mb-1">Inbox empty.</p>
-          <p class="text-xs text-dim mb-3">Nothing waiting to be triaged. Captured tasks land here for sorting before they hit the main list.</p>
+          <p class="text-xs text-dim mb-3">Nothing waiting to be triaged. Captured dataCtl.tasks land here for sorting before they hit the main list.</p>
           <button
             type="button"
             onclick={() => (viewCtl.view = 'list')}
@@ -1702,17 +1584,17 @@
         </div>
       {:else if filterCtl.filtered.length === 0 && viewCtl.view === 'stale'}
         <div class="bg-surface0 border border-surface1 rounded-lg p-5 text-center">
-          <p class="text-sm text-success mb-1">No stale tasks.</p>
+          <p class="text-sm text-success mb-1">No stale dataCtl.tasks.</p>
           <p class="text-xs text-dim">Everything's been touched in the last week — nothing rotting in the backlog.</p>
         </div>
       {:else if filterCtl.filtered.length === 0 && viewCtl.view === 'quickwins'}
-        <p class="text-sm text-dim italic">No quick wins available. Add an estimate (e.g. <code class="text-secondary">est:30m</code>) to high-priority tasks.</p>
-      {:else if filterCtl.filtered.length === 0 && tasks.length === 0}
-        <!-- True empty: no tasks anywhere. Onboarding-style hint
+        <p class="text-sm text-dim italic">No quick wins available. Add an estimate (e.g. <code class="text-secondary">est:30m</code>) to high-priority dataCtl.tasks.</p>
+      {:else if filterCtl.filtered.length === 0 && dataCtl.tasks.length === 0}
+        <!-- True empty: no dataCtl.tasks anywhere. Onboarding-style hint
              pointing at the quick-add bar. -->
         <div class="max-w-md mx-auto py-6 text-center">
           <div class="text-5xl mb-3 opacity-30">✓</div>
-          <h2 class="text-lg font-semibold text-text mb-2">No tasks yet</h2>
+          <h2 class="text-lg font-semibold text-text mb-2">No dataCtl.tasks yet</h2>
           <p class="text-sm text-dim mb-1">
             Type your first task in the bar above. Examples:
           </p>
@@ -1726,17 +1608,17 @@
         <!-- Tasks exist but the active filter masks them all. The
              subtitle adapts to which filter is the dominant signal
              (tag / project / goal / priority / search) so the user
-             reads "No tasks tagged #X" instead of a generic "no
+             reads "No dataCtl.tasks tagged #X" instead of a generic "no
              matches". Two CTAs: Quick capture for fast entry and
              Clear filters for the reset path. min-w-0 keeps the
              card from overrunning the sidebar on narrow viewports. -->
         <div class="min-w-0">
           <div class="max-w-md mx-auto py-6 text-center">
             <div class="text-4xl mb-3 opacity-30">🔍</div>
-            <h2 class="text-base font-medium text-text mb-2">No tasks here</h2>
+            <h2 class="text-base font-medium text-text mb-2">No dataCtl.tasks here</h2>
             <p class="text-sm text-dim mb-1">{emptyStateSubtitle}</p>
             <p class="text-xs text-dim mb-4">
-              {tasks.length} {tasks.length === 1 ? 'task is' : 'tasks are'} hidden by the current filters.
+              {dataCtl.tasks.length} {dataCtl.tasks.length === 1 ? 'task is' : 'tasks are'} hidden by the current filters.
             </p>
             <div class="flex items-center justify-center gap-2 flex-wrap">
               <button
@@ -1758,7 +1640,7 @@
         </div>
       {:else if viewCtl.view === 'week'}
         <!-- Week view — 8 columns: Unscheduled + 7 rolling days from
-             today. Overdue tasks bubble up as a striped strip pinned
+             today. Overdue dataCtl.tasks bubble up as a striped strip pinned
              above today's column so the user doesn't have to hunt
              them across past dates. Each column header is clickable:
              pressing one drops the user into List view filterCtl.filtered to
@@ -1777,7 +1659,7 @@
               </div>
               <div class="space-y-1">
                 {#each viewCtl.weekColumns.overdue.slice(0, 5) as t (t.id)}
-                  <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                  <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(dataCtl.childCount.get(t.id) ?? 0) > 0} childCount={dataCtl.childCount.get(t.id) ?? 0} collapsed={dataCtl.collapsedIds.has(t.id)} onToggleCollapse={() => dataCtl.toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
                 {/each}
                 {#if viewCtl.weekColumns.overdue.length > 5}
                   <p class="text-[11px] text-dim italic px-1">…{viewCtl.weekColumns.overdue.length - 5} more</p>
@@ -1786,7 +1668,7 @@
             </div>
           {/if}
           <div class="grid grid-cols-[minmax(10rem,1fr)_repeat(7,minmax(0,1fr))] gap-2 min-h-[20rem]">
-            <!-- Unscheduled column — capture surface for tasks with
+            <!-- Unscheduled column — capture surface for dataCtl.tasks with
                  no date. The "+ add" button at the bottom kicks off a
                  quick-add that lands without a date so the user can
                  then drag (or click) it into a day column. -->
@@ -1797,7 +1679,7 @@
               </div>
               <div class="flex-1 overflow-y-auto space-y-1">
                 {#each viewCtl.weekColumns.unscheduled.slice(0, 50) as t (t.id)}
-                  <TaskCard task={t} compact hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                  <TaskCard task={t} compact hasChildren={(dataCtl.childCount.get(t.id) ?? 0) > 0} childCount={dataCtl.childCount.get(t.id) ?? 0} collapsed={dataCtl.collapsedIds.has(t.id)} onToggleCollapse={() => dataCtl.toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
                 {/each}
                 {#if viewCtl.weekColumns.unscheduled.length > 50}
                   <p class="text-[11px] text-dim italic px-1">…{viewCtl.weekColumns.unscheduled.length - 50} more</p>
@@ -1823,7 +1705,7 @@
                 </div>
                 <div class="flex-1 overflow-y-auto space-y-1">
                   {#each col.tasks as t (t.id)}
-                    <TaskCard task={t} compact hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                    <TaskCard task={t} compact hasChildren={(dataCtl.childCount.get(t.id) ?? 0) > 0} childCount={dataCtl.childCount.get(t.id) ?? 0} collapsed={dataCtl.collapsedIds.has(t.id)} onToggleCollapse={() => dataCtl.toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
                   {/each}
                   {#if col.tasks.length === 0}
                     <p class="text-[11px] text-dim italic px-1">—</p>
@@ -1856,7 +1738,7 @@
         <div class="max-w-3xl">
           <div class="flex items-baseline gap-3 mb-4">
             <p class="text-sm text-dim flex-1">
-              Untriaged tasks. Decide for each: schedule, prioritize, drop, or snooze.
+              Untriaged dataCtl.tasks. Decide for each: schedule, prioritize, drop, or snooze.
             </p>
             {#if $triage.busy}
               <button
@@ -1882,19 +1764,19 @@
               <button
                 onclick={() => void deadline.run()}
                 class="px-3 py-1.5 text-xs bg-surface1 text-secondary rounded hover:bg-surface2 disabled:opacity-50 flex-shrink-0"
-                title="Scan all open tasks without a due date — propose ones whose title implies a clear deadline"
-              >✨ Detect deadlines</button>
+                title="Scan all open dataCtl.tasks without a due date — propose ones whose title implies a clear deadline"
+              >✨ Detect dataCtl.deadlines</button>
             {/if}
           </div>
 
           {#if $deadline.proposals.length > 0}
-            <!-- Deadline proposals — operates across ALL open tasks
+            <!-- Deadline proposals — operates across ALL open dataCtl.tasks
                  without a due_date, not just inbox. Server already
                  filterCtl.filtered out blanks, so every row is a confident
                  suggestion. Apply patches dueDate; skip just dismisses. -->
             <div class="mb-5 p-3 bg-surface0 border border-warning rounded">
               <div class="flex items-center mb-2">
-                <div class="text-xs uppercase tracking-wider text-warning font-semibold flex-1">Detected deadlines ({$deadline.proposals.length})</div>
+                <div class="text-xs uppercase tracking-wider text-warning font-semibold flex-1">Detected dataCtl.deadlines ({$deadline.proposals.length})</div>
                 <button
                   onclick={() => deadline.discard()}
                   class="text-[10px] text-dim hover:text-error"
@@ -1903,7 +1785,7 @@
               </div>
               <ul class="space-y-2">
                 {#each $deadline.proposals as p (p.id)}
-                  {@const t = tasks.find((x) => x.id === p.id)}
+                  {@const t = dataCtl.tasks.find((x) => x.id === p.id)}
                   {#if t}
                     <li class="flex items-start gap-2 text-xs">
                       <div class="flex-1 min-w-0">
@@ -1944,7 +1826,7 @@
               </div>
               <ul class="space-y-2">
                 {#each $triage.proposals as p (p.id)}
-                  {@const t = tasks.find((x) => x.id === p.id)}
+                  {@const t = dataCtl.tasks.find((x) => x.id === p.id)}
                   {#if t}
                     <li class="flex items-start gap-2 text-xs">
                       <div class="flex-1 min-w-0">
@@ -1971,9 +1853,9 @@
           {/if}
 
           <div class="space-y-2">
-            {#each filterCtl.filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
+            {#each filterCtl.filtered.filter((tt) => !dataCtl.isHiddenByCollapse(tt.id, dataCtl.collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filterCtl.filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(dataCtl.childCount.get(t.id) ?? 0) > 0} childCount={dataCtl.childCount.get(t.id) ?? 0} collapsed={dataCtl.collapsedIds.has(t.id)} onToggleCollapse={() => dataCtl.toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -1982,14 +1864,14 @@
         <div class="max-w-3xl">
           <AIStaleVerdicts
             candidates={filterCtl.filtered.filter(isStale)}
-            allTasks={tasks}
+            allTasks={dataCtl.tasks}
             onReload={load}
           />
 
           <div class="space-y-2">
-            {#each filterCtl.filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
+            {#each filterCtl.filtered.filter((tt) => !dataCtl.isHiddenByCollapse(tt.id, dataCtl.collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filterCtl.filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(dataCtl.childCount.get(t.id) ?? 0) > 0} childCount={dataCtl.childCount.get(t.id) ?? 0} collapsed={dataCtl.collapsedIds.has(t.id)} onToggleCollapse={() => dataCtl.toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -2000,11 +1882,11 @@
         </div>
       {:else if viewCtl.view === 'quickwins'}
         <div class="max-w-3xl">
-          <p class="text-sm text-dim mb-4">High-priority tasks you can finish in ≤30 min. Pick one, knock it out.</p>
+          <p class="text-sm text-dim mb-4">High-priority dataCtl.tasks you can finish in ≤30 min. Pick one, knock it out.</p>
           <div class="space-y-2">
-            {#each filterCtl.filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
+            {#each filterCtl.filtered.filter((tt) => !dataCtl.isHiddenByCollapse(tt.id, dataCtl.collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filterCtl.filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(dataCtl.childCount.get(t.id) ?? 0) > 0} childCount={dataCtl.childCount.get(t.id) ?? 0} collapsed={dataCtl.collapsedIds.has(t.id)} onToggleCollapse={() => dataCtl.toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -2013,9 +1895,9 @@
         <div class="max-w-3xl">
           <p class="text-sm text-dim mb-4">Done in the last week — your retrospective view.</p>
           <div class="space-y-2 opacity-80">
-            {#each filterCtl.filtered.filter((tt) => !isHiddenByCollapse(tt.id, collapsedIds)) as t (t.id)}
+            {#each filterCtl.filtered.filter((tt) => !dataCtl.isHiddenByCollapse(tt.id, dataCtl.collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filterCtl.filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(childCount.get(t.id) ?? 0) > 0} childCount={childCount.get(t.id) ?? 0} collapsed={collapsedIds.has(t.id)} onToggleCollapse={() => toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
+                <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(dataCtl.childCount.get(t.id) ?? 0) > 0} childCount={dataCtl.childCount.get(t.id) ?? 0} collapsed={dataCtl.collapsedIds.has(t.id)} onToggleCollapse={() => dataCtl.toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
               </div>
             {/each}
           </div>
@@ -2047,16 +1929,16 @@
           filtered={filterCtl.filtered}
           cursorIdx={cursorIdx}
           compactCards={viewCtl.compactCards}
-          childCount={childCount}
-          collapsedIds={collapsedIds}
+          childCount={dataCtl.childCount}
+          collapsedIds={dataCtl.collapsedIds}
           collapsedSections={viewCtl.collapsedSections}
           groupAddKey={groupAddKey}
           bind:groupAddText
           groupAddBusy={groupAddBusy}
           bind:selectedIds
-          isHiddenByCollapse={isHiddenByCollapse}
+          isHiddenByCollapse={dataCtl.isHiddenByCollapse}
           onToggleSection={viewCtl.toggleSection}
-          onToggleCollapse={toggleCollapsed}
+          onToggleCollapse={dataCtl.toggleCollapsed}
           onChanged={load}
           onOpenDetail={openDetail}
           onContextMenu={openContext}
@@ -2074,7 +1956,7 @@
   await load();
   // Refresh the in-drawer task copy from the freshly-loaded list so subsequent
   // edits see latest state.
-  if (detailTask) detailTask = tasks.find((t) => t.id === detailTask!.id) ?? detailTask;
+  if (detailTask) detailTask = dataCtl.tasks.find((t) => t.id === detailTask!.id) ?? detailTask;
 }} />
 
 {#if ctxTask}
@@ -2140,13 +2022,13 @@
       </div>
       <div class="mt-4 pt-3 border-t border-surface1 text-xs text-dim">
         <strong class="text-subtext">Kanban:</strong> drag cards between columns. Drag while a
-        bulk-selection is active to move all selected tasks at once.
+        bulk-selection is active to move all selected dataCtl.tasks at once.
       </div>
     </div>
   </div>
 {/if}
 
-<!-- When the user has bulk-selected tasks, narrow the agent's
+<!-- When the user has bulk-selected dataCtl.tasks, narrow the agent's
      scope to that selection — the explicit selection IS the
      intent. Otherwise fall back to the page's filterCtl.filtered list so
      "agent over what I'm looking at" is the default. -->
@@ -2154,7 +2036,7 @@
   open={agentOpen}
   tasks={selectedIds.size > 0 ? filterCtl.filtered.filter((t) => selectedIds.has(t.id)) : filterCtl.filtered}
   todayISO={todayISO()}
-  availableProjects={projects.map((p) => p.name)}
+  availableProjects={dataCtl.projects.map((p) => p.name)}
   onClose={() => (agentOpen = false)}
   onChanged={load}
 />
