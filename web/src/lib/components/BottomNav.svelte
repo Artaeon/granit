@@ -13,13 +13,16 @@
   // Four primary tabs + a More drawer button = five thumb columns,
   // the Apple/Material density target. The four primary tabs are
   // the four most-frequently-used surfaces — daily home, action
-  // list, knowledge surface, scheduled time. Settings is a meta
-  // destination and now lives in the More drawer (one tap deeper)
-  // alongside everything else.
+  // list, the tiled-pane operating picture, scheduled time. Notes
+  // moved into the More drawer (still one tap deeper) so Workspaces
+  // takes a top-level thumb cell — the workspace shell is the
+  // VSCode-for-life surface and the user reaches it constantly. The
+  // bottom StatusBar's workspace pills are the cross-pane switcher;
+  // this top-level tab is the "open the workspace shell" affordance.
   const tabs: Tab[] = [
     { href: '/', label: 'Today', icon: 'today' },
+    { href: '/workspace', label: 'Workspace', icon: 'workspace' },
     { href: '/tasks', label: 'Tasks', icon: 'tasks' },
-    { href: '/notes', label: 'Notes', icon: 'notes' },
     { href: '/calendar', label: 'Calendar', icon: 'calendar' }
   ];
 
