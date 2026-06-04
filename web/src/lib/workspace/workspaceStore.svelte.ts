@@ -2,114 +2,147 @@
 //
 // Owns the array of saved workspaces plus the active-workspace id.
 // Each workspace is a small persisted struct: a stable id, a
-// user-named label, and the two-pane layout (left pane kind, right
-// pane kind, gutter ratio).
+// user-named label, and a split-tree layout (see splitTree.ts).
 //
-// Persistence: localStorage key `granit.workspaces`. A v0 migration
-// reads the older `granit.workspace.layout` single-layout shape and
-// folds it into a single "Default" workspace on first run, so users
-// upgrading from the prototype shell keep their layout.
-//
-// Lives in lib/workspace because the workspace route + slot
-// components both read this store. The future Phase 3 "Phase 3 of
-// the vision" (workspace persistence into `.granit/workspaces.json`)
-// will swap loadStored/saveStored for an API call without changing
-// any consumer.
+// Persistence: localStorage key `granit.workspaces`. Two legacy
+// migrations:
+//   v0 → v2: `granit.workspace.layout` single-layout flat shape
+//            from the earliest prototype is folded into a "Default"
+//            workspace.
+//   v1 → v2: per-workspace `layout: { left, right, ratio }` flat
+//            shape from the named-workspace prototype is rebuilt
+//            into a horizontal split tree.
+// Both run on load so existing users never see a blank shell.
 
 import { loadStored, saveStored } from '$lib/util/storage';
 import type { PaneKind } from './paneRegistry';
+import {
+  fromFlat,
+  isTree,
+  leaves,
+  makeLeaf,
+  splitLeaf as splitLeafTree,
+  closeLeaf as closeLeafTree,
+  updateRatio as updateRatioTree,
+  updatePane as updatePaneTree,
+  type Direction,
+  type TreeNode
+} from './splitTree';
 
 const STORE_KEY = 'granit.workspaces';
 const LEGACY_LAYOUT_KEY = 'granit.workspace.layout';
 
-export type WorkspaceLayout = {
-  left: PaneKind;
-  right: PaneKind;
-  /** 0.1 .. 0.9 — left-pane width fraction. */
-  ratio: number;
-};
-
 export type Workspace = {
   id: string;
   name: string;
-  layout: WorkspaceLayout;
+  /** Layout is a split-tree. Migrations rebuild older flat shapes
+   *  into a horizontal split on first read. */
+  layout: TreeNode;
 };
 
-const DEFAULT_LAYOUT: WorkspaceLayout = {
-  left: 'tasks',
-  right: 'calendar',
-  ratio: 0.5
-};
+function defaultLayout(): TreeNode {
+  return fromFlat('tasks', 'calendar', 0.5);
+}
 
-// Small id helper — no crypto.randomUUID() so we don't depend on the
-// secure context being available. Eight base36 digits is plenty for
-// the handful of workspaces a user will ever have.
 function newId(): string {
   let id = '';
   for (let i = 0; i < 8; i++) id += Math.floor(Math.random() * 36).toString(36);
   return id;
 }
 
-function isLayout(x: unknown): x is WorkspaceLayout {
+// ── Persistence shape + migrations ────────────────────────────────
+
+type PersistedV2 = { workspaces: Workspace[]; activeId: string };
+type FlatLayout = { left: PaneKind; right: PaneKind; ratio: number };
+
+function isFlatLayout(x: unknown): x is FlatLayout {
   if (!x || typeof x !== 'object') return false;
   const o = x as Record<string, unknown>;
   return typeof o.left === 'string' && typeof o.right === 'string' && typeof o.ratio === 'number';
 }
 
-type PersistedState = { workspaces: Workspace[]; activeId: string };
-
 function migrateLegacyLayout(): Workspace | null {
   const raw = loadStored<unknown>(LEGACY_LAYOUT_KEY, null);
-  if (!isLayout(raw)) return null;
+  if (!isFlatLayout(raw)) return null;
   return {
     id: newId(),
     name: 'Default',
-    layout: { ...raw, ratio: Math.min(0.9, Math.max(0.1, raw.ratio)) }
+    layout: fromFlat(raw.left, raw.right, raw.ratio)
   };
 }
 
-function loadInitial(): PersistedState {
-  const stored = loadStored<PersistedState | null>(STORE_KEY, null);
-  if (
-    stored &&
-    Array.isArray(stored.workspaces) &&
-    stored.workspaces.length > 0 &&
-    typeof stored.activeId === 'string'
-  ) {
-    return stored;
+function normalizeWorkspace(w: unknown): Workspace | null {
+  if (!w || typeof w !== 'object') return null;
+  const o = w as Record<string, unknown>;
+  const name = typeof o.name === 'string' ? o.name : 'Workspace';
+  const id = typeof o.id === 'string' ? o.id : newId();
+  // v2 already-a-tree path.
+  if (isTree(o.layout)) {
+    return { id, name, layout: o.layout };
   }
-  // First-run or migration path. Fold the legacy single-layout
-  // store (if any) into a Default workspace so existing users
-  // don't lose their setup.
+  // v1 flat-layout path — rebuild into a tree.
+  if (isFlatLayout(o.layout)) {
+    return { id, name, layout: fromFlat(o.layout.left, o.layout.right, o.layout.ratio) };
+  }
+  return null;
+}
+
+function loadInitial(): PersistedV2 {
+  const stored = loadStored<unknown>(STORE_KEY, null);
+  if (stored && typeof stored === 'object') {
+    const o = stored as Record<string, unknown>;
+    if (Array.isArray(o.workspaces) && o.workspaces.length > 0) {
+      const migrated = o.workspaces
+        .map(normalizeWorkspace)
+        .filter((w): w is Workspace => w !== null);
+      if (migrated.length > 0) {
+        const activeId =
+          typeof o.activeId === 'string' && migrated.find((w) => w.id === o.activeId)
+            ? o.activeId
+            : migrated[0].id;
+        return { workspaces: migrated, activeId };
+      }
+    }
+  }
+  // First-run or migration-from-v0 path.
   const legacy = migrateLegacyLayout();
   const seed: Workspace = legacy ?? {
     id: newId(),
     name: 'Default',
-    layout: { ...DEFAULT_LAYOUT }
+    layout: defaultLayout()
   };
   return { workspaces: [seed], activeId: seed.id };
 }
 
+// ── Controller ────────────────────────────────────────────────────
+
 export interface WorkspaceStoreController {
-  /** All saved workspaces, in user-ordered display order. */
   readonly workspaces: Workspace[];
-  /** The currently-active workspace. Always defined because the
-   *  store guarantees workspaces.length >= 1. */
+  /** Currently-active workspace. Always defined — the store keeps
+   *  workspaces.length >= 1 and the activeId pointing at a real
+   *  entry. */
   readonly active: Workspace;
-  /** Active workspace's id. Bindable so the tray can drive it
-   *  directly via click handlers. */
   activeId: string;
-  /** Patch the active workspace's layout. Used by the gutter-drag
-   *  + slot pickers in the workspace route. */
-  patchActiveLayout(patch: Partial<WorkspaceLayout>): void;
-  /** Append a new workspace and switch to it. */
+
+  // Workspace CRUD.
   create(name?: string): void;
-  /** Rename a workspace in place. */
   rename(id: string, name: string): void;
-  /** Drop a workspace. No-op when only one remains — the store
-   *  guarantees at least one workspace at all times so the user
-   *  can't end up with an empty tray. */
   remove(id: string): void;
+
+  // Active-workspace layout mutations. Each one is a tree-shape
+  // operation against the active workspace's split-tree.
+
+  /** Replace the pane kind in a leaf. */
+  setPane(leafId: string, pane: PaneKind): void;
+  /** Update the gutter ratio on a split. */
+  setRatio(splitId: string, ratio: number): void;
+  /** Split a leaf into two — the existing leaf becomes the first
+   *  child, a fresh leaf with `newPane` becomes the second. */
+  split(leafId: string, direction: Direction, newPane: PaneKind): void;
+  /** Close a leaf. The parent split collapses into the sibling
+   *  subtree. The store never closes the LAST leaf so the shell
+   *  can't render empty — those calls are no-ops. */
+  close(leafId: string): void;
 }
 
 export function createWorkspaceStore(): WorkspaceStoreController {
@@ -118,8 +151,6 @@ export function createWorkspaceStore(): WorkspaceStoreController {
   let activeId = $state<string>(initial.activeId);
 
   // Guarantee the active id always points at a real workspace.
-  // Without this, deleting the active workspace would orphan the
-  // pointer and the tray would render an empty pane.
   $effect(() => {
     if (!workspaces.find((w) => w.id === activeId)) {
       activeId = workspaces[0]?.id ?? '';
@@ -132,18 +163,35 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     workspaces.find((w) => w.id === activeId) ?? workspaces[0]
   );
 
-  function patchActiveLayout(patch: Partial<WorkspaceLayout>) {
+  function patchActiveLayout(next: TreeNode) {
     workspaces = workspaces.map((w) =>
-      w.id === activeId ? { ...w, layout: { ...w.layout, ...patch } } : w
+      w.id === activeId ? { ...w, layout: next } : w
     );
+  }
+
+  function setPane(leafId: string, pane: PaneKind) {
+    patchActiveLayout(updatePaneTree(active.layout, leafId, pane));
+  }
+
+  function setRatio(splitId: string, ratio: number) {
+    patchActiveLayout(updateRatioTree(active.layout, splitId, ratio));
+  }
+
+  function split(leafId: string, direction: Direction, newPane: PaneKind) {
+    patchActiveLayout(splitLeafTree(active.layout, leafId, direction, newPane));
+  }
+
+  function close(leafId: string) {
+    // Refuse to close the very last leaf — the shell needs at least
+    // one to render.
+    if (leaves(active.layout).length <= 1) return;
+    patchActiveLayout(closeLeafTree(active.layout, leafId));
   }
 
   function create(name?: string) {
     const used = new Set(workspaces.map((w) => w.name));
     let nextName = name?.trim() || 'Workspace';
     if (!name) {
-      // Auto-name when no name is provided. "Workspace", then
-      // "Workspace 2", "Workspace 3", etc.
       let n = 1;
       while (used.has(n === 1 ? nextName : `${nextName} ${n}`)) n++;
       if (n > 1) nextName = `${nextName} ${n}`;
@@ -151,7 +199,7 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     const fresh: Workspace = {
       id: newId(),
       name: nextName,
-      layout: { ...DEFAULT_LAYOUT }
+      layout: makeLeaf('tasks')
     };
     workspaces = [...workspaces, fresh];
     activeId = fresh.id;
@@ -166,7 +214,7 @@ export function createWorkspaceStore(): WorkspaceStoreController {
   }
 
   function remove(id: string) {
-    if (workspaces.length <= 1) return; // always keep at least one
+    if (workspaces.length <= 1) return;
     workspaces = workspaces.filter((w) => w.id !== id);
   }
 
@@ -183,9 +231,12 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     set activeId(v) {
       activeId = v;
     },
-    patchActiveLayout,
     create,
     rename,
-    remove
+    remove,
+    setPane,
+    setRatio,
+    split,
+    close
   };
 }

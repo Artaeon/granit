@@ -1,87 +1,56 @@
 <!--
   Workspace shell — Phase 2 of the granit vision (VSCode-for-life).
-  Named workspaces in a tray at the top, each holding a two-slot
-  horizontal split. The user picks pane types from the slot headers;
-  the gutter resizes the left-pane width ratio. Every choice persists
-  to localStorage so refresh / shared-link returns to the same shape.
+  Named workspaces in a tray at the top; each workspace owns a
+  recursive split-tree layout. Any pane can split horizontally or
+  vertically, any pane can close (replaced by its sibling subtree).
+  Pick pane types from each leaf's header.
 
-  Mobile shows only the left slot — Phase 3 of the vision will add
-  swipe-between-panes; this v1 keeps small screens single-pane so the
-  slot picker still works one-handed.
+  Mobile (< md) renders only the FIRST leaf — the recursive tree
+  collapses gracefully on small screens. Phase 3 of the vision will
+  add a leaf-picker for mobile so the user can navigate any tile.
 
-  Layout: tray on top, two-slot split filling the rest. The split
-  inherits its shape from the active workspace; switching workspaces
-  flips the pane types + ratio in one paint. Multi-workspace state
-  lives in $lib/workspace/workspaceStore.
+  The shell stays tiny — most logic lives in the workspaceStore +
+  splitTree primitives + the recursive SplitView. This file just
+  wires the tray on top of the recursive view and falls back to a
+  single-leaf flatten on mobile.
 -->
 <script lang="ts">
+  import SplitView from '$lib/workspace/SplitView.svelte';
   import PaneSlot from '$lib/workspace/PaneSlot.svelte';
   import WorkspaceTray from '$lib/workspace/WorkspaceTray.svelte';
   import { createWorkspaceStore } from '$lib/workspace/workspaceStore.svelte';
-  import type { PaneKind } from '$lib/workspace/paneRegistry';
+  import { leaves } from '$lib/workspace/splitTree';
 
   const store = createWorkspaceStore();
 
-  // Gutter-drag — pointer drag updates the active workspace's
-  // ratio. We track ratio (not pixels) so a window resize keeps the
-  // split proportional.
-  let splitEl: HTMLElement | null = $state(null);
-  let dragging = $state(false);
-
-  function onPointerDown() {
-    dragging = true;
-  }
-  function onPointerMove(e: PointerEvent) {
-    if (!dragging || !splitEl) return;
-    const rect = splitEl.getBoundingClientRect();
-    const ratio = (e.clientX - rect.left) / rect.width;
-    store.patchActiveLayout({ ratio: Math.min(0.9, Math.max(0.1, ratio)) });
-  }
-  function onPointerUp() {
-    dragging = false;
-  }
-
-  function setLeft(p: PaneKind) {
-    store.patchActiveLayout({ left: p });
-  }
-  function setRight(p: PaneKind) {
-    store.patchActiveLayout({ right: p });
-  }
+  let firstLeaf = $derived(leaves(store.active.layout)[0]);
+  let canClose = $derived(leaves(store.active.layout).length > 1);
 </script>
 
-<svelte:window onpointermove={onPointerMove} onpointerup={onPointerUp} />
-
-<div class="flex flex-col h-screen w-full overflow-hidden bg-base" class:select-none={dragging}>
+<div class="flex flex-col h-screen w-full overflow-hidden bg-base">
   <WorkspaceTray {store} />
 
-  <div bind:this={splitEl} class="flex flex-1 min-h-0 w-full overflow-hidden">
-    <!-- Left slot. Width is set via CSS variable so the gutter drag
-         updates the layout in one paint. Mobile collapses to full
-         width and the right slot is hidden (Phase 3 will add
-         swipe-between-panes). -->
-    <div
-      class="flex-shrink-0 min-h-0 h-full w-full md:w-[var(--left-w)]"
-      style="--left-w: {store.active.layout.ratio * 100}%"
-    >
-      <PaneSlot pane={store.active.layout.left} onChange={setLeft} />
-    </div>
+  <!-- Desktop: recursive split-tree fills the rest. -->
+  <div class="hidden md:flex flex-1 min-h-0 w-full overflow-hidden">
+    <SplitView
+      node={store.active.layout}
+      onSetPane={store.setPane}
+      onSetRatio={store.setRatio}
+      onSplit={store.split}
+      onClose={store.close}
+      {canClose}
+    />
+  </div>
 
-    <!-- Gutter — pointer-drag handle on desktop only. -->
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-valuenow={Math.round(store.active.layout.ratio * 100)}
-      aria-label="Resize panes"
-      tabindex="0"
-      onpointerdown={onPointerDown}
-      class="hidden md:flex flex-shrink-0 w-1 cursor-col-resize bg-surface1 hover:bg-primary transition-colors"
-    ></div>
-
-    <!-- Right slot — fills the rest, hidden on mobile. -->
-    <div class="hidden md:flex flex-1 min-h-0 h-full">
-      <div class="flex-1 min-h-0">
-        <PaneSlot pane={store.active.layout.right} onChange={setRight} />
-      </div>
-    </div>
+  <!-- Mobile: show the first leaf only. Pane-type swap still works;
+       splits + closes are hidden because there's nowhere to draw a
+       second leaf at this width. -->
+  <div class="flex md:hidden flex-1 min-h-0 w-full overflow-hidden">
+    {#if firstLeaf}
+      <PaneSlot
+        pane={firstLeaf.pane}
+        onChange={(p) => store.setPane(firstLeaf.id, p)}
+      />
+    {/if}
   </div>
 </div>
