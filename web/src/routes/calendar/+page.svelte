@@ -11,6 +11,11 @@
   import { mediaQuery } from '$lib/util/mediaQuery';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import {
+    createCalendarViewState,
+    type View,
+    type HourDensity
+  } from '$lib/calendar/calendarViewState.svelte';
+  import {
     addDays,
     endOfWeek,
     fmtDateISO,
@@ -41,72 +46,12 @@
   import { dragStore } from '$lib/calendar/dragStore';
   import { onDestroy } from 'svelte';
 
-  type View = 'day' | 'workweek' | 'week' | 'month' | 'year' | 'agenda';
-
-  // Persisted last-used view (per device). On a fresh visit (no
-  // saved preference) we default to 'day' on small screens because
-  // the 7-column week grid is unreadable below ~640px — Google
-  // Calendar does the same. Saved preferences win regardless of
-  // device, so a user who explicitly picked 'week' on mobile keeps
-  // that choice.
-  const VIEW_KEY = 'granit.calendar.view';
-  function defaultView(): View {
-    if (typeof window === 'undefined') return 'week';
-    const saved = loadStoredString(VIEW_KEY, '');
-    if (saved) return saved as View;
-    return window.innerWidth < 640 ? 'day' : 'week';
-  }
-  let view = $state<View>(defaultView());
-  let cursor = $state(new Date());
-
-  // Plan mode — splits the page into a left-side backlog of today's
-  // open tasks and the regular hour grid. Persisted so the user's
-  // choice carries across sessions / devices (per-device localStorage).
-  // Plan mode is single-day in v1: turning it on forces view='day' so
-  // the layout stays sensible (a 7-column week grid + side rail is too
-  // tight on most screens).
-  const PLAN_KEY = 'granit.calendar.planmode';
-  let planMode = $state<boolean>(loadStoredString(PLAN_KEY, '0') === '1');
-
-  // Month grid density. Comfy = 3 chips/cell with bigger text;
-  // compact = 6 chips/cell, tighter. Persisted per-device because
-  // the user's preferred density tracks their screen size + how busy
-  // their calendar typically is, not their account.
-  const MONTH_DENSITY_KEY = 'granit.calendar.monthDensity';
-  let monthDensity = $state<'comfy' | 'compact'>(
-    (loadStoredString(MONTH_DENSITY_KEY, 'comfy') === 'compact' ? 'compact' : 'comfy')
-  );
-
-  // Time-grid density. Three steps map to per-hour pixel heights:
-  //   compact 32px — sees ~14h on a typical laptop without scroll;
-  //                  tradeoff is event titles can run out of vertical
-  //                  room on 15-min slots.
-  //   normal  48px — historical default; titles + locations fit on a
-  //                  30-min event without truncation.
-  //   spacious 72px — meeting-heavy days where the user wants room to
-  //                   read every event title even on 15-min slots.
-  // Per-device because preference tracks the user's screen size +
-  // how busy their typical day looks, same logic as month density.
-  type HourDensity = 'compact' | 'normal' | 'spacious';
-  const HOUR_DENSITY_KEY = 'granit.calendar.hourDensity';
-  function loadHourDensity(): HourDensity {
-    const v = loadStoredString(HOUR_DENSITY_KEY, 'normal');
-    return v === 'compact' || v === 'spacious' ? v : 'normal';
-  }
-  let hourDensity = $state<HourDensity>(loadHourDensity());
-  let hourPx = $derived(
-    hourDensity === 'compact' ? 32 : hourDensity === 'spacious' ? 72 : 48
-  );
-  $effect(() => saveStoredString(HOUR_DENSITY_KEY, hourDensity));
-
-  $effect(() => saveStoredString(VIEW_KEY, view));
-  $effect(() => saveStoredString(PLAN_KEY, planMode ? '1' : '0'));
-  $effect(() => saveStoredString(MONTH_DENSITY_KEY, monthDensity));
-
-  function togglePlanMode() {
-    planMode = !planMode;
-    if (planMode) view = 'day';
-  }
+  // View / display / navigation state — viewCtl.view, viewCtl.cursor, viewCtl.planMode,
+  // viewCtl.monthDensity, viewCtl.hourDensity (+ viewCtl.hourPx derived), viewCtl.pipelineMode, the
+  // navigation primitives (prev/next/gotoToday), togglePlanMode, and
+  // the viewCtl.viewDays derivation all live in $lib/calendar/calendarViewState.
+  // Read via viewCtl.X.
+  const viewCtl = createCalendarViewState();
 
   // Clean exit on route change: drop any pending drag pick. Otherwise
   // a stale dragStore could corrupt the next page's pointer behaviour.
@@ -118,7 +63,7 @@
 
   // Native calendar event entries — the editable rows the
   // Calendar Agent operates on. Loaded separately from `feed`
-  // (which is the expanded read-only render view including ICS
+  // (which is the expanded read-only render viewCtl.view including ICS
   // sources, tasks, deadlines). Refreshed on event.* WS frames.
   let nativeEvents = $state<CalendarEventEntry[]>([]);
   let agentOpen = $state(false);
@@ -205,13 +150,13 @@
 
   let filterDrawerOpen = $state(false);
   // Reactive mobile flag via the shared mediaQuery store. Auto-cleans
-  // up on component destroy. The first-mount "force day view on
+  // up on component destroy. The first-mount "force day viewCtl.view on
   // mobile" rule still applies, see the $effect below.
   const isMobile = mediaQuery('(max-width: 767px)');
   let _mobileViewForced = $state(false);
   $effect(() => {
     if ($isMobile && !_mobileViewForced) {
-      view = 'day';
+      viewCtl.view = 'day';
       _mobileViewForced = true;
     }
   });
@@ -313,7 +258,7 @@
   // Colour-by-project toggle. Off by default (the per-event colour
   // and the per-source ICS colour rotation already give visual
   // separation); flipping it on tints every project-linked row with
-  // the project's `color` field, so a project board view becomes
+  // the project's `color` field, so a project board viewCtl.view becomes
   // visually unified.
   const COLOR_BY_PROJECT_KEY = 'granit.calendar.colorByProject';
   let colorByProject = $state<boolean>(loadStoredString(COLOR_BY_PROJECT_KEY, '0') === '1');
@@ -379,14 +324,14 @@
   // Deep-link: ?plan=1 (optionally with &project=NAME) flips on plan
   // mode so other pages — e.g. the project detail's "schedule next
   // action" button — can hand off into the calendar in the right state.
-  // ?project=NAME (without &plan) just scopes the view to that
+  // ?project=NAME (without &plan) just scopes the viewCtl.view to that
   // project — the "open this project's calendar" hand-off.
   onMount(() => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
-    if (url.searchParams.get('plan') === '1' && !planMode) {
-      planMode = true;
-      view = 'day';
+    if (url.searchParams.get('plan') === '1' && !viewCtl.planMode) {
+      viewCtl.planMode = true;
+      viewCtl.view = 'day';
     }
     const proj = url.searchParams.get('project');
     if (proj) projectFilter = proj;
@@ -406,9 +351,9 @@
     if (!$auth) return;
     loading = true;
     try {
-      if (cursor < fetchFrom || cursor > fetchTo) {
-        fetchFrom = addDays(cursor, -14);
-        fetchTo = addDays(cursor, 60);
+      if (viewCtl.cursor < fetchFrom || viewCtl.cursor > fetchTo) {
+        fetchFrom = addDays(viewCtl.cursor, -14);
+        fetchTo = addDays(viewCtl.cursor, 60);
       }
       feed = await api.calendar(fmtDateISO(fetchFrom), fmtDateISO(fetchTo));
     } finally {
@@ -480,18 +425,18 @@
   );
 
   // load() reads fetchFrom/fetchTo synchronously and may reassign them
-  // when cursor walks outside the prefetch window. Without untrack, the
+  // when viewCtl.cursor walks outside the prefetch window. Without untrack, the
   // re-assignment refires this effect (one extra fetch per far-jump
   // navigation). The explicit `void` list above is the actual dep set.
   $effect(() => {
-    void cursor;
-    void view;
+    void viewCtl.cursor;
+    void viewCtl.view;
     untrack(() => load());
   });
 
   let allEvents = $derived(feed?.events ?? []);
   // Apply per-source color overrides so an ICS calendar the user
-  // tinted 'green' renders that way on every view. Pure transform
+  // tinted 'green' renders that way on every viewCtl.view. Pure transform
   // on the derived event list — no extra fetches, no storage round
   // trip. The override is per-device (localStorage); future cross-
   // device sync can layer over the same map without touching the
@@ -612,47 +557,29 @@
 
   // Pipeline / channel-lanes overlay — a single toggle that renders
   // two different content-pipeline grouping shapes depending on the
-  // active view: kanban by status on month, swim lanes by channel on
+  // active viewCtl.view: kanban by status on month, swim lanes by channel on
   // week / workweek. The user toggles ONCE and gets the right
   // grouping for the day-axis they're already looking at. Toggled
   // from a header button that only appears when content events exist
-  // (so non-content users see no extra chrome) AND the active view
+  // (so non-content users see no extra chrome) AND the active viewCtl.view
   // has a useful pipeline shape (day / year / agenda don't).
-  let pipelineMode = $state(false);
+  // viewCtl.pipelineMode moved into viewCtl. The button-available + label
+  // derivations stay here because they straddle viewCtl.view + typeCounts
+  // (which lives in the upcoming filter controller). Auto-close
+  // effect uses viewCtl.pipelineMode getter/setter.
   let pipelineButtonAvailable = $derived(
-    (view === 'month' || view === 'week' || view === 'workweek') &&
+    (viewCtl.view === 'month' || viewCtl.view === 'week' || viewCtl.view === 'workweek') &&
       (typeCounts['content_event'] ?? 0) > 0
   );
-  // Auto-close the overlay when the user navigates to a view that
-  // has no pipeline shape — an orphan overlay anchored to a hidden
-  // grid is confusing and the dismissal isn't discoverable through
-  // any other affordance.
   $effect(() => {
-    if (pipelineMode && !pipelineButtonAvailable) pipelineMode = false;
+    if (viewCtl.pipelineMode && !pipelineButtonAvailable) viewCtl.pipelineMode = false;
   });
-  // Label the button by shape so the user knows what tapping does.
-  let pipelineButtonLabel = $derived(view === 'month' ? 'Pipeline' : 'Channels');
+  let pipelineButtonLabel = $derived(viewCtl.view === 'month' ? 'Pipeline' : 'Channels');
 
-  let viewDays = $derived.by(() => {
-    if (view === 'day') return [cursor];
-    if (view === 'week') {
-      const s = startOfWeek(cursor);
-      return Array.from({ length: 7 }, (_, i) => addDays(s, i));
-    }
-    if (view === 'workweek') {
-      // Mon–Fri anchored on the week containing cursor. startOfWeek
-      // resolves to Sunday (locale-agnostic in this codebase), so we
-      // step one day forward and emit five days. Saturday/Sunday are
-      // dropped — the time-grid columns scale to fill width.
-      const s = startOfWeek(cursor);
-      const mon = addDays(s, 1);
-      return Array.from({ length: 5 }, (_, i) => addDays(mon, i));
-    }
-    return [];
-  });
+  // viewCtl.viewDays moved into viewCtl.
 
   let monthEvents = $derived.by(() => {
-    const ms = startOfMonth(cursor);
+    const ms = startOfMonth(viewCtl.cursor);
     const me = new Date(ms.getFullYear(), ms.getMonth() + 1, 0);
     return events.filter((ev) => {
       const key = ev.date ?? (ev.start ? ev.start.slice(0, 10) : '');
@@ -661,13 +588,13 @@
     });
   });
 
-  // Agenda view shows a rolling 30-day flat list anchored at cursor.
+  // Agenda viewCtl.view shows a rolling 30-day flat list anchored at viewCtl.cursor.
   // Past-dated events stay invisible — the agenda is a "what's next"
   // surface, not a historical log (the day/week views and tasks
   // dashboard cover the look-back use case).
   let agendaEvents = $derived.by(() => {
-    const from = fmtDateISO(cursor);
-    const to = fmtDateISO(addDays(cursor, 30));
+    const from = fmtDateISO(viewCtl.cursor);
+    const to = fmtDateISO(addDays(viewCtl.cursor, 30));
     return events.filter((ev) => {
       const key = ev.date ?? (ev.start ? ev.start.slice(0, 10) : '');
       if (!key) return false;
@@ -675,26 +602,12 @@
     });
   });
 
-  function prev() {
-    if (view === 'day') cursor = addDays(cursor, -1);
-    else if (view === 'week' || view === 'workweek') cursor = addDays(cursor, -7);
-    else if (view === 'month') cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
-    else if (view === 'year') cursor = new Date(cursor.getFullYear() - 1, cursor.getMonth(), 1);
-    else if (view === 'agenda') cursor = addDays(cursor, -7);
-  }
-  function next() {
-    if (view === 'day') cursor = addDays(cursor, 1);
-    else if (view === 'week' || view === 'workweek') cursor = addDays(cursor, 7);
-    else if (view === 'month') cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-    else if (view === 'year') cursor = new Date(cursor.getFullYear() + 1, cursor.getMonth(), 1);
-    else if (view === 'agenda') cursor = addDays(cursor, 7);
-  }
-  function gotoToday() { cursor = new Date(); }
+  // prev / next / gotoToday moved into viewCtl.
 
   // Keyboard shortcuts. Active only when nothing else has focus (so we
   // don't steal keystrokes from the create-event modal's inputs).
   // Mirrors Google Calendars default bindings so muscle memory carries
-  // over: t = today, j/n = next, k/p = prev, d/w/m/y/a = view, ? = help.
+  // over: t = today, j/n = next, k/p = prev, d/w/m/y/a = viewCtl.view, ? = help.
   function isTextField(el: EventTarget | null): boolean {
     if (!(el instanceof HTMLElement)) return false;
     const tag = el.tagName;
@@ -710,15 +623,15 @@
     // keyboard surface (Escape to close, Enter to submit).
     if (createOpen || createEventOpen || unifiedOpen || detailOpen || findTimeOpen) return;
     switch (e.key) {
-      case 't': gotoToday(); break;
-      case 'j': case 'n': next(); break;
-      case 'k': case 'p': prev(); break;
-      case 'd': view = 'day'; break;
-      case 'w': view = 'week'; break;
-      case 'W': view = 'workweek'; break; // Shift+W = workweek (Mon–Fri)
-      case 'm': view = 'month'; break;
-      case 'y': view = 'year'; break;
-      case 'a': view = 'agenda'; break; // 'a' = agenda view (matches
+      case 't': viewCtl.gotoToday(); break;
+      case 'j': case 'n': viewCtl.next(); break;
+      case 'k': case 'p': viewCtl.prev(); break;
+      case 'd': viewCtl.view = 'day'; break;
+      case 'w': viewCtl.view = 'week'; break;
+      case 'W': viewCtl.view = 'workweek'; break; // Shift+W = workweek (Mon–Fri)
+      case 'm': viewCtl.view = 'month'; break;
+      case 'y': viewCtl.view = 'year'; break;
+      case 'a': viewCtl.view = 'agenda'; break; // 'a' = agenda viewCtl.view (matches
                                         // Google Calendar). Shift+A
                                         // opens the calendar agent.
       case 'A': agentOpen = true; break;
@@ -750,7 +663,7 @@
     const dy = e.changedTouches[0].clientY - touchStartY;
     if (Math.abs(dy) > 40) return; // mostly vertical → let scroll happen
     if (Math.abs(dx) < 60) return; // too short
-    if (dx > 0) prev(); else next();
+    if (dx > 0) viewCtl.prev(); else viewCtl.next();
   }
 
   function clickEvent(ev: CalendarEvent) {
@@ -1143,8 +1056,8 @@
       toast.error('Resize failed: ' + msg);
     }
   }
-  function clickDay(d: Date) { cursor = d; view = 'day'; }
-  function pickDay(d: Date) { cursor = d; filterDrawerOpen = false; }
+  function clickDay(d: Date) { viewCtl.cursor = d; viewCtl.view = 'day'; }
+  function pickDay(d: Date) { viewCtl.cursor = d; filterDrawerOpen = false; }
 
   // ── AI: Plan my week ─────────────────────────────────────────────
   // Looks across all open UNSCHEDULED tasks (no scheduledStart yet)
@@ -1165,26 +1078,26 @@
   // The 300-odd lines they used to take have been retired.
 
   let headline = $derived.by(() => {
-    if (view === 'day') return cursor.toLocaleDateString(undefined, { weekday: $isMobile ? 'short' : 'long', month: 'short', day: 'numeric' });
-    if (view === 'week') {
-      const s = startOfWeek(cursor);
-      const e = endOfWeek(cursor);
+    if (viewCtl.view === 'day') return viewCtl.cursor.toLocaleDateString(undefined, { weekday: $isMobile ? 'short' : 'long', month: 'short', day: 'numeric' });
+    if (viewCtl.view === 'week') {
+      const s = startOfWeek(viewCtl.cursor);
+      const e = endOfWeek(viewCtl.cursor);
       if (s.getMonth() === e.getMonth()) {
         return `${s.toLocaleDateString(undefined, { month: 'short' })} ${s.getDate()}–${e.getDate()}`;
       }
       return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
     }
-    if (view === 'workweek') {
-      const s = addDays(startOfWeek(cursor), 1); // Mon
+    if (viewCtl.view === 'workweek') {
+      const s = addDays(startOfWeek(viewCtl.cursor), 1); // Mon
       const e = addDays(s, 4); // Fri
       if (s.getMonth() === e.getMonth()) {
         return `${s.toLocaleDateString(undefined, { month: 'short' })} ${s.getDate()}–${e.getDate()} (Mon–Fri)`;
       }
       return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} (Mon–Fri)`;
     }
-    if (view === 'month') return cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-    if (view === 'year') return String(cursor.getFullYear());
-    if (view === 'agenda') return 'Agenda · next 30 days';
+    if (viewCtl.view === 'month') return viewCtl.cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    if (viewCtl.view === 'year') return String(viewCtl.cursor.getFullYear());
+    if (viewCtl.view === 'agenda') return 'Agenda · next 30 days';
     return '';
   });
 </script>
@@ -1208,7 +1121,7 @@
       + New task or event
     </button>
     <p class="text-[11px] text-dim italic px-1 -mt-2">…or click + drag on the grid</p>
-    <MiniMonth cursor={cursor} selected={cursor} events={monthEvents} onPick={pickDay} />
+    <MiniMonth cursor={viewCtl.cursor} selected={viewCtl.cursor} events={monthEvents} onPick={pickDay} />
 
     <!-- Project filter — turn the calendar into a project-management
          board for one project at a time. Empty value = "all projects".
@@ -1398,13 +1311,13 @@
 
   <div class="flex-1 flex flex-col min-w-0">
     <HeaderToolbar
-      bind:view
-      bind:cursor
+      bind:viewCtl.view
+      bind:viewCtl.cursor
       {headline}
       {loading}
-      bind:monthDensity
-      bind:hourDensity
-      {planMode}
+      bind:viewCtl.monthDensity
+      bind:viewCtl.hourDensity
+      {viewCtl.planMode}
       onPrev={prev}
       onNext={next}
       onGotoToday={gotoToday}
@@ -1481,32 +1394,32 @@
     />
 
     {#if pipelineButtonAvailable}
-      <!-- Pipeline toggle — month view gets kanban-by-status; week /
-           workweek view gets swim-lanes-by-channel. Both surface the
+      <!-- Pipeline toggle — month viewCtl.view gets kanban-by-status; week /
+           workweek viewCtl.view gets swim-lanes-by-channel. Both surface the
            same content events grouped for the day-axis the user is
            already looking at. Hidden in day / year / agenda since
            there's no useful grouping shape for those. -->
       <div class="flex items-center gap-2 px-3 py-1 border-b border-surface1 flex-shrink-0 bg-mantle">
         <button
           type="button"
-          onclick={() => (pipelineMode = !pipelineMode)}
-          aria-pressed={pipelineMode}
-          title={pipelineMode
-            ? `Close the ${view === 'month' ? 'pipeline kanban' : 'channel lanes'}`
-            : view === 'month'
+          onclick={() => (viewCtl.pipelineMode = !viewCtl.pipelineMode)}
+          aria-pressed={viewCtl.pipelineMode}
+          title={viewCtl.pipelineMode
+            ? `Close the ${viewCtl.view === 'month' ? 'pipeline kanban' : 'channel lanes'}`
+            : viewCtl.view === 'month'
               ? 'Group content events by status in a kanban overlay'
               : 'Group content events by channel into horizontal lanes'}
-          class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border transition-colors {pipelineMode ? 'bg-lavender text-on-primary border-lavender' : 'bg-surface0 text-subtext border-surface1 hover:border-lavender hover:text-text'}"
+          class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border transition-colors {viewCtl.pipelineMode ? 'bg-lavender text-on-primary border-lavender' : 'bg-surface0 text-subtext border-surface1 hover:border-lavender hover:text-text'}"
         >
           <span
             class="inline-flex items-center justify-center w-4 h-4 rounded text-[9px] font-mono font-semibold"
-            style={pipelineMode ? 'background: rgba(0,0,0,0.18)' : 'background: color-mix(in srgb, var(--color-lavender) 18%, transparent); color: var(--color-lavender)'}
+            style={viewCtl.pipelineMode ? 'background: rgba(0,0,0,0.18)' : 'background: color-mix(in srgb, var(--color-lavender) 18%, transparent); color: var(--color-lavender)'}
             aria-hidden="true"
           >C</span>
           {pipelineButtonLabel}
           <span class="font-mono tabular-nums opacity-80">{typeCounts['content_event'] ?? 0}</span>
         </button>
-        <span class="text-[11px] text-dim">{view === 'month' ? 'kanban by status' : 'swim lanes by channel'}</span>
+        <span class="text-[11px] text-dim">{viewCtl.view === 'month' ? 'kanban by status' : 'swim lanes by channel'}</span>
       </div>
     {/if}
 
@@ -1517,7 +1430,7 @@
       ontouchstart={onTouchStart}
       ontouchend={onTouchEnd}
     >
-      {#if planMode && (view === 'day' || view === 'week' || view === 'workweek')}
+      {#if viewCtl.planMode && (viewCtl.view === 'day' || viewCtl.view === 'week' || viewCtl.view === 'workweek')}
         <!-- Plan layout: backlog on the left (desktop) / top scroller
              (mobile). The mobile strip used to be 128px tall and read
              one task per line in a tight horizontal scroller — too
@@ -1532,7 +1445,7 @@
           </aside>
           <div class="flex-1 min-w-0 min-h-0">
             <HourGrid
-              days={viewDays}
+              days={viewCtl.viewDays}
               events={events}
               habits={habits}
               onClickEvent={clickEvent}
@@ -1543,30 +1456,30 @@
               onResize={resizeEvent}
               writableSources={calSources.filter((s) => s.writable).map((s) => s.source)}
               onTaskDrop={dropTask}
-              {hourPx}
+              {viewCtl.hourPx}
             />
           </div>
         </div>
-      {:else if view === 'day' || view === 'week' || view === 'workweek'}
+      {:else if viewCtl.view === 'day' || viewCtl.view === 'week' || viewCtl.view === 'workweek'}
         <div class="relative h-full">
-          <HourGrid days={viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} {hourPx} />
-          {#if pipelineMode && (view === 'week' || view === 'workweek')}
+          <HourGrid days={viewCtl.viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} {viewCtl.hourPx} />
+          {#if viewCtl.pipelineMode && (viewCtl.view === 'week' || viewCtl.view === 'workweek')}
             <!-- Swim-lane overlay for week-axis content production
                  planning. Same overlay chrome as ContentPipelineOverlay
                  but grouped by channel rather than status — the user
                  reads horizontally for each platform's week-at-a-glance. -->
             <ContentChannelLanes
-              days={viewDays}
+              days={viewCtl.viewDays}
               events={events}
               onClickEvent={clickEvent}
-              onClose={() => (pipelineMode = false)}
+              onClose={() => (viewCtl.pipelineMode = false)}
             />
           {/if}
         </div>
-      {:else if view === 'month'}
+      {:else if viewCtl.view === 'month'}
         <div class="relative h-full overflow-auto">
-          <MonthView cursor={cursor} events={events} density={monthDensity} onClickEvent={clickEvent} onClickDay={clickDay} />
-          {#if pipelineMode}
+          <MonthView cursor={viewCtl.cursor} events={events} density={viewCtl.monthDensity} onClickEvent={clickEvent} onClickDay={clickDay} />
+          {#if viewCtl.pipelineMode}
             <!-- Kanban overlay sits absolute over the month grid so
                  the underlying dates stay visually present (closing
                  returns to the same scroll position, no transition
@@ -1576,17 +1489,17 @@
             <ContentPipelineOverlay
               events={events}
               onClickEvent={clickEvent}
-              onClose={() => (pipelineMode = false)}
+              onClose={() => (viewCtl.pipelineMode = false)}
             />
           {/if}
         </div>
-      {:else if view === 'year'}
+      {:else if viewCtl.view === 'year'}
         <div class="h-full overflow-auto">
-          <YearView cursor={cursor} events={events} onClickDay={(d) => { cursor = d; view = 'day'; }} />
+          <YearView cursor={viewCtl.cursor} events={events} onClickDay={(d) => { viewCtl.cursor = d; viewCtl.view = 'day'; }} />
         </div>
-      {:else if view === 'agenda'}
+      {:else if viewCtl.view === 'agenda'}
         <!-- Agenda is the flat 30-day next-up list. Scoped to
-             `agendaEvents` (rolling cursor → +30d) so prev/next
+             `agendaEvents` (rolling viewCtl.cursor → +30d) so prev/next
              walks weeks of agenda content without re-fetching the
              whole feed. The onCreate hook fires from the empty-state
              "+ Create event" CTA so a wide-open week is one click
@@ -1634,12 +1547,12 @@
         <dt class="font-mono text-primary">t</dt><dd class="text-subtext">jump to today</dd>
         <dt class="font-mono text-primary">j / n</dt><dd class="text-subtext">next period</dd>
         <dt class="font-mono text-primary">k / p</dt><dd class="text-subtext">previous period</dd>
-        <dt class="font-mono text-primary">d</dt><dd class="text-subtext">day view</dd>
-        <dt class="font-mono text-primary">w</dt><dd class="text-subtext">week view</dd>
+        <dt class="font-mono text-primary">d</dt><dd class="text-subtext">day viewCtl.view</dd>
+        <dt class="font-mono text-primary">w</dt><dd class="text-subtext">week viewCtl.view</dd>
         <dt class="font-mono text-primary">Shift+W</dt><dd class="text-subtext">workweek (Mon–Fri only)</dd>
-        <dt class="font-mono text-primary">m</dt><dd class="text-subtext">month view</dd>
-        <dt class="font-mono text-primary">y</dt><dd class="text-subtext">year view</dd>
-        <dt class="font-mono text-primary">a</dt><dd class="text-subtext">agenda view (next 30 days)</dd>
+        <dt class="font-mono text-primary">m</dt><dd class="text-subtext">month viewCtl.view</dd>
+        <dt class="font-mono text-primary">y</dt><dd class="text-subtext">year viewCtl.view</dd>
+        <dt class="font-mono text-primary">a</dt><dd class="text-subtext">agenda viewCtl.view (next 30 days)</dd>
         <dt class="font-mono text-primary">f</dt><dd class="text-subtext">find time (open free-slot finder)</dd>
         <dt class="font-mono text-primary">Shift+A</dt><dd class="text-subtext">open AI agent (scoped to visible window + project filter)</dd>
         <dt class="font-mono text-primary">?</dt><dd class="text-subtext">toggle this help</dd>
