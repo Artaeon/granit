@@ -13,6 +13,7 @@
   import InlineEditPopovers from './InlineEditPopovers.svelte';
   import { useSwipeGesture } from './useSwipeGesture.svelte';
   import { activeTimer, minutesByTaskId, fmtDuration } from '$lib/stores/timer';
+  import { isSnoozed } from './tasksHelpers';
 
   let {
     task = $bindable(),
@@ -110,13 +111,9 @@
     return { label: `P${p}`, cls };
   }
 
-  // Snooze active = SnoozedUntil exists AND is in the future.
-  function isSnoozed(t: Task): boolean {
-    if (!t.snoozedUntil) return false;
-    const sn = new Date(t.snoozedUntil);
-    if (isNaN(sn.getTime())) return false;
-    return sn.getTime() > Date.now();
-  }
+  // isSnoozed lives in ./tasksHelpers — shared with the tasks page
+  // and AIStaleVerdicts so the snooze rule never drifts between
+  // surfaces.
 
   // relSnooze / triageOrder / nextTriage / triageTone moved to
   // $lib/util/dateFormatters + $lib/util/triageState — see imports.

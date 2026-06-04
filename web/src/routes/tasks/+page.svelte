@@ -38,16 +38,20 @@
     createDeadlineStore,
     createFocusPlanStore
   } from '$lib/tasks/aiAgentStore';
-
-  type View = 'list' | 'kanban' | 'today' | 'week' | 'triage' | 'inbox' | 'stale' | 'duplicates' | 'quickwins' | 'review' | 'eisenhower';
-  type Group = 'due' | 'priority' | 'note' | 'project' | 'tag' | 'goal' | 'deadline';
-  // Explicit sort overrides the per-group "auto" sort (which sorts
-  // every bucket by due-then-priority). Set to anything other than
-  // 'auto' and the same sort applies inside every group so the user
-  // gets consistent ordering regardless of which group-by is active.
-  // 'age' is by createdAt ascending (oldest first — the
-  // procrastination tell); the others are obvious from the label.
-  type SortBy = 'auto' | 'priority' | 'due' | 'age' | 'alpha' | 'estimate';
+  import {
+    type View,
+    type Group,
+    type SortBy,
+    type SmartFilter,
+    VIEW_CYCLE,
+    VIEW_DIGIT_MAP,
+    OVERFLOW_VIEWS,
+    isSnoozed,
+    isStale,
+    isTaskLikePath,
+    smartPredicate,
+    fmtEstBudget
+  } from '$lib/tasks/tasksHelpers';
 
   let tasks = $state<Task[]>([]);
   let projects = $state<Project[]>([]);
@@ -81,19 +85,9 @@
   // plus a "More views" dropdown for Triage/Inbox/Stale/Duplicates/
   // Quick wins/Review so the strip stops scrolling sideways at narrow
   // viewports. The actual View identifiers are unchanged — the `[`/
-  // `]` cycle and URL hydration still see all 11.
+  // `]` cycle and URL hydration still see all 11. The label set lives
+  // in $lib/tasks/tasksHelpers (OVERFLOW_VIEWS).
   let moreViewsOpen = $state(false);
-  // Labels for the overflow set — shared between the dropdown items
-  // AND the "More: <label>" button text so the user can see which
-  // overflow view is currently active without opening the menu.
-  const OVERFLOW_VIEWS: { key: View; label: string; title: string }[] = [
-    { key: 'triage', label: 'Triage', title: 'AI-driven inbox triage proposals' },
-    { key: 'inbox', label: 'Inbox', title: 'untriaged tasks awaiting categorisation' },
-    { key: 'stale', label: 'Stale', title: 'not touched in 7+ days — needs a decision' },
-    { key: 'duplicates', label: 'Duplicates', title: 'near-duplicate task pairs by text similarity — deterministic scan, no AI' },
-    { key: 'quickwins', label: 'Quick wins', title: 'high priority + ≤30 min — tackle a few before lunch' },
-    { key: 'review', label: 'Review', title: 'completed in the last 7 days — celebrate the wins' }
-  ];
   let activeOverflowLabel = $derived(
     OVERFLOW_VIEWS.find((v) => v.key === view)?.label ?? ''
   );
@@ -148,19 +142,8 @@
   // one-click filters so the user can jump from "I see I have 4
   // overdue" to "showing 4 overdue" in one click without opening any
   // dialog or learning a new control. Persisted to URL hash so
-  // refreshes / shared links carry the same focus.
-  type SmartFilter =
-    | ''
-    | 'overdue'
-    | 'today'
-    | 'tomorrow'
-    | 'thisWeek'
-    | 'noDue'
-    | 'noPriority'
-    | 'highPriority'
-    | 'hasSubtasks'
-    | 'hasEstimate'
-    | 'noEstimate';
+  // refreshes / shared links carry the same focus. The SmartFilter
+  // union and smartPredicate live in $lib/tasks/tasksHelpers.
   let smartFilter = $state<SmartFilter>('');
   // Source filter — separates "tasks the user actually wrote as tasks"
   // from "stray `- [ ]` bullets in reading notes / brainstorm pages".
@@ -769,32 +752,9 @@
     });
   }
 
-  // View-mode cycle order. Mirrors the visible-tab order in the
-  // segmented pills (primary cluster then smart-filter cluster) so
-  // `[` / `]` walks the user through the same tabs their eye sees,
-  // left-to-right. Includes every shape so the cycle is exhaustive;
-  // narrow-viewport users still hit hidden tabs (stale / quickwins /
-  // duplicates / review / triage) via the chord even when the buttons
-  // are visually hidden — which is the point of having a chord.
-  const VIEW_CYCLE: View[] = [
-    'today', 'list', 'week', 'kanban', 'eisenhower',
-    'inbox', 'quickwins', 'stale', 'duplicates', 'review', 'triage'
-  ];
-  // Numeric direct-jump map — Stream F shortcuts `1`-`5`.
-  // Maps to the primary tab cluster (Today / List / Kanban / Matrix /
-  // Week) in the same left-to-right order the segmented pill renders
-  // after Stream H consolidated 11 view modes into 5 primary + 6
-  // overflow. Overflow views (Triage / Inbox / Stale / Duplicates /
-  // Quick wins / Review) are still reachable via the "More views"
-  // dropdown and the `[` / `]` cycle — no digit binding so power
-  // users learn to thumb the primary cluster by number.
-  const VIEW_DIGIT_MAP: Record<string, View> = {
-    '1': 'today',
-    '2': 'list',
-    '3': 'kanban',
-    '4': 'eisenhower',
-    '5': 'week'
-  };
+  // VIEW_CYCLE + VIEW_DIGIT_MAP live in $lib/tasks/tasksHelpers — same
+  // vocabulary shared with the future workspace shell so the chord
+  // walks the same tab order whether tasks lives as a route or a pane.
 
   // Trigger the in-card snooze picker for the cursor task. The picker
   // is owned by TaskCard and anchored to its own snooze button (so the
@@ -957,50 +917,9 @@
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // Active snooze: a task is "active" if snoozedUntil is empty or in the past.
-  function isSnoozed(t: Task): boolean {
-    if (!t.snoozedUntil) return false;
-    const sn = new Date(t.snoozedUntil);
-    if (isNaN(sn.getTime())) return false;
-    return sn.getTime() > Date.now();
-  }
-
-  function isStale(t: Task): boolean {
-    if (t.done) return false;
-    const ref = t.updatedAt ?? t.createdAt;
-    if (!ref) return false;
-    const d = new Date(ref);
-    if (isNaN(d.getTime())) return false;
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    return d.getTime() < sevenDaysAgo;
-  }
-
-  // isTaskLikePath: heuristic for "this notePath came from a note the
-  // user clearly meant as a task surface, not a reading list that
-  // happens to use - [ ] for visual bullets". Pure path-based so we
-  // don't need to fetch frontmatter for every task.
-  //
-  // Match rules (any one is enough to count as task-like):
-  //   - filename is YYYY-MM-DD.md anywhere → daily note
-  //   - path begins with Daily/, Tasks/, or Projects/ at any depth
-  //   - notePath empty → tasks created via the API w/o a host note
-  //     (we keep them visible because they were explicit)
-  //
-  // The folder list below intentionally does NOT include arbitrary
-  // user folders; the user can still see those by flipping the source
-  // filter to 'all' from the UI. Folder names are case-insensitive on
-  // the prefix to be friendly to mac/windows-originated vaults.
-  const taskFolderPrefixes = ['daily/', 'tasks/', 'projects/'];
-  const reDailyName = /(?:^|\/)\d{4}-\d{2}-\d{2}\.md$/;
-  function isTaskLikePath(p: string): boolean {
-    if (!p) return true;
-    if (reDailyName.test(p)) return true;
-    const lower = p.toLowerCase();
-    for (const prefix of taskFolderPrefixes) {
-      if (lower.startsWith(prefix)) return true;
-    }
-    return false;
-  }
+  // isSnoozed / isStale / isTaskLikePath live in $lib/tasks/tasksHelpers
+  // — shared across the page, TaskCard, AIStaleVerdicts, and the
+  // future workspace pane.
 
   let filtered = $derived.by(() => {
     let out = tasks;
@@ -1071,7 +990,7 @@
     // they're tiny; the predicate-by-key map is built outside the
     // derivation to avoid re-allocating it on every refilter.
     if (smartFilter) {
-      out = out.filter((t) => smartPredicate(smartFilter, t));
+      out = out.filter((t) => smartPredicate(smartFilter, t, childCount));
     }
     return out;
   });
@@ -1161,57 +1080,11 @@
       if (t.archived && archivedMode === 'hide') continue;
       if (isSnoozed(t) && status === 'open') continue;
       for (const f of filters) {
-        if (smartPredicate(f, t)) counts[f]++;
+        if (smartPredicate(f, t, childCount)) counts[f]++;
       }
     }
     return counts;
   });
-
-  // Smart-filter predicates. Each takes a task and returns true if
-  // the task belongs in that smart-filter bucket. Computed against
-  // today's date (re-derived per call so a long-lived session that
-  // crosses midnight rolls over without a reload).
-  function smartPredicate(sf: SmartFilter, t: Task): boolean {
-    if (!sf) return true;
-    const today = todayISO();
-    const tomorrow = (() => {
-      const d = new Date(today + 'T00:00:00');
-      d.setDate(d.getDate() + 1);
-      return fmtDateISO(d);
-    })();
-    const weekEnd = (() => {
-      const d = new Date(today + 'T00:00:00');
-      d.setDate(d.getDate() + 7);
-      return fmtDateISO(d);
-    })();
-    const due = t.dueDate ?? '';
-    const sched = t.scheduledStart ? t.scheduledStart.slice(0, 10) : '';
-    const dateSignal = due || sched;
-    switch (sf) {
-      case 'overdue':
-        return !t.done && !!due && due < today;
-      case 'today':
-        return !t.done && (due === today || sched === today);
-      case 'tomorrow':
-        return !t.done && (due === tomorrow || sched === tomorrow);
-      case 'thisWeek':
-        return !t.done && !!dateSignal && dateSignal >= today && dateSignal <= weekEnd;
-      case 'noDue':
-        return !t.done && !due && !sched;
-      case 'noPriority':
-        return !t.done && (t.priority === 0 || t.priority === 4);
-      case 'highPriority':
-        return !t.done && t.priority === 1;
-      case 'hasSubtasks':
-        return !t.done && (childCount.get(t.id) ?? 0) > 0;
-      case 'hasEstimate':
-        return !t.done && !!t.estimatedMinutes && t.estimatedMinutes > 0;
-      case 'noEstimate':
-        return !t.done && (!t.estimatedMinutes || t.estimatedMinutes === 0);
-      default:
-        return true;
-    }
-  }
 
   // At-a-glance stats over the unfiltered open task list. Surfaced
   // as small chips above the list so the user always knows the
@@ -1501,20 +1374,7 @@
     }
   });
 
-  // Format minutes as a compact human-readable budget — "45m",
-  // "3h 20m", "1d 4h". 8h is one "day-block" by convention; the
-  // chip stays scannable even on overflowing backlogs.
-  function fmtEstBudget(mins: number): string {
-    if (mins < 60) return `${mins}m`;
-    if (mins < 8 * 60) {
-      const h = Math.floor(mins / 60);
-      const m = mins - h * 60;
-      return m === 0 ? `${h}h` : `${h}h ${m}m`;
-    }
-    const d = Math.floor(mins / (8 * 60));
-    const remH = Math.floor((mins - d * 8 * 60) / 60);
-    return remH === 0 ? `${d}d` : `${d}d ${remH}h`;
-  }
+  // fmtEstBudget lives in $lib/tasks/tasksHelpers.
 
   // Per-smart-filter counts so the view tabs can show badges.
   // Derived from the unfiltered open task list (sourceFilter +
