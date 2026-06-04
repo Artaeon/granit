@@ -144,16 +144,34 @@
   let bodyForPreview = $state('');
   let previewBodyRaf = 0;
   let previewBodyTimer: ReturnType<typeof setTimeout> | null = null;
-  // Bodies above this size switch from rAF (16 ms) coalescing to a
-  // 250 ms idle debounce for the preview mirror. At rAF cadence a
-  // 100 KB note triggers ~60 marked.parse + synchronous DOMPurify
-  // sweeps per second in MarkdownRenderer — each ~50–200 ms — and
-  // the queue compounds faster than it drains. Settling on typing-
-  // pause is the standard preview UX for long-form editors; the
-  // editor's textarea stays at full rAF responsiveness because the
-  // CodeMirror view never reads bodyForPreview.
-  const PREVIEW_HEAVY_BODY = 32 * 1024;
-  const PREVIEW_HEAVY_DEBOUNCE_MS = 250;
+  // Adaptive throttle for the preview mirror. The MarkdownRenderer
+  // pipeline (marked.parse + synchronous DOMPurify + postprocess +
+  // {@html} swap) is the single largest synchronous block on the
+  // main thread, and it scales linearly with body size — DOMPurify
+  // alone is ~80–250 ms on a 100 KB body, 500–800 ms at 500 KB.
+  // The editor's textarea stays at full rAF responsiveness because
+  // CodeMirror never reads bodyForPreview; this only debounces the
+  // preview repaint a long-form writer pays for after each typing
+  // pause. Settling later on long notes is the standard UX for
+  // every long-form Markdown editor we know of.
+  //
+  // Three tiers picked to balance "feels fresh" against "stops
+  // freezing on pause":
+  //   • < 32 KB        — rAF (≤16 ms): typing-rate updates feel live.
+  //   • 32 KB – 128 KB — 400 ms idle pause before reparse.
+  //   • 128 KB – 512 KB — 800 ms idle pause.
+  //   • ≥ 512 KB       — 1500 ms idle pause; DOMPurify alone may
+  //     take ≥500 ms here, so a shorter window queues a backlog
+  //     the main thread can't drain between keystrokes.
+  const PREVIEW_TIER_1 = 32 * 1024;
+  const PREVIEW_TIER_2 = 128 * 1024;
+  const PREVIEW_TIER_3 = 512 * 1024;
+  function previewDebounceFor(bytes: number): number {
+    if (bytes >= PREVIEW_TIER_3) return 1500;
+    if (bytes >= PREVIEW_TIER_2) return 800;
+    if (bytes >= PREVIEW_TIER_1) return 400;
+    return 0; // signals "use rAF path"
+  }
   $effect(() => {
     // First-paint fast path: when bodyForPreview is still empty but
     // body has loaded, sync synchronously instead of waiting for the
@@ -167,7 +185,8 @@
       bodyForPreview = body;
       return;
     }
-    if (body.length >= PREVIEW_HEAVY_BODY) {
+    const debounceMs = previewDebounceFor(body.length);
+    if (debounceMs > 0) {
       if (previewBodyRaf) {
         cancelAnimationFrame(previewBodyRaf);
         previewBodyRaf = 0;
@@ -176,7 +195,7 @@
       previewBodyTimer = setTimeout(() => {
         previewBodyTimer = null;
         bodyForPreview = body;
-      }, PREVIEW_HEAVY_DEBOUNCE_MS);
+      }, debounceMs);
       return;
     }
     if (previewBodyTimer) {
