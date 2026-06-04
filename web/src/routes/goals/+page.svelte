@@ -37,29 +37,22 @@
     type GoalsViewMode,
     type GoalsStatusFilter
   } from '$lib/goals/goalsFilterState.svelte';
+  import { createGoalsData } from '$lib/goals/goalsData.svelte';
 
-  // filterCtl.viewMode + the five filter dimensions (filterCtl.statusFilter, category,
-  // tag, venture, q) + the `filterCtl.filtered` derivation + the per-status
-  // `filterCtl.counts` summary all live in $lib/goals/goalsFilterState. Read
-  // via filterCtl.X.
+  // Loaded data (dataCtl.goals + dataCtl.openTasks/dataCtl.doneTasks/dataCtl.projects sidecars) +
+  // dataCtl.loading flags + dataCtl.load() + per-goal dataCtl.rollups + stalled detection
+  // all live in $lib/goals/goalsData. Read via dataCtl.X.
+  const dataCtl = createGoalsData({ isAuthed: () => !!$auth });
+
+  // View + filter state. Reads dataCtl.goals through dataCtl.
   const filterCtl = createGoalsFilterState({
-    getGoals: () => goals
+    getGoals: () => dataCtl.goals
   });
 
-  let goals = $state<Goal[]>([]);
   // Goal Agent — conversational mutation engine for /goals.
   // Mirrors Task/Project agents; lives on the same audit-gated
-  // chatStream pipeline. Operates on the filterCtl.filtered list.
+  // chatStream pipeline. Operates on the filtered list.
   let agentOpen = $state(false);
-  // Linked tasks + projects power the roll-up chips on each goal —
-  // "X open tasks · Y projects" so the user can see at a glance
-  // which goals have momentum behind them and which are floating
-  // dreams. Tasks fetched once with status filter (open + done) so
-  // the cards can show "X / Y done" for goal-tagged tasks.
-  let openTasks = $state<Task[]>([]);
-  let doneTasks = $state<Task[]>([]);
-  let projects = $state<Project[]>([]);
-  let loading = $state(false);
 
   let createOpen = $state(false);
   let detailOpen = $state(false);
@@ -69,37 +62,14 @@
   // open-state of either AI panel so the header tints the trigger.
   let moreOpen = $state(false);
 
-  // Tracks whether load() has resolved at least once. Drives the
+  // Tracks whether dataCtl.load() has resolved at least once. Drives the
   // skeleton vs empty-state choice — pre-resolution we render
   // shimmer placeholders, post-resolution we render the proper
-  // "no goals" empty state. Without this distinction the page
-  // briefly flashed "no goals match this filter." on every mount.
-  let firstLoaded = $state(false);
-  async function load() {
-    if (!$auth) return;
-    loading = true;
-    try {
-      // Fetch goals + linked context (tasks + projects) in parallel.
-      // The roll-up is purely advisory — failures of the secondary
-      // calls shouldn't block the goals list itself, so each is
-      // wrapped in its own try and logged-but-ignored on error.
-      const [list, openRes, doneRes, projRes] = await Promise.allSettled([
-        api.listGoals(),
-        api.listTasks({ status: 'open' }),
-        api.listTasks({ status: 'done' }),
-        api.listProjects()
-      ]);
-      if (list.status === 'fulfilled') goals = list.value.goals;
-      openTasks = openRes.status === 'fulfilled' ? openRes.value.tasks : [];
-      doneTasks = doneRes.status === 'fulfilled' ? doneRes.value.tasks : [];
-      projects = projRes.status === 'fulfilled' ? projRes.value.projects : [];
-    } finally {
-      loading = false;
-      firstLoaded = true;
-    }
-  }
+  // "no dataCtl.goals" empty state. Without this distinction the page
+  // briefly flashed "no dataCtl.goals match this filter." on every mount.
+  // dataCtl.firstLoaded + dataCtl.load() moved into dataCtl.
   onMount(() => {
-    load();
+    dataCtl.load();
     // ?agent=1 launches the Goal Agent — used by the chat sidebar.
     if ($page.url.searchParams.get('agent') === '1') {
       agentOpen = true;
@@ -111,10 +81,10 @@
       });
     }
     const unsub = onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') dataCtl.load();
       // Re-fetch when the TUI (or another web tab) writes goals.json.
       // The server broadcasts state.changed with Path=".granit/goals.json".
-      if (ev.type === 'state.changed' && ev.path === '.granit/goals.json') load();
+      if (ev.type === 'state.changed' && ev.path === '.granit/goals.json') dataCtl.load();
     });
     // Visibility-aware refresh: WS connections are suspended when the
     // tab is backgrounded (especially on mobile Safari), so we'd miss
@@ -122,12 +92,12 @@
     // visibility flip cheaply guarantees the user never returns to a
     // stale list.
     const onVisible = () => {
-      if (document.visibilityState === 'visible') load();
+      if (document.visibilityState === 'visible') dataCtl.load();
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
     // 'a' opens the Goal Agent — same hotkey contract as /tasks
-    // and /projects. isTypingTarget guard suppresses while the
+    // and /dataCtl.projects. isTypingTarget guard suppresses while the
     // user is typing anywhere on the page.
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -164,8 +134,8 @@
   $effect(() => {
     const focus = $page.url.searchParams.get('focus');
     if (!focus) return;
-    if (goals.length === 0) return; // wait until load() resolves
-    const g = goals.find((x) => x.id === focus);
+    if (dataCtl.goals.length === 0) return; // wait until dataCtl.load() resolves
+    const g = dataCtl.goals.find((x) => x.id === focus);
     if (g && selectedId !== focus) {
       selectedId = focus;
       detailOpen = true;
@@ -174,7 +144,7 @@
 
   // Selected goal — derived from id so live edits during a refetch find
   // the new copy without reopening the drawer at a stale state.
-  let selected = $derived(goals.find((g) => g.id === selectedId) ?? null);
+  let selected = $derived(dataCtl.goals.find((g) => g.id === selectedId) ?? null);
 
   // Dashboard overlay — full-screen GoalDashboardPanel for the focused
   // goal. State persists in the URL (?focus=X&dashboard=1) so a reload
@@ -201,7 +171,7 @@
     detailOpen = true;
   }
   function openDetailById(id: string) {
-    const g = goals.find((x) => x.id === id);
+    const g = dataCtl.goals.find((x) => x.id === id);
     if (g) openDetail(g);
   }
 
@@ -215,39 +185,14 @@
     return { done, total, pct: Math.round((done / total) * 100) };
   }
 
-  // Per-goal index of linked tasks (by goalId) + linked projects (by
+  // Per-goal index of linked tasks (by goalId) + linked dataCtl.projects (by
   // matching goal.project against project.name, since the schema is
   // free-text not FK). Computed in a single pass over each list so
   // the per-goal lookups in the render loop stay O(1). Used by the
   // cards view to surface a "5 open · 2 done · 1 project" chip row
-  // — the user's signal for which goals actually have execution
+  // — the user's signal for which dataCtl.goals actually have execution
   // behind them and which are still abstractions.
-  let rollups = $derived.by(() => {
-    const byGoalOpen = new Map<string, number>();
-    const byGoalDone = new Map<string, number>();
-    for (const t of openTasks) {
-      if (!t.goalId) continue;
-      byGoalOpen.set(t.goalId, (byGoalOpen.get(t.goalId) ?? 0) + 1);
-    }
-    for (const t of doneTasks) {
-      if (!t.goalId) continue;
-      byGoalDone.set(t.goalId, (byGoalDone.get(t.goalId) ?? 0) + 1);
-    }
-    // Projects index by name (lowercased) so a goal.project field
-    // matches case-insensitively. We only need a presence check +
-    // the matched project's `progress` field for surface-level
-    // context, so the value is the project itself.
-    const projByName = new Map<string, Project>();
-    for (const p of projects) projByName.set(p.name.toLowerCase(), p);
-    return { byGoalOpen, byGoalDone, projByName };
-  });
-
-  function rollupFor(g: Goal): { open: number; done: number; project: Project | null } {
-    const open = rollups.byGoalOpen.get(g.id) ?? 0;
-    const done = rollups.byGoalDone.get(g.id) ?? 0;
-    const project = g.project ? rollups.projByName.get(g.project.toLowerCase()) ?? null : null;
-    return { open, done, project };
-  }
+  // dataCtl.rollups + rollupFor moved into dataCtl.
 
   // Status-pill colors, friendly date formatting, and urgency-tone
   // routing all live in $lib/goals/util now — single source of truth
@@ -272,30 +217,8 @@
   // visible signal without auto-archiving — the user decides
   // whether to update the goal, log a milestone, or move it to
   // paused/archived.
-  function staleness(iso: string | undefined): number {
-    if (!iso) return Number.POSITIVE_INFINITY;
-    const t = Date.parse(iso);
-    if (Number.isNaN(t)) return Number.POSITIVE_INFINITY;
-    return Math.floor((Date.now() - t) / 86_400_000);
-  }
-  function recentCompletionForGoal(goalId: string): boolean {
-    const fortnight = Date.now() - 14 * 86_400_000;
-    for (const t of doneTasks) {
-      if (t.goalId !== goalId) continue;
-      const ts = Date.parse(t.updatedAt ?? t.createdAt ?? '');
-      if (!Number.isNaN(ts) && ts >= fortnight) return true;
-    }
-    return false;
-  }
-  let stalledGoals = $derived.by(() =>
-    goals.filter((g) => {
-      const status = g.status ?? 'active';
-      if (status !== 'active') return false;
-      const days = staleness(g.updated_at);
-      if (days < 30) return false;
-      return !recentCompletionForGoal(g.id);
-    })
-  );
+  // staleness + recentCompletionForGoal + dataCtl.stalledGoals moved into
+  // dataCtl.
   // When the user clicks the banner action, we filter the list
   // down to just the stalled rows. Re-derive over `filterCtl.filtered` rather
   // than mutating filters so the existing search/category/tag
@@ -303,7 +226,7 @@
   let stalledFilterOn = $state(false);
   let visibleGoals = $derived.by(() => {
     if (!stalledFilterOn) return filterCtl.filtered;
-    const stalledIds = new Set(stalledGoals.map((g) => g.id));
+    const stalledIds = new Set(dataCtl.stalledGoals.map((g) => g.id));
     return filterCtl.filtered.filter((g) => stalledIds.has(g.id));
   });
 
@@ -342,19 +265,19 @@
   // ----- Hero "next target" -----
   // Picks the most-imminent active or paused goal with a parseable
   // target_date and surfaces it as a hero card above the list. Skips
-  // goals whose status excludes them from the urgency treatment
+  // dataCtl.goals whose status excludes them from the urgency treatment
   // (completed / archived) and skips free-text target_dates that
   // can't be compared to "today". Falls back to null when the user
-  // has no dated goals — the hero card simply doesn't render.
+  // has no dated dataCtl.goals — the hero card simply doesn't render.
   let goalHero = $derived.by((): { goal: Goal; days: number } | null => {
     let best: Goal | null = null;
     let bestDays = Infinity;
-    for (const g of goals) {
+    for (const g of dataCtl.goals) {
       const status = g.status ?? 'active';
       if (status !== 'active' && status !== 'paused') continue;
       const days = daysUntilTarget(g.target_date);
       if (days === null) continue;
-      // Earliest target wins; overdue goals (negative days) sort
+      // Earliest target wins; overdue dataCtl.goals (negative days) sort
       // ahead of upcoming ones because they need attention more.
       if (days < bestDays) {
         bestDays = days;
@@ -365,15 +288,15 @@
   });
 
   // ----- Target-proximity stat strip -----
-  // Distribution of dated active+paused goals across urgency
+  // Distribution of dated active+paused dataCtl.goals across urgency
   // buckets, surfaced as a one-line summary below the status tabs.
   // Complements the hero (single most-pressing goal) by showing the
   // shape of the whole pipeline at a glance. Free-text target_dates
-  // and undated goals are excluded — they have no place on a
+  // and undated dataCtl.goals are excluded — they have no place on a
   // proximity axis.
   let targetStats = $derived.by(() => {
     let pastTarget = 0, thisMonth = 0, thisQuarter = 0, later = 0;
-    for (const g of goals) {
+    for (const g of dataCtl.goals) {
       const status = g.status ?? 'active';
       if (status !== 'active' && status !== 'paused') continue;
       const days = daysUntilTarget(g.target_date);
@@ -390,7 +313,7 @@
   // common chip surfaces first.
   let categories = $derived.by(() => {
     const m = new Map<string, number>();
-    for (const g of goals) {
+    for (const g of dataCtl.goals) {
       const c = (g.category ?? '').trim();
       if (!c) continue;
       m.set(c, (m.get(c) ?? 0) + 1);
@@ -399,14 +322,14 @@
   });
   let tags = $derived.by(() => {
     const m = new Map<string, number>();
-    for (const g of goals) {
+    for (const g of dataCtl.goals) {
       for (const t of g.tags ?? []) m.set(t, (m.get(t) ?? 0) + 1);
     }
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
   });
   let ventures = $derived.by(() => {
     const m = new Map<string, number>();
-    for (const g of goals) {
+    for (const g of dataCtl.goals) {
       const v = (g.venture ?? '').trim();
       if (!v) continue;
       m.set(v, (m.get(v) ?? 0) + 1);
@@ -416,20 +339,20 @@
 
   async function created(g: Goal) {
     // Optimistic prepend so the new goal renders immediately. The
-    // load() below reconciles with the server (auth-stamped CreatedAt,
+    // dataCtl.load() below reconciles with the server (auth-stamped CreatedAt,
     // any defaults the server filled in).
-    if (!goals.some((x) => x.id === g.id)) {
-      goals = [g, ...goals];
+    if (!dataCtl.goals.some((x) => x.id === g.id)) {
+      dataCtl.goals = [g, ...goals];
     }
     selectedId = g.id;
     detailOpen = true;
-    await load();
+    await dataCtl.load();
   }
 
   async function deleted(_id: string) {
     detailOpen = false;
     selectedId = null;
-    await load();
+    await dataCtl.load();
     toast.success('goal deleted');
   }
 
@@ -486,7 +409,7 @@
     const ms = g.milestones ?? [];
     const open = ms.filter((m) => !m.done).map((m) => m.text);
     const done = ms.filter((m) => m.done).map((m) => m.text);
-    const roll = rollupFor(g);
+    const roll = dataCtl.rollupFor(g);
     // Compose a structured context block — keep it under ~2KB so
     // the prompt cost stays predictable. Only fields with content
     // are emitted, so a sparse goal yields a sparse prompt.
@@ -553,7 +476,7 @@
       await api.addGoalMilestone(g.id, { text });
       toast.success('milestone added');
       aiClose();
-      await load();
+      await dataCtl.load();
     } catch (err) {
       toast.error('Add failed: ' + (errorMessage(err)));
     }
@@ -598,7 +521,7 @@
   // Live-goal slice the AI sees — single source of truth so the
   // "AI saw" disclosure below the panel matches the prompt exactly.
   let checkinScope = $derived.by(() =>
-    goals.filter((g) => {
+    dataCtl.goals.filter((g) => {
       const s = g.status ?? 'active';
       return s === 'active' || s === 'paused';
     })
@@ -611,7 +534,7 @@
   function recentDoneFor(g: Goal): number {
     const cutoff = Date.now() - 28 * 24 * 3600 * 1000;
     let n = 0;
-    for (const t of doneTasks) {
+    for (const t of dataCtl.doneTasks) {
       if (t.goalId !== g.id || !t.completedAt) continue;
       const d = new Date(t.completedAt).getTime();
       if (!Number.isFinite(d)) continue;
@@ -642,7 +565,7 @@
       const open = ms.filter((m) => !m.done).slice(0, 6).map((m) => m.text);
       const done = ms.filter((m) => m.done).slice(-6).map((m) => m.text);
       const days = daysUntilTarget(g.target_date);
-      const roll = rollupFor(g);
+      const roll = dataCtl.rollupFor(g);
       const recent = recentDoneFor(g);
       const lines: string[] = [
         `[id: ${g.id}] ${g.title}`,
@@ -781,14 +704,14 @@
   // Bare-rollup view for the AI checkin panel — drops the project
   // field because the panel only reads open/done filterCtl.counts.
   function checkinRollupFor(g: Goal): { open: number; done: number } {
-    const r = rollupFor(g);
+    const r = dataCtl.rollupFor(g);
     return { open: r.open, done: r.done };
   }
 
   // ─────────────────────────────────────────────────────────────────
   // AI "Goal alignment audit" — strategy/execution drift detector
   // ─────────────────────────────────────────────────────────────────
-  // Reads all active goals + open tasks + recently-completed tasks
+  // Reads all active dataCtl.goals + open tasks + recently-completed tasks
   // (last 14 days, no goalId) and asks the model: which clusters of
   // tasks are NOT advancing any stated goal? Surfaces the gap that
   // goal-setters typically can't see for themselves: the busywork
@@ -813,10 +736,10 @@
   // older history isn't actionable for a "this season" check.
   let auditScope = $derived.by(() => {
     const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
-    const orphanOpen = openTasks
+    const orphanOpen = dataCtl.openTasks
       .filter((t) => !t.goalId && (t.text ?? '').trim().length > 0)
       .slice(0, 80);
-    const orphanDoneRecent = doneTasks
+    const orphanDoneRecent = dataCtl.doneTasks
       .filter((t) => {
         if (t.goalId) return false;
         if (!t.completedAt) return false;
@@ -824,8 +747,8 @@
         return Number.isFinite(d) && d >= cutoff;
       })
       .slice(0, 80);
-    const linkedOpen = openTasks.filter((t) => t.goalId).length;
-    const linkedDone14 = doneTasks.filter((t) => {
+    const linkedOpen = dataCtl.openTasks.filter((t) => t.goalId).length;
+    const linkedDone14 = dataCtl.doneTasks.filter((t) => {
       if (!t.goalId || !t.completedAt) return false;
       const d = new Date(t.completedAt).getTime();
       return Number.isFinite(d) && d >= cutoff;
@@ -845,7 +768,7 @@
 
   async function runAudit() {
     if (auditBusy) return;
-    const activeGoals = goals.filter((g) => (g.status ?? 'active') === 'active');
+    const activeGoals = dataCtl.goals.filter((g) => (g.status ?? 'active') === 'active');
     if (activeGoals.length === 0) {
       toast.error('No active goals to audit against.');
       return;
@@ -957,8 +880,8 @@
     else void runAudit();
   }
 
-  // Active-goals count is reused by the audit panel header.
-  let activeGoalsCount = $derived(goals.filter((g) => (g.status ?? 'active') === 'active').length);
+  // Active-dataCtl.goals count is reused by the audit panel header.
+  let activeGoalsCount = $derived(dataCtl.goals.filter((g) => (g.status ?? 'active') === 'active').length);
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -967,7 +890,7 @@
        strip + view-mode toolbar. -->
   <GoalsPageHeader
     view={filterCtl.viewMode}
-    totalCount={goals.length}
+    totalCount={dataCtl.goals.length}
     filteredCount={visibleGoals.length}
     checkinOpen={checkinOpen}
     checkinBusy={checkinBusy}
@@ -997,7 +920,7 @@
         hidden={checkinHidden}
         busy={checkinBusy}
         error={checkinError}
-        goals={goals}
+        goals={dataCtl.goals}
         rollupFor={checkinRollupFor}
         recentDoneFor={recentDoneFor}
         onAbort={() => checkinAbort?.abort()}
@@ -1090,8 +1013,8 @@
     </div>
 
     <!-- Target-proximity stat strip — complements the hero card by
-         showing the distribution of dated goals across urgency
-         buckets. Hidden when no dated goals exist (the strip would
+         showing the distribution of dated dataCtl.goals across urgency
+         buckets. Hidden when no dated dataCtl.goals exist (the strip would
          just read "0 0 0 0"). -->
     {#if targetStats.pastTarget + targetStats.thisMonth + targetStats.thisQuarter + targetStats.later > 0}
       <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4 text-xs">
@@ -1112,7 +1035,7 @@
 
     <!-- Search + category/tag/venture chips. The chip row only
          renders when at least one dimension has values; an empty
-         goals set sees just the search bar. -->
+         dataCtl.goals set sees just the search bar. -->
     <div class="mb-4 space-y-2">
       <input
         bind:value={filterCtl.q}
@@ -1150,13 +1073,13 @@
       {/if}
     </div>
 
-    <!-- Stalled-goal banner — surfaces active goals with no
+    <!-- Stalled-goal banner — surfaces active dataCtl.goals with no
          metadata edit in 30+ days AND no completed task in 14+
          days. Click to filter the list down to just those rows;
          click again to clear. The banner only renders when at
          least one stalled goal exists, so a healthy goal set
          never sees the nag. -->
-    {#if firstLoaded && stalledGoals.length > 0}
+    {#if dataCtl.firstLoaded && dataCtl.stalledGoals.length > 0}
       <button
         type="button"
         onclick={() => (stalledFilterOn = !stalledFilterOn)}
@@ -1168,8 +1091,8 @@
         </svg>
         <div class="flex-1 text-sm">
           <span class="text-text font-medium">
-            {stalledGoals.length}
-            {stalledGoals.length === 1 ? 'goal looks' : 'goals look'}
+            {dataCtl.stalledGoals.length}
+            {dataCtl.stalledGoals.length === 1 ? 'goal looks' : 'goals look'}
             stalled
           </span>
           <span class="text-dim ml-1">
@@ -1182,11 +1105,11 @@
       </button>
     {/if}
 
-    {#if !firstLoaded && loading}
+    {#if !dataCtl.firstLoaded && dataCtl.loading}
       <!-- Shimmer skeletons match the cards-view rhythm so the
            layout doesn't reflow on first load. Three placeholders is
            a reasonable bet — most users have at least that many
-           goals once they're past day-one. -->
+           dataCtl.goals once they're past day-one. -->
       <div class="space-y-4">
         {#each [0, 1, 2] as i (i)}
           <div class="bg-surface0 border border-surface1 rounded-lg p-3 space-y-2.5">
@@ -1203,14 +1126,14 @@
         {/each}
       </div>
     {:else if visibleGoals.length === 0}
-      <!-- Empty state branches: real "no goals at all" vs "filter
+      <!-- Empty state branches: real "no dataCtl.goals at all" vs "filter
            hides everything". The first nudges the user to create
            their first goal; the second offers a clear-filters
            shortcut so they don't have to hunt for the UI. -->
-      {#if goals.length === 0}
+      {#if dataCtl.goals.length === 0}
         <EmptyState
           icon="🎯"
-          title="No goals yet"
+          title="No dataCtl.goals yet"
           description="Goals are the long-term targets you're committing to in this season — quarterly, annual, lifetime. Add your first one to get started."
         >
           {#snippet action()}
@@ -1223,7 +1146,7 @@
       {:else}
         <EmptyState
           icon="🔍"
-          title="No goals match this filter"
+          title="No dataCtl.goals match this filter"
           description={stalledFilterOn ? "Stalled-only filter is on but every goal looks fresh — click the banner to clear it." : "Try a different status tab, clear the search, or drop your category / tag filters."}
         >
           {#snippet action()}
@@ -1246,11 +1169,11 @@
         {#each visibleGoals as g (g.id)}
           {@const p = progress(g)}
           {@const tone = goalTargetTone(g.status, g.target_date)}
-          {@const roll = rollupFor(g)}
+          {@const roll = dataCtl.rollupFor(g)}
           {@const aiOpen = aiGoalId === g.id}
           {@const isArchived = g.status === 'archived'}
           {@const isCompleted = g.status === 'completed'}
-          {@const isStalled = stalledGoals.some((s) => s.id === g.id)}
+          {@const isStalled = dataCtl.stalledGoals.some((s) => s.id === g.id)}
           <article
             class="bg-surface0 rounded-lg overflow-hidden transition-colors {tone ? 'border-l-4' : ''} {isArchived ? 'border border-dashed border-surface1' : 'border border-surface1 hover:border-primary'} {isStalled ? 'ring-1 ring-warning/30' : ''} {isCompleted ? 'opacity-90' : ''}"
             style={tone ? `border-left-color: var(--color-${tone});` : ''}
@@ -1263,7 +1186,7 @@
               onClick={() => openDetail(g)}
             />
 
-            <!-- AI "next milestone" affordance — only on living goals
+            <!-- AI "next milestone" affordance — only on living dataCtl.goals
                  (active / paused). Sits in a footer strip outside the
                  card-wide button so the AI button isn't an
                  accidentally-nested <button>. The inline panel opens
@@ -1327,7 +1250,7 @@
         {/each}
       </div>
     {:else if filterCtl.viewMode === 'list'}
-      <!-- Compact list — denser layout for users with many goals.
+      <!-- Compact list — denser layout for users with many dataCtl.goals.
            Each row: title · status pill · countdown chip · progress
            bar inline. Click anywhere on the row opens the detail
            drawer. Same urgency border-left as cards so the visual
@@ -1339,7 +1262,7 @@
           {@const sc = statusColor(g.status)}
           {@const tone = goalTargetTone(g.status, g.target_date)}
           {@const chip = targetChip(g.target_date)}
-          {@const roll = rollupFor(g)}
+          {@const roll = dataCtl.rollupFor(g)}
           {@const rowDim = g.status === 'completed' ? 'opacity-70' : g.status === 'archived' ? 'opacity-55' : ''}
           <button
             type="button"
@@ -1439,7 +1362,7 @@
   <!-- Goal Dashboard overlay — full-screen visual operating
        picture for the focused goal. URL-persisted via
        ?focus=X&dashboard=1 so a reload keeps it open. Sits above
-       the goals page chrome (list/cards/kanban + detail drawer)
+       the dataCtl.goals page chrome (list/cards/kanban + detail drawer)
        without unmounting them, so closing the dashboard lands the
        user back where they came from. -->
   <GoalDashboardPanel goal={selected} onClose={closeDashboard} />
@@ -1447,7 +1370,7 @@
 
 <!-- Goal Agent — operates on the filterCtl.filtered list (whatever the
      current status / search / venture / category scope yields).
-     parent's load() reconciles every goal page surface. -->
+     parent's dataCtl.load() reconciles every goal page surface. -->
 <GoalAgent
   open={agentOpen}
   goals={filterCtl.filtered}
