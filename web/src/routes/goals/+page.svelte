@@ -32,22 +32,24 @@
   import GoalsAICheckinPanel, { type CheckinEntry } from '$lib/goals/GoalsAICheckinPanel.svelte';
   import GoalsAIAuditPanel, { type AuditFinding } from '$lib/goals/GoalsAIAuditPanel.svelte';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
+  import {
+    createGoalsFilterState,
+    type GoalsViewMode,
+    type GoalsStatusFilter
+  } from '$lib/goals/goalsFilterState.svelte';
 
-  // View modes — `cards` is the rich card layout (the existing UI),
-  // `list` is a compact one-line-per-goal table for users with many
-  // goals who want density, `kanban` lays goals out in status columns
-  // (active / paused / completed / archived) so the user can see the
-  // shape of their pipeline at a glance. Persisted in localStorage so
-  // the user lands on their preferred mode on every visit.
-  type ViewMode = 'cards' | 'list' | 'kanban';
-  const VIEW_KEY = 'granit.goals.view';
-  let viewMode = $state<ViewMode>(loadStoredString(VIEW_KEY, 'cards') as ViewMode);
-  $effect(() => saveStoredString(VIEW_KEY, viewMode));
+  // filterCtl.viewMode + the five filter dimensions (filterCtl.statusFilter, category,
+  // tag, venture, q) + the `filterCtl.filtered` derivation + the per-status
+  // `filterCtl.counts` summary all live in $lib/goals/goalsFilterState. Read
+  // via filterCtl.X.
+  const filterCtl = createGoalsFilterState({
+    getGoals: () => goals
+  });
 
   let goals = $state<Goal[]>([]);
   // Goal Agent — conversational mutation engine for /goals.
   // Mirrors Task/Project agents; lives on the same audit-gated
-  // chatStream pipeline. Operates on the filtered list.
+  // chatStream pipeline. Operates on the filterCtl.filtered list.
   let agentOpen = $state(false);
   // Linked tasks + projects power the roll-up chips on each goal —
   // "X open tasks · Y projects" so the user can see at a glance
@@ -58,14 +60,6 @@
   let doneTasks = $state<Task[]>([]);
   let projects = $state<Project[]>([]);
   let loading = $state(false);
-  // Status values mirror the TUI / internal/goals.Status. The earlier UI
-  // rendered a 'done' tab that never matched anything because the TUI
-  // writes 'completed'.
-  let statusFilter = $state<'all' | 'active' | 'paused' | 'completed' | 'archived'>('all');
-  let categoryFilter = $state<string>('');
-  let tagFilter = $state<string>('');
-  let ventureFilter = $state<string>('');
-  let q = $state<string>('');
 
   let createOpen = $state(false);
   let detailOpen = $state(false);
@@ -211,23 +205,7 @@
     if (g) openDetail(g);
   }
 
-  let filtered = $derived.by(() => {
-    let list = goals;
-    if (statusFilter !== 'all') list = list.filter((g) => (g.status ?? 'active') === statusFilter);
-    if (categoryFilter) list = list.filter((g) => g.category === categoryFilter);
-    if (tagFilter) list = list.filter((g) => (g.tags ?? []).includes(tagFilter));
-    if (ventureFilter) list = list.filter((g) => (g.venture ?? '') === ventureFilter);
-    const term = q.trim().toLowerCase();
-    if (term) {
-      list = list.filter((g) =>
-        g.title.toLowerCase().includes(term) ||
-        (g.description ?? '').toLowerCase().includes(term) ||
-        (g.notes ?? '').toLowerCase().includes(term) ||
-        (g.venture ?? '').toLowerCase().includes(term)
-      );
-    }
-    return list;
-  });
+  // filterCtl.filtered moved into filterCtl.
 
   function progress(g: Goal): { done: number; total: number; pct: number } {
     const ms = g.milestones ?? [];
@@ -277,13 +255,7 @@
   // The local copies that used to live here are gone; call sites
   // route through the imports above.
 
-  let counts = $derived({
-    all: goals.length,
-    active: goals.filter((g) => (g.status ?? 'active') === 'active').length,
-    paused: goals.filter((g) => g.status === 'paused').length,
-    completed: goals.filter((g) => g.status === 'completed').length,
-    archived: goals.filter((g) => g.status === 'archived').length
-  });
+  // filterCtl.counts moved into filterCtl.
 
   // ── Stalled-goal detection ─────────────────────────────────────
   //
@@ -325,14 +297,14 @@
     })
   );
   // When the user clicks the banner action, we filter the list
-  // down to just the stalled rows. Re-derive over `filtered` rather
+  // down to just the stalled rows. Re-derive over `filterCtl.filtered` rather
   // than mutating filters so the existing search/category/tag
   // pickers aren't disturbed.
   let stalledFilterOn = $state(false);
   let visibleGoals = $derived.by(() => {
-    if (!stalledFilterOn) return filtered;
+    if (!stalledFilterOn) return filterCtl.filtered;
     const stalledIds = new Set(stalledGoals.map((g) => g.id));
-    return filtered.filter((g) => stalledIds.has(g.id));
+    return filterCtl.filtered.filter((g) => stalledIds.has(g.id));
   });
 
   // Kanban grouping — same status order as the tabs so the column
@@ -347,7 +319,7 @@
     const out: Record<KanbanCol, Goal[]> = {
       active: [], paused: [], completed: [], archived: []
     };
-    for (const g of filtered) {
+    for (const g of filterCtl.filtered) {
       const s = (g.status ?? 'active') as KanbanCol;
       if (out[s]) out[s].push(g);
     }
@@ -807,7 +779,7 @@
     checkinHidden = new Set([...checkinHidden, e.id]);
   }
   // Bare-rollup view for the AI checkin panel — drops the project
-  // field because the panel only reads open/done counts.
+  // field because the panel only reads open/done filterCtl.counts.
   function checkinRollupFor(g: Goal): { open: number; done: number } {
     const r = rollupFor(g);
     return { open: r.open, done: r.done };
@@ -994,7 +966,7 @@
        primary "+ New goal" button. Replaces the prior PageHeader
        strip + view-mode toolbar. -->
   <GoalsPageHeader
-    view={viewMode}
+    view={filterCtl.viewMode}
     totalCount={goals.length}
     filteredCount={visibleGoals.length}
     checkinOpen={checkinOpen}
@@ -1002,7 +974,7 @@
     auditOpen={auditOpen}
     auditBusy={auditBusy}
     moreOpen={moreOpen}
-    onSelectView={(v) => (viewMode = v)}
+    onSelectView={(v) => (filterCtl.viewMode = v)}
     onToggleMore={onToggleMore}
     onToggleCheckin={onToggleCheckin}
     onToggleAudit={onToggleAudit}
@@ -1012,7 +984,7 @@
   <!-- Container widens in kanban mode so the four columns have room
        to breathe. Cards / list stay at the original 4xl reading width
        so long titles remain comfortable. -->
-  <div class="p-4 sm:p-6 lg:p-8 mx-auto {viewMode === 'kanban' ? 'max-w-7xl' : 'max-w-4xl'}">
+  <div class="p-4 sm:p-6 lg:p-8 mx-auto {filterCtl.viewMode === 'kanban' ? 'max-w-7xl' : 'max-w-4xl'}">
     <VisionContextStrip />
 
     <!-- Weekly check-in + Alignment audit panels — toggled from the
@@ -1111,9 +1083,9 @@
          success, archived=dim). -->
     <div class="mb-3">
       <GoalsStatusChips
-        status={statusFilter}
-        counts={counts}
-        onSet={(s) => (statusFilter = s)}
+        status={filterCtl.statusFilter}
+        counts={filterCtl.counts}
+        onSet={(s) => (filterCtl.statusFilter = s)}
       />
     </div>
 
@@ -1143,35 +1115,35 @@
          goals set sees just the search bar. -->
     <div class="mb-4 space-y-2">
       <input
-        bind:value={q}
+        bind:value={filterCtl.q}
         placeholder="search title, description, notes…"
         class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
       />
       {#if categories.length > 0 || tags.length > 0 || ventures.length > 0}
         <div class="flex flex-wrap items-center gap-1.5 text-xs">
-          {#if categoryFilter || tagFilter || ventureFilter}
+          {#if filterCtl.categoryFilter || filterCtl.tagFilter || filterCtl.ventureFilter}
             <button
-              onclick={() => { categoryFilter = ''; tagFilter = ''; ventureFilter = ''; }}
+              onclick={() => { filterCtl.categoryFilter = ''; filterCtl.tagFilter = ''; filterCtl.ventureFilter = ''; }}
               class="px-2 py-0.5 bg-surface1 text-dim rounded hover:text-text"
             >clear filters</button>
           {/if}
           {#each ventures as v}
             <button
-              onclick={() => (ventureFilter = ventureFilter === v ? '' : v)}
-              class="px-2 py-0.5 rounded {ventureFilter === v ? 'bg-secondary text-on-primary' : 'bg-surface0 text-secondary hover:bg-surface1'}"
+              onclick={() => (filterCtl.ventureFilter = filterCtl.ventureFilter === v ? '' : v)}
+              class="px-2 py-0.5 rounded {filterCtl.ventureFilter === v ? 'bg-secondary text-on-primary' : 'bg-surface0 text-secondary hover:bg-surface1'}"
               title="filter to this venture"
             >🏢 {v}</button>
           {/each}
           {#each categories as c}
             <button
-              onclick={() => (categoryFilter = categoryFilter === c ? '' : c)}
-              class="px-2 py-0.5 rounded {categoryFilter === c ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+              onclick={() => (filterCtl.categoryFilter = filterCtl.categoryFilter === c ? '' : c)}
+              class="px-2 py-0.5 rounded {filterCtl.categoryFilter === c ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
             >{c}</button>
           {/each}
           {#each tags as t}
             <button
-              onclick={() => (tagFilter = tagFilter === t ? '' : t)}
-              class="px-2 py-0.5 rounded {tagFilter === t ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+              onclick={() => (filterCtl.tagFilter = filterCtl.tagFilter === t ? '' : t)}
+              class="px-2 py-0.5 rounded {filterCtl.tagFilter === t ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
             >#{t}</button>
           {/each}
         </div>
@@ -1257,11 +1229,11 @@
           {#snippet action()}
             <button
               onclick={() => {
-                statusFilter = 'all';
-                categoryFilter = '';
-                tagFilter = '';
-                ventureFilter = '';
-                q = '';
+                filterCtl.statusFilter = 'all';
+                filterCtl.categoryFilter = '';
+                filterCtl.tagFilter = '';
+                filterCtl.ventureFilter = '';
+                filterCtl.q = '';
                 stalledFilterOn = false;
               }}
               class="px-3 py-1.5 bg-surface1 text-text rounded text-sm hover:bg-surface2"
@@ -1269,7 +1241,7 @@
           {/snippet}
         </EmptyState>
       {/if}
-    {:else if viewMode === 'cards'}
+    {:else if filterCtl.viewMode === 'cards'}
       <div class="space-y-4">
         {#each visibleGoals as g (g.id)}
           {@const p = progress(g)}
@@ -1354,7 +1326,7 @@
           </article>
         {/each}
       </div>
-    {:else if viewMode === 'list'}
+    {:else if filterCtl.viewMode === 'list'}
       <!-- Compact list — denser layout for users with many goals.
            Each row: title · status pill · countdown chip · progress
            bar inline. Click anywhere on the row opens the detail
@@ -1473,12 +1445,12 @@
   <GoalDashboardPanel goal={selected} onClose={closeDashboard} />
 {/if}
 
-<!-- Goal Agent — operates on the filtered list (whatever the
+<!-- Goal Agent — operates on the filterCtl.filtered list (whatever the
      current status / search / venture / category scope yields).
      parent's load() reconciles every goal page surface. -->
 <GoalAgent
   open={agentOpen}
-  goals={filtered}
+  goals={filterCtl.filtered}
   todayISO={todayISO()}
   knownVentures={ventures}
   onClose={() => (agentOpen = false)}
