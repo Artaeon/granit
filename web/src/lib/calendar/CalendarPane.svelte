@@ -206,11 +206,11 @@
 
   // load + loadHabits moved into dataCtl.
 
-  onMount(load);
-  onMount(loadSources);
-  onMount(loadHabits);
-  onMount(loadAllProjects);
-  onMount(loadNativeEvents);
+  onMount(() => dataCtl.load());
+  onMount(() => dataCtl.loadSources());
+  onMount(() => dataCtl.loadHabits());
+  onMount(() => dataCtl.loadAllProjects());
+  onMount(() => dataCtl.loadNativeEvents());
   onMount(() =>
     onWsEvent((ev) => {
       if (
@@ -1192,7 +1192,7 @@
              via flex-1. -->
         <div class="h-full flex flex-col md:flex-row gap-2 md:gap-3 min-h-0">
           <aside class="md:w-72 md:flex-shrink-0 md:h-auto flex-shrink-0 overflow-hidden md:overflow-visible" style="height: clamp(220px, 44dvh, 320px);">
-            <TaskBacklog onRefresh={load} />
+            <TaskBacklog onRefresh={() => dataCtl.load()} />
           </aside>
           <div class="flex-1 min-w-0 min-h-0">
             <HourGrid
@@ -1360,21 +1360,21 @@
   </div>
 {/if}
 
-<EventDetail bind:open={detailOpen} event={selected} onChanged={load} />
+<EventDetail bind:open={detailOpen} event={selected} onChanged={() => dataCtl.load()} />
 <QuickCreateScheduled
   bind:open={createOpen}
   date={createDate}
   hour={createHour}
   minute={createMinute}
   defaultNotePath={`Jots/${fmtDateISO(createDate)}.md`}
-  onCreated={load}
+  onCreated={() => dataCtl.load()}
 />
 <CreateEvent
   bind:open={createEventOpen}
   date={createEventDate}
   existingEvents={filterCtl.events}
   defaultProjectId={filterCtl.projectFilter}
-  onCreated={load}
+  onCreated={() => dataCtl.load()}
 />
 <UnifiedCreate
   bind:open={unifiedOpen}
@@ -1382,7 +1382,7 @@
   end={unifiedEnd}
   defaultKind={unifiedKind}
   defaultNotePath={`Jots/${fmtDateISO(unifiedStart)}.md`}
-  onCreated={load}
+  onCreated={() => dataCtl.load()}
 />
 <FindTime bind:open={findTimeOpen} events={filterCtl.events} onPick={onFindTimePick} />
 

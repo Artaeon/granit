@@ -1360,7 +1360,7 @@
 <GoalDetail
   bind:open={detailOpen}
   goal={selected}
-  onUpdated={load}
+  onUpdated={() => dataCtl.load()}
   onDeleted={deleted}
   onOpenDashboard={openDashboard}
 />
@@ -1384,5 +1384,5 @@
   todayISO={todayISO()}
   knownVentures={ventures}
   onClose={() => (agentOpen = false)}
-  onChanged={load}
+  onChanged={() => dataCtl.load()}
 />
