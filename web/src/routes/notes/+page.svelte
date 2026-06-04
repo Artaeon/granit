@@ -4,7 +4,6 @@
   import { auth } from '$lib/stores/auth';
   import { api, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
-  import { createCoalescedReload } from '$lib/util/coalesce';
   import { relativeTime } from '$lib/util/relativeTime';
   import { toast } from '$lib/components/toast';
   import NotesTree from '$lib/notes/NotesTree.svelte';
@@ -13,6 +12,7 @@
   import Skeleton from '$lib/components/Skeleton.svelte';
   import { rafThrottle } from '$lib/util/streamThrottle';
   import { createNotesListViewState } from '$lib/notes/notesListViewState.svelte';
+  import { createNotesListData } from '$lib/notes/notesListData.svelte';
 
   // Notes hub. View modes covering the full surface area:
   //   stream      — default. Reverse-chrono buckets (Today / Yesterday /
@@ -32,21 +32,21 @@
   //   search      — full-text via the search index
   //
   // View / sort / filter / overflow / collection state lives in
-  // notesListViewState — the page reaches it through viewCtl.
+  // notesListViewState — the page reaches it through viewCtl. Loaded
+  // notes, the debounced search, every view-shape derivation, and the
+  // row-level mutations live in notesListData (dataCtl) and surface
+  // the free-text query the viewCtl's collections need to read.
   const viewCtl = createNotesListViewState({
-    getQ: () => q,
-    setQ: (v) => { q = v; }
+    getQ: () => dataCtl.q,
+    setQ: (v) => { dataCtl.q = v; }
   });
-
-  let notes = $state<Note[]>([]);
-  let pinned = $state<Set<string>>(new Set());
-  let loading = $state(false);
-
-  // Search state — debounced via $effect that wakes when q changes.
-  let q = $state('');
-  let searchResults = $state<Note[]>([]);
-  let searching = $state(false);
-  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  const dataCtl = createNotesListData({
+    isAuthed: () => !!$auth,
+    getView: () => viewCtl.view,
+    getFolderFilter: () => viewCtl.folderFilter,
+    getTagFilter: () => viewCtl.tagFilter,
+    getSortKey: () => viewCtl.sortKey
+  });
 
   // Quick-create / quick-capture dialog state.
   //
@@ -76,35 +76,10 @@
   let createFolder = $state('');
   let creating = $state(false);
 
-  async function loadAll() {
-    if (!$auth) return;
-    loading = true;
-    try {
-      const [list, p] = await Promise.all([
-        api.listNotes({ limit: 5000 }),
-        api.listPinned().catch(() => ({ pinned: [] }))
-      ]);
-      notes = list.notes;
-      pinned = new Set(p.pinned.map((x) => x.path));
-    } finally {
-      loading = false;
-    }
-  }
-
-  // Coalesced reload — the editor's autosave can fire `note.changed`
-  // every couple of seconds while a user types. A naive loadAll() per
-  // event refetches up to 5000 notes + listPinned and rebuilds every
-  // $derived view (recent / allSorted / pinnedList / activeList) on
-  // every tick, freezing the page on mid-sized vaults. One trailing-
-  // edge reload per window suffices: the user doesn't need sub-second
-  // freshness on a list panel.
-  // See $lib/util/coalesce for the canonical implementation.
-  const reload = createCoalescedReload(() => loadAll(), 600);
-
   onMount(() => {
-    loadAll();
+    dataCtl.loadAll();
     const unsub = onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') reload.trigger();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') dataCtl.reload.trigger();
     });
     // Mobile browsers (and any backgrounded tab) suspend the WS, so
     // notes created/edited on another device while we were away never
@@ -113,7 +88,7 @@
     // call loadAll directly (bypassing the coalesce window) so the
     // user sees the fresh list as soon as the tab returns.
     const onVisible = () => {
-      if (document.visibilityState === 'visible') loadAll();
+      if (document.visibilityState === 'visible') dataCtl.loadAll();
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
@@ -171,332 +146,10 @@
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
       window.removeEventListener('keydown', onKey);
-      reload.cancel();
+      dataCtl.reload.cancel();
       captureAbort?.abort();
     };
   });
-
-  // Debounced search — fires 250ms after the user stops typing. We
-  // re-fetch instead of filtering locally because /api/v1/search uses
-  // the body-aware index, not just titles.
-  $effect(() => {
-    const query = q.trim();
-    if (searchTimer) clearTimeout(searchTimer);
-    if (!query) { searchResults = []; searching = false; return; }
-    searching = true;
-    searchTimer = setTimeout(async () => {
-      try {
-        const r = await api.search(query, 50);
-        // Map hits back to notes by path so we can render uniformly.
-        const byPath = new Map(notes.map((n) => [n.path, n]));
-        searchResults = r.results
-          .map((h) => byPath.get(h.path))
-          .filter((n): n is Note => !!n);
-      } catch {
-        searchResults = [];
-      } finally {
-        searching = false;
-      }
-    }, 250);
-  });
-
-  // ---- derived lists per view ----
-  //
-  // Performance note: each heavy view (alpha / tags / folders / all)
-  // walks all 5000+ notes and either sorts or buckets them. If we
-  // computed every one of these unconditionally, a single WS-driven
-  // loadAll() would re-run all five derivations synchronously — felt
-  // like a UI freeze when typing in another tab. We now gate each
-  // heavy derivation on `view === ...` so only the visible one
-  // re-runs when notes change. Tab counts use cheap O(1) approximations
-  // (notes.length / pinnedCount) instead of consuming the heavy
-  // derivations — counts only need to be roughly right for the UI cue.
-
-  // O(notes) but a single pass with no allocation — much cheaper
-  // than the full filter+derived list when we only need the count
-  // for the tab strip. The Set lookup is O(1).
-  let pinnedCount = $derived.by(() => {
-    let c = 0;
-    for (const n of notes) if (pinned.has(n.path)) c++;
-    return c;
-  });
-  let pinnedList = $derived.by(() => {
-    if (viewCtl.view !== 'pinned') return [];
-    return notes.filter((n) => pinned.has(n.path));
-  });
-
-  let recent = $derived.by(() => {
-    if (viewCtl.view !== 'recent') return [];
-    return [...notes]
-      .sort((a, b) => (a.modTime > b.modTime ? -1 : 1))
-      .slice(0, 30);
-  });
-
-  // Helper — apply the folder card filter to a note list. '__root__'
-  // matches notes with no slash in their path; any other value is a
-  // top-level folder prefix.
-  function passesFolderFilter(n: Note): boolean {
-    if (!viewCtl.folderFilter) return true;
-    if (viewCtl.folderFilter === '__root__') return n.path.indexOf('/') === -1;
-    return n.path.startsWith(viewCtl.folderFilter + '/');
-  }
-  function passesTagFilter(n: Note): boolean {
-    if (!viewCtl.tagFilter) return true;
-    return !!n.tags && n.tags.indexOf(viewCtl.tagFilter) !== -1;
-  }
-
-  let allSorted = $derived.by(() => {
-    if (viewCtl.view !== 'all') return [];
-    const arr = notes.filter((n) => passesFolderFilter(n) && passesTagFilter(n));
-    arr.sort((a, b) => {
-      switch (viewCtl.sortKey) {
-        case 'modified': return a.modTime > b.modTime ? -1 : 1;
-        case 'created': {
-          const ac = (a.frontmatter?.created as string) || a.modTime;
-          const bc = (b.frontmatter?.created as string) || b.modTime;
-          return ac > bc ? -1 : 1;
-        }
-        case 'name': return a.title.localeCompare(b.title);
-        case 'size': return (b.size ?? 0) - (a.size ?? 0);
-      }
-    });
-    return arr;
-  });
-
-  // Stream view — buckets by recency window. "Today / Yesterday / This
-  // week / Earlier this month / Older". Each bucket is reverse-chrono.
-  // Cutoffs are computed once per derivation (cheap) — we don't
-  // memoize against a clock, so the buckets are correct as of the
-  // last render, which is good enough for a list view.
-  interface StreamSection { id: string; label: string; notes: Note[] }
-  let streamSections = $derived.by<StreamSection[]>(() => {
-    if (viewCtl.view !== 'stream') return [];
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfYesterday = new Date(startOfToday.getTime() - 86_400_000);
-    // "This week" = the rest of the current ISO week back to Monday,
-    // not counting today/yesterday (which have their own buckets).
-    // We treat Monday as the week boundary. dow 0=Sun, 1=Mon … 6=Sat.
-    const dow = startOfToday.getDay();
-    const daysSinceMonday = (dow + 6) % 7; // Mon→0, Sun→6
-    const startOfWeek = new Date(startOfToday.getTime() - daysSinceMonday * 86_400_000);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const today: Note[] = [];
-    const yesterday: Note[] = [];
-    const week: Note[] = [];
-    const month: Note[] = [];
-    const older: Note[] = [];
-
-    for (const n of notes) {
-      const t = Date.parse(n.modTime);
-      if (Number.isNaN(t)) { older.push(n); continue; }
-      if (t >= startOfToday.getTime()) today.push(n);
-      else if (t >= startOfYesterday.getTime()) yesterday.push(n);
-      else if (t >= startOfWeek.getTime()) week.push(n);
-      else if (t >= startOfMonth.getTime()) month.push(n);
-      else older.push(n);
-    }
-    const cmp = (a: Note, b: Note) => (a.modTime > b.modTime ? -1 : 1);
-    today.sort(cmp); yesterday.sort(cmp); week.sort(cmp); month.sort(cmp); older.sort(cmp);
-    const out: StreamSection[] = [];
-    if (today.length) out.push({ id: 'today', label: 'Today', notes: today });
-    if (yesterday.length) out.push({ id: 'yesterday', label: 'Yesterday', notes: yesterday });
-    if (week.length) out.push({ id: 'week', label: 'This week', notes: week });
-    if (month.length) out.push({ id: 'month', label: 'Earlier this month', notes: month });
-    if (older.length) out.push({ id: 'older', label: 'Older', notes: older });
-    return out;
-  });
-
-  // Alphabetical view — A–Z with letter dividers. Notes whose title
-  // starts with a non-letter (numbers, emoji, punctuation) bucket into
-  // a single "#" section so the alphabet stays clean. Useful when the
-  // user remembers a title but not its folder, and "all → sort by
-  // name" doesn't visually break the wall of titles into something
-  // scan-friendly.
-  interface AlphaSection { letter: string; notes: Note[] }
-  let alphaSections = $derived.by<AlphaSection[]>(() => {
-    if (viewCtl.view !== 'alpha') return [];
-    const buckets = new Map<string, Note[]>();
-    for (const n of notes) {
-      const first = (n.title || n.path).trim().charAt(0).toUpperCase();
-      const letter = /[A-Z]/.test(first) ? first : '#';
-      const bucket = buckets.get(letter);
-      if (bucket) bucket.push(n);
-      else buckets.set(letter, [n]);
-    }
-    const out: AlphaSection[] = [];
-    for (const [letter, list] of buckets) {
-      list.sort((a, b) => a.title.localeCompare(b.title));
-      out.push({ letter, notes: list });
-    }
-    out.sort((a, b) => {
-      // '#' floats to the end; letters sort A→Z.
-      if (a.letter === '#') return 1;
-      if (b.letter === '#') return -1;
-      return a.letter.localeCompare(b.letter);
-    });
-    return out;
-  });
-
-  // Folder-card grid — top-level folders rendered as tappable cards
-  // with note counts and the most-recent note title underneath. Acts
-  // as a high-level navigation overview when the user wants to step
-  // into a section without scrolling the full tree. Clicking a card
-  // jumps to the tree view with that folder pre-expanded (via a
-  // hash fragment we read on mount). Vault-root notes get their own
-  // card so they aren't invisible.
-  interface FolderCard { name: string; count: number; recentTitle: string; recentModTime: string; isRoot: boolean }
-  let folderCards = $derived.by<FolderCard[]>(() => {
-    if (viewCtl.view !== 'folders') return [];
-    const buckets = new Map<string, { notes: Note[]; isRoot: boolean }>();
-    for (const n of notes) {
-      const slash = n.path.indexOf('/');
-      const top = slash === -1 ? '' : n.path.slice(0, slash);
-      const key = top || '__root__';
-      const isRoot = top === '';
-      const bucket = buckets.get(key);
-      if (bucket) bucket.notes.push(n);
-      else buckets.set(key, { notes: [n], isRoot });
-    }
-    const out: FolderCard[] = [];
-    for (const [key, b] of buckets) {
-      b.notes.sort((a, b) => (a.modTime > b.modTime ? -1 : 1));
-      const top = b.notes[0];
-      out.push({
-        name: b.isRoot ? '/' : key,
-        count: b.notes.length,
-        recentTitle: top?.title ?? '',
-        recentModTime: top?.modTime ?? '',
-        isRoot: b.isRoot
-      });
-    }
-    out.sort((a, b) => {
-      // Root last, then by count desc, then alphabetical.
-      if (a.isRoot !== b.isRoot) return a.isRoot ? 1 : -1;
-      const dc = b.count - a.count;
-      return dc !== 0 ? dc : a.name.localeCompare(b.name);
-    });
-    return out;
-  });
-
-  // Cheap O(n) counts for the tab strip — single pass, no allocation,
-  // no sorting. These avoid forcing the heavy folderCards / tagSections
-  // / alphaSections derivations to run when the user isn't viewing
-  // them. The only state we actually need for the tab badge is the
-  // unique-bucket count, which we get without materializing buckets.
-  let folderCount = $derived.by(() => {
-    const seen = new Set<string>();
-    for (const n of notes) {
-      const slash = n.path.indexOf('/');
-      seen.add(slash === -1 ? '__root__' : n.path.slice(0, slash));
-    }
-    return seen.size;
-  });
-  let tagCount = $derived.by(() => {
-    const seen = new Set<string>();
-    let hasUntagged = false;
-    for (const n of notes) {
-      if (n.tags && n.tags.length > 0) seen.add(n.tags[0]);
-      else hasUntagged = true;
-    }
-    return seen.size + (hasUntagged ? 1 : 0);
-  });
-
-  // Top tags (used to hint the AI; also a handy cheap stat). Counts
-  // every tag (not just primary) so synonyms surface. Capped at 30
-  // because the AI prompt is fed this list — more than that and we
-  // burn context window for diminishing return.
-  let topTags = $derived.by<string[]>(() => {
-    const counts = new Map<string, number>();
-    for (const n of notes) {
-      if (!n.tags) continue;
-      for (const t of n.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 30)
-      .map(([t]) => t);
-  });
-
-  // Tag-grouped view — bucket each note under its primary tag (the
-  // first entry in `note.tags`). Notes without tags collect under a
-  // single "untagged" bucket that sorts last so the meaningful tags
-  // surface first. The user typically curates tags as topics; this
-  // view answers "show me everything tagged #idea" without typing a
-  // search. Buckets sort by note count desc, then alphabetically — a
-  // big tag jumps to the top, ties resolve predictably.
-  interface TagSection { tag: string; notes: Note[]; untagged: boolean }
-  let tagSections = $derived.by<TagSection[]>(() => {
-    if (viewCtl.view !== 'tags') return [];
-    const buckets = new Map<string, Note[]>();
-    let untagged: Note[] = [];
-    for (const n of notes) {
-      const primary = n.tags && n.tags.length > 0 ? n.tags[0] : null;
-      if (!primary) {
-        untagged.push(n);
-        continue;
-      }
-      const bucket = buckets.get(primary);
-      if (bucket) bucket.push(n);
-      else buckets.set(primary, [n]);
-    }
-    const out: TagSection[] = [];
-    for (const [tag, list] of buckets) {
-      list.sort((a, b) => (a.modTime > b.modTime ? -1 : 1));
-      out.push({ tag, notes: list, untagged: false });
-    }
-    out.sort((a, b) => {
-      const dc = b.notes.length - a.notes.length;
-      return dc !== 0 ? dc : a.tag.localeCompare(b.tag);
-    });
-    if (untagged.length > 0) {
-      untagged.sort((a, b) => (a.modTime > b.modTime ? -1 : 1));
-      out.push({ tag: 'untagged', notes: untagged, untagged: true });
-    }
-    return out;
-  });
-
-  // ---- actions ----
-
-  function open(n: Note) {
-    goto(`/notes/${encodeURIComponent(n.path)}`);
-  }
-
-  async function togglePin(n: Note) {
-    try {
-      const want = !pinned.has(n.path);
-      const r = await api.setPinned(n.path, want);
-      pinned = new Set(r.pinned.map((p) => p.path));
-    } catch (e) {
-      toast.error('pin failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-
-  async function del(n: Note) {
-    if (!confirm(`Delete "${n.title}"? This cannot be undone.`)) return;
-    try {
-      await api.deleteNote(n.path);
-      notes = notes.filter((x) => x.path !== n.path);
-      pinned.delete(n.path);
-      pinned = new Set(pinned);
-      toast.success('deleted');
-    } catch (e) {
-      toast.error('delete failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-
-  async function rename(n: Note) {
-    const next = prompt('New path (relative to vault):', n.path);
-    if (!next || next.trim() === n.path) return;
-    try {
-      await api.renameNote(n.path, next.trim());
-      toast.success('renamed');
-      await loadAll();
-    } catch (e) {
-      toast.error('rename failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
 
   // ---- quick-capture (AI) ----
 
@@ -539,14 +192,14 @@
   // shipping the entire vault in the prompt — the prompt is bounded
   // even on huge vaults.
   function sampleTitles(max: number): string[] {
-    if (notes.length <= max) return notes.map((n) => n.title);
+    if (dataCtl.notes.length <= max) return dataCtl.notes.map((n) => n.title);
     // Reservoir-style — cheap, no shuffle of the whole array.
     const out: string[] = [];
-    for (let i = 0; i < notes.length; i++) {
-      if (out.length < max) out.push(notes[i].title);
+    for (let i = 0; i < dataCtl.notes.length; i++) {
+      if (out.length < max) out.push(dataCtl.notes[i].title);
       else {
         const j = Math.floor(Math.random() * (i + 1));
-        if (j < max) out[j] = notes[i].title;
+        if (j < max) out[j] = dataCtl.notes[i].title;
       }
     }
     return out;
@@ -596,7 +249,7 @@
     // spamming reactive writes.
     const throttle = rafThrottle((acc) => { captureRaw = acc; });
 
-    const tagsHint = topTags.length > 0 ? topTags.join(', ') : '(none yet)';
+    const tagsHint = dataCtl.topTags.length > 0 ? dataCtl.topTags.join(', ') : '(none yet)';
     const titlesHint = sampleTitles(40).join('\n');
     const system =
       'You read a freeform note capture from the user and produce a STRICT JSON ' +
@@ -633,7 +286,7 @@
             stageTags = parsed.tags;
             stageFolder = parsed.folder || 'Inbox';
             stageWikilinkCandidates = parsed.wikilinkCandidates.filter(
-              (t) => notes.some((n) => n.title === t)
+              (t) => dataCtl.notes.some((n) => n.title === t)
             );
             stageWikilinksChosen = new Set();
             captureMode = 'staging';
@@ -765,14 +418,6 @@
     return `${Math.round(bytes / 1024 / 102.4) / 10} MB`;
   }
 
-  // What list the right pane should render based on the active view.
-  let activeList = $derived.by(() => {
-    if (viewCtl.view === 'search') return searchResults;
-    if (viewCtl.view === 'recent') return recent;
-    if (viewCtl.view === 'pinned') return pinnedList;
-    if (viewCtl.view === 'all') return allSorted;
-    return [];
-  });
 </script>
 
 <div class="h-full flex flex-col">
@@ -783,10 +428,10 @@
        space vs the previous three-row layout. -->
   <NotesPageHeader
     view={viewCtl.view}
-    bind:q
-    notesCount={notes.length}
-    pinnedCount={pinnedCount}
-    searchResultsCount={searchResults.length}
+    bind:q={dataCtl.q}
+    notesCount={dataCtl.notes.length}
+    pinnedCount={dataCtl.pinnedCount}
+    searchResultsCount={dataCtl.searchResults.length}
     moreViewsOpen={viewCtl.moreViewsOpen}
     activeOverflowLabel={viewCtl.activeOverflowLabel}
     onSelectView={viewCtl.selectView}
@@ -795,7 +440,7 @@
     onMoreViewsKey={viewCtl.onMoreViewsKey}
     onQuickCapture={openCapture}
     onSearchInput={(v) => { if (v.trim()) viewCtl.view = 'search'; }}
-    onSearchFocus={() => { if (q.trim()) viewCtl.view = 'search'; }}
+    onSearchFocus={() => { if (dataCtl.q.trim()) viewCtl.view = 'search'; }}
   />
 
   <!-- Quick-filter row. Renders only on 'all' (sort segmented +
@@ -806,7 +451,7 @@
     folderFilter={viewCtl.folderFilter}
     tagFilter={viewCtl.tagFilter}
     sortKey={viewCtl.sortKey}
-    searchActive={!!q.trim()}
+    searchActive={!!dataCtl.q.trim()}
     onClearFolder={() => (viewCtl.folderFilter = '')}
     onClearTag={() => (viewCtl.tagFilter = '')}
     onPickSort={(s) => (viewCtl.sortKey = s)}
@@ -816,20 +461,20 @@
   <div class="flex-1 min-h-0 overflow-hidden">
     {#if viewCtl.view === 'tree'}
       <NotesTree />
-    {:else if loading && notes.length === 0}
+    {:else if dataCtl.loading && dataCtl.notes.length === 0}
       <div class="p-3 space-y-2">
         {#each Array(8) as _}
           <Skeleton class="h-12 w-full" />
         {/each}
       </div>
-    {:else if viewCtl.view === 'search' && q.trim() && !searching && searchResults.length === 0}
-      <div class="p-8 text-center text-sm text-dim">No notes match <code class="text-text">{q}</code></div>
+    {:else if viewCtl.view === 'search' && dataCtl.q.trim() && !dataCtl.searching && dataCtl.searchResults.length === 0}
+      <div class="p-8 text-center text-sm text-dim">No notes match <code class="text-text">{dataCtl.q}</code></div>
     {:else if viewCtl.view === 'stream'}
-      {#if notes.length === 0}
+      {#if dataCtl.notes.length === 0}
         <div class="p-8 text-center text-sm text-dim">No notes yet — hit <kbd class="px-1 rounded bg-surface1 text-text">⌘N</kbd> to capture your first thought.</div>
       {:else}
         <div class="overflow-y-auto h-full">
-          {#each streamSections as sec (sec.id)}
+          {#each dataCtl.streamSections as sec (sec.id)}
             <div class="sticky top-0 z-10 bg-mantle px-3 sm:px-4 py-1 text-[11px] uppercase tracking-wider text-dim border-b border-surface1">
               {sec.label} <span class="opacity-60 ml-1">{sec.notes.length}</span>
             </div>
@@ -842,11 +487,11 @@
         </div>
       {/if}
     {:else if viewCtl.view === 'alpha'}
-      {#if notes.length === 0}
+      {#if dataCtl.notes.length === 0}
         <div class="p-8 text-center text-sm text-dim">No notes in your vault.</div>
       {:else}
         <div class="overflow-y-auto h-full">
-          {#each alphaSections as sec (sec.letter)}
+          {#each dataCtl.alphaSections as sec (sec.letter)}
             <div class="sticky top-0 z-10 bg-mantle px-3 sm:px-4 py-1 text-[11px] uppercase tracking-wider text-dim border-b border-surface1">
               {sec.letter} <span class="opacity-60 ml-1">{sec.notes.length}</span>
             </div>
@@ -859,11 +504,11 @@
         </div>
       {/if}
     {:else if viewCtl.view === 'tags'}
-      {#if tagSections.length === 0}
+      {#if dataCtl.tagSections.length === 0}
         <div class="p-8 text-center text-sm text-dim">No tagged notes yet. Add a <code class="text-text">tags:</code> field in frontmatter or use <code class="text-text">#tag</code> in the body.</div>
       {:else}
         <div class="overflow-y-auto h-full">
-          {#each tagSections as sec (sec.tag)}
+          {#each dataCtl.tagSections as sec (sec.tag)}
             <div class="sticky top-0 z-10 bg-mantle px-3 sm:px-4 py-1.5 border-b border-surface1 flex items-center gap-2">
               {#if sec.untagged}
                 <span class="text-[11px] uppercase tracking-wider text-dim italic">untagged</span>
@@ -923,12 +568,12 @@
         {/if}
       </div>
     {:else if viewCtl.view === 'folders'}
-      {#if folderCards.length === 0}
+      {#if dataCtl.folderCards.length === 0}
         <div class="p-8 text-center text-sm text-dim">No folders yet — create a note with a path like <code class="text-text">Notes/Ideas/foo.md</code> to get started.</div>
       {:else}
         <div class="overflow-y-auto h-full p-3 sm:p-4">
           <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-            {#each folderCards as card (card.name)}
+            {#each dataCtl.folderCards as card (card.name)}
               <button
                 type="button"
                 onclick={() => { viewCtl.folderFilter = card.isRoot ? '__root__' : card.name; viewCtl.tagFilter = ''; viewCtl.view = 'all'; }}
@@ -950,7 +595,7 @@
           </div>
         </div>
       {/if}
-    {:else if activeList.length === 0}
+    {:else if dataCtl.activeList.length === 0}
       <div class="p-8 text-center text-sm text-dim">
         {#if viewCtl.view === 'pinned'}No pinned notes yet. Click the ★ icon on any note to pin it.
         {:else if viewCtl.view === 'recent'}No notes in your vault.
@@ -958,7 +603,7 @@
       </div>
     {:else}
       <ul class="overflow-y-auto h-full divide-y divide-surface1/50">
-        {#each activeList as n (n.path)}
+        {#each dataCtl.activeList as n (n.path)}
           {@render row(n)}
         {/each}
       </ul>
@@ -972,12 +617,12 @@
      user asked for; the legacy multi-line `row` snippet below is
      still used by alpha/tags/all/recent/pinned. -->
 {#snippet streamRow(n: Note)}
-  {@const isPinned = pinned.has(n.path)}
+  {@const isPinned = dataCtl.pinned.has(n.path)}
   <li class="group hover:bg-surface0 transition-colors">
     <div class="flex items-center gap-2 px-3 sm:px-4 py-1.5">
       <button
         type="button"
-        onclick={() => open(n)}
+        onclick={() => dataCtl.open(n)}
         class="flex-1 min-w-0 text-left flex items-center gap-2"
       >
         {#if isPinned}<span class="text-warning text-xs flex-shrink-0">★</span>{/if}
@@ -993,7 +638,7 @@
       </button>
       <div class="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
         <button
-          onclick={() => togglePin(n)}
+          onclick={() => dataCtl.togglePin(n)}
           aria-label={isPinned ? 'unpin' : 'pin'}
           class="w-7 h-7 flex items-center justify-center text-dim hover:text-warning rounded"
           title={isPinned ? 'Unpin' : 'Pin'}
@@ -1014,12 +659,12 @@
 {/snippet}
 
 {#snippet row(n: Note)}
-  {@const isPinned = pinned.has(n.path)}
+  {@const isPinned = dataCtl.pinned.has(n.path)}
   <li class="group hover:bg-surface0 transition-colors">
     <div class="flex items-center gap-3 px-3 sm:px-4 py-2.5">
       <button
         type="button"
-        onclick={() => open(n)}
+        onclick={() => dataCtl.open(n)}
         class="flex-1 min-w-0 text-left"
       >
         <div class="flex items-baseline gap-2 min-w-0">
@@ -1044,13 +689,13 @@
            (always visible) since :hover doesn't fire on touch. -->
       <div class="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
         <button
-          onclick={() => togglePin(n)}
+          onclick={() => dataCtl.togglePin(n)}
           aria-label={isPinned ? 'unpin' : 'pin'}
           class="w-8 h-8 flex items-center justify-center text-dim hover:text-warning rounded"
           title={isPinned ? 'Unpin' : 'Pin'}
         >★</button>
         <button
-          onclick={() => rename(n)}
+          onclick={() => dataCtl.rename(n)}
           aria-label="rename"
           class="w-8 h-8 flex items-center justify-center text-dim hover:text-secondary rounded"
           title="Rename or move"
