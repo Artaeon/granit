@@ -247,6 +247,18 @@
     <path d="M14.7 6.3a4 4 0 0 0 5.3 5.3l-9.3 9.3a2.5 2.5 0 0 1-3.5-3.5z"/>
     <path d="M14.7 6.3 18 3l3 3-3.3 3.3"/>
   </svg>
+{:else if name === 'workspace'}
+  <!-- Workspace — 2x2 tiled panes. Reads as "split layout / workspace
+       canvas" which mirrors what /workspace actually is: a recursive
+       split-tree of panes. Distinct from `hub` (concentric dots) and
+       `today` (filled half-circle) so the three "operating-picture"
+       icons don't blur together. -->
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={cls}>
+    <rect x="3" y="3" width="8" height="8" rx="1"/>
+    <rect x="13" y="3" width="8" height="8" rx="1"/>
+    <rect x="3" y="13" width="8" height="8" rx="1"/>
+    <rect x="13" y="13" width="8" height="8" rx="1"/>
+  </svg>
 {:else if name === 'roots'}
   <!-- Concentric rings with a central mark — the diagram itself.
        Reads as rootedness/centeredness rather than the goal-arrow

@@ -25,6 +25,12 @@ export type NavSection = {
 // home — sections start where organisation begins to help.
 export const today: NavItem = { href: '/', label: 'Today', icon: 'today' };
 
+// Workspace sits next to Today as the second always-visible tier-0
+// item. It's the granit "VSCode-for-life" surface — a named, tiled
+// pane layout the user composes themselves. Promoted out of the
+// section list so the user discovers it without scanning groups.
+export const workspace: NavItem = { href: '/workspace', label: 'Workspaces', icon: 'workspace' };
+
 // Tier-1 essentials — rendered above the sections with heavier visual
 // weight (bigger text, primary tint, more padding). The user's daily-
 // core workflow lives here; anything they touch every day deserves
@@ -128,6 +134,7 @@ export const settingsItem: NavItem = { href: '/settings', label: 'Settings', ico
 // invisible in the rail.
 export const nav: NavItem[] = [
   today,
+  workspace,
   ...essentials,
   ...sections.flatMap((s) => s.items),
   ...HIDDEN_NAV,

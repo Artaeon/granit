@@ -29,6 +29,7 @@
   import {
     sections,
     today,
+    workspace,
     essentials,
     nav,
     type NavItem as NavLink
@@ -325,6 +326,15 @@
          they're already top-tier, pinning would just duplicate. -->
     <NavItem
       item={today}
+      {isCompact}
+      showPinAction={false}
+      onNavigate={navigate}
+    />
+    <!-- Workspaces — granit's "VSCode-for-life" surface. Sits next to
+         Today as the second tier-0 always-visible item so the user
+         discovers it without scanning groups. -->
+    <NavItem
+      item={workspace}
       {isCompact}
       showPinAction={false}
       onNavigate={navigate}
