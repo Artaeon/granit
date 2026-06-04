@@ -11,8 +11,8 @@
   import NotesPageHeader from '$lib/notes/NotesPageHeader.svelte';
   import NotesQuickFilters from '$lib/notes/NotesQuickFilters.svelte';
   import Skeleton from '$lib/components/Skeleton.svelte';
-  import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { rafThrottle } from '$lib/util/streamThrottle';
+  import { createNotesListViewState } from '$lib/notes/notesListViewState.svelte';
 
   // Notes hub. View modes covering the full surface area:
   //   stream      — default. Reverse-chrono buckets (Today / Yesterday /
@@ -30,76 +30,13 @@
   //   collections — saved virtual folders (localStorage filter recipes)
   //   folders     — top-level folder cards
   //   search      — full-text via the search index
-  type View = 'stream' | 'recent' | 'tree' | 'pinned' | 'all' | 'alpha' | 'tags' | 'collections' | 'folders' | 'search';
-  const VIEW_KEY = 'granit.notes.view';
-  // Validate the persisted value before trusting it — an older build
-  // could have stored a string that's no longer a valid view.
-  const VALID_VIEWS: ReadonlySet<View> = new Set([
-    'stream', 'recent', 'tree', 'pinned', 'all', 'alpha', 'tags', 'collections', 'folders', 'search'
-  ]);
-  function loadInitialView(): View {
-    const stored = loadStoredString(VIEW_KEY, 'stream');
-    return VALID_VIEWS.has(stored as View) ? (stored as View) : 'stream';
-  }
-  let view = $state<View>(loadInitialView());
-  $effect(() => saveStoredString(VIEW_KEY, view));
-
-  // Slim-header overflow menu (mirrors /tasks). Only the 4 less-used
-  // views live in the dropdown — primary 5 sit in the segmented
-  // control. activeOverflowLabel surfaces the current overflow view
-  // back in the More button so the user has a breadcrumb without
-  // opening the menu.
-  const OVERFLOW_KEYS: ReadonlySet<View> = new Set(['alpha', 'tags', 'folders', 'collections']);
-  const OVERFLOW_LABELS: Record<string, string> = {
-    alpha: 'A–Z',
-    tags: 'Tags',
-    folders: 'Folders',
-    collections: 'Collections'
-  };
-  let moreViewsOpen = $state(false);
-  let activeOverflowLabel = $derived(OVERFLOW_KEYS.has(view) ? (OVERFLOW_LABELS[view] ?? '') : '');
-  function selectView(v: View) {
-    // Clicking the All tab directly clears any folder/tag filter —
-    // those are only set via Folders cards or a Collection; hitting
-    // the segmented "All" on its own should mean "show everything".
-    if (v === 'all' && view !== 'all') { folderFilter = ''; tagFilter = ''; }
-    view = v;
-  }
-  function pickOverflowView(v: View) {
-    view = v;
-    moreViewsOpen = false;
-  }
-  function onMoreViewsKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      moreViewsOpen = false;
-      e.stopPropagation();
-    }
-  }
-  // Click-outside dismiss for the overflow menu. Install only while
-  // the menu is open so the rest of the page doesn't pay for it.
-  $effect(() => {
-    if (!moreViewsOpen) return;
-    function onDocClick(e: MouseEvent) {
-      const target = e.target as HTMLElement | null;
-      if (target && target.closest('[data-more-views]')) return;
-      moreViewsOpen = false;
-    }
-    window.addEventListener('mousedown', onDocClick);
-    return () => window.removeEventListener('mousedown', onDocClick);
+  //
+  // View / sort / filter / overflow / collection state lives in
+  // notesListViewState — the page reaches it through viewCtl.
+  const viewCtl = createNotesListViewState({
+    getQ: () => q,
+    setQ: (v) => { q = v; }
   });
-
-  type SortKey = 'modified' | 'created' | 'name' | 'size';
-  let sortKey = $state<SortKey>('modified');
-
-  // Folder filter — set by clicking a card in the folders view. The
-  // page swaps to a flat list of just that folder's notes. '' means
-  // unfiltered; '__root__' isolates vault-root files; any other value
-  // is a folder prefix.
-  let folderFilter = $state('');
-
-  // Tag filter — set by a collection that pins a specific tag. Empty
-  // means unfiltered. Applied alongside the folder filter in 'all'.
-  let tagFilter = $state('');
 
   let notes = $state<Note[]>([]);
   let pinned = $state<Set<string>>(new Set());
@@ -110,80 +47,6 @@
   let searchResults = $state<Note[]>([]);
   let searching = $state(false);
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
-
-  // ---- Smart collections ---------------------------------------------------
-  // A collection is a saved filter recipe. We persist them in
-  // localStorage (no backend) under a single key. Activating a
-  // collection sets the folder/tag/sort/search filters and switches to
-  // 'all' (or 'search' if a free-text query is set) so the existing
-  // filter mechanics render the result list.
-  interface Collection {
-    id: string;
-    name: string;
-    query: string;
-    tag?: string;
-    folder?: string;
-    sort: SortKey;
-  }
-  const COLLECTIONS_KEY = 'granit.notes.collections';
-  function isValidSort(s: unknown): s is SortKey {
-    return s === 'modified' || s === 'created' || s === 'name' || s === 'size';
-  }
-  function validateCollections(raw: unknown): Collection[] {
-    if (!Array.isArray(raw)) return [];
-    const out: Collection[] = [];
-    for (const it of raw) {
-      if (!it || typeof it !== 'object') continue;
-      const r = it as Record<string, unknown>;
-      if (typeof r.id !== 'string' || typeof r.name !== 'string') continue;
-      out.push({
-        id: r.id,
-        name: r.name,
-        query: typeof r.query === 'string' ? r.query : '',
-        tag: typeof r.tag === 'string' && r.tag ? r.tag : undefined,
-        folder: typeof r.folder === 'string' && r.folder ? r.folder : undefined,
-        sort: isValidSort(r.sort) ? r.sort : 'modified'
-      });
-    }
-    return out;
-  }
-  let collections = $state<Collection[]>(loadStored<Collection[]>(COLLECTIONS_KEY, [], validateCollections));
-  $effect(() => saveStored(COLLECTIONS_KEY, collections));
-
-  function applyCollection(c: Collection) {
-    folderFilter = c.folder ?? '';
-    tagFilter = c.tag ?? '';
-    sortKey = c.sort;
-    if (c.query) {
-      q = c.query;
-      view = 'search';
-    } else {
-      q = '';
-      view = 'all';
-    }
-  }
-  function saveCurrentAsCollection() {
-    const name = prompt('Name for this collection:', q.trim() || 'New collection');
-    if (!name || !name.trim()) return;
-    const c: Collection = {
-      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `c-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: name.trim(),
-      query: q.trim(),
-      tag: tagFilter || undefined,
-      folder: folderFilter || undefined,
-      sort: sortKey
-    };
-    collections = [...collections, c];
-    toast.success('collection saved');
-  }
-  function deleteCollection(id: string) {
-    const c = collections.find((x) => x.id === id);
-    if (!c) return;
-    if (!confirm(`Delete collection "${c.name}"?`)) return;
-    collections = collections.filter((x) => x.id !== id);
-  }
 
   // Quick-create / quick-capture dialog state.
   //
@@ -358,12 +221,12 @@
     return c;
   });
   let pinnedList = $derived.by(() => {
-    if (view !== 'pinned') return [];
+    if (viewCtl.view !== 'pinned') return [];
     return notes.filter((n) => pinned.has(n.path));
   });
 
   let recent = $derived.by(() => {
-    if (view !== 'recent') return [];
+    if (viewCtl.view !== 'recent') return [];
     return [...notes]
       .sort((a, b) => (a.modTime > b.modTime ? -1 : 1))
       .slice(0, 30);
@@ -373,20 +236,20 @@
   // matches notes with no slash in their path; any other value is a
   // top-level folder prefix.
   function passesFolderFilter(n: Note): boolean {
-    if (!folderFilter) return true;
-    if (folderFilter === '__root__') return n.path.indexOf('/') === -1;
-    return n.path.startsWith(folderFilter + '/');
+    if (!viewCtl.folderFilter) return true;
+    if (viewCtl.folderFilter === '__root__') return n.path.indexOf('/') === -1;
+    return n.path.startsWith(viewCtl.folderFilter + '/');
   }
   function passesTagFilter(n: Note): boolean {
-    if (!tagFilter) return true;
-    return !!n.tags && n.tags.indexOf(tagFilter) !== -1;
+    if (!viewCtl.tagFilter) return true;
+    return !!n.tags && n.tags.indexOf(viewCtl.tagFilter) !== -1;
   }
 
   let allSorted = $derived.by(() => {
-    if (view !== 'all') return [];
+    if (viewCtl.view !== 'all') return [];
     const arr = notes.filter((n) => passesFolderFilter(n) && passesTagFilter(n));
     arr.sort((a, b) => {
-      switch (sortKey) {
+      switch (viewCtl.sortKey) {
         case 'modified': return a.modTime > b.modTime ? -1 : 1;
         case 'created': {
           const ac = (a.frontmatter?.created as string) || a.modTime;
@@ -407,7 +270,7 @@
   // last render, which is good enough for a list view.
   interface StreamSection { id: string; label: string; notes: Note[] }
   let streamSections = $derived.by<StreamSection[]>(() => {
-    if (view !== 'stream') return [];
+    if (viewCtl.view !== 'stream') return [];
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfYesterday = new Date(startOfToday.getTime() - 86_400_000);
@@ -453,7 +316,7 @@
   // scan-friendly.
   interface AlphaSection { letter: string; notes: Note[] }
   let alphaSections = $derived.by<AlphaSection[]>(() => {
-    if (view !== 'alpha') return [];
+    if (viewCtl.view !== 'alpha') return [];
     const buckets = new Map<string, Note[]>();
     for (const n of notes) {
       const first = (n.title || n.path).trim().charAt(0).toUpperCase();
@@ -485,7 +348,7 @@
   // card so they aren't invisible.
   interface FolderCard { name: string; count: number; recentTitle: string; recentModTime: string; isRoot: boolean }
   let folderCards = $derived.by<FolderCard[]>(() => {
-    if (view !== 'folders') return [];
+    if (viewCtl.view !== 'folders') return [];
     const buckets = new Map<string, { notes: Note[]; isRoot: boolean }>();
     for (const n of notes) {
       const slash = n.path.indexOf('/');
@@ -565,7 +428,7 @@
   // big tag jumps to the top, ties resolve predictably.
   interface TagSection { tag: string; notes: Note[]; untagged: boolean }
   let tagSections = $derived.by<TagSection[]>(() => {
-    if (view !== 'tags') return [];
+    if (viewCtl.view !== 'tags') return [];
     const buckets = new Map<string, Note[]>();
     let untagged: Note[] = [];
     for (const n of notes) {
@@ -904,10 +767,10 @@
 
   // What list the right pane should render based on the active view.
   let activeList = $derived.by(() => {
-    if (view === 'search') return searchResults;
-    if (view === 'recent') return recent;
-    if (view === 'pinned') return pinnedList;
-    if (view === 'all') return allSorted;
+    if (viewCtl.view === 'search') return searchResults;
+    if (viewCtl.view === 'recent') return recent;
+    if (viewCtl.view === 'pinned') return pinnedList;
+    if (viewCtl.view === 'all') return allSorted;
     return [];
   });
 </script>
@@ -919,39 +782,39 @@
        row below so the chrome stays mute. Saves ~60-70px of vertical
        space vs the previous three-row layout. -->
   <NotesPageHeader
-    {view}
+    view={viewCtl.view}
     bind:q
     notesCount={notes.length}
     pinnedCount={pinnedCount}
     searchResultsCount={searchResults.length}
-    moreViewsOpen={moreViewsOpen}
-    activeOverflowLabel={activeOverflowLabel}
-    onSelectView={selectView}
-    onToggleMoreViews={() => (moreViewsOpen = !moreViewsOpen)}
-    onPickOverflowView={pickOverflowView}
-    onMoreViewsKey={onMoreViewsKey}
+    moreViewsOpen={viewCtl.moreViewsOpen}
+    activeOverflowLabel={viewCtl.activeOverflowLabel}
+    onSelectView={viewCtl.selectView}
+    onToggleMoreViews={() => (viewCtl.moreViewsOpen = !viewCtl.moreViewsOpen)}
+    onPickOverflowView={viewCtl.pickOverflowView}
+    onMoreViewsKey={viewCtl.onMoreViewsKey}
     onQuickCapture={openCapture}
-    onSearchInput={(v) => { if (v.trim()) view = 'search'; }}
-    onSearchFocus={() => { if (q.trim()) view = 'search'; }}
+    onSearchInput={(v) => { if (v.trim()) viewCtl.view = 'search'; }}
+    onSearchFocus={() => { if (q.trim()) viewCtl.view = 'search'; }}
   />
 
   <!-- Quick-filter row. Renders only on 'all' (sort segmented +
        folder/tag clear pills) and 'search' with an active query
        (Save-as-collection). Self-hides on every other view. -->
   <NotesQuickFilters
-    {view}
-    {folderFilter}
-    {tagFilter}
-    {sortKey}
+    view={viewCtl.view}
+    folderFilter={viewCtl.folderFilter}
+    tagFilter={viewCtl.tagFilter}
+    sortKey={viewCtl.sortKey}
     searchActive={!!q.trim()}
-    onClearFolder={() => (folderFilter = '')}
-    onClearTag={() => (tagFilter = '')}
-    onPickSort={(s) => (sortKey = s)}
-    onSaveCollection={saveCurrentAsCollection}
+    onClearFolder={() => (viewCtl.folderFilter = '')}
+    onClearTag={() => (viewCtl.tagFilter = '')}
+    onPickSort={(s) => (viewCtl.sortKey = s)}
+    onSaveCollection={viewCtl.saveCurrentAsCollection}
   />
 
   <div class="flex-1 min-h-0 overflow-hidden">
-    {#if view === 'tree'}
+    {#if viewCtl.view === 'tree'}
       <NotesTree />
     {:else if loading && notes.length === 0}
       <div class="p-3 space-y-2">
@@ -959,9 +822,9 @@
           <Skeleton class="h-12 w-full" />
         {/each}
       </div>
-    {:else if view === 'search' && q.trim() && !searching && searchResults.length === 0}
+    {:else if viewCtl.view === 'search' && q.trim() && !searching && searchResults.length === 0}
       <div class="p-8 text-center text-sm text-dim">No notes match <code class="text-text">{q}</code></div>
-    {:else if view === 'stream'}
+    {:else if viewCtl.view === 'stream'}
       {#if notes.length === 0}
         <div class="p-8 text-center text-sm text-dim">No notes yet — hit <kbd class="px-1 rounded bg-surface1 text-text">⌘N</kbd> to capture your first thought.</div>
       {:else}
@@ -978,7 +841,7 @@
           {/each}
         </div>
       {/if}
-    {:else if view === 'alpha'}
+    {:else if viewCtl.view === 'alpha'}
       {#if notes.length === 0}
         <div class="p-8 text-center text-sm text-dim">No notes in your vault.</div>
       {:else}
@@ -995,7 +858,7 @@
           {/each}
         </div>
       {/if}
-    {:else if view === 'tags'}
+    {:else if viewCtl.view === 'tags'}
       {#if tagSections.length === 0}
         <div class="p-8 text-center text-sm text-dim">No tagged notes yet. Add a <code class="text-text">tags:</code> field in frontmatter or use <code class="text-text">#tag</code> in the body.</div>
       {:else}
@@ -1017,20 +880,20 @@
           {/each}
         </div>
       {/if}
-    {:else if view === 'collections'}
+    {:else if viewCtl.view === 'collections'}
       <div class="overflow-y-auto h-full p-3 sm:p-4 space-y-2">
-        {#if collections.length === 0}
+        {#if viewCtl.collections.length === 0}
           <div class="p-8 text-center text-sm text-dim">
-            No collections yet. Run a search and click <span class="text-text">Save as collection…</span> to pin it here.
+            No viewCtl.collections yet. Run a search and click <span class="text-text">Save as collection…</span> to pin it here.
           </div>
         {:else}
           <ul class="divide-y divide-surface1/50">
-            {#each collections as c (c.id)}
+            {#each viewCtl.collections as c (c.id)}
               <li class="group hover:bg-surface0 transition-colors">
                 <div class="flex items-center gap-3 px-3 sm:px-4 py-2.5">
                   <button
                     type="button"
-                    onclick={() => applyCollection(c)}
+                    onclick={() => viewCtl.applyCollection(c)}
                     class="flex-1 min-w-0 text-left"
                   >
                     <div class="flex items-baseline gap-2 min-w-0">
@@ -1044,7 +907,7 @@
                     </div>
                   </button>
                   <button
-                    onclick={() => deleteCollection(c.id)}
+                    onclick={() => viewCtl.deleteCollection(c.id)}
                     aria-label="delete collection"
                     class="w-8 h-8 flex items-center justify-center text-dim hover:text-error rounded opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                     title="Delete"
@@ -1059,7 +922,7 @@
           </ul>
         {/if}
       </div>
-    {:else if view === 'folders'}
+    {:else if viewCtl.view === 'folders'}
       {#if folderCards.length === 0}
         <div class="p-8 text-center text-sm text-dim">No folders yet — create a note with a path like <code class="text-text">Notes/Ideas/foo.md</code> to get started.</div>
       {:else}
@@ -1068,7 +931,7 @@
             {#each folderCards as card (card.name)}
               <button
                 type="button"
-                onclick={() => { folderFilter = card.isRoot ? '__root__' : card.name; tagFilter = ''; view = 'all'; }}
+                onclick={() => { viewCtl.folderFilter = card.isRoot ? '__root__' : card.name; viewCtl.tagFilter = ''; viewCtl.view = 'all'; }}
                 class="text-left p-3 bg-surface0 hover:bg-surface1 border border-surface1 rounded transition-colors min-h-[5rem]"
               >
                 <div class="flex items-baseline gap-2 mb-1">
@@ -1089,8 +952,8 @@
       {/if}
     {:else if activeList.length === 0}
       <div class="p-8 text-center text-sm text-dim">
-        {#if view === 'pinned'}No pinned notes yet. Click the ★ icon on any note to pin it.
-        {:else if view === 'recent'}No notes in your vault.
+        {#if viewCtl.view === 'pinned'}No pinned notes yet. Click the ★ icon on any note to pin it.
+        {:else if viewCtl.view === 'recent'}No notes in your vault.
         {:else}Empty.{/if}
       </div>
     {:else}
