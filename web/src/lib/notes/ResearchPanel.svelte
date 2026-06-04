@@ -59,7 +59,22 @@
   type Footnote = { id: string; line: number; defined: boolean; refOnly: boolean };
   type Source = { url: string; label: string; line: number };
 
+  // Cheap content gate before the three per-line regex sweeps. The
+  // panel is mounted unconditionally on every note (NoteInfoRail
+  // doesn't know whether the body has highlights / footnotes /
+  // URLs), so for every notebook page that doesn't use these
+  // features we'd pay three full-document iterations per debounce
+  // tick. A single includes() walk is O(N) but bails on the first
+  // match; for the common "none of these" case it's still O(N) but
+  // does ZERO downstream regex work.
+  let hasResearchContent = $derived(
+    debouncedBody.includes('==') ||
+    debouncedBody.includes('[^') ||
+    debouncedBody.includes('http')
+  );
+
   let highlights = $derived.by<Highlight[]>(() => {
+    if (!hasResearchContent) return [];
     const parsed = parseBody(debouncedBody);
     const out: Highlight[] = [];
     const re = /==([^=\n][^=]*?)==/g;
@@ -76,6 +91,7 @@
   });
 
   let footnotes = $derived.by<Footnote[]>(() => {
+    if (!hasResearchContent) return [];
     const parsed = parseBody(debouncedBody);
     const refs = new Map<string, number>(); // first-occurrence line
     const defs = new Set<string>();
@@ -113,6 +129,7 @@
   });
 
   let sources = $derived.by<Source[]>(() => {
+    if (!hasResearchContent) return [];
     const parsed = parseBody(debouncedBody);
     const out: Source[] = [];
     const seen = new Set<string>();
