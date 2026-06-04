@@ -26,6 +26,10 @@
     buildSnapshotPrompt,
     buildSubAuditPrompt
   } from '$lib/finance/aiPrompts';
+  import {
+    createFinanceViewState,
+    type FinanceTab
+  } from '$lib/finance/financeViewState.svelte';
 
   // /finance covers the four things that actually matter for tracking
   // a financial life: how much money I have (Accounts → Net worth),
@@ -34,18 +38,7 @@
   // a single landing page that pulls the headline numbers from the
   // composite endpoint.
 
-  type Tab = 'overview' | 'income' | 'subscriptions' | 'accounts' | 'goals';
-  let tab = $state<Tab>(
-    typeof window !== 'undefined'
-      ? ((window.location.hash.replace(/^#/, '') as Tab) || 'overview')
-      : 'overview'
-  );
-  function setTab(t: Tab) {
-    tab = t;
-    if (typeof window !== 'undefined') {
-      history.replaceState(null, '', `${window.location.pathname}#${t}`);
-    }
-  }
+  const viewCtl = createFinanceViewState();
 
   let overview = $state<FinOverview | null>(null);
   let accounts = $state<FinAccount[]>([]);
@@ -690,15 +683,15 @@
 
     <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-4 flex-wrap">
       {#each [
-        { id: 'overview' as Tab, label: 'Overview' },
-        { id: 'income' as Tab, label: 'Income', count: streams.length },
-        { id: 'subscriptions' as Tab, label: 'Subscriptions', count: subs.length },
-        { id: 'accounts' as Tab, label: 'Accounts', count: accounts.length },
-        { id: 'goals' as Tab, label: 'Goals', count: goals.length }
+        { id: 'overview' as FinanceTab, label: 'Overview' },
+        { id: 'income' as FinanceTab, label: 'Income', count: streams.length },
+        { id: 'subscriptions' as FinanceTab, label: 'Subscriptions', count: subs.length },
+        { id: 'accounts' as FinanceTab, label: 'Accounts', count: accounts.length },
+        { id: 'goals' as FinanceTab, label: 'Goals', count: goals.length }
       ] as t}
         <button
-          class="px-3 sm:px-4 py-2 {tab === t.id ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-          onclick={() => setTab(t.id)}
+          class="px-3 sm:px-4 py-2 {viewCtl.tab === t.id ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+          onclick={() => viewCtl.setTab(t.id)}
         >
           {t.label}{#if t.count !== undefined && t.count > 0}<span class="ml-1 text-xs opacity-70">{t.count}</span>{/if}
         </button>
@@ -707,7 +700,7 @@
 
     {#if loading && !overview}
       <p class="text-sm text-dim">loading…</p>
-    {:else if tab === 'overview'}
+    {:else if viewCtl.tab === 'overview'}
       {#if overview}
         <!-- Headline numbers: how much money I have, what's coming
              in, what's leaking out. Three cards instead of four so
@@ -956,7 +949,7 @@
         {/if}
       {/if}
 
-    {:else if tab === 'income'}
+    {:else if viewCtl.tab === 'income'}
       <div class="flex justify-between items-center mb-3">
         <p class="text-xs text-dim">
           {streams.length} stream{streams.length === 1 ? '' : 's'} · active: {fmtMoney(overview?.income_monthly_actual_cents ?? 0, overview?.currency ?? '')} / mo · projected (incl. pipeline): {fmtMoney(overview?.income_monthly_projected_cents ?? 0, overview?.currency ?? '')} / mo
@@ -1053,7 +1046,7 @@
         {/if}
       {/if}
 
-    {:else if tab === 'subscriptions'}
+    {:else if viewCtl.tab === 'subscriptions'}
       <div class="flex justify-between items-center mb-3">
         <p class="text-xs text-dim">{subs.length} subscriptions · {fmtMoney(overview?.subscription_monthly_cents ?? 0, overview?.currency ?? '')}/mo</p>
         <div class="flex items-center gap-1">
@@ -1137,7 +1130,7 @@
         </ul>
       {/if}
 
-    {:else if tab === 'accounts'}
+    {:else if viewCtl.tab === 'accounts'}
       <div class="flex justify-between items-center mb-3">
         <p class="text-xs text-dim">{accounts.length} accounts · {fmtMoney(overview?.net_worth_cents ?? 0, overview?.currency ?? '')} net worth</p>
         <button onclick={openAcc} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New account</button>
@@ -1180,7 +1173,7 @@
         </ul>
       {/if}
 
-    {:else if tab === 'goals'}
+    {:else if viewCtl.tab === 'goals'}
       <div class="flex justify-between items-center mb-3">
         <p class="text-xs text-dim">{goals.length} financial goals</p>
         <button onclick={openGoal} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New goal</button>
