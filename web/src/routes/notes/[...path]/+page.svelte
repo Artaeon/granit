@@ -19,6 +19,7 @@
   import { installNoteShortcuts } from '$lib/notes/noteKeyboardShortcuts.svelte';
   import { openResearchMode as openResearchModeFor } from '$lib/notes/researchMode';
   import { noteCrumbs, visibleCrumbs as visibleCrumbsFn, crumbsCollapsed as crumbsCollapsedFn } from '$lib/notes/noteBreadcrumbs';
+  import { saveStatus as saveStatusFn, lastSavedDisplay as lastSavedDisplayFn } from '$lib/notes/noteSaveStatus';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
@@ -548,20 +549,10 @@
     }
   });
 
-  // Save status label that updates with the live tick. nowTick is
-  // read implicitly via the subtraction so the derivation tracks
-  // it without a `void nowTick` dance.
-  let saveStatus = $derived.by(() => {
-    if (saving) return 'saving…';
-    if (saveFailed && dirty) return 'retry?';
-    if (dirty) return 'unsaved';
-    if (!lastSavedAt) return 'saved';
-    const ago = Math.floor((nowTick - lastSavedAt) / 1000);
-    if (ago < 4) return 'saved';
-    if (ago < 60) return `saved ${ago}s ago`;
-    if (ago < 3600) return `saved ${Math.floor(ago / 60)}m ago`;
-    return 'saved';
-  });
+  // Save status string + last-saved relative time live in
+  // $lib/notes/noteSaveStatus. Both track nowTick implicitly via the
+  // subtraction, so the derivation re-runs once a second.
+  let saveStatus = $derived(saveStatusFn({ saving, saveFailed, dirty, lastSavedAt, nowTick }));
 
   // Brief flash after each successful autosave so the user can SEE
   // that an autosave actually fired. Without this, saves are invisible
@@ -761,18 +752,7 @@
   let cursorCol = $state(1);
   let cursorSelLen = $state(0);
 
-  // Last-saved relative time for the status bar. Shares the same
-  // 1s nowTick as saveStatus above — the previous 5s setInterval
-  // here was redundant; the actual displayed value only changes
-  // on second/minute/hour boundaries anyway.
-  let lastSavedDisplay = $derived.by(() => {
-    if (!lastSavedAt) return '—';
-    const sec = Math.round((nowTick - lastSavedAt) / 1000);
-    if (sec < 5) return 'just now';
-    if (sec < 60) return `${sec}s ago`;
-    if (sec < 3600) return `${Math.round(sec / 60)}m ago`;
-    return `${Math.round(sec / 3600)}h ago`;
-  });
+  let lastSavedDisplay = $derived(lastSavedDisplayFn(lastSavedAt, nowTick));
 
   // All window-level keyboard shortcuts (? / Mod-/ / Mod-Shift-Z /
   // Mod-Shift-R / Mod-Shift-P / Mod-Shift-←/→) live in a single
