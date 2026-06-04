@@ -7,10 +7,7 @@
     type FinAccount,
     type FinSubscription,
     type FinIncomeStream,
-    type FinGoal,
-    type FinOverview,
-    type Project,
-    type ShoppingTotals
+    type FinGoal
   } from '$lib/api';
   import { fmtDateISO } from '$lib/util/date';
   import { onWsEvent } from '$lib/ws';
@@ -30,33 +27,24 @@
     createFinanceViewState,
     type FinanceTab
   } from '$lib/finance/financeViewState.svelte';
+  import { createFinanceData } from '$lib/finance/financeData.svelte';
 
   // /finance covers the four things that actually matter for tracking
   // a financial life: how much money I have (Accounts → Net worth),
   // recurring drag (Subscriptions), income — both active sources and
-  // pipeline ventures (Income), and money goals (Goals). Overview is
+  // pipeline ventures (Income), and money dataCtl.goals (Goals). Overview is
   // a single landing page that pulls the headline numbers from the
   // composite endpoint.
 
   const viewCtl = createFinanceViewState();
-
-  let overview = $state<FinOverview | null>(null);
-  let accounts = $state<FinAccount[]>([]);
-  let subs = $state<FinSubscription[]>([]);
-  let streams = $state<FinIncomeStream[]>([]);
-  let goals = $state<FinGoal[]>([]);
-  // Shopping rollup — best-effort fetch alongside the finance load.
-  // Module-disabled or 404 leaves it null and the section auto-hides.
-  let shoppingTotals = $state<ShoppingTotals | null>(null);
-  // Projects feed the project-link pickers on income + subscription
-  // forms. Loaded alongside the rest so the dropdowns hydrate without
-  // a follow-up fetch when the user clicks "+ New".
-  let projects = $state<Project[]>([]);
-  let loading = $state(false);
+  const dataCtl = createFinanceData({
+    isAuthed: () => !!$auth,
+    onError: (m) => toast.error(m)
+  });
 
   // ── AI snapshot ─────────────────────────────────────────────────
   // 3-paragraph "where you stand financially" read at the top of
-  // the overview tab. Distinct from the sub-audit below (which is
+  // the dataCtl.overview tab. Distinct from the sub-audit below (which is
   // a focused cancellation candidate list). Streamed via
   // api.chatStream + rafThrottle so a fast model doesn't choke the
   // page. Dismiss is per-day so a refresh doesn't re-show the brief
@@ -74,17 +62,17 @@
   let auditAbort: AbortController | null = null;
 
   async function runSnapshot() {
-    if (!overview || snapshotBusy) return;
+    if (!dataCtl.overview || snapshotBusy) return;
     snapshotError = '';
     snapshotText = '';
     snapshotBusy = true;
     snapshotAbort?.abort();
     snapshotAbort = new AbortController();
     const user = buildSnapshotPrompt({
-      overview,
-      subscriptions: subs,
-      streams,
-      goals
+      dataCtl.overview,
+      subscriptions: dataCtl.subs,
+      dataCtl.streams,
+      dataCtl.goals
     });
     const t = rafThrottle((full) => {
       snapshotText = full;
@@ -137,9 +125,9 @@
     auditAbort?.abort();
     auditAbort = new AbortController();
     const user = buildSubAuditPrompt({
-      subscriptions: subs,
-      monthlyIncomeCents: overview?.income_monthly_actual_cents ?? 0,
-      currency: overview?.currency ?? 'EUR'
+      subscriptions: dataCtl.subs,
+      monthlyIncomeCents: dataCtl.overview?.income_monthly_actual_cents ?? 0,
+      currency: dataCtl.overview?.currency ?? 'EUR'
     });
     const t = rafThrottle((full) => {
       auditText = full;
@@ -231,51 +219,14 @@
     return `${-diff} days ago`;
   }
 
-  function accountName(id: string | undefined): string {
-    if (!id) return '—';
-    return accounts.find((a) => a.id === id)?.name ?? '(unknown)';
-  }
-
-  // ── load ───────────────────────────────────────────────────────────
-  async function loadAll() {
-    if (!$auth) return;
-    loading = true;
-    try {
-      const [o, a, s, i, g, p, sh] = await Promise.all([
-        api.finOverview(),
-        api.finListAccounts(),
-        api.finListSubscriptions(),
-        api.finListIncome(),
-        api.finListGoals(),
-        // Projects are read-only here — fetched only to populate
-        // pickers on income + subscription create/edit. A failure
-        // shouldn't break the finance page; fall through with empty.
-        api.listProjects().catch(() => ({ projects: [] as Project[], total: 0 })),
-        // Shopping totals — same defensive pattern. Module disabled
-        // → endpoint may return 404 → null, which the render branch
-        // auto-hides.
-        api.shoppingTotals().catch(() => null)
-      ]);
-      overview = o;
-      accounts = a.accounts;
-      subs = s.subscriptions;
-      streams = i.streams;
-      goals = g.goals;
-      projects = p.projects;
-      shoppingTotals = sh;
-    } catch (e) {
-      toast.error('failed to load finance: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      loading = false;
-    }
-  }
+  // dataCtl.loadAll() + dataCtl.accountName() live on dataCtl now.
 
   onMount(() => {
-    loadAll();
+    dataCtl.loadAll();
     return onWsEvent((ev) => {
       if (ev.type !== 'state.changed') return;
       if (!ev.path?.startsWith('.granit/finance/')) return;
-      loadAll();
+      dataCtl.loadAll();
     });
   });
 
@@ -294,7 +245,7 @@
   let accOpen = $state(false);
   let accForm = $state({ name: '', kind: 'checking', currency: 'USD', balance: '0', institution: '', color: '', tags: '', notes: '' });
   function openAcc() {
-    accForm = { name: '', kind: 'checking', currency: accounts[0]?.currency || 'USD', balance: '0', institution: '', color: '', tags: '', notes: '' };
+    accForm = { name: '', kind: 'checking', currency: dataCtl.accounts[0]?.currency || 'USD', balance: '0', institution: '', color: '', tags: '', notes: '' };
     accOpen = true;
   }
   async function submitAcc() {
@@ -311,14 +262,14 @@
       });
       accOpen = false;
       toast.success('account created');
-      await loadAll();
+      await dataCtl.loadAll();
     } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
   async function deleteAcc(a: FinAccount) {
     if (!confirm(`Delete account "${a.name}"?`)) return;
-    try { await api.finDeleteAccount(a.id); await loadAll(); } catch (e) {
+    try { await api.finDeleteAccount(a.id); await dataCtl.loadAll(); } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
@@ -330,7 +281,7 @@
     if (cents === a.balance_cents) return;
     try {
       await api.finPatchAccount(a.id, { balance_cents: cents, as_of: todayISO() });
-      await loadAll();
+      await dataCtl.loadAll();
     } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
 
@@ -345,10 +296,10 @@
   function openSub() {
     subForm = {
       name: '', amount: '',
-      currency: accounts[0]?.currency || 'USD',
+      currency: dataCtl.accounts[0]?.currency || 'USD',
       cadence: 'monthly',
       next_renewal: fmtDateISO(new Date(Date.now() + 30 * 86400000)),
-      account_id: accounts[0]?.id ?? '',
+      account_id: dataCtl.accounts[0]?.id ?? '',
       project: '',
       tags: '',
       category: '', url: ''
@@ -364,7 +315,7 @@
       await api.finCreateSubscription({
         name: subForm.name.trim(),
         amount_cents: cents,
-        currency: subForm.currency.trim() || accounts[0]?.currency || 'USD',
+        currency: subForm.currency.trim() || dataCtl.accounts[0]?.currency || 'USD',
         cadence: subForm.cadence,
         next_renewal: subForm.next_renewal,
         account_id: subForm.account_id || undefined,
@@ -376,17 +327,17 @@
       });
       subOpen = false;
       toast.success('subscription added');
-      await loadAll();
+      await dataCtl.loadAll();
     } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
   async function toggleSubActive(s: FinSubscription) {
-    try { await api.finPatchSubscription(s.id, { active: !s.active }); await loadAll(); } catch (e) {
+    try { await api.finPatchSubscription(s.id, { active: !s.active }); await dataCtl.loadAll(); } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
   async function deleteSub(s: FinSubscription) {
     if (!confirm(`Delete subscription "${s.name}"?`)) return;
-    try { await api.finDeleteSubscription(s.id); await loadAll(); } catch (e) {
+    try { await api.finDeleteSubscription(s.id); await dataCtl.loadAll(); } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
@@ -435,10 +386,10 @@
       incomeForm = {
         name: '', status: 'idea', kind: 'business',
         projected: '', actual: '',
-        currency: accounts[0]?.currency || 'USD',
+        currency: dataCtl.accounts[0]?.currency || 'USD',
         payout_day: '',
         payout_cadence: 'monthly',
-        account_id: accounts[0]?.id ?? '',
+        account_id: dataCtl.accounts[0]?.id ?? '',
         project: '',
         tags: '',
         url: '', notes: ''
@@ -469,7 +420,7 @@
         // When the user flips a stream to active, stamp started_at if
         // they haven't already — saves them re-typing the date.
         started_at: incomeForm.status === 'active'
-          ? (streams.find((x) => x.id === editingIncomeId)?.started_at
+          ? (dataCtl.streams.find((x) => x.id === editingIncomeId)?.started_at
              || todayISO())
           : undefined
       };
@@ -482,12 +433,12 @@
       }
       incomeOpen = false;
       editingIncomeId = null;
-      await loadAll();
+      await dataCtl.loadAll();
     } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
   async function deleteIncome(s: FinIncomeStream) {
     if (!confirm(`Delete "${s.name}"?`)) return;
-    try { await api.finDeleteIncome(s.id); await loadAll(); } catch (e) {
+    try { await api.finDeleteIncome(s.id); await dataCtl.loadAll(); } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
@@ -503,7 +454,7 @@
     goalForm = {
       name: '', kind: 'savings',
       target: '', current: '0',
-      currency: accounts[0]?.currency || 'USD',
+      currency: dataCtl.accounts[0]?.currency || 'USD',
       target_date: '', linked_account_id: ''
     };
     goalOpen = true;
@@ -521,149 +472,18 @@
         linked_account_id: goalForm.linked_account_id || undefined
       });
       goalOpen = false;
-      await loadAll();
+      await dataCtl.loadAll();
     } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
   async function deleteGoal(g: FinGoal) {
     if (!confirm(`Delete goal "${g.name}"?`)) return;
-    try { await api.finDeleteGoal(g.id); await loadAll(); } catch (e) {
+    try { await api.finDeleteGoal(g.id); await dataCtl.loadAll(); } catch (e) {
       toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
     }
   }
 
-  // Group income streams for the Income tab. Active flow at top,
-  // pipeline (idea + planned) below, paused at the bottom — the
-  // server already returns them sorted, this just produces the
-  // section labels.
-  let activeStreams = $derived(streams.filter((s) => s.status === 'active'));
-  let pipelineStreams = $derived(streams.filter((s) => s.status === 'idea' || s.status === 'planned'));
-  let pausedStreams = $derived(streams.filter((s) => s.status === 'paused'));
-
-  // ── 30-day cashflow timeline ──────────────────────────────────────
-  // Concrete dated events in the next 30 days: subscription renewals,
-  // income payouts (when the stream has payout_day_of_month set),
-  // and financial-goal target dates. Income streams without an
-  // explicit payout day are summarised as a footer line — we don't
-  // make up dates for them.
-  type CashflowEvent = {
-    date: string;
-    label: string;
-    detail?: string;
-    cents: number; // signed; >0 income, <0 outflow
-    kind: 'subscription' | 'goal' | 'income';
-  };
-  const HORIZON_DAYS = 30;
-
-  // Mirror of finance.IncomeStream.NextPayoutInWindow — kept in sync
-  // with the Go side so the timeline matches what the server would
-  // compute. Returns null when the stream has no schedule.
-  function nextPayoutInWindow(s: FinIncomeStream, from: Date, to: Date): Date | null {
-    const day = s.payout_day_of_month;
-    if (!day || day < 1 || day > 31) return null;
-    const cad = s.payout_cadence || 'monthly';
-    const lastDay = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
-    const clamp = (year: number, month: number, requested: number) => Math.min(requested, lastDay(year, month));
-
-    if (cad === 'yearly') {
-      // Anchor on started_at month if available.
-      let anchorMonth = from.getMonth();
-      if (s.started_at) {
-        const t = new Date(s.started_at + 'T00:00:00');
-        if (!Number.isNaN(t.getTime())) anchorMonth = t.getMonth();
-      }
-      for (let year = from.getFullYear(); year <= to.getFullYear() + 1; year++) {
-        const candidate = new Date(year, anchorMonth, clamp(year, anchorMonth, day));
-        if (candidate >= from && candidate <= to) return candidate;
-      }
-      return null;
-    }
-    // Monthly (and weekly/quarterly fallbacks).
-    let year = from.getFullYear();
-    let month = from.getMonth();
-    for (let i = 0; i < 32; i++) {
-      const candidate = new Date(year, month, clamp(year, month, day));
-      if (candidate >= from && candidate <= to) return candidate;
-      if (candidate > to) return null;
-      month++;
-      if (month > 11) { month = 0; year++; }
-    }
-    return null;
-  }
-  function isoDate(d: Date): string {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
-
-  let cashflowEvents = $derived.by<CashflowEvent[]>(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const horizon = new Date(today);
-    horizon.setDate(horizon.getDate() + HORIZON_DAYS);
-    const todayISO = isoDate(today);
-    const horizonISO = isoDate(horizon);
-    const out: CashflowEvent[] = [];
-
-    for (const s of subs) {
-      if (!s.active) continue;
-      if (s.next_renewal < todayISO || s.next_renewal > horizonISO) continue;
-      out.push({
-        date: s.next_renewal,
-        label: s.name,
-        detail: `${s.cadence} renewal`,
-        cents: s.amount_cents,
-        kind: 'subscription'
-      });
-    }
-    for (const stream of streams) {
-      if (stream.status !== 'active') continue;
-      if (stream.actual_monthly_cents <= 0) continue;
-      const payout = nextPayoutInWindow(stream, today, horizon);
-      if (!payout) continue;
-      // Yearly cadence: the payout amount is the actual ANNUAL value
-      // (yearly bonus, dividends), not monthly. Approximate as 12×
-      // the monthly the user told us; users with a real bonus
-      // structure should record it differently. Other cadences use
-      // the monthly directly.
-      const cents = stream.payout_cadence === 'yearly'
-        ? stream.actual_monthly_cents * 12
-        : stream.actual_monthly_cents;
-      out.push({
-        date: isoDate(payout),
-        label: stream.name,
-        detail: stream.payout_cadence === 'yearly' ? 'yearly payout' : 'monthly payout',
-        cents,
-        kind: 'income'
-      });
-    }
-    for (const g of goals) {
-      if (!g.target_date) continue;
-      if ((g.status ?? 'active') !== 'active') continue;
-      if (g.target_date < todayISO || g.target_date > horizonISO) continue;
-      out.push({
-        date: g.target_date,
-        label: `${g.name} (target)`,
-        detail: `${g.kind} goal due`,
-        cents: 0,
-        kind: 'goal'
-      });
-    }
-    out.sort((a, b) => a.date.localeCompare(b.date) || a.label.localeCompare(b.label));
-    return out;
-  });
-
-  // Window totals split by sign so the header line can show in / out
-  // separately from the running net. Income side counts dated payouts
-  // first, falls back to the aggregate "approx monthly" footer for
-  // streams without a payout day.
-  let cashflowIncomeIn = $derived(cashflowEvents.reduce((s, e) => s + (e.cents > 0 ? e.cents : 0), 0));
-  let cashflowSubOut = $derived(cashflowEvents.reduce((s, e) => s + (e.cents < 0 ? -e.cents : 0), 0));
-  // Streams with no payout day — we'll show them as "+approx X / mo"
-  // in the footer because we don't know the date.
-  let undatedIncomeMonthly = $derived(
-    streams
-      .filter((s) => s.status === 'active' && s.actual_monthly_cents > 0 && (!s.payout_day_of_month || s.payout_day_of_month < 1))
-      .reduce((sum, s) => sum + s.actual_monthly_cents, 0)
-  );
-  let cashflowNet = $derived(cashflowIncomeIn + undatedIncomeMonthly - cashflowSubOut);
+  // Income-stream split (active/pipeline/paused) + 30-day cashflow
+  // timeline + dataCtl.accountName lookup live on dataCtl now.
 
   // Day-of-month from a YYYY-MM-DD; used for the timeline pip layout.
   function dayOf(iso: string): number {
@@ -684,10 +504,10 @@
     <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-4 flex-wrap">
       {#each [
         { id: 'overview' as FinanceTab, label: 'Overview' },
-        { id: 'income' as FinanceTab, label: 'Income', count: streams.length },
-        { id: 'subscriptions' as FinanceTab, label: 'Subscriptions', count: subs.length },
-        { id: 'accounts' as FinanceTab, label: 'Accounts', count: accounts.length },
-        { id: 'goals' as FinanceTab, label: 'Goals', count: goals.length }
+        { id: 'income' as FinanceTab, label: 'Income', count: dataCtl.streams.length },
+        { id: 'subscriptions' as FinanceTab, label: 'Subscriptions', count: dataCtl.subs.length },
+        { id: 'accounts' as FinanceTab, label: 'Accounts', count: dataCtl.accounts.length },
+        { id: 'goals' as FinanceTab, label: 'Goals', count: dataCtl.goals.length }
       ] as t}
         <button
           class="px-3 sm:px-4 py-2 {viewCtl.tab === t.id ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
@@ -698,46 +518,46 @@
       {/each}
     </div>
 
-    {#if loading && !overview}
+    {#if dataCtl.loading && !dataCtl.overview}
       <p class="text-sm text-dim">loading…</p>
     {:else if viewCtl.tab === 'overview'}
-      {#if overview}
+      {#if dataCtl.overview}
         <!-- Headline numbers: how much money I have, what's coming
              in, what's leaking out. Three cards instead of four so
              nothing competes with the headline net-worth figure. -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           <div class="bg-surface0 border border-surface1 rounded-lg p-3">
             <p class="text-xs uppercase tracking-wider text-dim">How much I have</p>
-            <p class="text-2xl font-semibold mt-1 {overview.net_worth_cents >= 0 ? 'text-text' : 'text-error'}">
-              {fmtMoney(overview.net_worth_cents, overview.currency)}
+            <p class="text-2xl font-semibold mt-1 {dataCtl.overview.net_worth_cents >= 0 ? 'text-text' : 'text-error'}">
+              {fmtMoney(dataCtl.overview.net_worth_cents, dataCtl.overview.currency)}
             </p>
             <p class="text-[11px] text-dim mt-1">
-              {fmtMoney(overview.assets_cents, overview.currency)} assets
-              {#if overview.liabilities_cents > 0}
-                · −{fmtMoney(overview.liabilities_cents, overview.currency)} debt
+              {fmtMoney(dataCtl.overview.assets_cents, dataCtl.overview.currency)} assets
+              {#if dataCtl.overview.liabilities_cents > 0}
+                · −{fmtMoney(dataCtl.overview.liabilities_cents, dataCtl.overview.currency)} debt
               {/if}
             </p>
           </div>
           <div class="bg-surface0 border border-surface1 rounded-lg p-3">
             <p class="text-xs uppercase tracking-wider text-dim">Income / month</p>
             <p class="text-2xl font-semibold mt-1 text-success">
-              {fmtMoney(overview.income_monthly_actual_cents, overview.currency)}
+              {fmtMoney(dataCtl.overview.income_monthly_actual_cents, dataCtl.overview.currency)}
             </p>
             <p class="text-[11px] text-dim mt-1">
-              from {overview.income_active_count} active source{overview.income_active_count === 1 ? '' : 's'}
-              {#if overview.income_pipeline_count > 0}
-                · {overview.income_pipeline_count} in pipeline
+              from {dataCtl.overview.income_active_count} active source{dataCtl.overview.income_active_count === 1 ? '' : 's'}
+              {#if dataCtl.overview.income_pipeline_count > 0}
+                · {dataCtl.overview.income_pipeline_count} in pipeline
               {/if}
             </p>
           </div>
           <div class="bg-surface0 border border-surface1 rounded-lg p-3">
             <p class="text-xs uppercase tracking-wider text-dim">Subscriptions / month</p>
             <p class="text-2xl font-semibold mt-1 text-text">
-              {fmtMoney(overview.subscription_monthly_cents, overview.currency)}
+              {fmtMoney(dataCtl.overview.subscription_monthly_cents, dataCtl.overview.currency)}
             </p>
             <p class="text-[11px] text-dim mt-1">
-              {#if overview.upcoming_subs_count > 0}
-                <span class="text-warning">{overview.upcoming_subs_count} due in 7 days</span>
+              {#if dataCtl.overview.upcoming_subs_count > 0}
+                <span class="text-warning">{dataCtl.overview.upcoming_subs_count} due in 7 days</span>
               {:else}
                 nothing renewing this week
               {/if}
@@ -752,21 +572,21 @@
              monthly vitamins, ...) we fold their projection in too —
              the run-rate becomes "income − subscriptions − recurring
              groceries", a closer match to actual baseline outflow. -->
-        {#if overview.income_monthly_actual_cents > 0 || overview.subscription_monthly_cents > 0}
-          {@const recurringShoppingCents = shoppingTotals ? Math.round(shoppingTotals.recurring_monthly_estimate * 100) : 0}
-          {@const net = overview.income_monthly_actual_cents - overview.subscription_monthly_cents - recurringShoppingCents}
+        {#if dataCtl.overview.income_monthly_actual_cents > 0 || dataCtl.overview.subscription_monthly_cents > 0}
+          {@const recurringShoppingCents = dataCtl.shoppingTotals ? Math.round(dataCtl.shoppingTotals.recurring_monthly_estimate * 100) : 0}
+          {@const net = dataCtl.overview.income_monthly_actual_cents - dataCtl.overview.subscription_monthly_cents - recurringShoppingCents}
           <div class="mb-4 px-4 py-3 bg-surface0 border border-surface1 rounded text-sm">
             <span class="text-dim">Monthly run rate: </span>
-            <span class="text-success">+{fmtMoney(overview.income_monthly_actual_cents, overview.currency)}</span>
+            <span class="text-success">+{fmtMoney(dataCtl.overview.income_monthly_actual_cents, dataCtl.overview.currency)}</span>
             <span class="text-dim"> − </span>
-            <span class="text-error">{fmtMoney(overview.subscription_monthly_cents, overview.currency)}</span>
+            <span class="text-error">{fmtMoney(dataCtl.overview.subscription_monthly_cents, dataCtl.overview.currency)}</span>
             {#if recurringShoppingCents > 0}
               <span class="text-dim"> − </span>
-              <span class="text-error">{fmtMoney(recurringShoppingCents, overview.currency)}</span>
+              <span class="text-error">{fmtMoney(recurringShoppingCents, dataCtl.overview.currency)}</span>
               <span class="text-[11px] text-dim">(shopping)</span>
             {/if}
             <span class="text-dim"> = </span>
-            <span class="font-semibold {net >= 0 ? 'text-text' : 'text-error'}">{fmtMoney(net, overview.currency)} / month</span>
+            <span class="font-semibold {net >= 0 ? 'text-text' : 'text-error'}">{fmtMoney(net, dataCtl.overview.currency)} / month</span>
             <p class="text-[11px] text-dim mt-1">
               {#if recurringShoppingCents > 0}
                 Recurring income + subscriptions + recurring shopping standards. One-off spending sits in the shopping rollup below.
@@ -836,23 +656,23 @@
              items yet. The shopping API stores prices in user-currency
              floats (EUR by default); fmtMoney here expects integer
              cents so we multiply by 100. -->
-        {#if shoppingTotals && (shoppingTotals.planned_count > 0 || shoppingTotals.bought_month_count > 0)}
+        {#if dataCtl.shoppingTotals && (dataCtl.shoppingTotals.planned_count > 0 || dataCtl.shoppingTotals.bought_month_count > 0)}
           <div class="mb-4 px-4 py-3 bg-surface0 border border-surface1 rounded">
             <div class="flex items-baseline justify-between gap-3 flex-wrap">
               <div class="flex items-baseline gap-4 flex-wrap">
                 <span class="text-xs uppercase tracking-wider text-dim font-medium">Shopping</span>
-                {#if shoppingTotals.planned_count > 0}
+                {#if dataCtl.shoppingTotals.planned_count > 0}
                   <span class="text-sm">
                     <span class="text-dim">planned</span>
-                    <span class="text-text font-medium ml-1">{fmtMoney(Math.round(shoppingTotals.planned_sum * 100), overview.currency)}</span>
-                    <span class="text-dim text-xs">· {shoppingTotals.planned_count} items</span>
+                    <span class="text-text font-medium ml-1">{fmtMoney(Math.round(dataCtl.shoppingTotals.planned_sum * 100), dataCtl.overview.currency)}</span>
+                    <span class="text-dim text-xs">· {dataCtl.shoppingTotals.planned_count} items</span>
                   </span>
                 {/if}
-                {#if shoppingTotals.bought_month_count > 0}
+                {#if dataCtl.shoppingTotals.bought_month_count > 0}
                   <span class="text-sm">
                     <span class="text-dim">bought this month</span>
-                    <span class="text-text font-medium ml-1">{fmtMoney(Math.round(shoppingTotals.bought_month_sum * 100), overview.currency)}</span>
-                    <span class="text-dim text-xs">· {shoppingTotals.bought_month_count} items</span>
+                    <span class="text-text font-medium ml-1">{fmtMoney(Math.round(dataCtl.shoppingTotals.bought_month_sum * 100), dataCtl.overview.currency)}</span>
+                    <span class="text-dim text-xs">· {dataCtl.shoppingTotals.bought_month_count} items</span>
                   </span>
                 {/if}
               </div>
@@ -869,16 +689,16 @@
              outflows at a glance, then a chronological list with
              running net for detail. Hidden when nothing's coming up
              so empty vaults don't show a dead band. -->
-        {#if cashflowEvents.length > 0 || undatedIncomeMonthly > 0}
+        {#if dataCtl.cashflowEvents.length > 0 || dataCtl.undatedIncomeMonthly > 0}
           <section class="mb-4 bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-baseline gap-3 flex-wrap mb-3">
               <h3 class="text-xs uppercase tracking-wider text-dim font-medium">Next 30 days</h3>
               <span class="text-xs text-dim">
-                <span class="text-success">+{fmtMoney(cashflowIncomeIn + undatedIncomeMonthly, overview.currency)}</span>
+                <span class="text-success">+{fmtMoney(dataCtl.cashflowIncomeIn + dataCtl.undatedIncomeMonthly, dataCtl.overview.currency)}</span>
                 <span class="mx-1">−</span>
-                <span class="text-error">{fmtMoney(cashflowSubOut, overview.currency)}</span>
+                <span class="text-error">{fmtMoney(dataCtl.cashflowSubOut, dataCtl.overview.currency)}</span>
                 <span class="mx-1">=</span>
-                <span class="font-semibold {cashflowNet >= 0 ? 'text-text' : 'text-error'}">{fmtMoney(cashflowNet, overview.currency)}</span>
+                <span class="font-semibold {dataCtl.cashflowNet >= 0 ? 'text-text' : 'text-error'}">{fmtMoney(dataCtl.cashflowNet, dataCtl.overview.currency)}</span>
               </span>
             </div>
 
@@ -886,14 +706,14 @@
                  marker positioned by day-of-month. Income (green),
                  subscription (red), goal target (blue). Hover for
                  the full label + amount. Pure CSS — no chart lib. -->
-            {#if cashflowEvents.length > 0}
+            {#if dataCtl.cashflowEvents.length > 0}
               <div class="relative h-6 bg-mantle rounded mb-3">
                 <div class="absolute inset-y-0 left-0 right-0 flex items-center px-1">
                   {#each Array.from({ length: 30 }, (_, i) => i) as i}
                     <div class="flex-1 border-r last:border-r-0 border-surface1 h-2 self-center"></div>
                   {/each}
                 </div>
-                {#each cashflowEvents as e (e.date + e.label)}
+                {#each dataCtl.cashflowEvents as e (e.date + e.label)}
                   {@const today = new Date()}
                   {@const eventDate = new Date(e.date + 'T00:00:00')}
                   {@const daysFromToday = Math.round((eventDate.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / 86400000)}
@@ -902,21 +722,21 @@
                   <div
                     class="absolute top-0 bottom-0 w-1 -translate-x-1/2 rounded-full {tone}"
                     style="left: {pct}%"
-                    title="{dayLabel(e.date)} — {e.label}{e.cents ? ` (${e.cents > 0 ? '+' : '−'}${fmtMoney(Math.abs(e.cents), overview.currency)})` : ''}"
+                    title="{dayLabel(e.date)} — {e.label}{e.cents ? ` (${e.cents > 0 ? '+' : '−'}${fmtMoney(Math.abs(e.cents), dataCtl.overview.currency)})` : ''}"
                   ></div>
                 {/each}
               </div>
             {/if}
 
             <ul class="text-sm divide-y divide-surface1/50">
-              {#each cashflowEvents as e (e.date + e.label)}
+              {#each dataCtl.cashflowEvents as e (e.date + e.label)}
                 <li class="py-1.5 flex items-baseline gap-3">
                   <span class="text-xs text-dim font-mono w-16 flex-shrink-0">{dayLabel(e.date)}</span>
                   <span class="text-text flex-1 min-w-0 truncate">{e.label}</span>
                   <span class="text-[11px] text-dim hidden sm:inline">{e.detail}</span>
                   {#if e.cents !== 0}
                     <span class="font-mono {e.cents >= 0 ? 'text-success' : 'text-error'}">
-                      {e.cents >= 0 ? '+' : '−'}{fmtMoney(Math.abs(e.cents), overview.currency)}
+                      {e.cents >= 0 ? '+' : '−'}{fmtMoney(Math.abs(e.cents), dataCtl.overview.currency)}
                     </span>
                   {:else}
                     <span class="text-[11px] text-info">—</span>
@@ -925,9 +745,9 @@
               {/each}
             </ul>
 
-            {#if undatedIncomeMonthly > 0}
+            {#if dataCtl.undatedIncomeMonthly > 0}
               <p class="text-[11px] text-dim italic mt-3">
-                Plus undated income: <span class="text-success">+{fmtMoney(undatedIncomeMonthly, overview.currency)}</span>/month
+                Plus undated income: <span class="text-success">+{fmtMoney(dataCtl.undatedIncomeMonthly, dataCtl.overview.currency)}</span>/month
                 — set a payout day on the active stream to project it onto the timeline above.
               </p>
             {/if}
@@ -941,7 +761,7 @@
           <button onclick={openGoal} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Goal</button>
         </div>
 
-        {#if accounts.length === 0 && streams.length === 0 && subs.length === 0}
+        {#if dataCtl.accounts.length === 0 && dataCtl.streams.length === 0 && dataCtl.subs.length === 0}
           <div class="mt-8 bg-surface0 border border-surface1 rounded-lg p-6 text-center">
             <p class="text-sm text-text">Welcome to your money tracker.</p>
             <p class="text-xs text-dim mt-1">Start by adding an account so you can see your net worth, then track income and subscriptions against it.</p>
@@ -952,20 +772,20 @@
     {:else if viewCtl.tab === 'income'}
       <div class="flex justify-between items-center mb-3">
         <p class="text-xs text-dim">
-          {streams.length} stream{streams.length === 1 ? '' : 's'} · active: {fmtMoney(overview?.income_monthly_actual_cents ?? 0, overview?.currency ?? '')} / mo · projected (incl. pipeline): {fmtMoney(overview?.income_monthly_projected_cents ?? 0, overview?.currency ?? '')} / mo
+          {dataCtl.streams.length} stream{dataCtl.streams.length === 1 ? '' : 's'} · active: {fmtMoney(dataCtl.overview?.income_monthly_actual_cents ?? 0, dataCtl.overview?.currency ?? '')} / mo · projected (incl. pipeline): {fmtMoney(dataCtl.overview?.income_monthly_projected_cents ?? 0, dataCtl.overview?.currency ?? '')} / mo
         </p>
         <button onclick={() => openIncome()} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New income source</button>
       </div>
-      {#if streams.length === 0}
+      {#if dataCtl.streams.length === 0}
         <div class="bg-surface0 border border-surface1 rounded-lg p-6 text-center">
           <p class="text-sm text-text">Track every way money comes (or could come) in.</p>
           <p class="text-xs text-dim mt-1">A day job, a SaaS, dividends, a side hustle still in the idea stage — all live here together.</p>
         </div>
       {:else}
-        {#if activeStreams.length > 0}
+        {#if dataCtl.activeStreams.length > 0}
           <h3 class="text-xs uppercase tracking-wider text-dim mt-2 mb-2">Active</h3>
           <ul class="space-y-2 mb-5">
-            {#each activeStreams as s (s.id)}
+            {#each dataCtl.activeStreams as s (s.id)}
               {@const tone = statusTone(s.status)}
               {@const variance = s.actual_monthly_cents - s.projected_monthly_cents}
               <li class="bg-surface0 border border-surface1 rounded-lg p-3">
@@ -983,7 +803,7 @@
                     · variance: <span class="{variance >= 0 ? 'text-success' : 'text-warning'}">{variance >= 0 ? '+' : ''}{fmtMoney(variance, s.currency)}</span>
                   {/if}
                   {#if s.payout_day_of_month}· payout day {s.payout_day_of_month}{#if s.payout_cadence && s.payout_cadence !== 'monthly'} ({s.payout_cadence}){/if}{/if}
-                  {#if s.account_id}· into {accountName(s.account_id)}{/if}
+                  {#if s.account_id}· into {dataCtl.accountName(s.account_id)}{/if}
                   {#if s.started_at}· since {s.started_at}{/if}
                   {#if s.project}· <a href="/projects/{encodeURIComponent(s.project)}" class="text-secondary hover:underline">📁 {s.project}</a>{/if}
                   {#if s.url}· <a href={s.url} target="_blank" rel="noopener" class="text-secondary hover:underline">link ↗</a>{/if}
@@ -999,10 +819,10 @@
             {/each}
           </ul>
         {/if}
-        {#if pipelineStreams.length > 0}
+        {#if dataCtl.pipelineStreams.length > 0}
           <h3 class="text-xs uppercase tracking-wider text-dim mt-2 mb-2">Pipeline — ideas & planned ventures</h3>
           <ul class="space-y-2 mb-5">
-            {#each pipelineStreams as s (s.id)}
+            {#each dataCtl.pipelineStreams as s (s.id)}
               {@const tone = statusTone(s.status)}
               <li class="bg-surface0 border border-surface1 rounded-lg p-3">
                 <div class="flex items-baseline gap-3 flex-wrap">
@@ -1031,10 +851,10 @@
             {/each}
           </ul>
         {/if}
-        {#if pausedStreams.length > 0}
+        {#if dataCtl.pausedStreams.length > 0}
           <h3 class="text-xs uppercase tracking-wider text-dim mt-2 mb-2">Paused</h3>
           <ul class="space-y-2 opacity-60">
-            {#each pausedStreams as s (s.id)}
+            {#each dataCtl.pausedStreams as s (s.id)}
               <li class="bg-surface0 border border-surface1 rounded-lg p-3 flex items-baseline gap-3 flex-wrap">
                 <button onclick={() => openIncome(s)} class="font-medium text-text hover:underline">{s.name}</button>
                 <span class="text-[11px] text-dim">{s.kind} · last actual {fmtMoney(s.actual_monthly_cents, s.currency)}/mo</span>
@@ -1048,9 +868,9 @@
 
     {:else if viewCtl.tab === 'subscriptions'}
       <div class="flex justify-between items-center mb-3">
-        <p class="text-xs text-dim">{subs.length} subscriptions · {fmtMoney(overview?.subscription_monthly_cents ?? 0, overview?.currency ?? '')}/mo</p>
+        <p class="text-xs text-dim">{dataCtl.subs.length} subscriptions · {fmtMoney(dataCtl.overview?.subscription_monthly_cents ?? 0, dataCtl.overview?.currency ?? '')}/mo</p>
         <div class="flex items-center gap-1">
-          {#if subs.length >= 3}
+          {#if dataCtl.subs.length >= 3}
             <button
               onclick={runSubAudit}
               disabled={auditBusy}
@@ -1097,11 +917,11 @@
           {/if}
         </div>
       {/if}
-      {#if subs.length === 0}
+      {#if dataCtl.subs.length === 0}
         <p class="text-sm text-dim italic">No subscriptions yet — add your first to start tracking recurring outflows.</p>
       {:else}
         <ul class="space-y-2">
-          {#each subs as s (s.id)}
+          {#each dataCtl.subs as s (s.id)}
             <li class="bg-surface0 border border-surface1 rounded-lg p-3 {s.active ? '' : 'opacity-60'}">
               <div class="flex items-baseline gap-3 flex-wrap">
                 <h3 class="font-medium text-text">{s.name}</h3>
@@ -1113,7 +933,7 @@
               </div>
               <p class="text-xs text-dim mt-1">
                 next: <span class="text-subtext">{s.next_renewal}</span> · <span class="{relDate(s.next_renewal).includes('ago') ? 'text-error' : ''}">{relDate(s.next_renewal)}</span>
-                {#if s.account_id}· billed to {accountName(s.account_id)}{/if}
+                {#if s.account_id}· billed to {dataCtl.accountName(s.account_id)}{/if}
                 {#if s.project}· <a href="/projects/{encodeURIComponent(s.project)}" class="text-secondary hover:underline">📁 {s.project}</a>{/if}
                 {#if s.category}· {s.category}{/if}
                 {#if s.url}· <a href={s.url} target="_blank" rel="noopener" class="text-secondary hover:underline">manage ↗</a>{/if}
@@ -1132,14 +952,14 @@
 
     {:else if viewCtl.tab === 'accounts'}
       <div class="flex justify-between items-center mb-3">
-        <p class="text-xs text-dim">{accounts.length} accounts · {fmtMoney(overview?.net_worth_cents ?? 0, overview?.currency ?? '')} net worth</p>
+        <p class="text-xs text-dim">{dataCtl.accounts.length} accounts · {fmtMoney(dataCtl.overview?.net_worth_cents ?? 0, dataCtl.overview?.currency ?? '')} net worth</p>
         <button onclick={openAcc} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New account</button>
       </div>
-      {#if accounts.length === 0}
+      {#if dataCtl.accounts.length === 0}
         <p class="text-sm text-dim italic">No accounts yet — add your first to start tracking.</p>
       {:else}
         <ul class="space-y-2">
-          {#each accounts as a (a.id)}
+          {#each dataCtl.accounts as a (a.id)}
             <li class="bg-surface0 border border-surface1 rounded-lg p-3 {a.archived ? 'opacity-50' : ''}" style="border-left: 3px solid {accColor(a.color)}">
               <div class="flex items-baseline gap-3 flex-wrap">
                 <h3 class="font-medium text-text">{a.name}</h3>
@@ -1175,14 +995,14 @@
 
     {:else if viewCtl.tab === 'goals'}
       <div class="flex justify-between items-center mb-3">
-        <p class="text-xs text-dim">{goals.length} financial goals</p>
+        <p class="text-xs text-dim">{dataCtl.goals.length} financial dataCtl.goals</p>
         <button onclick={openGoal} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New goal</button>
       </div>
-      {#if goals.length === 0}
+      {#if dataCtl.goals.length === 0}
         <p class="text-sm text-dim italic">No financial goals yet.</p>
       {:else}
         <ul class="space-y-3">
-          {#each goals as g (g.id)}
+          {#each dataCtl.goals as g (g.id)}
             {@const pct = g.target_cents > 0 ? Math.min(100, Math.round((g.current_cents / g.target_cents) * 100)) : 0}
             <li class="bg-surface0 border border-surface1 rounded-lg p-3">
               <div class="flex items-baseline gap-3 flex-wrap">
@@ -1275,20 +1095,20 @@
 
       <!-- Project + account links. Both optional — useful for
            ventures (link to the project that's the venture) and
-           dividend streams (link to the investment account). -->
+           dividend dataCtl.streams (link to the investment account). -->
       <div class="grid grid-cols-2 gap-2">
         <label class="block">
           <span class="text-[11px] text-dim">Lands in account</span>
           <select bind:value={incomeForm.account_id} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
             <option value="">— none —</option>
-            {#each accounts as a}<option value={a.id}>{a.name}</option>{/each}
+            {#each dataCtl.accounts as a}<option value={a.id}>{a.name}</option>{/each}
           </select>
         </label>
         <label class="block">
           <span class="text-[11px] text-dim">Linked project</span>
           <select bind:value={incomeForm.project} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
             <option value="">— none —</option>
-            {#each projects as p}<option value={p.name}>{p.name}</option>{/each}
+            {#each dataCtl.projects as p}<option value={p.name}>{p.name}</option>{/each}
           </select>
         </label>
       </div>
@@ -1365,15 +1185,15 @@
         <input type="date" bind:value={subForm.next_renewal} class="block mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       </label>
       <div class="grid grid-cols-2 gap-2">
-        {#if accounts.length > 0}
+        {#if dataCtl.accounts.length > 0}
           <select bind:value={subForm.account_id} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
             <option value="">— no account —</option>
-            {#each accounts as a}<option value={a.id}>{a.name}</option>{/each}
+            {#each dataCtl.accounts as a}<option value={a.id}>{a.name}</option>{/each}
           </select>
         {/if}
         <select bind:value={subForm.project} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
           <option value="">— no project —</option>
-          {#each projects as p}<option value={p.name}>{p.name}</option>{/each}
+          {#each dataCtl.projects as p}<option value={p.name}>{p.name}</option>{/each}
         </select>
       </div>
     <input bind:value={subForm.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
