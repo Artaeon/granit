@@ -19,6 +19,7 @@
     createCalendarFilterState,
     type EventFilterKey
   } from '$lib/calendar/calendarFilterState.svelte';
+  import { createCalendarData } from '$lib/calendar/calendarData.svelte';
   import {
     addDays,
     endOfWeek,
@@ -54,14 +55,23 @@
   // $lib/calendar/calendarViewState. Read via viewCtl.X.
   const viewCtl = createCalendarViewState();
 
+  // Loaded data (dataCtl.feed / dataCtl.nativeEvents / dataCtl.habits / dataCtl.allProjects /
+  // dataCtl.calSources) + every load function (load / loadNativeEvents /
+  // loadHabits / loadAllProjects / loadSources / toggleSource) +
+  // the prefetch window (dataCtl.fetchFrom / dataCtl.fetchTo) live in
+  // $lib/calendar/calendarData. The page still owns the onMount +
+  // WS subscription orchestration; it calls into dataCtl.X.
+  const dataCtl = createCalendarData({
+    getCursor: () => viewCtl.cursor,
+    isAuthed: () => !!$auth
+  });
+
   // Filter dimensions + every filter derivation + the FILTER_CHIPS
   // catalog live in $lib/calendar/calendarFilterState. Read via
-  // filterCtl.X. Deps wire allEvents (from the loaded feed),
-  // allProjects (loaded sidecar), and cursor (from viewCtl) so the
-  // controller stays decoupled from page-local state.
+  // filterCtl.X.
   const filterCtl = createCalendarFilterState({
-    getAllEvents: () => feed?.events ?? [],
-    getAllProjects: () => allProjects,
+    getAllEvents: () => dataCtl.feed?.events ?? [],
+    getAllProjects: () => dataCtl.allProjects,
     getCursor: () => viewCtl.cursor
   });
 
@@ -69,28 +79,9 @@
   // a stale dragStore could corrupt the next page's pointer behaviour.
   onDestroy(() => dragStore.set(null));
 
-  let feed = $state<CalendarFeed | null>(null);
-  let habits = $state<HabitInfo[]>([]);
-  let loading = $state(false);
-
-  // Native calendar event entries — the editable rows the
-  // Calendar Agent operates on. Loaded separately from `feed`
-  // (which is the expanded read-only render viewCtl.view including ICS
-  // sources, tasks, deadlines). Refreshed on event.* WS frames.
-  let nativeEvents = $state<CalendarEventEntry[]>([]);
+  // dataCtl.feed / dataCtl.habits / dataCtl.loading / dataCtl.nativeEvents / dataCtl.fetchFrom / dataCtl.fetchTo
+  // and the loadNativeEvents function moved into dataCtl.
   let agentOpen = $state(false);
-  async function loadNativeEvents() {
-    if (!$auth) return;
-    try {
-      const r = await api.listEvents();
-      nativeEvents = r.events;
-    } catch {
-      nativeEvents = [];
-    }
-  }
-
-  let fetchFrom = $state(addDays(new Date(), -7));
-  let fetchTo = $state(addDays(new Date(), 60));
 
   let selected = $state<CalendarEvent | null>(null);
   let detailOpen = $state(false);
@@ -108,7 +99,7 @@
   let unifiedEnd = $state(new Date());
   let unifiedKind = $state<'task' | 'event'>('task');
 
-  // Find-time modal — surfaces free gaps in the active calendar feed
+  // Find-time modal — surfaces free gaps in the active calendar dataCtl.feed
   // for a chosen duration. Picking a gap seeds UnifiedCreate so the
   // user can lock in a title without re-typing the time.
   let findTimeOpen = $state(false);
@@ -177,75 +168,12 @@
   // their persistence + filterCtl.toggleType / filterCtl.toggleKindFilter / filterCtl.clearKindFilter
   // moved into $lib/calendar/calendarFilterState. Read via filterCtl.X.
 
-  // Project list — used by the filter dropdown + the "colour by
-  // project" overlay. Loaded once on mount; refreshed on demand if a
-  // ws project.changed broadcast lands. Failure degrades to empty.
-  let allProjects = $state<Project[]>([]);
-  async function loadAllProjects() {
-    try {
-      const r = await api.listProjects();
-      allProjects = r.projects ?? [];
-    } catch {
-      allProjects = [];
-    }
-  }
+  // dataCtl.allProjects + loadAllProjects moved into dataCtl.
 
   // filterCtl.colorByProject + persistence moved into filterCtl.
 
-  // Per-source ICS toggles. Wired to granit's `disabled_calendars` list
-  // (config.json) so flipping one here also silences it in the TUI on
-  // next launch — single source of truth.
-  let calSources = $state<CalendarSource[]>([]);
-  let savingSources = $state(false);
-
-  async function loadSources() {
-    try {
-      const r = await api.listCalendarSources();
-      calSources = r.sources;
-    } catch {
-      // No vault access yet, or no .ics files — silently skip.
-      calSources = [];
-    }
-  }
-
-  async function toggleSource(src: CalendarSource) {
-    // Snapshot the desired post-toggle state up front so subsequent
-    // logic doesn't depend on `src.enabled` mutating mid-flight (the
-    // `src` we received is a proxy backed by `calSources`; if anything
-    // races with this handler the read could observe the wrong value).
-    const targetId = src.id;
-    const wasEnabled = src.enabled;
-    const willBeEnabled = !wasEnabled;
-    savingSources = true;
-    // Optimistic flip — write a NEW array (not an in-place mutation
-    // of the existing proxy), so Svelte's keyed each block re-runs
-    // its bindings with the right `enabled` value before the network
-    // round-trip completes. Without this the user saw the toggle stay
-    // on its old visual state until the second click triggered a
-    // re-render via the response replace, hence "click twice".
-    calSources = calSources.map((s) =>
-      s.id === targetId ? { ...s, enabled: willBeEnabled } : s
-    );
-    // Compute the new `disabled` list from the OPTIMISTIC state so
-    // we send the canonical set the user just expressed intent for.
-    const newDisabled = calSources.filter((s) => !s.enabled).map((s) => s.source);
-    try {
-      const r = await api.patchCalendarSources(newDisabled);
-      // Replace with the server's authoritative shape (always a fresh
-      // array reference — guards against any future shape drift).
-      calSources = [...r.sources];
-      await load(); // refresh feed with new disabled list
-    } catch (e) {
-      // Roll the optimistic flip back so the UI matches what the
-      // server still has on disk.
-      calSources = calSources.map((s) =>
-        s.id === targetId ? { ...s, enabled: wasEnabled } : s
-      );
-      toast.error('save failed: ' + (errorMessage(e)));
-    } finally {
-      savingSources = false;
-    }
-  }
+  // dataCtl.calSources + dataCtl.savingSources + loadSources + toggleSource moved
+  // into dataCtl.
 
   // Mobile detection moved to the mediaQuery store + $effect above.
 
@@ -275,32 +203,7 @@
     }
   });
 
-  async function load() {
-    if (!$auth) return;
-    loading = true;
-    try {
-      if (viewCtl.cursor < fetchFrom || viewCtl.cursor > fetchTo) {
-        fetchFrom = addDays(viewCtl.cursor, -14);
-        fetchTo = addDays(viewCtl.cursor, 60);
-      }
-      feed = await api.calendar(fmtDateISO(fetchFrom), fmtDateISO(fetchTo));
-    } finally {
-      loading = false;
-    }
-  }
-
-  // Habits power the per-day "habits" overlay row in HourGrid.
-  // Independent of the event feed — toggling a habit shouldn't refetch
-  // the calendar (and vice versa).
-  async function loadHabits() {
-    if (!$auth) return;
-    try {
-      const r = await api.listHabits();
-      habits = r.habits;
-    } catch {
-      habits = [];
-    }
-  }
+  // load + loadHabits moved into dataCtl.
 
   onMount(load);
   onMount(loadSources);
@@ -321,48 +224,48 @@
         // the same-process write debounce and skips it.
         ev.type === 'task.changed'
       ) {
-        load();
+        dataCtl.load();
         // Habits live inside daily notes — a note change might mean a
-        // habit was ticked. Refetch alongside the event feed.
-        loadHabits();
+        // habit was ticked. Refetch alongside the event dataCtl.feed.
+        dataCtl.loadHabits();
       }
       // Refresh native event entries on any event change so the
       // Calendar Agent's scope reflects current state.
       if (ev.type === 'event.changed' || ev.type === 'event.removed') {
-        loadNativeEvents();
+        dataCtl.loadNativeEvents();
       }
-      // Deadlines are an overlay on the feed — refetch when the
+      // Deadlines are an overlay on the dataCtl.feed — refetch when the
       // server signals .granit/deadlines.json changed (TUI edit, web
       // edit in another tab, or anything else that calls SaveAll).
-      if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') load();
+      if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') dataCtl.load();
       // ICS mutations (create/edit/delete a new event in a subscribed
       // .ics file) broadcast as state.changed with a calendar path —
       // e.g. "calendars/personal.ics" or "merged.ics". Match the
       // path-shape rather than enumerate sources so new calendars added
       // mid-session refresh automatically.
-      if (ev.type === 'state.changed' && ev.path && /\.ics$/.test(ev.path)) load();
+      if (ev.type === 'state.changed' && ev.path && /\.ics$/.test(ev.path)) dataCtl.load();
       // Project metadata changed (rename, colour, status) — refresh
       // the picker so the filter dropdown stays in sync. We don't
-      // touch the event feed here; project_id on filterCtl.events is captured
+      // touch the event dataCtl.feed here; project_id on filterCtl.events is captured
       // at write time, so a project rename doesn't transitively
       // re-key past filterCtl.events (matches the deliberate Task.Project shape).
       if (ev.type === 'project.changed' || ev.type === 'project.removed') {
-        loadAllProjects();
+        dataCtl.loadAllProjects();
       }
     })
   );
 
-  // load() reads fetchFrom/fetchTo synchronously and may reassign them
+  // dataCtl.load() reads dataCtl.fetchFrom/dataCtl.fetchTo synchronously and may reassign them
   // when viewCtl.cursor walks outside the prefetch window. Without untrack, the
   // re-assignment refires this effect (one extra fetch per far-jump
   // navigation). The explicit `void` list above is the actual dep set.
   $effect(() => {
     void viewCtl.cursor;
     void viewCtl.view;
-    untrack(() => load());
+    untrack(() => dataCtl.load());
   });
 
-  let allEvents = $derived(feed?.events ?? []);
+  let allEvents = $derived(dataCtl.feed?.events ?? []);
   // Apply per-source color overrides so an ICS calendar the user
   // tinted 'green' renders that way on every viewCtl.view. Pure transform
   // on the derived event list — no extra fetches, no storage round
@@ -407,7 +310,7 @@
       });
       quickInput = '';
       toast.success('event created');
-      await load();
+      await dataCtl.load();
     } catch (err) {
       toast.error('create failed: ' + (errorMessage(err)));
     } finally {
@@ -548,7 +451,7 @@
         date: dateISO,
         done: !ev.done
       });
-      await load();
+      await dataCtl.load();
     } catch (e) {
       toast.error('Toggle meal failed: ' + errorMessage(e));
     }
@@ -571,7 +474,7 @@
       `${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     try {
       await api.patchTask(taskId, { scheduledStart: newStart.toISOString() });
-      await load();
+      await dataCtl.load();
       toast.success(`Rescheduled to ${fmt(newStart)}`);
     } catch (e) {
       const msg = errorMessage(e);
@@ -584,7 +487,7 @@
         scheduledStart: start.toISOString(),
         durationMinutes: dur
       });
-      await load();
+      await dataCtl.load();
       toast.success('scheduled');
     } catch (e) {
       toast.error('schedule failed: ' + (errorMessage(e)));
@@ -623,12 +526,12 @@
         // Prefer the server-stamped event.editable flag — it tracks
         // the actual file's location at feed time and survives
         // duplicate-filename scenarios where two .ics files share a
-        // name but only one is writable. Falls back to calSources
+        // name but only one is writable. Falls back to dataCtl.calSources
         // lookup for legacy entries that pre-date the flag.
         const w =
           typeof ev.editable === 'boolean'
             ? ev.editable
-            : !!calSources.find((s) => s.source === ev.source)?.writable;
+            : !!dataCtl.calSources.find((s) => s.source === ev.source)?.writable;
         if (!w) {
           toast.error(`Read-only calendar (${ev.source}) — move the file to <vault>/calendars/ to enable edits.`);
           return;
@@ -641,7 +544,7 @@
       // triggered the destructive series path) with an explicit
       // RecurringScopePicker rendered inline on the page. The picker
       // resolves to 'this' | 'series' | null; null = user cancelled,
-      // so we abort and let the drag visually revert via load().
+      // so we abort and let the drag visually revert via dataCtl.load().
       let recurringMode: 'series' | 'instance' | null = null;
       if (ev.rrule && ev.eventId) {
         const scope = await askRecurringScope(ev.title ?? 'this event', 'move');
@@ -650,7 +553,7 @@
           // snaps back to the original slot. Without this, the ghost
           // releases at the new spot but the underlying event hasn't
           // moved, leaving the UI confused until the next refresh.
-          await load();
+          await dataCtl.load();
           return;
         }
         recurringMode = scope === 'this' ? 'instance' : 'series';
@@ -688,7 +591,7 @@
           );
           return;
         }
-        await load();
+        await dataCtl.load();
         toast.success(`Moved this occurrence to ${fmt(newStart)}`);
         return;
       }
@@ -700,7 +603,7 @@
       // would mint a fresh override at the wrong anchor and the
       // original override would stay buried in the map. Use
       // ev.override_key when present (canonical anchor surfaced by
-      // the calendar feed); fall back to ev.start for first-time
+      // the calendar dataCtl.feed); fall back to ev.start for first-time
       // overrides where the rendered time IS the anchor.
       if (recurringMode === 'instance' && ev.type === 'event' && ev.eventId && ev.start) {
         const dateStr = `${newStart.getFullYear()}-${String(newStart.getMonth() + 1).padStart(2, '0')}-${String(newStart.getDate()).padStart(2, '0')}`;
@@ -726,7 +629,7 @@
           start_time: startTime,
           end_time: endTime
         });
-        await load();
+        await dataCtl.load();
         toast.success(`Moved this occurrence to ${fmt(newStart)}`);
         return;
       }
@@ -769,7 +672,7 @@
         toast.error(`Can't move this event type (${ev.type ?? 'unknown'}).`);
         return;
       }
-      await load();
+      await dataCtl.load();
       toast.success(`Moved to ${fmt(newStart)}`);
     } catch (e) {
       const msg = errorMessage(e);
@@ -787,13 +690,13 @@
   async function resizeEvent(ev: CalendarEvent, durationMinutes: number) {
     try {
       // Mirrors moveEvent's recurring chooser via the in-page picker
-      // (Stream R). null = user cancelled — load() snaps the resize
+      // (Stream R). null = user cancelled — dataCtl.load() snaps the resize
       // visual back to its original duration.
       let recurringMode: 'series' | 'instance' | null = null;
       if (ev.rrule && !ev.taskId && ev.eventId) {
         const scope = await askRecurringScope(ev.title ?? 'this event', 'resize');
         if (!scope) {
-          await load();
+          await dataCtl.load();
           return;
         }
         recurringMode = scope === 'this' ? 'instance' : 'series';
@@ -823,7 +726,7 @@
           );
           return;
         }
-        await load();
+        await dataCtl.load();
         return;
       }
       if (recurringMode === 'instance' && ev.type === 'event' && ev.eventId && ev.start) {
@@ -848,7 +751,7 @@
           start_time: startTime,
           end_time: endTime
         });
-        await load();
+        await dataCtl.load();
         return;
       }
       if (ev.taskId) {
@@ -873,7 +776,7 @@
         const w =
           typeof ev.editable === 'boolean'
             ? ev.editable
-            : !!calSources.find((s) => s.source === ev.source)?.writable;
+            : !!dataCtl.calSources.find((s) => s.source === ev.source)?.writable;
         if (!w) {
           toast.error(`Read-only calendar (${ev.source}) — can't resize this event.`);
           return;
@@ -885,7 +788,7 @@
         const endD = new Date(startD.getTime() + durationMinutes * 60_000);
         await api.patchICSEvent(ev.source, ev.eventId, { end: endD.toISOString() });
       }
-      await load();
+      await dataCtl.load();
     } catch (e) {
       // Surface a toast so the user sees the resize failed instead
       // of watching the bar snap back silently. Mirrors moveEvent's
@@ -1011,7 +914,7 @@
       </div>
     </div>
 
-    {#if allProjects.length > 0}
+    {#if dataCtl.allProjects.length > 0}
       <div class="space-y-1.5 text-xs">
         <h3 class="text-dim uppercase tracking-wider mb-2">Project board</h3>
         <select
@@ -1020,7 +923,7 @@
           class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
         >
           <option value="">All projects</option>
-          {#each allProjects as p (p.name)}
+          {#each dataCtl.allProjects as p (p.name)}
             <option value={p.name}>{p.name}</option>
           {/each}
         </select>
@@ -1050,10 +953,10 @@
          both frontends. The most common reason to toggle: vaults often
          carry both per-source files (training.ics, faith.ics) and a
          merged.ics that combines them — disable one side. -->
-    {#if calSources.length > 0}
+    {#if dataCtl.calSources.length > 0}
       <div class="space-y-1 text-xs">
         <h3 class="text-dim uppercase tracking-wider mb-2">Calendar sources</h3>
-        {#each calSources as s (s.id)}
+        {#each dataCtl.calSources as s (s.id)}
           {@const tone = sourceColorToken(s.source)}
           {@const customTone = $sourceColors[s.source] ?? ''}
           {@const displayTone = customTone || tone}
@@ -1075,8 +978,8 @@
               aria-hidden="true"
             ></span>
             <button
-              onclick={() => toggleSource(s)}
-              disabled={savingSources}
+              onclick={() => dataCtl.toggleSource(s)}
+              disabled={dataCtl.savingSources}
               class="flex items-center gap-2 px-1 py-1 rounded hover:bg-surface0 flex-1 min-w-0 {s.enabled ? '' : 'opacity-40'}"
               title="{s.path}{s.enabled ? '' : ' (disabled)'}"
             >
@@ -1153,7 +1056,7 @@
       bind:viewCtl.view
       bind:viewCtl.cursor
       {headline}
-      {loading}
+      {dataCtl.loading}
       bind:viewCtl.monthDensity
       bind:viewCtl.hourDensity
       {viewCtl.planMode}
@@ -1286,14 +1189,14 @@
             <HourGrid
               days={viewCtl.viewDays}
               events={filterCtl.events}
-              habits={habits}
+              habits={dataCtl.habits}
               onClickEvent={clickEvent}
               onClickSlot={clickSlot}
               onSlotRange={onSlotRange}
               onReschedule={reschedule}
               onMove={moveEvent}
               onResize={resizeEvent}
-              writableSources={calSources.filter((s) => s.writable).map((s) => s.source)}
+              writableSources={dataCtl.calSources.filter((s) => s.writable).map((s) => s.source)}
               onTaskDrop={dropTask}
               {viewCtl.hourPx}
             />
@@ -1301,7 +1204,7 @@
         </div>
       {:else if viewCtl.view === 'day' || viewCtl.view === 'week' || viewCtl.view === 'workweek'}
         <div class="relative h-full">
-          <HourGrid days={viewCtl.viewDays} events={filterCtl.events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} {viewCtl.hourPx} />
+          <HourGrid days={viewCtl.viewDays} events={filterCtl.events} habits={dataCtl.habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={dataCtl.calSources.filter((s) => s.writable).map((s) => s.source)} {viewCtl.hourPx} />
           {#if viewCtl.pipelineMode && (viewCtl.view === 'week' || viewCtl.view === 'workweek')}
             <!-- Swim-lane overlay for week-axis content production
                  planning. Same overlay chrome as ContentPipelineOverlay
@@ -1340,7 +1243,7 @@
         <!-- Agenda is the flat 30-day next-up list. Scoped to
              `filterCtl.agendaEvents` (rolling viewCtl.cursor → +30d) so prev/next
              walks weeks of agenda content without re-fetching the
-             whole feed. The onCreate hook fires from the empty-state
+             whole dataCtl.feed. The onCreate hook fires from the empty-state
              "+ Create event" CTA so a wide-open week is one click
              from filling the first slot. -->
         <div class="overflow-y-auto h-full">
@@ -1482,14 +1385,14 @@
      proposing renames across all filterCtl.events. -->
 <CalendarAgent
   open={agentOpen}
-  events={nativeEvents.filter((e) =>
-    e.date >= fmtDateISO(fetchFrom) &&
-    e.date <= fmtDateISO(fetchTo) &&
+  events={dataCtl.nativeEvents.filter((e) =>
+    e.date >= fmtDateISO(dataCtl.fetchFrom) &&
+    e.date <= fmtDateISO(dataCtl.fetchTo) &&
     (!filterCtl.projectFilter || e.project_id === filterCtl.projectFilter)
   )}
   todayISO={fmtDateISO(new Date())}
-  knownProjects={allProjects.map((p) => p.name)}
+  knownProjects={dataCtl.allProjects.map((p) => p.name)}
   onClose={() => (agentOpen = false)}
-  onChanged={() => { void load(); void loadNativeEvents(); }}
+  onChanged={() => { void dataCtl.load(); void dataCtl.loadNativeEvents(); }}
 />
 
