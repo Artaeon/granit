@@ -1062,17 +1062,17 @@
 
   <div class="flex-1 flex flex-col min-w-0">
     <HeaderToolbar
-      bind:viewCtl.view
-      bind:viewCtl.cursor
+      bind:view={viewCtl.view}
+      bind:cursor={viewCtl.cursor}
       {headline}
-      {dataCtl.loading}
-      bind:viewCtl.monthDensity
-      bind:viewCtl.hourDensity
-      {viewCtl.planMode}
-      onPrev={prev}
-      onNext={next}
-      onGotoToday={gotoToday}
-      onTogglePlanMode={togglePlanMode}
+      loading={dataCtl.loading}
+      bind:monthDensity={viewCtl.monthDensity}
+      bind:hourDensity={viewCtl.hourDensity}
+      planMode={viewCtl.planMode}
+      onPrev={viewCtl.prev}
+      onNext={viewCtl.next}
+      onGotoToday={viewCtl.gotoToday}
+      onTogglePlanMode={viewCtl.togglePlanMode}
       onFindTime={() => (findTimeOpen = true)}
       onShowShortcuts={() => (showShortcutHelp = true)}
       onOpenFilterDrawer={() => (filterCtl.filterDrawerOpen = true)}
@@ -1207,13 +1207,13 @@
               onResize={resizeEvent}
               writableSources={dataCtl.calSources.filter((s) => s.writable).map((s) => s.source)}
               onTaskDrop={dropTask}
-              {viewCtl.hourPx}
+              hourPx={viewCtl.hourPx}
             />
           </div>
         </div>
       {:else if viewCtl.view === 'day' || viewCtl.view === 'week' || viewCtl.view === 'workweek'}
         <div class="relative h-full">
-          <HourGrid days={viewCtl.viewDays} events={filterCtl.events} habits={dataCtl.habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={dataCtl.calSources.filter((s) => s.writable).map((s) => s.source)} {viewCtl.hourPx} />
+          <HourGrid days={viewCtl.viewDays} events={filterCtl.events} habits={dataCtl.habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={dataCtl.calSources.filter((s) => s.writable).map((s) => s.source)} hourPx={viewCtl.hourPx} />
           {#if viewCtl.pipelineMode && (viewCtl.view === 'week' || viewCtl.view === 'workweek')}
             <!-- Swim-lane overlay for week-axis content production
                  planning. Same overlay chrome as ContentPipelineOverlay
