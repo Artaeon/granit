@@ -83,13 +83,16 @@
   // the same line number. Tracking container identity rather than
   // body keeps the reset out of the per-keystroke hot path that
   // caused the flicker fixed in b43de2ce.
-  let lastSeenContainer: HTMLElement | null | undefined = undefined;
+  // Separate ref from the attach-effect's lastSeenContainer below —
+  // this one resets observedActiveLine on container identity change;
+  // the other drives the immediate-vs-coalesced re-attach decision.
+  let lastResetContainer: HTMLElement | null | undefined = undefined;
   $effect(() => {
     const c = scrollContainer ?? null;
-    if (lastSeenContainer !== undefined && lastSeenContainer !== c) {
+    if (lastResetContainer !== undefined && lastResetContainer !== c) {
       observedActiveLine = null;
     }
-    lastSeenContainer = c;
+    lastResetContainer = c;
   });
 
   // (Re)attach the IntersectionObserver whenever `body` changes.
