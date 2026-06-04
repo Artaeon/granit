@@ -2,9 +2,11 @@
   SplitView — recursive renderer for the workspace split-tree.
 
   A node is either a leaf (a pane) or a split (two children + a
-  gutter). The component renders itself for each child, so any depth
-  of nesting works without changes: a 2x2 grid is just a horizontal
-  split where each child is a vertical split.
+  gutter). The component renders itself via <svelte:self/> for each
+  child, so any depth of nesting works without changes: a 2x2 grid
+  is just a horizontal split where each child is a vertical split.
+  (svelte:self avoids the self-import circular dep — see the
+  ReferenceError fix that drove this change.)
 
   Owns the per-split gutter drag. Pane swap / split / close affordances
   live in PaneSlot — this component just plumbs them through.
@@ -84,7 +86,7 @@
       style:flex-grow="0"
       style:flex-shrink="0"
     >
-      <SplitView
+      <svelte:self
         node={node.first}
         {onSetPane}
         {onSetRatio}
@@ -109,7 +111,7 @@
       class:cursor-row-resize={node.direction === 'v'}
     ></div>
     <div class="flex-1 min-w-0 min-h-0 overflow-hidden">
-      <SplitView
+      <svelte:self
         node={node.second}
         {onSetPane}
         {onSetRatio}
