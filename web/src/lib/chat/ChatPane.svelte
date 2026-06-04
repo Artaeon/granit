@@ -17,6 +17,7 @@
     type ChatSessionRefs,
     type PreludeBundle
   } from '$lib/chat/chatSessionManager.svelte';
+  import { workspaceContext } from '$lib/workspace/workspaceContext.svelte';
 
   // Multi-turn chat with the configured LLM. History lives in localStorage
   // (one current conversation; the user "saves" via "save as note" to keep
@@ -100,12 +101,27 @@
     set quickResult(_v) {}
   };
 
-  // Per-turn prelude — just the mode's system prompt. AIOverlay's
-  // prelude also folds in AI memory, RAG hits, and page context;
-  // /chat is intentionally route-agnostic, so those stay empty.
+  // Per-turn prelude — the mode's system prompt, plus an optional
+  // workspace-context system message that describes the user's
+  // currently-focused item from the adjacent pane (task being viewed,
+  // event selected, goal in detail, etc.). This is the "AI is aware
+  // of its neighbors" piece of the granit vision: the LLM sees the
+  // context invisibly so the user can ask "what should I do about
+  // this?" without retyping what "this" is.
   async function buildChatPrelude(_text: string, _isFirstTurn: boolean): Promise<PreludeBundle> {
+    const ctx = workspaceContext.current;
+    const messages: PreludeBundle['messages'] = [
+      { role: 'system', content: mode.system }
+    ];
+    if (ctx) {
+      const excerpt = ctx.excerpt ? ` (${ctx.excerpt})` : '';
+      messages.push({
+        role: 'system',
+        content: `Workspace context — the user is currently viewing in their ${ctx.paneKind} pane: "${ctx.label}"${excerpt}. Treat this as the implicit subject of their next message unless they say otherwise.`
+      });
+    }
     return {
-      messages: [{ role: 'system', content: mode.system }],
+      messages,
       ragHits: [],
       notePathForStream: null
     };
@@ -400,6 +416,30 @@
     class="composer-bar border-t border-surface1 bg-mantle flex-shrink-0 pb-[env(safe-area-inset-bottom,0px)]"
     class:keyboard-open={keyboardOpen}
   >
+    {#if workspaceContext.current}
+      {@const ctx = workspaceContext.current}
+      <!-- Cross-pane workspace context chip — surfaces the item the
+           user is focused on in an adjacent pane (a task, an event,
+           a goal). The LLM gets the same context invisibly via the
+           prelude, so asking "what should I do about this?" works
+           without retyping. × clears the bus so the LLM stops
+           seeing the context on the next send. -->
+      <div class="max-w-3xl mx-auto px-3 pt-2">
+        <div
+          class="inline-flex items-center gap-1.5 rounded border border-primary/40 bg-primary/10 px-2 py-1 text-xs"
+          title="The AI sees this context on each send. × to clear."
+        >
+          <span class="font-mono text-[10px] uppercase tracking-wider text-primary">{ctx.paneKind}</span>
+          <span class="text-text truncate max-w-[28ch]">{ctx.label}</span>
+          <button
+            type="button"
+            onclick={() => workspaceContext.clear()}
+            aria-label="Clear workspace context"
+            class="text-dim hover:text-error text-base leading-none px-0.5"
+          >×</button>
+        </div>
+      </div>
+    {/if}
     <form onsubmit={send} class="max-w-3xl mx-auto p-3 flex gap-2 items-end">
       <textarea
         bind:this={inputEl}

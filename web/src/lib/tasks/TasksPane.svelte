@@ -54,6 +54,7 @@
   import { createTasksFilterState } from '$lib/tasks/tasksFilterState.svelte';
   import { createTasksViewState } from '$lib/tasks/tasksViewState.svelte';
   import { createTasksData } from '$lib/tasks/tasksData.svelte';
+  import { workspaceContext } from '$lib/workspace/workspaceContext.svelte';
 
   // Loaded data (dataCtl.tasks/dataCtl.projects/dataCtl.goals/dataCtl.deadlines), dataCtl.loading flag,
   // dataCtl.parentMap/dataCtl.childCount/dataCtl.allTags/dataCtl.countOpen/dataCtl.countDone/dataCtl.stats, plus
@@ -450,6 +451,16 @@
   function openDetail(t: Task) {
     detailTask = t;
     detailOpen = true;
+    // Publish to the workspace context bus so an AI pane in the
+    // adjacent slot can surface this task as context. Best-effort
+    // — if the user isn't running TasksPane inside the workspace
+    // shell, nothing reads the bus and the publish is a no-op.
+    workspaceContext.publish({
+      paneKind: 'tasks',
+      itemId: t.id,
+      label: t.text,
+      excerpt: t.notePath
+    });
   }
   function openContext(t: Task, x: number, y: number) {
     ctxTask = t;

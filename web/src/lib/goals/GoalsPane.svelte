@@ -38,6 +38,7 @@
     type GoalsStatusFilter
   } from '$lib/goals/goalsFilterState.svelte';
   import { createGoalsData } from '$lib/goals/goalsData.svelte';
+  import { workspaceContext } from '$lib/workspace/workspaceContext.svelte';
 
   // Loaded data (dataCtl.goals + dataCtl.openTasks/dataCtl.doneTasks/dataCtl.projects sidecars) +
   // dataCtl.loading flags + dataCtl.load() + per-goal dataCtl.rollups + stalled detection
@@ -169,6 +170,12 @@
   function openDetail(g: Goal) {
     selectedId = g.id;
     detailOpen = true;
+    workspaceContext.publish({
+      paneKind: 'goals',
+      itemId: g.id,
+      label: g.title,
+      excerpt: g.description ?? undefined
+    });
   }
   function openDetailById(id: string) {
     const g = dataCtl.goals.find((x) => x.id === id);

@@ -50,6 +50,7 @@
   import { onWsEvent } from '$lib/ws';
   import { dragStore } from '$lib/calendar/dragStore';
   import { onDestroy } from 'svelte';
+  import { workspaceContext } from '$lib/workspace/workspaceContext.svelte';
 
   // View / display / navigation state lives in
   // $lib/calendar/calendarViewState. Read via viewCtl.X.
@@ -429,6 +430,14 @@
     }
     selected = ev;
     detailOpen = true;
+    // Publish to the workspace context bus so an AI pane in the
+    // adjacent slot can surface this event as context.
+    workspaceContext.publish({
+      paneKind: 'calendar',
+      itemId: ev.eventId ?? `${ev.date ?? ''}|${ev.title ?? ''}`,
+      label: ev.title ?? 'untitled event',
+      excerpt: ev.date ?? undefined
+    });
   }
 
   // toggleMealEvent flips the done state of a meal_slot event by
