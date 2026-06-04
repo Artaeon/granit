@@ -16,6 +16,10 @@
     type HourDensity
   } from '$lib/calendar/calendarViewState.svelte';
   import {
+    createCalendarFilterState,
+    type EventFilterKey
+  } from '$lib/calendar/calendarFilterState.svelte';
+  import {
     addDays,
     endOfWeek,
     fmtDateISO,
@@ -46,12 +50,20 @@
   import { dragStore } from '$lib/calendar/dragStore';
   import { onDestroy } from 'svelte';
 
-  // View / display / navigation state — viewCtl.view, viewCtl.cursor, viewCtl.planMode,
-  // viewCtl.monthDensity, viewCtl.hourDensity (+ viewCtl.hourPx derived), viewCtl.pipelineMode, the
-  // navigation primitives (prev/next/gotoToday), togglePlanMode, and
-  // the viewCtl.viewDays derivation all live in $lib/calendar/calendarViewState.
-  // Read via viewCtl.X.
+  // View / display / navigation state lives in
+  // $lib/calendar/calendarViewState. Read via viewCtl.X.
   const viewCtl = createCalendarViewState();
+
+  // Filter dimensions + every filter derivation + the FILTER_CHIPS
+  // catalog live in $lib/calendar/calendarFilterState. Read via
+  // filterCtl.X. Deps wire allEvents (from the loaded feed),
+  // allProjects (loaded sidecar), and cursor (from viewCtl) so the
+  // controller stays decoupled from page-local state.
+  const filterCtl = createCalendarFilterState({
+    getAllEvents: () => feed?.events ?? [],
+    getAllProjects: () => allProjects,
+    getCursor: () => viewCtl.cursor
+  });
 
   // Clean exit on route change: drop any pending drag pick. Otherwise
   // a stale dragStore could corrupt the next page's pointer behaviour.
@@ -148,7 +160,7 @@
     unifiedOpen = true;
   }
 
-  let filterDrawerOpen = $state(false);
+  // filterCtl.filterDrawerOpen moved into filterCtl.
   // Reactive mobile flag via the shared mediaQuery store. Auto-cleans
   // up on component destroy. The first-mount "force day viewCtl.view on
   // mobile" rule still applies, see the $effect below.
@@ -161,86 +173,9 @@
     }
   });
 
-  // Event-type filter: each toggle hides events of that type. Persisted so
-  // the user's preference (e.g. "always hide ICS") sticks across sessions.
-  //
-  // 'content_event' is a logical key — it doesn't match a CalendarEventType
-  // directly. The filter below maps it to (e.type === 'event' && e.kind ===
-  // 'content') so content events get their own chip without polluting the
-  // wire-shape type enum. The chip is hidden when no content events are
-  // in the loaded window so non-content users never see it.
-  type EventFilterKey = 'daily' | 'task_due' | 'task_scheduled' | 'event' | 'ics_event' | 'deadline' | 'goal_target' | 'meal_slot' | 'content_event';
-  const FILTER_KEY = 'granit.calendar.filters';
-  let hidden = $state<Set<EventFilterKey>>(
-    new Set(loadStored<EventFilterKey[]>(FILTER_KEY, []))
-  );
-
-  $effect(() => saveStored(FILTER_KEY, Array.from(hidden)));
-
-  function toggleType(t: EventFilterKey) {
-    const next = new Set(hidden);
-    if (next.has(t)) next.delete(t);
-    else next.add(t);
-    hidden = next;
-  }
-
-  // Stable filter chip catalog — hoisted so each render iterates the
-  // same array (an inline literal in the template would tear keyed
-  // children down on every re-render). Drives both the always-visible
-  // pill strip above the grid and the sidebar Filters section.
-  const FILTER_CHIPS: ReadonlyArray<{ key: EventFilterKey; label: string; tone: string }> = [
-    { key: 'event',          label: 'Events',     tone: 'info' },
-    { key: 'ics_event',      label: 'ICS',        tone: 'info' },
-    { key: 'task_scheduled', label: 'Scheduled',  tone: 'primary' },
-    { key: 'task_due',       label: 'Due',        tone: 'warning' },
-    { key: 'deadline',       label: 'Deadlines',  tone: 'error' },
-    { key: 'goal_target',    label: 'Goals',      tone: 'mauve' },
-    { key: 'meal_slot',      label: 'Meals',      tone: 'subtext' },
-    { key: 'daily',          label: 'Daily',      tone: 'secondary' },
-    // Content events get their own chip — same tone as the 'content'
-    // event-type catalog colour so the chip + the on-grid accent read
-    // as one feature. Hidden from the visible row when count = 0 (see
-    // visibleFilterChips below) so non-content users see no extra
-    // clutter.
-    { key: 'content_event',  label: 'Content',    tone: 'lavender' }
-  ];
-
-  // Project filter — when set to a non-empty project name, the grid
-  // only shows events + tasks linked to that project (via project_id
-  // on the wire shape). Persisted per-device so a user using the
-  // calendar as a project board stays scoped on reload. Empty = "all".
-  const PROJECT_FILTER_KEY = 'granit.calendar.project';
-  let projectFilter = $state<string>(loadStoredString(PROJECT_FILTER_KEY, ''));
-  $effect(() => saveStoredString(PROJECT_FILTER_KEY, projectFilter));
-
-  // Event-type filter — JSON-encoded Set of catalog ids. Empty = no
-  // filter (all types + untyped show). When non-empty, the calendar
-  // only shows events whose kind is in the set; untyped events (no
-  // kind set) only show when the special '' id is also in the set,
-  // controlled by a dedicated "Untyped" chip. Persisted per-device.
-  const KIND_FILTER_KEY = 'granit.calendar.kindFilter';
-  function loadKindFilterFromStorage(): Set<string> {
-    const raw = loadStoredString(KIND_FILTER_KEY, '');
-    if (!raw) return new Set();
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed)) return new Set(parsed.filter((x): x is string => typeof x === 'string'));
-    } catch {
-      // Malformed — fall through to empty set.
-    }
-    return new Set();
-  }
-  let kindFilter = $state<Set<string>>(loadKindFilterFromStorage());
-  $effect(() => saveStoredString(KIND_FILTER_KEY, JSON.stringify([...kindFilter])));
-  function toggleKindFilter(id: string) {
-    const next = new Set(kindFilter);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    kindFilter = next;
-  }
-  function clearKindFilter() {
-    kindFilter = new Set();
-  }
+  // filterCtl.hidden / filterCtl.projectFilter / filterCtl.kindFilter + FILTER_CHIPS catalog +
+  // their persistence + filterCtl.toggleType / filterCtl.toggleKindFilter / filterCtl.clearKindFilter
+  // moved into $lib/calendar/calendarFilterState. Read via filterCtl.X.
 
   // Project list — used by the filter dropdown + the "colour by
   // project" overlay. Loaded once on mount; refreshed on demand if a
@@ -255,14 +190,7 @@
     }
   }
 
-  // Colour-by-project toggle. Off by default (the per-event colour
-  // and the per-source ICS colour rotation already give visual
-  // separation); flipping it on tints every project-linked row with
-  // the project's `color` field, so a project board viewCtl.view becomes
-  // visually unified.
-  const COLOR_BY_PROJECT_KEY = 'granit.calendar.colorByProject';
-  let colorByProject = $state<boolean>(loadStoredString(COLOR_BY_PROJECT_KEY, '0') === '1');
-  $effect(() => saveStoredString(COLOR_BY_PROJECT_KEY, colorByProject ? '1' : '0'));
+  // filterCtl.colorByProject + persistence moved into filterCtl.
 
   // Per-source ICS toggles. Wired to granit's `disabled_calendars` list
   // (config.json) so flipping one here also silences it in the TUI on
@@ -334,7 +262,7 @@
       viewCtl.view = 'day';
     }
     const proj = url.searchParams.get('project');
-    if (proj) projectFilter = proj;
+    if (proj) filterCtl.projectFilter = proj;
     // ?agent=1 launches the Calendar Agent — used by the chat sidebar.
     if (url.searchParams.get('agent') === '1') {
       agentOpen = true;
@@ -415,9 +343,9 @@
       if (ev.type === 'state.changed' && ev.path && /\.ics$/.test(ev.path)) load();
       // Project metadata changed (rename, colour, status) — refresh
       // the picker so the filter dropdown stays in sync. We don't
-      // touch the event feed here; project_id on events is captured
+      // touch the event feed here; project_id on filterCtl.events is captured
       // at write time, so a project rename doesn't transitively
-      // re-key past events (matches the deliberate Task.Project shape).
+      // re-key past filterCtl.events (matches the deliberate Task.Project shape).
       if (ev.type === 'project.changed' || ev.type === 'project.removed') {
         loadAllProjects();
       }
@@ -443,61 +371,14 @@
   // render path.
   //
   // Project filter and project-tint layer on top in two stages:
-  //   1. If projectFilter is set, drop every row whose project_id !=
+  //   1. If filterCtl.projectFilter is set, drop every row whose project_id !=
   //      the picked project — the calendar becomes a project board.
-  //   2. If colorByProject is on, override the row's `color` with the
-  //      project's saved colour (events.json events). The override
+  //   2. If filterCtl.colorByProject is on, override the row's `color` with the
+  //      project's saved colour (events.json filterCtl.events). The override
   //      runs through the existing eventTypeColor mapping (red/yellow
   //      /green/...), so it composes cleanly with the per-source
   //      and per-event paths.
-  let projectColorMap = $derived.by(() => {
-    const m = new Map<string, string>();
-    for (const p of allProjects) {
-      if (p.name && p.color) m.set(p.name, p.color);
-    }
-    return m;
-  });
-  let events = $derived(
-    allEvents
-      .filter((e) => !hidden.has(e.type as EventFilterKey))
-      .filter((e) => {
-        // content_event is a derived filter: when the chip is toggled
-        // off (key in hidden), we hide events that look like content
-        // (type=event + kind=content). Non-content events are unaffected.
-        if (!hidden.has('content_event')) return true;
-        return !(e.type === 'event' && e.kind === 'content');
-      })
-      .filter((e) => {
-        if (!projectFilter) return true;
-        return e.project_id === projectFilter;
-      })
-      .filter((e) => {
-        // Empty kindFilter = show everything (no filter applied).
-        // Non-empty set: only events whose type is calendar-related
-        // (event / ics_event) participate in the type filter; tasks
-        // + deadlines never carry a kind and always pass through so
-        // a "show only Focus events" filter doesn't hide today's
-        // overdue task. The '__untyped' sentinel id lets the user
-        // also include kind-less events. Trim+lowercase the stored
-        // kind defensively so a hand-edited " Meeting " or "FOCUS"
-        // value still matches against the lowercase catalog ids.
-        if (kindFilter.size === 0) return true;
-        if (e.type !== 'event' && e.type !== 'ics_event') return true;
-        const k = (e.kind ?? '').trim().toLowerCase();
-        return k ? kindFilter.has(k) : kindFilter.has('__untyped');
-      })
-      .map((e) => applySourceColor(e, $sourceColors))
-      .map((e) => {
-        if (!colorByProject || !e.project_id) return e;
-        const c = projectColorMap.get(e.project_id);
-        if (!c) return e;
-        // Only override the user-event color path — task / deadline
-        // rows have their own meaningful colour rules (priority,
-        // importance) we shouldn't trample.
-        if (e.type !== 'event' && e.type !== 'task_scheduled' && e.type !== 'task_due') return e;
-        return { ...e, color: c };
-      })
-  );
+  // filterCtl.projectColorMap + filterCtl.events derivations moved into filterCtl.
 
   // ── Natural-language quick-create ────────────────────────────────
   // Single text input above the grid: "lunch tomorrow 12pm 1h" →
@@ -533,43 +414,23 @@
       quickBusy = false;
     }
   }
-  let typeCounts = $derived.by(() => {
-    const c: Record<string, number> = {};
-    for (const e of allEvents) {
-      c[e.type] = (c[e.type] ?? 0) + 1;
-      // content_event isn't a wire-shape type — it's a kind on
-      // type='event'. Count separately so the chip can show its own
-      // tally (and the visibility gate below has a value to read).
-      if (e.type === 'event' && e.kind === 'content') {
-        c['content_event'] = (c['content_event'] ?? 0) + 1;
-      }
-    }
-    return c;
-  });
-
-  // Visible chip strip — strips the Content chip out for users who
-  // aren't running a content pipeline. Re-includes it the moment any
-  // content event lands so a fresh-from-template content event shows
-  // its chip on the next render.
-  let visibleFilterChips = $derived(
-    FILTER_CHIPS.filter((c) => c.key !== 'content_event' || (typeCounts['content_event'] ?? 0) > 0)
-  );
+  // filterCtl.typeCounts + filterCtl.visibleFilterChips derivations moved into filterCtl.
 
   // Pipeline / channel-lanes overlay — a single toggle that renders
   // two different content-pipeline grouping shapes depending on the
   // active viewCtl.view: kanban by status on month, swim lanes by channel on
   // week / workweek. The user toggles ONCE and gets the right
   // grouping for the day-axis they're already looking at. Toggled
-  // from a header button that only appears when content events exist
+  // from a header button that only appears when content filterCtl.events exist
   // (so non-content users see no extra chrome) AND the active viewCtl.view
   // has a useful pipeline shape (day / year / agenda don't).
   // viewCtl.pipelineMode moved into viewCtl. The button-available + label
-  // derivations stay here because they straddle viewCtl.view + typeCounts
+  // derivations stay here because they straddle viewCtl.view + filterCtl.typeCounts
   // (which lives in the upcoming filter controller). Auto-close
   // effect uses viewCtl.pipelineMode getter/setter.
   let pipelineButtonAvailable = $derived(
     (viewCtl.view === 'month' || viewCtl.view === 'week' || viewCtl.view === 'workweek') &&
-      (typeCounts['content_event'] ?? 0) > 0
+      (filterCtl.typeCounts['content_event'] ?? 0) > 0
   );
   $effect(() => {
     if (viewCtl.pipelineMode && !pipelineButtonAvailable) viewCtl.pipelineMode = false;
@@ -578,29 +439,7 @@
 
   // viewCtl.viewDays moved into viewCtl.
 
-  let monthEvents = $derived.by(() => {
-    const ms = startOfMonth(viewCtl.cursor);
-    const me = new Date(ms.getFullYear(), ms.getMonth() + 1, 0);
-    return events.filter((ev) => {
-      const key = ev.date ?? (ev.start ? ev.start.slice(0, 10) : '');
-      if (!key) return false;
-      return key >= fmtDateISO(ms) && key <= fmtDateISO(me);
-    });
-  });
-
-  // Agenda viewCtl.view shows a rolling 30-day flat list anchored at viewCtl.cursor.
-  // Past-dated events stay invisible — the agenda is a "what's next"
-  // surface, not a historical log (the day/week views and tasks
-  // dashboard cover the look-back use case).
-  let agendaEvents = $derived.by(() => {
-    const from = fmtDateISO(viewCtl.cursor);
-    const to = fmtDateISO(addDays(viewCtl.cursor, 30));
-    return events.filter((ev) => {
-      const key = ev.date ?? (ev.start ? ev.start.slice(0, 10) : '');
-      if (!key) return false;
-      return key >= from && key <= to;
-    });
-  });
+  // filterCtl.monthEvents + filterCtl.agendaEvents derivations moved into filterCtl.
 
   // prev / next / gotoToday moved into viewCtl.
 
@@ -1057,7 +896,7 @@
     }
   }
   function clickDay(d: Date) { viewCtl.cursor = d; viewCtl.view = 'day'; }
-  function pickDay(d: Date) { viewCtl.cursor = d; filterDrawerOpen = false; }
+  function pickDay(d: Date) { viewCtl.cursor = d; filterCtl.filterDrawerOpen = false; }
 
   // ── AI: Plan my week ─────────────────────────────────────────────
   // Looks across all open UNSCHEDULED tasks (no scheduledStart yet)
@@ -1114,14 +953,14 @@
         s.setHours(s.getHours() + 1);
         const e = new Date(s.getTime() + 60 * 60 * 1000);
         unifiedStart = s; unifiedEnd = e; unifiedKind = 'task'; unifiedOpen = true;
-        filterDrawerOpen = false;
+        filterCtl.filterDrawerOpen = false;
       }}
       class="w-full px-3 py-2.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
     >
       + New task or event
     </button>
     <p class="text-[11px] text-dim italic px-1 -mt-2">…or click + drag on the grid</p>
-    <MiniMonth cursor={viewCtl.cursor} selected={viewCtl.cursor} events={monthEvents} onPick={pickDay} />
+    <MiniMonth cursor={viewCtl.cursor} selected={viewCtl.cursor} events={filterCtl.monthEvents} onPick={pickDay} />
 
     <!-- Project filter — turn the calendar into a project-management
          board for one project at a time. Empty value = "all projects".
@@ -1131,25 +970,25 @@
          project's saved colour for at-a-glance visual grouping. -->
     <!-- Event-type filter strip. Each chip toggles a single type
          into the filter set; empty set = no filter (everything
-         visible). The 'Untyped' chip includes events with no kind
+         visible). The 'Untyped' chip includes filterCtl.events with no kind
          declared so a user can isolate the legacy un-tagged subset. -->
     <div class="space-y-1.5 text-xs">
       <h3 class="text-dim uppercase tracking-wider mb-2 flex items-center gap-2">
         <span>Event type</span>
-        {#if kindFilter.size > 0}
+        {#if filterCtl.kindFilter.size > 0}
           <button
             type="button"
-            onclick={clearKindFilter}
+            onclick={filterCtl.clearKindFilter}
             class="ml-auto text-[10px] text-warning hover:text-error normal-case"
-          >clear ({kindFilter.size})</button>
+          >clear ({filterCtl.kindFilter.size})</button>
         {/if}
       </h3>
       <div class="flex items-center gap-1 flex-wrap">
         {#each EVENT_TYPES as t (t.id)}
-          {@const on = kindFilter.has(t.id)}
+          {@const on = filterCtl.kindFilter.has(t.id)}
           <button
             type="button"
-            onclick={() => toggleKindFilter(t.id)}
+            onclick={() => filterCtl.toggleKindFilter(t.id)}
             aria-pressed={on}
             title={t.description}
             class="inline-flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium border transition-colors {on ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-text border-surface1 hover:border-primary'}"
@@ -1164,10 +1003,10 @@
         {/each}
         <button
           type="button"
-          onclick={() => toggleKindFilter('__untyped')}
-          aria-pressed={kindFilter.has('__untyped')}
+          onclick={() => filterCtl.toggleKindFilter('__untyped')}
+          aria-pressed={filterCtl.kindFilter.has('__untyped')}
           title="Events with no type set"
-          class="inline-flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium border transition-colors {kindFilter.has('__untyped') ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-dim border-surface1 hover:border-primary'}"
+          class="inline-flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium border transition-colors {filterCtl.kindFilter.has('__untyped') ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-dim border-surface1 hover:border-primary'}"
         >Untyped</button>
       </div>
     </div>
@@ -1176,7 +1015,7 @@
       <div class="space-y-1.5 text-xs">
         <h3 class="text-dim uppercase tracking-wider mb-2">Project board</h3>
         <select
-          bind:value={projectFilter}
+          bind:value={filterCtl.projectFilter}
           aria-label="filter calendar by project"
           class="w-full px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
         >
@@ -1188,17 +1027,17 @@
         <label class="flex items-center gap-2 px-1 py-0.5 text-[11px] text-subtext cursor-pointer select-none">
           <input
             type="checkbox"
-            bind:checked={colorByProject}
+            bind:checked={filterCtl.colorByProject}
             class="w-3.5 h-3.5 accent-primary"
           />
           Colour by project
         </label>
-        {#if projectFilter}
+        {#if filterCtl.projectFilter}
           <p class="text-[10px] text-dim italic px-1 leading-snug">
-            Showing only events + tasks linked to <span class="text-secondary">{projectFilter}</span>.
+            Showing only filterCtl.events + tasks linked to <span class="text-secondary">{filterCtl.projectFilter}</span>.
             <button
               type="button"
-              onclick={() => (projectFilter = '')}
+              onclick={() => (filterCtl.projectFilter = '')}
               class="text-[10px] text-warning hover:underline ml-1"
             >clear</button>
           </p>
@@ -1218,7 +1057,7 @@
           {@const tone = sourceColorToken(s.source)}
           {@const customTone = $sourceColors[s.source] ?? ''}
           {@const displayTone = customTone || tone}
-          {@const srcCount = typeCounts['ics_event'] !== undefined
+          {@const srcCount = filterCtl.typeCounts['ics_event'] !== undefined
             ? allEvents.filter((e) => e.type === 'ics_event' && e.source === s.source).length
             : 0}
           <!-- Stream R: always-visible color dot at the LEFT of the
@@ -1259,7 +1098,7 @@
             <!-- Per-source color picker — hover-only swatch row so the
                  default state stays uncluttered. Empty swatch resets
                  to the auto-rotation default. -->
-            <div class="hidden group-hover:flex items-center gap-0.5 flex-shrink-0">
+            <div class="filterCtl.hidden group-hover:flex items-center gap-0.5 flex-shrink-0">
               {#each ['', 'red', 'yellow', 'orange', 'green', 'blue', 'purple', 'cyan', 'pink'] as t}
                 <button
                   type="button"
@@ -1282,16 +1121,16 @@
          empty before hiding them. -->
     <div class="space-y-1 text-xs">
       <h3 class="text-dim uppercase tracking-wider mb-2">Filters</h3>
-      {#each visibleFilterChips as f (f.key)}
-        {@const isHidden = hidden.has(f.key)}
+      {#each filterCtl.visibleFilterChips as f (f.key)}
+        {@const isHidden = filterCtl.hidden.has(f.key)}
         <button
-          onclick={() => toggleType(f.key)}
+          onclick={() => filterCtl.toggleType(f.key)}
           class="w-full flex items-center gap-2 px-2 py-1 rounded hover:bg-surface0 {isHidden ? 'opacity-40' : ''}"
         >
           <span class="w-2 h-2 rounded-full" style="background: var(--color-{f.tone})"></span>
           <span class="text-subtext flex-1 text-left">{f.label}</span>
-          <span class="text-dim">{typeCounts[f.key] ?? 0}</span>
-          {#if isHidden}<span class="text-dim text-[10px]">hidden</span>{/if}
+          <span class="text-dim">{filterCtl.typeCounts[f.key] ?? 0}</span>
+          {#if isHidden}<span class="text-dim text-[10px]">filterCtl.hidden</span>{/if}
         </button>
       {/each}
     </div>
@@ -1300,12 +1139,12 @@
 
 <div class="flex h-full">
   <!-- Desktop sidebar -->
-  <aside class="hidden md:block md:w-56 lg:w-64 border-r border-surface1 bg-mantle flex-shrink-0 overflow-y-auto">
+  <aside class="filterCtl.hidden md:block md:w-56 lg:w-64 border-r border-surface1 bg-mantle flex-shrink-0 overflow-y-auto">
     {@render sidebarContent()}
   </aside>
 
   <!-- Mobile drawer -->
-  <Drawer bind:open={filterDrawerOpen} side="left">
+  <Drawer bind:open={filterCtl.filterDrawerOpen} side="left">
     {@render sidebarContent()}
   </Drawer>
 
@@ -1324,7 +1163,7 @@
       onTogglePlanMode={togglePlanMode}
       onFindTime={() => (findTimeOpen = true)}
       onShowShortcuts={() => (showShortcutHelp = true)}
-      onOpenFilterDrawer={() => (filterDrawerOpen = true)}
+      onOpenFilterDrawer={() => (filterCtl.filterDrawerOpen = true)}
       onCapture={() => {
         // Seed UnifiedCreate with the next round hour so the user
         // doesn't have to re-type the time. Same default the sidebar
@@ -1364,7 +1203,7 @@
         disabled={quickBusy}
       />
       {#if quickInput.trim()}
-        <span class="hidden md:inline text-[11px] text-dim font-mono truncate max-w-md">
+        <span class="filterCtl.hidden md:inline text-[11px] text-dim font-mono truncate max-w-md">
           {#if quickParse?.ok && quickParse.event}
             <span class="text-success">✓</span>
             {quickParse.event.title} · {quickParse.event.date}{quickParse.event.startTime ? ` · ${quickParse.event.startTime}${quickParse.event.endTime ? `–${quickParse.event.endTime}` : ''}` : ' · all-day'}
@@ -1382,21 +1221,21 @@
 
     <!-- Quick-filter chips — extracted to CalendarFilterChips so the
          row matches the Tasks page's QuickFilterChips shape (Stream R).
-         Drives the same `hidden` Set<EventFilterKey> the sidebar
+         Drives the same `filterCtl.hidden` Set<EventFilterKey> the sidebar
          Filters section uses, so a type toggled here is also toggled
          in the sidebar. -->
     <CalendarFilterChips
-      chips={visibleFilterChips}
-      hidden={hidden}
-      typeCounts={typeCounts}
-      onToggle={toggleType}
-      onClearAll={() => (hidden = new Set())}
+      chips={filterCtl.visibleFilterChips}
+      hidden={filterCtl.hidden}
+      typeCounts={filterCtl.typeCounts}
+      onToggle={filterCtl.toggleType}
+      onClearAll={() => (filterCtl.hidden = new Set())}
     />
 
     {#if pipelineButtonAvailable}
       <!-- Pipeline toggle — month viewCtl.view gets kanban-by-status; week /
            workweek viewCtl.view gets swim-lanes-by-channel. Both surface the
-           same content events grouped for the day-axis the user is
+           same content filterCtl.events grouped for the day-axis the user is
            already looking at. Hidden in day / year / agenda since
            there's no useful grouping shape for those. -->
       <div class="flex items-center gap-2 px-3 py-1 border-b border-surface1 flex-shrink-0 bg-mantle">
@@ -1417,7 +1256,7 @@
             aria-hidden="true"
           >C</span>
           {pipelineButtonLabel}
-          <span class="font-mono tabular-nums opacity-80">{typeCounts['content_event'] ?? 0}</span>
+          <span class="font-mono tabular-nums opacity-80">{filterCtl.typeCounts['content_event'] ?? 0}</span>
         </button>
         <span class="text-[11px] text-dim">{viewCtl.view === 'month' ? 'kanban by status' : 'swim lanes by channel'}</span>
       </div>
@@ -1446,7 +1285,7 @@
           <div class="flex-1 min-w-0 min-h-0">
             <HourGrid
               days={viewCtl.viewDays}
-              events={events}
+              events={filterCtl.events}
               habits={habits}
               onClickEvent={clickEvent}
               onClickSlot={clickSlot}
@@ -1462,7 +1301,7 @@
         </div>
       {:else if viewCtl.view === 'day' || viewCtl.view === 'week' || viewCtl.view === 'workweek'}
         <div class="relative h-full">
-          <HourGrid days={viewCtl.viewDays} events={events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} {viewCtl.hourPx} />
+          <HourGrid days={viewCtl.viewDays} events={filterCtl.events} habits={habits} onClickEvent={clickEvent} onClickSlot={clickSlot} onSlotRange={onSlotRange} onReschedule={reschedule} onMove={moveEvent} onResize={resizeEvent} writableSources={calSources.filter((s) => s.writable).map((s) => s.source)} {viewCtl.hourPx} />
           {#if viewCtl.pipelineMode && (viewCtl.view === 'week' || viewCtl.view === 'workweek')}
             <!-- Swim-lane overlay for week-axis content production
                  planning. Same overlay chrome as ContentPipelineOverlay
@@ -1470,7 +1309,7 @@
                  reads horizontally for each platform's week-at-a-glance. -->
             <ContentChannelLanes
               days={viewCtl.viewDays}
-              events={events}
+              events={filterCtl.events}
               onClickEvent={clickEvent}
               onClose={() => (viewCtl.pipelineMode = false)}
             />
@@ -1478,7 +1317,7 @@
         </div>
       {:else if viewCtl.view === 'month'}
         <div class="relative h-full overflow-auto">
-          <MonthView cursor={viewCtl.cursor} events={events} density={viewCtl.monthDensity} onClickEvent={clickEvent} onClickDay={clickDay} />
+          <MonthView cursor={viewCtl.cursor} events={filterCtl.events} density={viewCtl.monthDensity} onClickEvent={clickEvent} onClickDay={clickDay} />
           {#if viewCtl.pipelineMode}
             <!-- Kanban overlay sits absolute over the month grid so
                  the underlying dates stay visually present (closing
@@ -1487,7 +1326,7 @@
                  component; the page just hands it the filtered
                  event list + the same click handler the grid uses. -->
             <ContentPipelineOverlay
-              events={events}
+              events={filterCtl.events}
               onClickEvent={clickEvent}
               onClose={() => (viewCtl.pipelineMode = false)}
             />
@@ -1495,18 +1334,18 @@
         </div>
       {:else if viewCtl.view === 'year'}
         <div class="h-full overflow-auto">
-          <YearView cursor={viewCtl.cursor} events={events} onClickDay={(d) => { viewCtl.cursor = d; viewCtl.view = 'day'; }} />
+          <YearView cursor={viewCtl.cursor} events={filterCtl.events} onClickDay={(d) => { viewCtl.cursor = d; viewCtl.view = 'day'; }} />
         </div>
       {:else if viewCtl.view === 'agenda'}
         <!-- Agenda is the flat 30-day next-up list. Scoped to
-             `agendaEvents` (rolling viewCtl.cursor → +30d) so prev/next
+             `filterCtl.agendaEvents` (rolling viewCtl.cursor → +30d) so prev/next
              walks weeks of agenda content without re-fetching the
              whole feed. The onCreate hook fires from the empty-state
              "+ Create event" CTA so a wide-open week is one click
              from filling the first slot. -->
         <div class="overflow-y-auto h-full">
           <AgendaView
-            events={agendaEvents}
+            events={filterCtl.agendaEvents}
             onClickEvent={clickEvent}
             onCreate={() => {
               const s = new Date();
@@ -1621,8 +1460,8 @@
 <CreateEvent
   bind:open={createEventOpen}
   date={createEventDate}
-  existingEvents={events}
-  defaultProjectId={projectFilter}
+  existingEvents={filterCtl.events}
+  defaultProjectId={filterCtl.projectFilter}
   onCreated={load}
 />
 <UnifiedCreate
@@ -1633,20 +1472,20 @@
   defaultNotePath={`Jots/${fmtDateISO(unifiedStart)}.md`}
   onCreated={load}
 />
-<FindTime bind:open={findTimeOpen} events={events} onPick={onFindTimePick} />
+<FindTime bind:open={findTimeOpen} events={filterCtl.events} onPick={onFindTimePick} />
 
 <!-- Calendar Agent — scoped to the currently-visible fetch
      window AND the active project filter so the agent sees
      roughly what the user is looking at. Without the project
      filter intersection, asking "rename the client meetings"
      while filtered to a venture would surprise the user by
-     proposing renames across all events. -->
+     proposing renames across all filterCtl.events. -->
 <CalendarAgent
   open={agentOpen}
   events={nativeEvents.filter((e) =>
     e.date >= fmtDateISO(fetchFrom) &&
     e.date <= fmtDateISO(fetchTo) &&
-    (!projectFilter || e.project_id === projectFilter)
+    (!filterCtl.projectFilter || e.project_id === filterCtl.projectFilter)
   )}
   todayISO={fmtDateISO(new Date())}
   knownProjects={allProjects.map((p) => p.name)}
