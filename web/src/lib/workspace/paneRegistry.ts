@@ -12,8 +12,10 @@ import type { Component } from 'svelte';
 import TasksPane from '$lib/tasks/TasksPane.svelte';
 import CalendarPane from '$lib/calendar/CalendarPane.svelte';
 import GoalsPane from '$lib/goals/GoalsPane.svelte';
+import NotesListPane from '$lib/notes/NotesListPane.svelte';
+import FinancePane from '$lib/finance/FinancePane.svelte';
 
-export type PaneKind = 'tasks' | 'calendar' | 'goals';
+export type PaneKind = 'tasks' | 'calendar' | 'goals' | 'notes' | 'finance';
 
 export interface PaneEntry {
   /** Stable on-disk id. Persisted in workspace layout state. */
@@ -27,7 +29,9 @@ export interface PaneEntry {
 export const PANES: ReadonlyArray<PaneEntry> = [
   { id: 'tasks', label: 'Tasks', component: TasksPane },
   { id: 'calendar', label: 'Calendar', component: CalendarPane },
-  { id: 'goals', label: 'Goals', component: GoalsPane }
+  { id: 'goals', label: 'Goals', component: GoalsPane },
+  { id: 'notes', label: 'Notes', component: NotesListPane },
+  { id: 'finance', label: 'Finance', component: FinancePane }
 ];
 
 export function findPane(id: PaneKind): PaneEntry | undefined {
