@@ -14,8 +14,9 @@ import CalendarPane from '$lib/calendar/CalendarPane.svelte';
 import GoalsPane from '$lib/goals/GoalsPane.svelte';
 import NotesListPane from '$lib/notes/NotesListPane.svelte';
 import FinancePane from '$lib/finance/FinancePane.svelte';
+import ChatPane from '$lib/chat/ChatPane.svelte';
 
-export type PaneKind = 'tasks' | 'calendar' | 'goals' | 'notes' | 'finance';
+export type PaneKind = 'tasks' | 'calendar' | 'goals' | 'notes' | 'finance' | 'chat';
 
 export interface PaneEntry {
   /** Stable on-disk id. Persisted in workspace layout state. */
@@ -31,7 +32,13 @@ export const PANES: ReadonlyArray<PaneEntry> = [
   { id: 'calendar', label: 'Calendar', component: CalendarPane },
   { id: 'goals', label: 'Goals', component: GoalsPane },
   { id: 'notes', label: 'Notes', component: NotesListPane },
-  { id: 'finance', label: 'Finance', component: FinancePane }
+  { id: 'finance', label: 'Finance', component: FinancePane },
+  // "AI as a pane type" — the innovative bit of the granit vision.
+  // Park the chat next to any working surface (notes / tasks / etc.)
+  // to use AI as a contextual companion. Future Phase 3 work: a
+  // cross-pane context bus so the AI sees what's open in adjacent
+  // panes.
+  { id: 'chat', label: 'AI', component: ChatPane }
 ];
 
 export function findPane(id: PaneKind): PaneEntry | undefined {
