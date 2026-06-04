@@ -21,7 +21,7 @@
 // applying source-colour overrides is part of the filter pipeline,
 // not a separate concern.
 
-import { applySourceColor, sourceColors } from './sourceColors';
+import { applySourceColor, sourceColors, type CalendarTone } from './sourceColors';
 import { fmtDateISO, addDays, startOfMonth } from './utils';
 import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
 import type { CalendarEvent, Project } from '$lib/api';
@@ -147,6 +147,21 @@ export function createCalendarFilterState(
     saveStoredString(COLOR_BY_PROJECT_KEY, colorByProject ? '1' : '0')
   );
 
+  // Per-source color overrides — sourceColors is a writable store
+  // (svelte/store, not a $state rune), and the `$store` auto-
+  // subscription syntax only works inside .svelte files. We mirror
+  // the store into local $state via subscribe() so the derived can
+  // pick up live changes; the $effect keeps the subscription bound
+  // to the consuming component's lifecycle, so it unsubscribes when
+  // CalendarPane unmounts.
+  let sourceColorsSnapshot = $state<Record<string, CalendarTone>>({});
+  $effect(() => {
+    const unsubscribe = sourceColors.subscribe((v) => {
+      sourceColorsSnapshot = v;
+    });
+    return unsubscribe;
+  });
+
   let projectColorMap = $derived.by<Map<string, string>>(() => {
     const m = new Map<string, string>();
     for (const p of deps.getAllProjects()) {
@@ -157,7 +172,7 @@ export function createCalendarFilterState(
 
   let events = $derived.by<CalendarEvent[]>(() => {
     const all = deps.getAllEvents();
-    const tones = $sourceColors;
+    const tones = sourceColorsSnapshot;
     return all
       .filter((e) => !hidden.has(e.type as EventFilterKey))
       .filter((e) => {
