@@ -10,7 +10,6 @@
   import { createCoalescedReload } from '$lib/util/coalesce';
   import TaskCard from '$lib/tasks/TaskCard.svelte';
   import Kanban from '$lib/tasks/Kanban.svelte';
-  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import TriageBoard from '$lib/tasks/TriageBoard.svelte';
   import BulkBar from '$lib/tasks/BulkBar.svelte';
   import TaskDetail from '$lib/tasks/TaskDetail.svelte';
@@ -32,6 +31,7 @@
   import TasksInboxView from '$lib/tasks/TasksInboxView.svelte';
   import TasksWeekView from '$lib/tasks/TasksWeekView.svelte';
   import TasksViewToolbar from '$lib/tasks/TasksViewToolbar.svelte';
+  import TasksPlanMyDay from '$lib/tasks/TasksPlanMyDay.svelte';
   import { installTasksKeyboard } from '$lib/tasks/useTasksKeyboard';
   import { createTasksUrlSync } from '$lib/tasks/tasksUrlSync';
   import { createTasksGroupAdd } from '$lib/tasks/tasksGroupAdd.svelte';
@@ -771,82 +771,9 @@
     />
 
     {#if viewCtl.view === 'list' || viewCtl.view === 'kanban' || viewCtl.view === 'today'}
-      <!-- AI Plan-my-day. Different agent from triage/
-           deadline-detect: those operate on UNTRIAGED dataCtl.tasks;
-           this one looks across ALL open dataCtl.tasks and produces a
-           sequenced 3-7-task plan budgeted to the user's stated
-           focus hours. Returns strict JSON so each row gets its
-           own accept/skip controls — accepting pins the task into
-           a back-to-back time slot via scheduledStart. Falls back
-           to streamed prose if JSON parse fails. Always-visible
-           regardless of view so it's reachable from any task
-           context. -->
-      {#if $focusPlan.busy || $focusPlan.response || $focusPlan.error || $focusPlan.plan.length > 0}
-        <div class="px-3 py-3 border-b border-surface1 flex-shrink-0 bg-surface1">
-          <div class="flex items-baseline gap-2 mb-2 flex-wrap">
-            <span class="text-xs uppercase tracking-wider text-secondary font-semibold">Plan my day</span>
-            {#if $focusPlan.plan.length > 0 && !$focusPlan.busy}
-              {@const totalEst = $focusPlan.plan.reduce((s, p) => s + Math.max(15, p.estimateMinutes || 30), 0)}
-              <span class="text-[11px] text-dim font-mono tabular-nums">{$focusPlan.plan.length} task{$focusPlan.plan.length === 1 ? '' : 's'} · {totalEst}m</span>
-            {/if}
-            <span class="flex-1"></span>
-            {#if $focusPlan.busy}
-              <button onclick={() => focusPlan.cancel()} class="text-[11px] text-warning hover:underline">cancel</button>
-            {:else}
-              {#if $focusPlan.plan.length > 0}
-                <button onclick={() => void focusPlan.acceptAll(dataCtl.tasks, load)} class="text-[11px] text-success hover:underline" title="Pin every remaining plan item back-to-back starting now">accept all</button>
-              {/if}
-              <button onclick={() => void focusPlan.run(dataCtl.tasks, aiFocusHours)} class="text-[11px] text-secondary hover:underline">↻ regenerate</button>
-              <button onclick={() => focusPlan.dismiss()} class="text-[11px] text-dim hover:text-error">dismiss</button>
-            {/if}
-          </div>
-          {#if $focusPlan.error}
-            <div class="text-xs text-error">{$focusPlan.error}</div>
-          {:else if $focusPlan.plan.length > 0}
-            <!-- Structured plan view. Each row has its own accept/skip,
-                 so the user can take 4 of 5 suggestions without burning
-                 the call. -->
-            <ol class="space-y-1.5">
-              {#each $focusPlan.plan as p (p.taskId)}
-                {@const t = dataCtl.tasks.find((x) => x.id === p.taskId)}
-                {#if t}
-                  <li class="flex items-start gap-2 text-xs">
-                    <span class="font-mono text-secondary tabular-nums w-5 flex-shrink-0 mt-0.5">{p.order}.</span>
-                    <div class="flex-1 min-w-0">
-                      <div class="text-text">
-                        <span class="font-medium">{t.text}</span>
-                        <span class="text-dim ml-2 font-mono tabular-nums">{Math.max(15, p.estimateMinutes || 30)}m</span>
-                      </div>
-                      {#if p.rationale}
-                        <div class="text-dim mt-0.5 italic">{p.rationale}</div>
-                      {/if}
-                    </div>
-                    <button
-                      onclick={() => void focusPlan.acceptItem(p, dataCtl.tasks, load)}
-                      class="px-2 py-0.5 bg-surface0 text-success rounded hover:bg-surface1 flex-shrink-0"
-                      title="Pin this task into a time slot today"
-                    >accept</button>
-                    <button
-                      onclick={() => focusPlan.skipItem(p.taskId)}
-                      class="px-2 py-0.5 text-dim hover:text-text flex-shrink-0"
-                    >skip</button>
-                  </li>
-                {/if}
-              {/each}
-            </ol>
-            {#if $focusPlan.skipped}
-              <p class="text-[11px] text-dim italic mt-2 pt-2 border-t border-surface1">Skipped: {$focusPlan.skipped}</p>
-            {/if}
-            <p class="text-[10px] text-dim mt-2">Context: {dataCtl.tasks.filter((t) => !t.done).slice(0, 30).length} open tasks shown · {aiFocusHours}h focus budget</p>
-          {:else}
-            <!-- Streaming/fallback view: show the raw model output while
-                 we wait for the JSON to close, OR if parsing fails. -->
-            <div class="prose prose-sm max-w-none text-sm">
-              <MarkdownRenderer body={$focusPlan.response || '_thinking…_'} />
-            </div>
-          {/if}
-        </div>
-      {/if}
+      <!-- AI Plan-my-day — sequenced 3-7-task plan, accept/skip per row.
+           Self-hides when there's no plan state worth showing. -->
+      <TasksPlanMyDay {focusPlan} {dataCtl} {aiFocusHours} {load} />
 
       <!-- Ask Tasks — chat-style Q&A across the currently-visible
            task set. Streams a markdown answer the user can read,
