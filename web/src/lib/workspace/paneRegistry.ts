@@ -16,8 +16,21 @@ import NotesListPane from '$lib/notes/NotesListPane.svelte';
 import FinancePane from '$lib/finance/FinancePane.svelte';
 import ChatPane from '$lib/chat/ChatPane.svelte';
 import TodayPane from '$lib/today/TodayPane.svelte';
+import HabitsPane from '$lib/habits/HabitsPane.svelte';
+import DeadlinesPane from '$lib/deadlines/DeadlinesPane.svelte';
+import ProjectsPane from '$lib/projects/ProjectsPane.svelte';
 
-export type PaneKind = 'today' | 'tasks' | 'calendar' | 'goals' | 'notes' | 'finance' | 'chat';
+export type PaneKind =
+  | 'today'
+  | 'tasks'
+  | 'calendar'
+  | 'goals'
+  | 'notes'
+  | 'habits'
+  | 'deadlines'
+  | 'projects'
+  | 'finance'
+  | 'chat';
 
 export interface PaneEntry {
   /** Stable on-disk id. Persisted in workspace layout state. */
@@ -37,6 +50,9 @@ export const PANES: ReadonlyArray<PaneEntry> = [
   { id: 'calendar', label: 'Calendar', component: CalendarPane },
   { id: 'goals', label: 'Goals', component: GoalsPane },
   { id: 'notes', label: 'Notes', component: NotesListPane },
+  { id: 'habits', label: 'Habits', component: HabitsPane },
+  { id: 'deadlines', label: 'Deadlines', component: DeadlinesPane },
+  { id: 'projects', label: 'Projects', component: ProjectsPane },
   { id: 'finance', label: 'Finance', component: FinancePane },
   // "AI as a pane type" — the innovative bit of the granit vision.
   // Park the chat next to any working surface (notes / tasks / etc.)
@@ -59,6 +75,9 @@ export function routeToPaneKind(pathname: string): PaneKind | null {
   if (pathname === '/calendar' || pathname.startsWith('/calendar/')) return 'calendar';
   if (pathname === '/goals' || pathname.startsWith('/goals/')) return 'goals';
   if (pathname === '/notes' || pathname.startsWith('/notes/')) return 'notes';
+  if (pathname === '/habits' || pathname.startsWith('/habits/')) return 'habits';
+  if (pathname === '/deadlines' || pathname.startsWith('/deadlines/')) return 'deadlines';
+  if (pathname === '/projects' || pathname.startsWith('/projects/')) return 'projects';
   if (pathname === '/finance' || pathname.startsWith('/finance/')) return 'finance';
   if (pathname === '/chat' || pathname.startsWith('/chat/')) return 'chat';
   return null;
