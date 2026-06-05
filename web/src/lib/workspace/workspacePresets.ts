@@ -29,6 +29,12 @@ export const WORKSPACE_PRESETS: ReadonlyArray<WorkspacePreset> = [
     buildLayout: () => makeLeaf('tasks')
   },
   {
+    id: 'today',
+    name: 'Today',
+    detail: 'Today · Calendar',
+    buildLayout: () => makeSplit('h', makeLeaf('today'), makeLeaf('calendar'), 0.4)
+  },
+  {
     id: 'daily',
     name: 'Daily',
     detail: 'Tasks · Calendar',

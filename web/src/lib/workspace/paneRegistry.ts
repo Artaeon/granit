@@ -15,8 +15,9 @@ import GoalsPane from '$lib/goals/GoalsPane.svelte';
 import NotesListPane from '$lib/notes/NotesListPane.svelte';
 import FinancePane from '$lib/finance/FinancePane.svelte';
 import ChatPane from '$lib/chat/ChatPane.svelte';
+import TodayPane from '$lib/today/TodayPane.svelte';
 
-export type PaneKind = 'tasks' | 'calendar' | 'goals' | 'notes' | 'finance' | 'chat';
+export type PaneKind = 'today' | 'tasks' | 'calendar' | 'goals' | 'notes' | 'finance' | 'chat';
 
 export interface PaneEntry {
   /** Stable on-disk id. Persisted in workspace layout state. */
@@ -28,6 +29,10 @@ export interface PaneEntry {
 }
 
 export const PANES: ReadonlyArray<PaneEntry> = [
+  // Daily-glance pane first — most workspaces will want it anchored
+  // somewhere visible. Built on the same data sources as the home
+  // route + right-pane Today widget, just rendered in pane chrome.
+  { id: 'today', label: 'Today', component: TodayPane },
   { id: 'tasks', label: 'Tasks', component: TasksPane },
   { id: 'calendar', label: 'Calendar', component: CalendarPane },
   { id: 'goals', label: 'Goals', component: GoalsPane },
@@ -35,9 +40,7 @@ export const PANES: ReadonlyArray<PaneEntry> = [
   { id: 'finance', label: 'Finance', component: FinancePane },
   // "AI as a pane type" — the innovative bit of the granit vision.
   // Park the chat next to any working surface (notes / tasks / etc.)
-  // to use AI as a contextual companion. Future Phase 3 work: a
-  // cross-pane context bus so the AI sees what's open in adjacent
-  // panes.
+  // to use AI as a contextual companion.
   { id: 'chat', label: 'AI', component: ChatPane }
 ];
 
@@ -51,6 +54,7 @@ export function findPane(id: PaneKind): PaneEntry | undefined {
 // keystroke. Routes without a pane counterpart (settings, auth, etc.)
 // return null and the shortcut becomes a no-op.
 export function routeToPaneKind(pathname: string): PaneKind | null {
+  if (pathname === '/') return 'today';
   if (pathname === '/tasks' || pathname.startsWith('/tasks/')) return 'tasks';
   if (pathname === '/calendar' || pathname.startsWith('/calendar/')) return 'calendar';
   if (pathname === '/goals' || pathname.startsWith('/goals/')) return 'goals';
