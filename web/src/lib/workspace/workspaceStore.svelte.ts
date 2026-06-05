@@ -134,6 +134,12 @@ export interface WorkspaceStoreController {
 
   // Workspace CRUD.
   create(name?: string): void;
+  /** Create a new workspace with a custom starting layout. Used by
+   *  the preset commands ("New workspace: Daily" etc.). The layout
+   *  must be a fresh tree (new ids); the caller owns construction.
+   *  Names follow the same dedupe rule as create(): if `name` is
+   *  taken, suffixes ` 2`, ` 3`, … until unique. */
+  createWithLayout(name: string, layout: TreeNode): void;
   rename(id: string, name: string): void;
   remove(id: string): void;
 
@@ -229,18 +235,33 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     patchActiveLayout(closeLeafTree(active.layout, leafId));
   }
 
-  function create(name?: string) {
+  // Pick a name that doesn't collide with an existing workspace. If
+  // `desired` is taken, suffix with ' 2', ' 3', …. Empty / missing
+  // falls back to "Workspace".
+  function uniqueName(desired?: string): string {
     const used = new Set(workspaces.map((w) => w.name));
-    let nextName = name?.trim() || 'Workspace';
-    if (!name) {
-      let n = 1;
-      while (used.has(n === 1 ? nextName : `${nextName} ${n}`)) n++;
-      if (n > 1) nextName = `${nextName} ${n}`;
-    }
+    const base = desired?.trim() || 'Workspace';
+    if (!used.has(base)) return base;
+    let n = 2;
+    while (used.has(`${base} ${n}`)) n++;
+    return `${base} ${n}`;
+  }
+
+  function create(name?: string) {
     const fresh: Workspace = {
       id: newId(),
-      name: nextName,
+      name: uniqueName(name),
       layout: makeLeaf('tasks')
+    };
+    workspaces = [...workspaces, fresh];
+    activeId = fresh.id;
+  }
+
+  function createWithLayout(name: string, layout: TreeNode) {
+    const fresh: Workspace = {
+      id: newId(),
+      name: uniqueName(name),
+      layout
     };
     workspaces = [...workspaces, fresh];
     activeId = fresh.id;
@@ -277,6 +298,7 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     },
     focus,
     create,
+    createWithLayout,
     rename,
     remove,
     setPane,

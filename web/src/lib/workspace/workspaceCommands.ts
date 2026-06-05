@@ -12,6 +12,7 @@ import { goto } from '$app/navigation';
 import { PANES, findPane, type PaneKind } from './paneRegistry';
 import { workspaceStoreSingleton } from './workspaceStore.svelte';
 import { leaves } from './splitTree';
+import { WORKSPACE_PRESETS } from './workspacePresets';
 
 export type WorkspaceCmd = {
   /** Stable id, used by the palette for recency boosts. */
@@ -54,6 +55,22 @@ export function workspaceCommands(): WorkspaceCmd[] {
       run: () => goto('/workspace')
     }
   ];
+
+  // Preset constructors — "New workspace: Daily" etc. Each one builds
+  // a fresh tree via the preset and jumps to /workspace so the user
+  // sees what they just made.
+  for (const p of WORKSPACE_PRESETS) {
+    out.push({
+      id: 'workspace:new:' + p.id,
+      label: `New workspace: ${p.name}`,
+      detail: p.detail,
+      icon: 'workspace',
+      run: () => {
+        store.createWithLayout(p.name, p.buildLayout());
+        void goto('/workspace');
+      }
+    });
+  }
 
   if (focusedLeaf && focusedPaneKind) {
     const target = differentPane(focusedPaneKind);
