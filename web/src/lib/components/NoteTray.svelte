@@ -36,9 +36,8 @@
   } from '$lib/stores/open-note';
   import { workspaceStoreSingleton } from '$lib/workspace/workspaceStore.svelte';
   import WorkspacePills from '$lib/workspace/WorkspacePills.svelte';
-  import { isOnline } from '$lib/stores/online';
-  import { aiStatus } from '$lib/stores/ai-status';
-  import { sabbath } from '$lib/stores/sabbath';
+  import NoteChip from './NoteChip.svelte';
+  import StatusIndicators from './StatusIndicators.svelte';
   import { goto } from '$app/navigation';
 
   const wsStore = workspaceStoreSingleton();
@@ -135,93 +134,6 @@
   });
 </script>
 
-{#snippet chip(entry: OpenNoteEntry, opts: { kind: 'last' | 'pin' })}
-  {@const pinned = $pinnedTrayNotes.some((e) => e.path === entry.path)}
-  {@const menuOpen = menuFor === entry.path}
-  <div
-    class="group relative inline-flex items-center min-w-0 h-full
-           border-l border-surface1 pl-2 pr-1"
-    data-tray-menu
-  >
-    <a
-      href={hrefFor(entry)}
-      title={`${opts.kind === 'last' ? 'Last opened' : 'Pinned'} · ${entry.path}`}
-      class="inline-flex items-center gap-1.5 min-w-0 max-w-[12rem] md:max-w-[18rem]
-             text-[11px] md:text-xs text-subtext hover:text-text transition-colors"
-    >
-      {#if opts.kind === 'pin'}
-        <svg viewBox="0 0 16 16" class="w-3 h-3 flex-shrink-0 text-warning" fill="currentColor" aria-hidden="true">
-          <path d="M8 1.5l1.85 4.05L14 6.2l-3.1 2.85L11.7 13 8 10.85 4.3 13l.8-3.95L2 6.2l4.15-.65z"/>
-        </svg>
-      {:else}
-        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-          <polyline points="14 3 14 9 20 9"/>
-        </svg>
-      {/if}
-      <span class="truncate">{entry.title || entry.path}</span>
-    </a>
-
-    <button
-      type="button"
-      onclick={() => toggleMenu(entry.path)}
-      aria-haspopup="menu"
-      aria-expanded={menuOpen}
-      aria-label="Tray actions"
-      title="More"
-      class="ml-1 w-5 h-5 inline-flex items-center justify-center rounded text-dim hover:text-text hover:bg-surface1 transition-colors"
-    >
-      <svg viewBox="0 0 24 24" class="w-3 h-3" fill="currentColor" aria-hidden="true">
-        <circle cx="5" cy="12" r="1.5"/>
-        <circle cx="12" cy="12" r="1.5"/>
-        <circle cx="19" cy="12" r="1.5"/>
-      </svg>
-    </button>
-
-    {#if opts.kind === 'last'}
-      <button
-        type="button"
-        onclick={onClear}
-        aria-label="Dismiss from tray"
-        title="Dismiss"
-        class="ml-0.5 w-5 h-5 inline-flex items-center justify-center rounded text-dim hover:text-error hover:bg-surface1 transition-colors"
-      >
-        <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-          <path d="M6 6l12 12M6 18L18 6"/>
-        </svg>
-      </button>
-    {/if}
-
-    {#if menuOpen}
-      <div
-        role="menu"
-        class="absolute right-0 bottom-full mb-1 w-44 bg-mantle border border-surface1 rounded-lg shadow-xl py-1 text-sm z-10"
-      >
-        <button
-          type="button"
-          role="menuitem"
-          onclick={() => onPinToggle(entry)}
-          class="w-full text-left px-3 py-1.5 hover:bg-surface0 text-text"
-        >{pinned ? 'Unpin from tray' : 'Pin to tray'}</button>
-        <button
-          type="button"
-          role="menuitem"
-          onclick={() => onOpenNewTab(entry)}
-          class="w-full text-left px-3 py-1.5 hover:bg-surface0 text-text"
-        >Open in new tab</button>
-        {#if opts.kind === 'last'}
-          <button
-            type="button"
-            role="menuitem"
-            onclick={onClear}
-            class="w-full text-left px-3 py-1.5 hover:bg-surface0 text-error"
-          >Clear from tray</button>
-        {/if}
-      </div>
-    {/if}
-  </div>
-{/snippet}
-
 {#if $trayEnabled}
   <div
     role="region"
@@ -257,43 +169,36 @@
          if many chips. Self-empty when nothing is open. -->
     <div class="flex items-stretch overflow-x-auto flex-1 min-w-0">
       {#if lastChip}
-        {@render chip(lastChip, { kind: 'last' })}
+        <NoteChip
+          entry={lastChip}
+          kind="last"
+          pinned={$pinnedTrayNotes.some((e) => e.path === lastChip.path)}
+          href={hrefFor(lastChip)}
+          menuOpen={menuFor === lastChip.path}
+          onToggleMenu={() => toggleMenu(lastChip.path)}
+          onPinToggle={() => onPinToggle(lastChip)}
+          onClear={onClear}
+          onOpenNewTab={() => onOpenNewTab(lastChip)}
+        />
       {/if}
       {#each visiblePins as p (p.path)}
-        {@render chip(p, { kind: 'pin' })}
+        <NoteChip
+          entry={p}
+          kind="pin"
+          pinned={true}
+          href={hrefFor(p)}
+          menuOpen={menuFor === p.path}
+          onToggleMenu={() => toggleMenu(p.path)}
+          onPinToggle={() => onPinToggle(p)}
+          onClear={onClear}
+          onOpenNewTab={() => onOpenNewTab(p)}
+        />
       {/each}
     </div>
 
-    <!-- RIGHT: indicators. Connectivity dot + AI ready dot. Tiny,
-         high-contrast, hover-tooltips for detail. -->
-    <div class="flex items-center gap-2 px-2 border-l border-surface1 flex-shrink-0">
-      <span
-        class="inline-flex items-center gap-1 text-[10px] text-dim"
-        title={$isOnline ? 'Connected' : 'Offline — changes will sync when back online'}
-      >
-        <span
-          class="w-1.5 h-1.5 rounded-full {$isOnline ? 'bg-success' : 'bg-error'}"
-          aria-hidden="true"
-        ></span>
-        <span class="hidden md:inline">{$isOnline ? 'online' : 'offline'}</span>
-      </span>
-      {#if $aiStatus}
-        <span
-          class="inline-flex items-center gap-1 text-[10px] text-dim"
-          title={$sabbath
-            ? 'AI paused — Sabbath'
-            : `AI ready — ${$aiStatus.global_model || $aiStatus.global_provider || 'default'}`}
-        >
-          <span
-            class="w-1.5 h-1.5 rounded-full {$sabbath ? 'bg-warning' : 'bg-success'}"
-            aria-hidden="true"
-          ></span>
-          <span class="hidden md:inline truncate max-w-[8rem]">
-            {$sabbath ? 'sabbath' : ($aiStatus.global_model || 'ai')}
-          </span>
-        </span>
-      {/if}
-    </div>
+    <!-- RIGHT: connectivity + AI indicators. Self-contained — reads
+         its own stores. -->
+    <StatusIndicators />
   </div>
 {/if}
 
