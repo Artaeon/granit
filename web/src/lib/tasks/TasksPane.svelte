@@ -836,7 +836,7 @@
             {#if $focusPlan.skipped}
               <p class="text-[11px] text-dim italic mt-2 pt-2 border-t border-surface1">Skipped: {$focusPlan.skipped}</p>
             {/if}
-            <p class="text-[10px] text-dim mt-2">Context: {dataCtl.tasks.filter((t) => !t.done).slice(0, 30).length} open dataCtl.tasks shown · {aiFocusHours}h focus budget</p>
+            <p class="text-[10px] text-dim mt-2">Context: {dataCtl.tasks.filter((t) => !t.done).slice(0, 30).length} open tasks shown · {aiFocusHours}h focus budget</p>
           {:else}
             <!-- Streaming/fallback view: show the raw model output while
                  we wait for the JSON to close, OR if parsing fails. -->
@@ -916,7 +916,7 @@
             <path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5"/>
             <path d="M12 17h0"/>
           </svg>
-          <span>Ask dataCtl.tasks</span>
+          <span>Ask tasks</span>
         </button>
       </div>
       <!-- Saved filter presets. One-click application of a stored
@@ -1017,7 +1017,7 @@
             <span class="text-dim font-mono uppercase tracking-wider select-none">sort</span>
             <select
               bind:value={viewCtl.sortBy}
-              title="How to order dataCtl.tasks inside each group"
+              title="How to order tasks inside each group"
               class="bg-surface0 border border-surface1 rounded px-2 py-0.5 text-text"
             >
               <option value="auto">auto</option>
@@ -1049,7 +1049,7 @@
             <span class="text-success/80 font-mono tabular-nums select-none" title="Completed in the last 7 days">7d ✓ {dataCtl.stats.doneWeek}</span>
           {/if}
           {#if dataCtl.stats.sumEstMin > 0}
-            <span class="text-secondary font-mono tabular-nums select-none" title="Total estimated minutes across open non-snoozed dataCtl.tasks. 8h = one day-block.">Σ {fmtEstBudget(dataCtl.stats.sumEstMin)}</span>
+            <span class="text-secondary font-mono tabular-nums select-none" title="Total estimated minutes across open non-snoozed tasks. 8h = one day-block.">Σ {fmtEstBudget(dataCtl.stats.sumEstMin)}</span>
           {/if}
         </div>
       {/if}
@@ -1066,7 +1066,7 @@
 
     <div class="flex-1 overflow-auto p-2 sm:p-3">
       {#if dataCtl.loading && dataCtl.tasks.length === 0}
-        <div class="text-sm text-dim">dataCtl.loading…</div>
+        <div class="text-sm text-dim">loading…</div>
       {:else if filterCtl.filtered.length === 0 && viewCtl.view === 'today'}
         <!-- Today view inbox-zero message. Different from a true empty
              state — the user has dataCtl.tasks, just none for today. The
@@ -1082,8 +1082,8 @@
         </div>
       {:else if filterCtl.filtered.length === 0 && viewCtl.view === 'review'}
         <div class="bg-surface0 border border-surface1 rounded-lg p-5 text-center">
-          <p class="text-sm text-text mb-1">No dataCtl.tasks completed in the last 7 days.</p>
-          <p class="text-xs text-dim mb-3">The review tab shows what you've finished — once a few dataCtl.tasks roll through, this is where you'll spot patterns.</p>
+          <p class="text-sm text-text mb-1">No tasks completed in the last 7 days.</p>
+          <p class="text-xs text-dim mb-3">The review tab shows what you've finished — once a few tasks roll through, this is where you'll spot patterns.</p>
           <button
             type="button"
             onclick={() => (viewCtl.view = 'list')}
@@ -1093,7 +1093,7 @@
       {:else if filterCtl.filtered.length === 0 && viewCtl.view === 'inbox'}
         <div class="bg-surface0 border border-surface1 rounded-lg p-5 text-center">
           <p class="text-sm text-success mb-1">Inbox empty.</p>
-          <p class="text-xs text-dim mb-3">Nothing waiting to be triaged. Captured dataCtl.tasks land here for sorting before they hit the main list.</p>
+          <p class="text-xs text-dim mb-3">Nothing waiting to be triaged. Captured tasks land here for sorting before they hit the main list.</p>
           <button
             type="button"
             onclick={() => (viewCtl.view = 'list')}
@@ -1102,17 +1102,17 @@
         </div>
       {:else if filterCtl.filtered.length === 0 && viewCtl.view === 'stale'}
         <div class="bg-surface0 border border-surface1 rounded-lg p-5 text-center">
-          <p class="text-sm text-success mb-1">No stale dataCtl.tasks.</p>
+          <p class="text-sm text-success mb-1">No stale tasks.</p>
           <p class="text-xs text-dim">Everything's been touched in the last week — nothing rotting in the backlog.</p>
         </div>
       {:else if filterCtl.filtered.length === 0 && viewCtl.view === 'quickwins'}
-        <p class="text-sm text-dim italic">No quick wins available. Add an estimate (e.g. <code class="text-secondary">est:30m</code>) to high-priority dataCtl.tasks.</p>
+        <p class="text-sm text-dim italic">No quick wins available. Add an estimate (e.g. <code class="text-secondary">est:30m</code>) to high-priority tasks.</p>
       {:else if filterCtl.filtered.length === 0 && dataCtl.tasks.length === 0}
         <!-- True empty: no dataCtl.tasks anywhere. Onboarding-style hint
              pointing at the quick-add bar. -->
         <div class="max-w-md mx-auto py-6 text-center">
           <div class="text-5xl mb-3 opacity-30">✓</div>
-          <h2 class="text-lg font-semibold text-text mb-2">No dataCtl.tasks yet</h2>
+          <h2 class="text-lg font-semibold text-text mb-2">No tasks yet</h2>
           <p class="text-sm text-dim mb-1">
             Type your first task in the bar above. Examples:
           </p>
@@ -1133,7 +1133,7 @@
         <div class="min-w-0">
           <div class="max-w-md mx-auto py-6 text-center">
             <div class="text-4xl mb-3 opacity-30">🔍</div>
-            <h2 class="text-base font-medium text-text mb-2">No dataCtl.tasks here</h2>
+            <h2 class="text-base font-medium text-text mb-2">No tasks here</h2>
             <p class="text-sm text-dim mb-1">{emptyStateSubtitle}</p>
             <p class="text-xs text-dim mb-4">
               {dataCtl.tasks.length} {dataCtl.tasks.length === 1 ? 'task is' : 'tasks are'} hidden by the current filters.
@@ -1220,7 +1220,7 @@
         </div>
       {:else if viewCtl.view === 'quickwins'}
         <div class="max-w-3xl">
-          <p class="text-sm text-dim mb-4">High-priority dataCtl.tasks you can finish in ≤30 min. Pick one, knock it out.</p>
+          <p class="text-sm text-dim mb-4">High-priority tasks you can finish in ≤30 min. Pick one, knock it out.</p>
           <div class="space-y-2">
             {#each filterCtl.filtered.filter((tt) => !dataCtl.isHiddenByCollapse(tt.id, dataCtl.collapsedIds)) as t (t.id)}
               <div data-task-id={t.id} class={cursorIdx >= 0 && filterCtl.filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
@@ -1338,7 +1338,7 @@
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">x</kbd>
         <span class="text-subtext">toggle bulk-select</span>
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">Shift+A</kbd>
-        <span class="text-subtext">select / clear all filterCtl.filtered</span>
+        <span class="text-subtext">select / clear all filtered</span>
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">e</kbd>
         <span class="text-subtext">open task detail</span>
         <kbd class="font-mono text-xs px-1.5 py-0.5 bg-surface1 rounded text-subtext">d</kbd>

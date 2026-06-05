@@ -1140,7 +1140,7 @@
       {#if dataCtl.goals.length === 0}
         <EmptyState
           icon="🎯"
-          title="No dataCtl.goals yet"
+          title="No goals yet"
           description="Goals are the long-term targets you're committing to in this season — quarterly, annual, lifetime. Add your first one to get started."
         >
           {#snippet action()}
@@ -1153,7 +1153,7 @@
       {:else}
         <EmptyState
           icon="🔍"
-          title="No dataCtl.goals match this filter"
+          title="No goals match this filter"
           description={stalledFilterOn ? "Stalled-only filter is on but every goal looks fresh — click the banner to clear it." : "Try a different status tab, clear the search, or drop your category / tag filters."}
         >
           {#snippet action()}
