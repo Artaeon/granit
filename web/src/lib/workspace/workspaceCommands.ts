@@ -13,6 +13,7 @@ import { PANES, findPane, type PaneKind } from './paneRegistry';
 import { workspaceStoreSingleton } from './workspaceStore.svelte';
 import { leaves } from './splitTree';
 import { WORKSPACE_PRESETS } from './workspacePresets';
+import { toast } from '$lib/components/toast';
 
 export type WorkspaceCmd = {
   /** Stable id, used by the palette for recency boosts. */
@@ -71,6 +72,49 @@ export function workspaceCommands(): WorkspaceCmd[] {
       }
     });
   }
+
+  // Backup / portability. Clipboard pair — the user copies JSON out,
+  // pastes it in. Pairs nicely with the CLI `granit backup` for
+  // file-on-disk safety while staying KISS in the browser.
+  out.push({
+    id: 'workspace:export',
+    label: 'Export active workspace to clipboard',
+    detail: store.active?.name ?? '—',
+    icon: 'workspace',
+    run: async () => {
+      try {
+        await navigator.clipboard.writeText(store.exportActiveAsJSON());
+        toast.success(`Copied "${store.active.name}" as JSON`);
+      } catch {
+        toast.error('Clipboard write failed — check browser permissions');
+      }
+    }
+  });
+  out.push({
+    id: 'workspace:import',
+    label: 'Import workspace from clipboard',
+    detail: 'Paste JSON exported from another granit',
+    icon: 'workspace',
+    run: async () => {
+      let json = '';
+      try {
+        json = await navigator.clipboard.readText();
+      } catch {
+        toast.error('Clipboard read failed — check browser permissions');
+        return;
+      }
+      if (!json.trim()) {
+        toast.warning('Clipboard is empty');
+        return;
+      }
+      const err = store.importFromJSON(json);
+      if (err) toast.error('Import failed: ' + err);
+      else {
+        toast.success(`Imported workspace "${store.active.name}"`);
+        void goto('/workspace');
+      }
+    }
+  });
 
   if (focusedLeaf && focusedPaneKind) {
     const target = differentPane(focusedPaneKind);

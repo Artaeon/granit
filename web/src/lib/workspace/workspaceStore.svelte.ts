@@ -157,6 +157,20 @@ export interface WorkspaceStoreController {
    *  subtree. The store never closes the LAST leaf so the shell
    *  can't render empty — those calls are no-ops. */
   close(leafId: string): void;
+
+  // Backup / portability. Layouts are persisted to localStorage, so
+  // moving between devices or recovering from a wipe needs a portable
+  // representation. JSON round-trips through the same normalize +
+  // isTree path the legacy migrations use.
+
+  /** Serialise the active workspace to JSON. Includes its name and
+   *  layout (with original ids). */
+  exportActiveAsJSON(): string;
+  /** Parse a JSON workspace and append it as a new entry. Returns
+   *  null on success, or an error string. The new workspace becomes
+   *  active so the user immediately sees what they imported. Names
+   *  go through the same uniqueName dedupe as create(). */
+  importFromJSON(json: string): string | null;
 }
 
 // Module-level singleton. The StatusBar (workspace pills) and the
@@ -280,6 +294,33 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     workspaces = workspaces.filter((w) => w.id !== id);
   }
 
+  function exportActiveAsJSON(): string {
+    // Strip the id so an import doesn't collide on re-import-on-same-
+    // device. The store assigns a fresh id at the import boundary.
+    return JSON.stringify({ name: active.name, layout: active.layout }, null, 2);
+  }
+
+  function importFromJSON(json: string): string | null {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(json);
+    } catch (e) {
+      return 'Invalid JSON: ' + (e instanceof Error ? e.message : String(e));
+    }
+    if (!parsed || typeof parsed !== 'object') return 'Expected a workspace object';
+    const o = parsed as Record<string, unknown>;
+    const name = typeof o.name === 'string' && o.name.trim() ? o.name : 'Imported';
+    if (!isTree(o.layout)) return 'Invalid layout shape';
+    const fresh: Workspace = {
+      id: newId(),
+      name: uniqueName(name),
+      layout: o.layout
+    };
+    workspaces = [...workspaces, fresh];
+    activeId = fresh.id;
+    return null;
+  }
+
   return {
     get workspaces() {
       return workspaces;
@@ -304,6 +345,8 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     setPane,
     setRatio,
     split,
-    close
+    close,
+    exportActiveAsJSON,
+    importFromJSON
   };
 }
