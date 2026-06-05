@@ -1,9 +1,8 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { page } from '$app/stores';
-  import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
-  import { api, todayISO, fmtDateISO, type Task, type Project, type Goal, type Deadline } from '$lib/api';
+  import { api, todayISO, type Task, type Project, type Goal, type Deadline } from '$lib/api';
   import { parseTaskInput, smartDate } from '$lib/util/taskParse';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -30,31 +29,18 @@
   import QuickFilterChips from '$lib/tasks/QuickFilterChips.svelte';
   import SectionList from '$lib/tasks/SectionList.svelte';
   import TasksFilterDrawer from '$lib/tasks/TasksFilterDrawer.svelte';
-  import { isTypingTarget } from '$lib/util/isTypingTarget';
   import { installTasksKeyboard } from '$lib/tasks/useTasksKeyboard';
   import { createTasksUrlSync } from '$lib/tasks/tasksUrlSync';
   import { createTasksGroupAdd } from '$lib/tasks/tasksGroupAdd.svelte';
-  import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
-  import { focusOnMount } from '$lib/util/focusOnMount';
+  import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import { applyNextPriority, toggleDoneOf } from '$lib/tasks/taskActions';
   import {
     createTriageStore,
     createDeadlineStore,
     createFocusPlanStore
   } from '$lib/tasks/aiAgentStore';
-  import {
-    type View,
-    type Group,
-    type SortBy,
-    type SmartFilter,
-    VIEW_DIGIT_MAP,
-    isSnoozed,
-    isStale,
-    isTaskLikePath,
-    smartPredicate,
-    fmtEstBudget
-  } from '$lib/tasks/tasksHelpers';
-  import { createPresetsController, type FilterPreset } from '$lib/tasks/tasksPresets.svelte';
+  import { isStale, fmtEstBudget } from '$lib/tasks/tasksHelpers';
+  import { createPresetsController } from '$lib/tasks/tasksPresets.svelte';
   import { createTasksFilterState } from '$lib/tasks/tasksFilterState.svelte';
   import { createTasksViewState } from '$lib/tasks/tasksViewState.svelte';
   import { createTasksData } from '$lib/tasks/tasksData.svelte';
