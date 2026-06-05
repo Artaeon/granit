@@ -31,6 +31,7 @@
   import TasksFilterDrawer from '$lib/tasks/TasksFilterDrawer.svelte';
   import TasksInboxView from '$lib/tasks/TasksInboxView.svelte';
   import TasksWeekView from '$lib/tasks/TasksWeekView.svelte';
+  import TasksViewToolbar from '$lib/tasks/TasksViewToolbar.svelte';
   import { installTasksKeyboard } from '$lib/tasks/useTasksKeyboard';
   import { createTasksUrlSync } from '$lib/tasks/tasksUrlSync';
   import { createTasksGroupAdd } from '$lib/tasks/tasksGroupAdd.svelte';
@@ -41,7 +42,7 @@
     createDeadlineStore,
     createFocusPlanStore
   } from '$lib/tasks/aiAgentStore';
-  import { isStale, fmtEstBudget } from '$lib/tasks/tasksHelpers';
+  import { isStale } from '$lib/tasks/tasksHelpers';
   import { createPresetsController } from '$lib/tasks/tasksPresets.svelte';
   import { createTasksFilterState } from '$lib/tasks/tasksFilterState.svelte';
   import { createTasksViewState } from '$lib/tasks/tasksViewState.svelte';
@@ -998,60 +999,7 @@
            selectors stay here because they reshape the visible list
            and the user reaches for them frequently. -->
       {#if viewCtl.view === 'list' || viewCtl.view === 'kanban'}
-        <div class="px-3 py-1.5 border-b border-surface1 flex items-center gap-2 text-xs flex-shrink-0 flex-wrap bg-mantle">
-          {#if viewCtl.view === 'list'}
-            <span class="text-dim font-mono uppercase tracking-wider select-none">group</span>
-            <select
-              bind:value={viewCtl.groupBy}
-              title="How to split the list into sections"
-              class="bg-surface0 border border-surface1 rounded px-2 py-0.5 text-text"
-            >
-              <option value="due">due date</option>
-              <option value="priority">priority</option>
-              <option value="tag">tag</option>
-              <option value="project">project</option>
-              <option value="goal">goal</option>
-              <option value="deadline">deadline</option>
-              <option value="note">note</option>
-            </select>
-            <span class="text-dim font-mono uppercase tracking-wider select-none">sort</span>
-            <select
-              bind:value={viewCtl.sortBy}
-              title="How to order tasks inside each group"
-              class="bg-surface0 border border-surface1 rounded px-2 py-0.5 text-text"
-            >
-              <option value="auto">auto</option>
-              <option value="priority">priority</option>
-              <option value="due">due</option>
-              <option value="age">age (oldest first)</option>
-              <option value="alpha">A → Z</option>
-              <option value="estimate">estimate (smallest)</option>
-            </select>
-          {:else}
-            <span class="text-dim font-mono uppercase tracking-wider select-none">columns</span>
-            <select bind:value={viewCtl.kanbanMode} class="bg-surface0 border border-surface1 rounded px-2 py-0.5 text-text">
-              <option value="priority">priority</option>
-              <option value="due">due</option>
-              <option value="triage">triage (granit)</option>
-              <option value="config">config</option>
-            </select>
-          {/if}
-          <span class="flex-1"></span>
-          <!-- Tiny passive dataCtl.stats — done today / done 7d / est budget.
-               Live next to the group/sort selectors so the user has
-               a one-line at-a-glance signal without the previous
-               14-chip stat row. Other dataCtl.stats (noEstCount, avgPriority,
-               snoozed) moved to the filter panel. -->
-          {#if dataCtl.stats.doneToday > 0}
-            <span class="text-success font-mono tabular-nums select-none" title="Completed today">✓ {dataCtl.stats.doneToday}</span>
-          {/if}
-          {#if dataCtl.stats.doneWeek > 0}
-            <span class="text-success/80 font-mono tabular-nums select-none" title="Completed in the last 7 days">7d ✓ {dataCtl.stats.doneWeek}</span>
-          {/if}
-          {#if dataCtl.stats.sumEstMin > 0}
-            <span class="text-secondary font-mono tabular-nums select-none" title="Total estimated minutes across open non-snoozed tasks. 8h = one day-block.">Σ {fmtEstBudget(dataCtl.stats.sumEstMin)}</span>
-          {/if}
-        </div>
+        <TasksViewToolbar {viewCtl} {dataCtl} />
       {/if}
     {/if}
 
