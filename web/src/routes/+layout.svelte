@@ -57,6 +57,9 @@
   import { toast } from '$lib/components/toast';
   import { findBinding, matchesKey } from '$lib/keybindings/registry';
   import { isMobile, isMobileNow } from '$lib/util/breakpoint';
+  import { workspaceStoreSingleton } from '$lib/workspace/workspaceStore.svelte';
+  import { routeToPaneKind } from '$lib/workspace/paneRegistry';
+  import { leaves } from '$lib/workspace/splitTree';
   import { isTypingTarget } from '$lib/util/isTypingTarget';
   import { todayISO } from '$lib/util/date';
 
@@ -252,6 +255,23 @@
         clearG();
         e.preventDefault();
         goto('/notes/' + encodeURIComponent(`Daily/${todayISO()}.md`));
+        return;
+      }
+      // `g w` — promote the current route into a pane of the active
+      // workspace. Replaces the first leaf rather than splitting so a
+      // user with a clean layout doesn't end up with a stuttering
+      // chain of duplicate panes after pressing the chord twice. No-op
+      // when the route has no pane counterpart or when we're already
+      // on /workspace.
+      if (gPending && e.key === 'w') {
+        clearG();
+        const kind = routeToPaneKind(get(page).url.pathname);
+        if (!kind) return;
+        e.preventDefault();
+        const store = workspaceStoreSingleton();
+        const firstLeaf = leaves(store.active.layout)[0];
+        if (firstLeaf) store.setPane(firstLeaf.id, kind);
+        goto('/workspace');
         return;
       }
       if (e.key === 'g') {

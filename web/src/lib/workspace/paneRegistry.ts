@@ -44,3 +44,18 @@ export const PANES: ReadonlyArray<PaneEntry> = [
 export function findPane(id: PaneKind): PaneEntry | undefined {
   return PANES.find((p) => p.id === id);
 }
+
+// Map an in-app route to the pane kind that owns the same surface.
+// Used by the ⌥W "open current route in workspace" shortcut so the
+// user can promote any page they're on into a workspace pane in one
+// keystroke. Routes without a pane counterpart (settings, auth, etc.)
+// return null and the shortcut becomes a no-op.
+export function routeToPaneKind(pathname: string): PaneKind | null {
+  if (pathname === '/tasks' || pathname.startsWith('/tasks/')) return 'tasks';
+  if (pathname === '/calendar' || pathname.startsWith('/calendar/')) return 'calendar';
+  if (pathname === '/goals' || pathname.startsWith('/goals/')) return 'goals';
+  if (pathname === '/notes' || pathname.startsWith('/notes/')) return 'notes';
+  if (pathname === '/finance' || pathname.startsWith('/finance/')) return 'finance';
+  if (pathname === '/chat' || pathname.startsWith('/chat/')) return 'chat';
+  return null;
+}

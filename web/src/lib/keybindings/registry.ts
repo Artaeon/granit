@@ -115,6 +115,13 @@ export const KEYBINDINGS: KeyBinding[] = [
     description: 'Two-key chord — press g then d within 350ms to jump straight to today\'s Daily note.'
   },
   {
+    id: 'go-to-workspace',
+    label: 'Send current view to active workspace',
+    keys: 'g w',
+    scope: 'app',
+    description: 'Two-key chord — replace the active workspace\'s first leaf with whichever pane owns the current route (tasks / calendar / goals / notes / finance / chat), then jump to /workspace.'
+  },
+  {
     id: 'print-preview',
     label: 'Print preview',
     keys: 'Mod+P',
