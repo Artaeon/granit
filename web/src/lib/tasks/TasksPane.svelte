@@ -33,6 +33,7 @@
   import { isTypingTarget } from '$lib/util/isTypingTarget';
   import { installTasksKeyboard } from '$lib/tasks/useTasksKeyboard';
   import { createTasksUrlSync } from '$lib/tasks/tasksUrlSync';
+  import { createTasksGroupAdd } from '$lib/tasks/tasksGroupAdd.svelte';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { applyNextPriority, toggleDoneOf } from '$lib/tasks/taskActions';
@@ -114,107 +115,17 @@
   // Distinct from the existing toolbar-level quickAdd: that one parses
   // natural language and dumps everything into today's daily; this one
   // is group-scoped and infers defaults from the bucket.
-  let groupAddKey = $state<string | null>(null);
-  let groupAddText = $state('');
-  let groupAddBusy = $state(false);
-
-  // Translate a (viewCtl.groupBy, group-key) pair into the createTask defaults
-  // for that bucket. Keeps every group-add landing in the SAME bucket
-  // the user added it from — no scattering across groups.
-  function groupAddDefaults(group: string): {
-    dueDate?: string;
-    priority?: number;
-    projectId?: string;
-    tags?: string[];
-    goalId?: string;
-    deadlineId?: string;
-    notePathHint?: string;
-  } {
-    const today = todayISO();
-    if (viewCtl.groupBy === 'due') {
-      switch (group) {
-        case 'overdue':
-        case 'today':
-          return { dueDate: today };
-        case 'tomorrow': {
-          const d = new Date(today + 'T00:00:00');
-          d.setDate(d.getDate() + 1);
-          return { dueDate: fmtDateISO(d) };
-        }
-        case 'this_week': {
-          const d = new Date(today + 'T00:00:00');
-          d.setDate(d.getDate() + 3);
-          return { dueDate: fmtDateISO(d) };
-        }
-        case 'later': {
-          const d = new Date(today + 'T00:00:00');
-          d.setDate(d.getDate() + 14);
-          return { dueDate: fmtDateISO(d) };
-        }
-        case 'no_date':
-        default:
-          return {};
-      }
-    }
-    if (viewCtl.groupBy === 'priority') {
-      const p = Number(group);
-      return p >= 1 && p <= 3 ? { priority: p } : {};
-    }
-    if (viewCtl.groupBy === 'tag') {
-      return group === '(untagged)' ? {} : { tags: [group] };
-    }
-    if (viewCtl.groupBy === 'project') {
-      const proj = dataCtl.projects.find((p) => p.name === group);
-      if (!proj) return {};
-      return { projectId: proj.name };
-    }
-    if (viewCtl.groupBy === 'goal') return group === '(no goal)' ? {} : { goalId: group };
-    if (viewCtl.groupBy === 'deadline') return group === '(no deadline)' ? {} : { deadlineId: group };
-    if (viewCtl.groupBy === 'note') return { notePathHint: group };
-    return {};
-  }
-
-  async function submitGroupAdd(group: string) {
-    const text = groupAddText.trim();
-    if (!text || groupAddBusy) return;
-    groupAddBusy = true;
-    try {
-      const defaults = groupAddDefaults(group);
-      // notePath fallback chain:
-      //   1. note-grouped key IS the notePath
-      //   2. otherwise today's daily — the safe capture target
-      let notePath = defaults.notePathHint ?? '';
-      if (!notePath) {
-        try {
-          const daily = await api.daily('today');
-          notePath = daily.path;
-        } catch {
-          notePath = `${todayISO()}.md`;
-        }
-      }
-      const body: Parameters<typeof api.createTask>[0] = { notePath, text };
-      if (defaults.dueDate) body.dueDate = defaults.dueDate;
-      if (defaults.priority !== undefined) body.priority = defaults.priority;
-      if (defaults.tags && defaults.tags.length > 0) body.tags = defaults.tags;
-      if (defaults.projectId) body.projectId = defaults.projectId;
-      if (defaults.goalId) body.goalId = defaults.goalId;
-      if (defaults.deadlineId) body.deadlineId = defaults.deadlineId;
-      await api.createTask(body);
-      groupAddText = '';
-      await load();
-      toast.success('task added');
-      // Leave the input open so the user can keep capturing without
-      // re-opening the row. Esc / blur dismisses it.
-    } catch (e) {
-      toast.error('add failed: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      groupAddBusy = false;
-    }
-  }
-  function cancelGroupAdd() {
-    groupAddKey = null;
-    groupAddText = '';
-  }
+  // Per-group quick-add — open a row scoped to a section in
+  // SectionList, type, submit. Defaults (dueDate / priority / project
+  // etc.) are inferred from the group key so a task added to the
+  // "this_week" bucket lands due in 3 days, one added to a project
+  // group lands tagged with that project. Controller lives in
+  // $lib/tasks/tasksGroupAdd.
+  const groupAddCtl = createTasksGroupAdd({
+    getGroupBy: () => viewCtl.groupBy,
+    getProjects: () => dataCtl.projects,
+    onAdded: load
+  });
 
   // ── Ask Tasks ────────────────────────────────────────────────────
   // Free-form Q&A against the currently-loaded task set lives in
@@ -1551,9 +1462,9 @@
           childCount={dataCtl.childCount}
           collapsedIds={dataCtl.collapsedIds}
           collapsedSections={viewCtl.collapsedSections}
-          groupAddKey={groupAddKey}
-          bind:groupAddText
-          groupAddBusy={groupAddBusy}
+          groupAddKey={groupAddCtl.key}
+          bind:groupAddText={groupAddCtl.text}
+          groupAddBusy={groupAddCtl.busy}
           bind:selectedIds
           isHiddenByCollapse={dataCtl.isHiddenByCollapse}
           onToggleSection={viewCtl.toggleSection}
@@ -1561,10 +1472,10 @@
           onChanged={load}
           onOpenDetail={openDetail}
           onContextMenu={openContext}
-          onStartGroupAdd={(key) => { groupAddKey = groupAddKey === key ? null : key; groupAddText = ''; }}
-          onCancelGroupAdd={cancelGroupAdd}
-          onSubmitGroupAdd={submitGroupAdd}
-          onGroupAddTextChange={(v) => (groupAddText = v)}
+          onStartGroupAdd={(key) => (groupAddCtl.key === key ? groupAddCtl.cancel() : groupAddCtl.open(key))}
+          onCancelGroupAdd={groupAddCtl.cancel}
+          onSubmitGroupAdd={groupAddCtl.submit}
+          onGroupAddTextChange={(v) => (groupAddCtl.text = v)}
         />
       {/if}
     </div>
