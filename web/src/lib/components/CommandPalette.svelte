@@ -17,6 +17,7 @@
   import { fuzzyScoreMulti } from '$lib/util/fuzzy';
   import { loadStored, saveStored } from '$lib/util/storage';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
+  import { workspaceCommands } from '$lib/workspace/workspaceCommands';
   import NavIcon from './NavIcon.svelte';
 
   // ── Surface name & history ──────────────────────────────────────────
@@ -31,6 +32,7 @@
 
   type Group =
     | 'Pages'
+    | 'Workspace'
     | 'Projects'
     | 'Goals'
     | 'Notes'
@@ -580,6 +582,24 @@
       // Stash the score on the item via a parallel map below — we
       // need it for sort but don't want it on the public shape.
       scoreMap.set(id, sc + recencyBoost(id));
+    }
+
+    // Workspace commands — split / close / swap focused pane. Each
+    // command's run is a thunk; reading workspaceCommands() inside
+    // this $derived.by tracks the workspace store reactively so the
+    // command list refreshes when focus / pane kind change.
+    for (const wc of workspaceCommands()) {
+      const sc = fuzzyScoreMulti(needle, [wc.label, wc.detail]);
+      if (sc === null) continue;
+      out.push({
+        id: wc.id,
+        label: wc.label,
+        detail: wc.detail,
+        icon: wc.icon,
+        group: 'Workspace',
+        run: wc.run
+      });
+      scoreMap.set(wc.id, sc + recencyBoost(wc.id));
     }
 
     // Projects
