@@ -8,7 +8,6 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import { onWsEvent } from '$lib/ws';
   import { createCoalescedReload } from '$lib/util/coalesce';
-  import TaskCard from '$lib/tasks/TaskCard.svelte';
   import Kanban from '$lib/tasks/Kanban.svelte';
   import TriageBoard from '$lib/tasks/TriageBoard.svelte';
   import BulkBar from '$lib/tasks/BulkBar.svelte';
@@ -33,6 +32,7 @@
   import TasksViewToolbar from '$lib/tasks/TasksViewToolbar.svelte';
   import TasksPlanMyDay from '$lib/tasks/TasksPlanMyDay.svelte';
   import TasksShortcutsOverlay from '$lib/tasks/TasksShortcutsOverlay.svelte';
+  import TasksCardList from '$lib/tasks/TasksCardList.svelte';
   import { installTasksKeyboard } from '$lib/tasks/useTasksKeyboard';
   import { createTasksUrlSync } from '$lib/tasks/tasksUrlSync';
   import { createTasksGroupAdd } from '$lib/tasks/tasksGroupAdd.svelte';
@@ -1081,14 +1081,16 @@
             allTasks={dataCtl.tasks}
             onReload={load}
           />
-
-          <div class="space-y-2">
-            {#each filterCtl.filtered.filter((tt) => !dataCtl.isHiddenByCollapse(tt.id, dataCtl.collapsedIds)) as t (t.id)}
-              <div data-task-id={t.id} class={cursorIdx >= 0 && filterCtl.filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(dataCtl.childCount.get(t.id) ?? 0) > 0} childCount={dataCtl.childCount.get(t.id) ?? 0} collapsed={dataCtl.collapsedIds.has(t.id)} onToggleCollapse={() => dataCtl.toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
-              </div>
-            {/each}
-          </div>
+          <TasksCardList
+            {filterCtl}
+            {dataCtl}
+            {viewCtl}
+            {cursorIdx}
+            bind:selectedIds
+            {load}
+            onOpenDetail={openDetail}
+            onOpenContext={openContext}
+          />
         </div>
       {:else if viewCtl.view === 'duplicates'}
         <div class="max-w-3xl">
@@ -1097,24 +1099,31 @@
       {:else if viewCtl.view === 'quickwins'}
         <div class="max-w-3xl">
           <p class="text-sm text-dim mb-4">High-priority tasks you can finish in ≤30 min. Pick one, knock it out.</p>
-          <div class="space-y-2">
-            {#each filterCtl.filtered.filter((tt) => !dataCtl.isHiddenByCollapse(tt.id, dataCtl.collapsedIds)) as t (t.id)}
-              <div data-task-id={t.id} class={cursorIdx >= 0 && filterCtl.filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(dataCtl.childCount.get(t.id) ?? 0) > 0} childCount={dataCtl.childCount.get(t.id) ?? 0} collapsed={dataCtl.collapsedIds.has(t.id)} onToggleCollapse={() => dataCtl.toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
-              </div>
-            {/each}
-          </div>
+          <TasksCardList
+            {filterCtl}
+            {dataCtl}
+            {viewCtl}
+            {cursorIdx}
+            bind:selectedIds
+            {load}
+            onOpenDetail={openDetail}
+            onOpenContext={openContext}
+          />
         </div>
       {:else if viewCtl.view === 'review'}
         <div class="max-w-3xl">
           <p class="text-sm text-dim mb-4">Done in the last week — your retrospective view.</p>
-          <div class="space-y-2 opacity-80">
-            {#each filterCtl.filtered.filter((tt) => !dataCtl.isHiddenByCollapse(tt.id, dataCtl.collapsedIds)) as t (t.id)}
-              <div data-task-id={t.id} class={cursorIdx >= 0 && filterCtl.filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-                <TaskCard task={t} compact={viewCtl.compactCards} hasChildren={(dataCtl.childCount.get(t.id) ?? 0) > 0} childCount={dataCtl.childCount.get(t.id) ?? 0} collapsed={dataCtl.collapsedIds.has(t.id)} onToggleCollapse={() => dataCtl.toggleCollapsed(t.id)} onChanged={load} bind:selectedIds onOpenDetail={openDetail} onContextMenu={openContext} />
-              </div>
-            {/each}
-          </div>
+          <TasksCardList
+            {filterCtl}
+            {dataCtl}
+            {viewCtl}
+            {cursorIdx}
+            bind:selectedIds
+            dim
+            {load}
+            onOpenDetail={openDetail}
+            onOpenContext={openContext}
+          />
         </div>
       {:else}
         <!-- Stream N — smart-section grouped list. Sections (overdue /

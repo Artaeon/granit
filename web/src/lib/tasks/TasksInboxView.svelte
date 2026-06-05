@@ -16,7 +16,7 @@
   reload.
 -->
 <script lang="ts">
-  import TaskCard from './TaskCard.svelte';
+  import TasksCardList from './TasksCardList.svelte';
   import type { Task } from '$lib/api';
   import type { TriageStore, DeadlineStore } from './aiAgentStore';
   import type { TasksFilterStateController } from './tasksFilterState.svelte';
@@ -167,22 +167,14 @@
     </div>
   {/if}
 
-  <div class="space-y-2">
-    {#each filterCtl.filtered.filter((tt) => !dataCtl.isHiddenByCollapse(tt.id, dataCtl.collapsedIds)) as t (t.id)}
-      <div data-task-id={t.id} class={cursorIdx >= 0 && filterCtl.filtered[cursorIdx]?.id === t.id ? 'ring-2 ring-primary/40 rounded' : ''}>
-        <TaskCard
-          task={t}
-          compact={viewCtl.compactCards}
-          hasChildren={(dataCtl.childCount.get(t.id) ?? 0) > 0}
-          childCount={dataCtl.childCount.get(t.id) ?? 0}
-          collapsed={dataCtl.collapsedIds.has(t.id)}
-          onToggleCollapse={() => dataCtl.toggleCollapsed(t.id)}
-          onChanged={load}
-          bind:selectedIds
-          onOpenDetail={onOpenDetail}
-          onContextMenu={onOpenContext}
-        />
-      </div>
-    {/each}
-  </div>
+  <TasksCardList
+    {filterCtl}
+    {dataCtl}
+    {viewCtl}
+    {cursorIdx}
+    bind:selectedIds
+    {load}
+    onOpenDetail={onOpenDetail}
+    onOpenContext={onOpenContext}
+  />
 </div>
