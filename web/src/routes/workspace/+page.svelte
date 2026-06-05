@@ -14,15 +14,37 @@
   closes still work from the leaf header.
 -->
 <script lang="ts">
+  import { onMount } from 'svelte';
   import SplitView from '$lib/workspace/SplitView.svelte';
   import PaneSlot from '$lib/workspace/PaneSlot.svelte';
   import { workspaceStoreSingleton } from '$lib/workspace/workspaceStore.svelte';
   import { leaves } from '$lib/workspace/splitTree';
   import { findPane } from '$lib/workspace/paneRegistry';
+  import { isTypingTarget } from '$lib/util/isTypingTarget';
 
   // Shared module singleton so the StatusBar's workspace pills + this
   // shell read/write the same state.
   const store = workspaceStoreSingleton();
+
+  // Route-scoped keyboard shortcut: bare 1..9 focuses leaf N. Mirrors
+  // the index shown on each mobile leaf-tab. Skipped while the user is
+  // typing inside a pane so a note editor or task input still gets
+  // its own digits. No modifier so the chord is muscle-memory cheap;
+  // the global Mod+1..9 still routes to the tab strip.
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (isTypingTarget(e.target)) return;
+      if (e.key < '1' || e.key > '9') return;
+      const idx = parseInt(e.key, 10) - 1;
+      const leaf = leaves(store.active.layout)[idx];
+      if (!leaf) return;
+      e.preventDefault();
+      store.focus(leaf.id);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   let activeLeaves = $derived(leaves(store.active.layout));
   let canClose = $derived(activeLeaves.length > 1);

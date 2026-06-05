@@ -119,7 +119,15 @@ export const KEYBINDINGS: KeyBinding[] = [
     label: 'Send current view to active workspace',
     keys: 'g w',
     scope: 'app',
-    description: 'Two-key chord — replace the active workspace\'s first leaf with whichever pane owns the current route (tasks / calendar / goals / notes / finance / chat), then jump to /workspace.'
+    description: 'Two-key chord — replace the active workspace\'s focused leaf with whichever pane owns the current route (tasks / calendar / goals / notes / finance / chat), then jump to /workspace.'
+  },
+  {
+    id: 'workspace-focus-n',
+    label: 'Focus workspace leaf N',
+    keys: '1..9',
+    scope: 'workspace',
+    route: '/workspace',
+    description: 'Bare digit — focus the Nth leaf in the active workspace. Index matches the number badge on each mobile leaf-tab. Inactive while typing inside a pane.'
   },
   {
     id: 'print-preview',
