@@ -31,6 +31,7 @@
   import SectionList from '$lib/tasks/SectionList.svelte';
   import TasksFilterDrawer from '$lib/tasks/TasksFilterDrawer.svelte';
   import { isTypingTarget } from '$lib/util/isTypingTarget';
+  import { installTasksKeyboard } from '$lib/tasks/useTasksKeyboard';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { applyNextPriority, toggleDoneOf } from '$lib/tasks/taskActions';
@@ -713,129 +714,42 @@
     toast.success(`Selected ${filterCtl.filtered.length} task${filterCtl.filtered.length === 1 ? '' : 's'}`);
   }
 
-  // viewCtl.cycleView lives in viewCtl.cycleView.
-
-  onMount(() => {
-    function onKey(e: KeyboardEvent) {
-      if (isTypingTarget(e.target)) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const k = e.key;
-      // Help overlay — works on every view (including kanban/triage/
-      // eisenhower, which otherwise short-circuit below).
-      if (k === '?') {
-        viewCtl.helpOpen = !viewCtl.helpOpen;
-        e.preventDefault();
-        return;
-      }
-      if (viewCtl.helpOpen && k === 'Escape') {
-        viewCtl.helpOpen = false;
-        return;
-      }
-      // Stream N — `/` opens the slide-out filter panel so the global
-      // page-search handler in +layout.svelte finds the embedded
-      // search input visible. The panel's content renders in DOM at
-      // all times (Drawer translates off-screen), so the global
-      // focus() call still works; without opening the panel the user
-      // would type into an invisible field. We DON'T preventDefault —
-      // the global handler still runs and focuses the input.
-      if (k === '/' && !viewCtl.filterPanelOpen) {
-        viewCtl.filterPanelOpen = true;
-        // Fall through; the layout's onKey will focus the input next.
-      }
-      // Esc closes the filter panel before falling through to the
-      // selection-clear branch lower down.
-      if (k === 'Escape' && viewCtl.filterPanelOpen) {
-        viewCtl.filterPanelOpen = false;
-        e.preventDefault();
-        return;
-      }
-      // View cycling + direct-jump work on EVERY view (so the user can
-      // bounce out of kanban → list with `]`, then back with `[`).
-      // Must run before the kanban/triage/eisenhower early-return.
-      if (k === '[') {
-        viewCtl.cycleView(-1);
-        e.preventDefault();
-        return;
-      }
-      if (k === ']') {
-        viewCtl.cycleView(1);
-        e.preventDefault();
-        return;
-      }
-      if (k in VIEW_DIGIT_MAP) {
-        viewCtl.view = VIEW_DIGIT_MAP[k];
-        e.preventDefault();
-        return;
-      }
-      // Kanban / TriageBoard / EisenhowerView each install their own
-      // window-level handler with a column-aware cursor. Suppressing
-      // the page-level handler in those views avoids double-firing
-      // j/k/x/d/e/p (which would move two cursors and patch twice).
-      if (viewCtl.view === 'kanban' || viewCtl.view === 'triage' || viewCtl.view === 'eisenhower') return;
-      // j/k navigation
-      if (k === 'j') {
-        focusCursor((cursorIdx < 0 ? 0 : cursorIdx + 1));
-        e.preventDefault();
-        return;
-      }
-      if (k === 'k') {
-        focusCursor((cursorIdx < 0 ? 0 : cursorIdx - 1));
-        e.preventDefault();
-        return;
-      }
-      // 'a' opens the Task Agent. Distinct from per-task shortcuts
-      // below — no cursor task required, the agent operates on the
-      // filterCtl.filtered list (or the bulk-selection if one is active).
-      if (k === 'a') {
-        agentOpen = true;
-        e.preventDefault();
-        return;
-      }
-      // Shift+A — bulk select-all / clear toggle. Different from `a`
-      // (which opens the agent) because of the explicit modifier;
-      // event.key on Shift+A reports "A" uppercase, which is what we
-      // match here. e.shiftKey check disambiguates from the unlikely
-      // case of a hardware-locked caps-lock typist hitting plain "A".
-      if (k === 'A' && e.shiftKey) {
-        selectAllOrClear();
-        e.preventDefault();
-        return;
-      }
-      const t = cursorIdx >= 0 ? filterCtl.filtered[cursorIdx] : null;
-      if (!t) return;
-      if (k === 'x') {
-        // Toggle selection on cursor
+  // Page-scoped keyboard handler lives in useTasksKeyboard. The refs
+  // object exposes the parent's controllers + action callbacks; the
+  // handler reads through them so this file owns the j/k cursor and
+  // selection state without inlining the dispatch tree.
+  onMount(() =>
+    installTasksKeyboard({
+      getView: () => viewCtl.view,
+      getFiltered: () => filterCtl.filtered,
+      getCursorIdx: () => cursorIdx,
+      getSelectionSize: () => selectedIds.size,
+      isHelpOpen: () => viewCtl.helpOpen,
+      setHelpOpen: (v) => (viewCtl.helpOpen = v),
+      isFilterPanelOpen: () => viewCtl.filterPanelOpen,
+      setFilterPanelOpen: (v) => (viewCtl.filterPanelOpen = v),
+      cycleView: (dir) => viewCtl.cycleView(dir),
+      setView: (v) => (viewCtl.view = v),
+      setAgentOpen: (v) => (agentOpen = v),
+      focusCursor,
+      selectAllOrClear,
+      toggleSelectedFor: (id) => {
         const next = new Set(selectedIds);
-        if (next.has(t.id)) next.delete(t.id);
-        else next.add(t.id);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
         selectedIds = next;
-        e.preventDefault();
-      } else if (k === 'd') {
+      },
+      toggleDoneFor: (t) => {
         toggleDoneOf(t).catch(() => {});
-        e.preventDefault();
-      } else if (k === 'e') {
-        openDetail(t);
-        e.preventDefault();
-      } else if (k === 'p') {
-        cyclePriorityOf(t);
-        e.preventDefault();
-      } else if (k === 's') {
-        // Open the snooze popover on the cursor task. The popover
-        // owns the date picker; this just triggers the in-card
-        // button so positioning + outside-click dismiss behave the
-        // same as a mouse click.
-        openSnoozePickerForCursor();
-        e.preventDefault();
-      } else if (k === 'Escape') {
-        if (selectedIds.size > 0) {
-          selectedIds = new Set();
-          e.preventDefault();
-        }
-      }
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
+      },
+      openDetailFor: openDetail,
+      cyclePriorityFor: (t) => {
+        void cyclePriorityOf(t);
+      },
+      openSnoozeForCursor: openSnoozePickerForCursor,
+      clearSelection: () => (selectedIds = new Set())
+    })
+  );
 
   // isSnoozed / isStale / isTaskLikePath live in $lib/tasks/tasksHelpers
   // — shared across the page, TaskCard, AIStaleVerdicts, and the
