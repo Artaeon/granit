@@ -1,18 +1,18 @@
 <!--
   PaneSlot — a single tileable cell in the workspace shell. Wraps a
-  pane component with a tiny header carrying:
+  pane component with a slim header carrying:
 
-    - the pane-type picker (5 panes: Tasks/Calendar/Goals/Notes/Finance)
+    - PaneTypePicker (single dropdown showing the active pane name)
     - split affordances: horizontal | / vertical _
     - a "close" button when the slot is closable (the workspace
       shell hides this when only one leaf remains)
 
   Stays presentational. Layout, resize, persistence — all owned by
-  the parent SplitView / workspace store. This component just renders
-  one pane and exposes user actions as callbacks.
+  the parent SplitView / workspace store.
 -->
 <script lang="ts">
   import { PANES, findPane, type PaneKind } from './paneRegistry';
+  import PaneTypePicker from './PaneTypePicker.svelte';
 
   let {
     pane,
@@ -24,9 +24,7 @@
   }: {
     pane: PaneKind;
     onChange: (next: PaneKind) => void;
-    /** Split this pane horizontally — new pane appears to the
-     *  right. The new-pane kind defaults to the same as the
-     *  current; caller may override. */
+    /** Split this pane horizontally — new pane appears to the right. */
     onSplitH?: (newPane: PaneKind) => void;
     /** Split this pane vertically — new pane appears below. */
     onSplitV?: (newPane: PaneKind) => void;
@@ -44,21 +42,9 @@
 
 <div class="flex flex-col h-full min-h-0 border border-surface1 rounded overflow-hidden bg-base">
   <header
-    class="flex items-center gap-1.5 px-2 py-1 border-b border-surface1 bg-surface0 text-xs flex-shrink-0 flex-wrap"
+    class="flex items-center gap-1.5 px-2 py-1 border-b border-surface1 bg-surface0 text-xs flex-shrink-0"
   >
-    <span class="text-dim uppercase tracking-wider text-[10px] flex-shrink-0">pane</span>
-    {#each PANES as p (p.id)}
-      <button
-        type="button"
-        onclick={() => onChange(p.id)}
-        aria-pressed={pane === p.id}
-        class="px-2 py-0.5 rounded text-xs font-medium border transition-colors {pane === p.id
-          ? 'bg-primary text-on-primary border-primary'
-          : 'bg-surface0 text-subtext border-surface1 hover:border-primary hover:text-text'}"
-      >
-        {p.label}
-      </button>
-    {/each}
+    <PaneTypePicker {pane} {onChange} />
     <span class="flex-1"></span>
     {#if onSplitH}
       <button
