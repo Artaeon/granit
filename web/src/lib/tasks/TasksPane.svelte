@@ -32,6 +32,7 @@
   import TasksFilterDrawer from '$lib/tasks/TasksFilterDrawer.svelte';
   import { isTypingTarget } from '$lib/util/isTypingTarget';
   import { installTasksKeyboard } from '$lib/tasks/useTasksKeyboard';
+  import { createTasksUrlSync } from '$lib/tasks/tasksUrlSync';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { applyNextPriority, toggleDoneOf } from '$lib/tasks/taskActions';
@@ -238,81 +239,18 @@
   // Without this, the kanban/list filters were per-tab session state
   // — opening a P1-filtered list in a new tab silently lost the
   // filter and the user blamed "the search box".
-  let urlHydrated = false;
-  function hydrateFromUrl() {
-    if (typeof window === 'undefined') return;
-    const sp = new URL(window.location.href).searchParams;
-    const get = (k: string) => sp.get(k) ?? '';
-    if (sp.has('status')) {
-      const s = get('status');
-      if (s === 'open' || s === 'done' || s === 'all') filterCtl.status = s;
-    }
-    if (sp.has('q')) filterCtl.q = get('q');
-    if (sp.has('tag')) {
-      // Comma-separated list. Empty entries (leading/trailing comma,
-      // accidental double comma) get filtered out so a stale URL
-      // doesn't ghost in an empty-string "tag".
-      filterCtl.tagFilters = get('tag').split(',').map((s) => s.trim()).filter(Boolean);
-    }
-    if (sp.has('project')) filterCtl.projectFilter = get('project');
-    if (sp.has('priority')) {
-      const n = Number(get('priority'));
-      filterCtl.priorityFilter = n >= 1 && n <= 3 ? n : '';
-    }
-    if (sp.has('goal')) filterCtl.goalFilter = get('goal');
-    if (sp.has('deadline')) filterCtl.deadlineFilter = get('deadline');
-    if (sp.has('view')) {
-      const v = get('view') as View;
-      if (['list', 'kanban', 'today', 'week', 'triage', 'inbox', 'stale', 'duplicates', 'quickwins', 'review', 'eisenhower'].includes(v)) viewCtl.view = v;
-    }
-    if (sp.has('group')) {
-      const g = get('group') as Group;
-      if (['due', 'priority', 'note', 'project', 'tag', 'goal', 'deadline'].includes(g)) viewCtl.groupBy = g;
-    }
-    if (sp.has('smart')) {
-      const v = get('smart') as SmartFilter;
-      if (['overdue', 'today', 'tomorrow', 'thisWeek', 'noDue', 'noPriority', 'highPriority', 'hasSubtasks', 'hasEstimate', 'noEstimate'].includes(v)) {
-        filterCtl.smartFilter = v;
-      }
-    }
-    // ?agent=1 launches the Task Agent directly — the sidebar's
-    // "Run Task Agent" entry uses this to open the agent from
-    // outside the page without a global ref. Consumed once: we
-    // clear the param on hydrate so a hash-refresh doesn't keep
-    // re-popping the dialog.
-    if (sp.get('agent') === '1') {
-      agentOpen = true;
-      const next = new URLSearchParams(sp);
-      next.delete('agent');
-      const qs = next.toString();
-      void goto(qs ? `${$page.url.pathname}?${qs}` : $page.url.pathname, {
-        replaceState: true,
-        noScroll: true,
-        keepFocus: true
-      });
-    }
-    urlHydrated = true;
-  }
-  function syncToUrl() {
-    if (!urlHydrated) return;
-    if (typeof window === 'undefined') return;
-    const sp = new URLSearchParams();
-    if (filterCtl.status !== 'open') sp.set('status', filterCtl.status);
-    if (filterCtl.q) sp.set('q', filterCtl.q);
-    if (filterCtl.tagFilters.length > 0) sp.set('tag', filterCtl.tagFilters.join(','));
-    if (filterCtl.projectFilter) sp.set('project', filterCtl.projectFilter);
-    if (filterCtl.priorityFilter !== '') sp.set('priority', String(filterCtl.priorityFilter));
-    if (filterCtl.goalFilter) sp.set('goal', filterCtl.goalFilter);
-    if (filterCtl.deadlineFilter) sp.set('deadline', filterCtl.deadlineFilter);
-    if (viewCtl.view !== 'list') sp.set('view', viewCtl.view);
-    if (viewCtl.groupBy !== 'due') sp.set('group', viewCtl.groupBy);
-    if (filterCtl.smartFilter) sp.set('smart', filterCtl.smartFilter);
-    const qs = sp.toString();
-    const next = qs ? `${$page.url.pathname}?${qs}` : $page.url.pathname;
-    // replaceState (not goto) — we don't want every keystroke in the
-    // search box adding to browser history.
-    void goto(next, { replaceState: true, noScroll: true, keepFocus: true });
-  }
+  // URL ↔ state sync lives in tasksUrlSync. The factory takes the
+  // controllers + a page getter; hydrate() reads URL → controllers
+  // once (onMount), sync() writes controllers → URL on every change
+  // after that.
+  const urlSync = createTasksUrlSync({
+    filterCtl,
+    viewCtl,
+    getPage: () => $page,
+    onAgentParam: () => (agentOpen = true)
+  });
+  const hydrateFromUrl = urlSync.hydrate;
+  const syncToUrl = urlSync.sync;
   // Stream N — slide-out filter panel. Replaces the always-on desktop
   // sidebar so the default page is cleaner; one click opens advanced
   // filtering. Persists nothing — open-state is session-only so the
