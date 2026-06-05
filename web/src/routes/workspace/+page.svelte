@@ -1,25 +1,21 @@
 <!--
   Workspace shell — Phase 2 of the granit vision (VSCode-for-life).
-  Named workspaces in a tray at the top; each workspace owns a
-  recursive split-tree layout. Any pane can split horizontally or
-  vertically, any pane can close (replaced by its sibling subtree).
-  Pick pane types from each leaf's header.
+  Each named workspace owns a recursive split-tree layout. Any pane
+  can split horizontally or vertically, any pane can close (replaced
+  by its sibling subtree). Pick pane types from each leaf's header.
+
+  Workspace switching/rename/create/delete lives in the StatusBar's
+  WorkspacePills — that's the single switcher across the app, so
+  /workspace doesn't ship its own tray.
 
   Mobile (< md): the recursive tree collapses to a tabbed
-  single-leaf view. A second pill row below the workspace tray
-  shows every leaf as a tab — tap to switch which leaf is shown
-  full-screen. Splits + closes still work from the leaf header
-  (changes still persist into the tree), they just don't render
-  side-by-side on small screens.
-
-  The shell stays tiny — most logic lives in the workspaceStore +
-  splitTree primitives + the recursive SplitView. This file just
-  wires the tray on top of the recursive view + a mobile tab row.
+  single-leaf view. A pill row above the pane area lists every leaf
+  as a tab — tap to switch which leaf is shown full-screen. Splits +
+  closes still work from the leaf header.
 -->
 <script lang="ts">
   import SplitView from '$lib/workspace/SplitView.svelte';
   import PaneSlot from '$lib/workspace/PaneSlot.svelte';
-  import WorkspaceTray from '$lib/workspace/WorkspaceTray.svelte';
   import { workspaceStoreSingleton } from '$lib/workspace/workspaceStore.svelte';
   import { leaves } from '$lib/workspace/splitTree';
   import { findPane } from '$lib/workspace/paneRegistry';
@@ -48,8 +44,6 @@
 </script>
 
 <div class="flex flex-col h-screen w-full overflow-hidden bg-base">
-  <WorkspaceTray {store} />
-
   <!-- Mobile leaf-tabs: shows every leaf as a tab. Visible only on
        mobile (< md); desktop renders the recursive split-tree
        directly. -->

@@ -35,6 +35,7 @@
     type OpenNoteEntry
   } from '$lib/stores/open-note';
   import { workspaceStoreSingleton } from '$lib/workspace/workspaceStore.svelte';
+  import WorkspacePills from '$lib/workspace/WorkspacePills.svelte';
   import { isOnline } from '$lib/stores/online';
   import { aiStatus } from '$lib/stores/ai-status';
   import { sabbath } from '$lib/stores/sabbath';
@@ -112,8 +113,7 @@
     closeMenu();
   }
 
-  function switchWorkspace(id: string) {
-    wsStore.activeId = id;
+  function onPillSwitch(_id: string) {
     // Jump to /workspace so the switch is visible immediately. If the
     // user is already there, no nav happens.
     if (!onWorkspacePage) void goto('/workspace');
@@ -230,11 +230,11 @@
            h-7 md:h-7 flex items-stretch overflow-hidden"
     style="bottom: var(--note-tray-bottom, 0px);"
   >
-    <!-- LEFT: Workspace switcher pills. The shared workspaceStore
-         singleton means a switch here is reflected in the /workspace
-         shell immediately, and vice-versa. We render at most 4 pills
-         inline; if the user has more, the rest are reachable via the
-         /workspace tray. -->
+    <!-- LEFT: Workspace switcher. WorkspacePills is the single
+         switcher used across the app — full create/rename/delete
+         live here, so /workspace no longer needs its own tray.
+         Active pill only highlights on the /workspace route so the
+         StatusBar reads as "go to" elsewhere and as "is at" there. -->
     <div class="flex items-stretch overflow-x-auto flex-shrink-0 max-w-[60%] md:max-w-[40%]">
       <a
         href="/workspace"
@@ -250,18 +250,7 @@
           <rect x="13" y="13" width="8" height="8" rx="1"/>
         </svg>
       </a>
-      {#each wsStore.workspaces.slice(0, 4) as w (w.id)}
-        {@const active = w.id === wsStore.activeId && onWorkspacePage}
-        <button
-          type="button"
-          onclick={() => switchWorkspace(w.id)}
-          title={`Switch to workspace "${w.name}"`}
-          class="inline-flex items-center px-2 h-full text-[11px] md:text-xs font-medium border-l border-surface1 transition-colors whitespace-nowrap
-            {active ? 'text-primary bg-surface0' : 'text-subtext hover:text-text hover:bg-surface0'}"
-        >
-          <span class="truncate max-w-[8rem]">{w.name}</span>
-        </button>
-      {/each}
+      <WorkspacePills store={wsStore} highlightActive={onWorkspacePage} onSwitch={onPillSwitch} />
     </div>
 
     <!-- MIDDLE: open-note chips. Grows to fill, scrolls horizontally
