@@ -257,20 +257,20 @@
         goto('/notes/' + encodeURIComponent(`Daily/${todayISO()}.md`));
         return;
       }
-      // `g w` — promote the current route into a pane of the active
-      // workspace. Replaces the first leaf rather than splitting so a
-      // user with a clean layout doesn't end up with a stuttering
-      // chain of duplicate panes after pressing the chord twice. No-op
-      // when the route has no pane counterpart or when we're already
-      // on /workspace.
+      // `g w` — promote the current route into the focused leaf of
+      // the active workspace. Replaces rather than splitting so a
+      // repeated press doesn't stutter into a chain of duplicate
+      // panes. The store tracks the focused leaf per-workspace and
+      // auto-coerces to a real id on layout change. No-op when the
+      // route has no pane counterpart.
       if (gPending && e.key === 'w') {
         clearG();
         const kind = routeToPaneKind(get(page).url.pathname);
         if (!kind) return;
         e.preventDefault();
         const store = workspaceStoreSingleton();
-        const firstLeaf = leaves(store.active.layout)[0];
-        if (firstLeaf) store.setPane(firstLeaf.id, kind);
+        const targetId = store.focusedLeafId || leaves(store.active.layout)[0]?.id;
+        if (targetId) store.setPane(targetId, kind);
         goto('/workspace');
         return;
       }

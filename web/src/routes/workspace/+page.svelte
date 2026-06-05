@@ -27,20 +27,13 @@
   let activeLeaves = $derived(leaves(store.active.layout));
   let canClose = $derived(activeLeaves.length > 1);
 
-  // Mobile: which leaf is currently visible. Defaults to the first
-  // leaf; tap a tab to switch. Resets when the active workspace
-  // changes (new workspace → first leaf wins).
-  let mobileLeafId = $state<string | null>(null);
+  // Mobile picks the leaf to show from the store's focused leaf so
+  // the same "which pane am I on" notion drives both: desktop's focus
+  // ring AND mobile's full-screen leaf. Tapping a tab focuses; the
+  // store auto-resets focus on workspace switch / layout change.
   let mobileLeaf = $derived(
-    activeLeaves.find((l) => l.id === mobileLeafId) ?? activeLeaves[0]
+    activeLeaves.find((l) => l.id === store.focusedLeafId) ?? activeLeaves[0]
   );
-  $effect(() => {
-    // Reset when the workspace switches so the user lands on the
-    // first leaf of the new workspace, not a stale id from the
-    // previous one.
-    void store.activeId;
-    mobileLeafId = null;
-  });
 </script>
 
 <div class="flex flex-col h-screen w-full overflow-hidden bg-base">
@@ -61,7 +54,7 @@
           type="button"
           role="tab"
           aria-selected={active}
-          onclick={() => (mobileLeafId = leaf.id)}
+          onclick={() => store.focus(leaf.id)}
           class="px-2 py-0.5 rounded text-xs font-medium border whitespace-nowrap
             {active ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-subtext border-surface1 hover:border-primary'}"
         >{entry?.label ?? leaf.pane} <span class="opacity-60 ml-0.5">{i + 1}</span></button>
@@ -78,6 +71,8 @@
       onSplit={store.split}
       onClose={store.close}
       {canClose}
+      focusedLeafId={store.focusedLeafId}
+      onFocus={store.focus}
     />
   </div>
 
@@ -93,6 +88,8 @@
         onSplitV={(p) => store.split(mobileLeaf.id, 'v', p)}
         closable={canClose}
         onClose={() => store.close(mobileLeaf.id)}
+        focused={mobileLeaf.id === store.focusedLeafId}
+        onFocus={() => store.focus(mobileLeaf.id)}
       />
     {/if}
   </div>

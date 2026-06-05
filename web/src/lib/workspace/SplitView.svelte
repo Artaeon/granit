@@ -22,7 +22,9 @@
     onSetRatio,
     onSplit,
     onClose,
-    canClose
+    canClose,
+    focusedLeafId,
+    onFocus
   }: {
     node: TreeNode;
     onSetPane: (leafId: string, pane: PaneKind) => void;
@@ -33,6 +35,12 @@
      *  PaneSlot's close-button visibility. The store guarantees at
      *  least one leaf survives at all times. */
     canClose: boolean;
+    /** Id of the focused leaf in the active workspace. The matching
+     *  PaneSlot renders a primary border + accent. */
+    focusedLeafId: string;
+    /** Called when the user clicks inside a leaf. The /workspace
+     *  shell forwards this to store.focus(). */
+    onFocus: (leafId: string) => void;
   } = $props();
 
   // Per-split drag state. Kept local to each SplitView instance so
@@ -71,6 +79,8 @@
     onSplitV={(p) => onSplit(node.id, 'v', p)}
     closable={canClose}
     onClose={() => onClose(node.id)}
+    focused={focusedLeafId === node.id}
+    onFocus={() => onFocus(node.id)}
   />
 {:else}
   <div
@@ -93,6 +103,8 @@
         {onSplit}
         {onClose}
         {canClose}
+        {focusedLeafId}
+        {onFocus}
       />
     </div>
     <div
@@ -118,6 +130,8 @@
         {onSplit}
         {onClose}
         {canClose}
+        {focusedLeafId}
+        {onFocus}
       />
     </div>
   </div>

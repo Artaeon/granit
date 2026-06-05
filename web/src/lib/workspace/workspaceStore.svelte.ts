@@ -123,6 +123,14 @@ export interface WorkspaceStoreController {
    *  entry. */
   readonly active: Workspace;
   activeId: string;
+  /** The leaf the user most recently interacted with in the active
+   *  workspace. Workspace-scoped: switching workspaces resets it to
+   *  the new active's first leaf. Drives where `g w` lands and what
+   *  PaneSlot tints as focused. Always points at a real leaf. */
+  readonly focusedLeafId: string;
+  /** Set the focused leaf in the active workspace. Silent no-op when
+   *  the id doesn't belong to the active layout. */
+  focus(leafId: string): void;
 
   // Workspace CRUD.
   create(name?: string): void;
@@ -173,6 +181,28 @@ export function createWorkspaceStore(): WorkspaceStoreController {
   let active = $derived<Workspace>(
     workspaces.find((w) => w.id === activeId) ?? workspaces[0]
   );
+
+  // Focused leaf — workspace-scoped, transient (no persistence). Keep
+  // it in sync with the layout: when the active workspace changes or
+  // when the layout no longer contains the focused id (a split, close,
+  // or pane swap that removed it), snap to the first leaf so the
+  // store's external contract — "always a real leaf" — holds.
+  let focusedLeafId = $state<string>('');
+  $effect(() => {
+    const ids = leaves(active.layout).map((l) => l.id);
+    if (ids.length === 0) {
+      focusedLeafId = '';
+      return;
+    }
+    if (!ids.includes(focusedLeafId)) {
+      focusedLeafId = ids[0];
+    }
+  });
+
+  function focus(leafId: string) {
+    const ids = leaves(active.layout).map((l) => l.id);
+    if (ids.includes(leafId)) focusedLeafId = leafId;
+  }
 
   function patchActiveLayout(next: TreeNode) {
     workspaces = workspaces.map((w) =>
@@ -242,6 +272,10 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     set activeId(v) {
       activeId = v;
     },
+    get focusedLeafId() {
+      return focusedLeafId;
+    },
+    focus,
     create,
     rename,
     remove,

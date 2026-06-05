@@ -20,7 +20,9 @@
     onSplitH,
     onSplitV,
     closable = false,
-    onClose
+    onClose,
+    focused = false,
+    onFocus
   }: {
     pane: PaneKind;
     onChange: (next: PaneKind) => void;
@@ -30,6 +32,14 @@
     onSplitV?: (newPane: PaneKind) => void;
     closable?: boolean;
     onClose?: () => void;
+    /** True when this leaf is the active workspace's focused leaf —
+     *  tints the header border + adds a primary outline so the user
+     *  sees where keyboard commands (g w, future splits) will land. */
+    focused?: boolean;
+    /** Called on pointerdown inside the slot so a click anywhere
+     *  inside the pane focuses it. Capture-phase to fire before any
+     *  child handler. */
+    onFocus?: () => void;
   } = $props();
 
   let entry = $derived(findPane(pane));
@@ -40,9 +50,12 @@
   let nextPaneCandidate = $derived(PANES.find((p) => p.id !== pane)?.id ?? pane);
 </script>
 
-<div class="flex flex-col h-full min-h-0 border border-surface1 rounded overflow-hidden bg-base">
+<div
+  onpointerdowncapture={() => onFocus?.()}
+  class="flex flex-col h-full min-h-0 border rounded overflow-hidden bg-base transition-colors {focused ? 'border-primary' : 'border-surface1'}"
+>
   <header
-    class="flex items-center gap-1.5 px-2 py-1 border-b border-surface1 bg-surface0 text-xs flex-shrink-0"
+    class="flex items-center gap-1.5 px-2 py-1 border-b text-xs flex-shrink-0 transition-colors {focused ? 'border-primary bg-surface0' : 'border-surface1 bg-surface0'}"
   >
     <PaneTypePicker {pane} {onChange} />
     <span class="flex-1"></span>
