@@ -20,38 +20,39 @@
 // the same source instead of passing state down and toggles back
 // up.
 //
-// Default-expand the work pillars (Plan + Life) and collapse the
-// reference pillars (Spiritual + Knowledge + AI). The earlier
-// default collapsed everything which hid Finance behind a header
-// — users on Today never saw it unless they remembered to click.
-// Surfacing Plan + Life trades a slightly longer rail for
-// discoverability of the user's primary work surfaces.
+// KISS default: every section starts collapsed. The active-route
+// auto-expand effect in +layout.svelte transiently opens whichever
+// section owns the current page, so a user landing on /finance still
+// sees its siblings in Life — they just don't have to scan past five
+// open accordions before the section list begins. Discoverability now
+// comes from the StatusBar + BottomNav + Workspaces surfaces rather
+// than from defaulting work-pillar sections open.
 //
-// Storage key is versioned. v3 carries the current default.
-// v1 + v2 are best-effort cleaned up on first read so the
-// localStorage view stays tidy. We DO NOT attempt to migrate
-// old values into the new key — the previous attempt (v2's
-// "preserve customizations from v1") left users on intermediate
-// layouts stuck on whatever was written when an earlier commit
-// set defaults that no longer apply. Defaults change rarely;
-// bumping the version is the simplest correct mechanism.
+// Storage key is versioned. v4 carries the all-collapsed default.
+// v1–v3 are best-effort cleaned up on first read so the localStorage
+// view stays tidy. We DO NOT attempt to migrate old values into the
+// new key — defaults change rarely; bumping the version is the
+// simplest correct mechanism.
 //
 // If a user wants to force the current default at any time:
-//   localStorage.removeItem('granit.sidebar.collapsed.v3')
+//   localStorage.removeItem('granit.sidebar.collapsed.v4')
 //   location.reload()
 
 import { derived, get, writable } from 'svelte/store';
 import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
 
-const COLLAPSED_KEY = 'granit.sidebar.collapsed.v3';
+const COLLAPSED_KEY = 'granit.sidebar.collapsed.v4';
 const LEGACY_COLLAPSED_KEYS = [
   'granit.sidebar.collapsed', // v1
-  'granit.sidebar.collapsed.v2'
+  'granit.sidebar.collapsed.v2',
+  'granit.sidebar.collapsed.v3'
 ];
 const COMPACT_KEY = 'granit.sidebar.compact';
 const HIDDEN_KEY = 'granit.sidebar.hidden';
 
 const DEFAULT_COLLAPSED: Record<string, boolean> = {
+  plan: true,
+  life: true,
   spiritual: true,
   knowledge: true,
   ai: true

@@ -43,6 +43,7 @@ export const essentials: NavItem[] = [
   { href: '/tasks', label: 'Tasks', icon: 'tasks' },
   { href: '/calendar', label: 'Calendar', icon: 'calendar' },
   { href: '/notes', label: 'Notes', icon: 'notes' },
+  { href: '/chat', label: 'Chat', icon: 'chat', moduleId: 'chat' },
   { href: '/habits', label: 'Habits', icon: 'habits', moduleId: 'habit_tracker' },
   { href: '/jots', label: 'Jots', icon: 'jots', moduleId: 'jots' },
   { href: '/morning', label: 'Morning', icon: 'morning', moduleId: 'morning' }
@@ -117,8 +118,7 @@ export const sections: NavSection[] = [
     id: 'ai',
     label: 'AI',
     items: [
-      { href: '/agents', label: 'Agents', icon: 'agents', moduleId: 'agents' },
-      { href: '/chat', label: 'Chat', icon: 'chat', moduleId: 'chat' }
+      { href: '/agents', label: 'Agents', icon: 'agents', moduleId: 'agents' }
     ]
   }
 ];
