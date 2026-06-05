@@ -1010,7 +1010,7 @@
             <!-- Per-source color picker — hover-only swatch row so the
                  default state stays uncluttered. Empty swatch resets
                  to the auto-rotation default. -->
-            <div class="filterCtl.hidden group-hover:flex items-center gap-0.5 flex-shrink-0">
+            <div class="hidden group-hover:flex items-center gap-0.5 flex-shrink-0">
               {#each ['', 'red', 'yellow', 'orange', 'green', 'blue', 'purple', 'cyan', 'pink'] as t}
                 <button
                   type="button"
@@ -1042,7 +1042,7 @@
           <span class="w-2 h-2 rounded-full" style="background: var(--color-{f.tone})"></span>
           <span class="text-subtext flex-1 text-left">{f.label}</span>
           <span class="text-dim">{filterCtl.typeCounts[f.key] ?? 0}</span>
-          {#if isHidden}<span class="text-dim text-[10px]">filterCtl.hidden</span>{/if}
+          {#if isHidden}<span class="text-dim text-[10px]">hidden</span>{/if}
         </button>
       {/each}
     </div>
@@ -1051,7 +1051,7 @@
 
 <div class="flex h-full">
   <!-- Desktop sidebar -->
-  <aside class="filterCtl.hidden md:block md:w-56 lg:w-64 border-r border-surface1 bg-mantle flex-shrink-0 overflow-y-auto">
+  <aside class="hidden md:block md:w-56 lg:w-64 border-r border-surface1 bg-mantle flex-shrink-0 overflow-y-auto">
     {@render sidebarContent()}
   </aside>
 
@@ -1115,7 +1115,7 @@
         disabled={quickBusy}
       />
       {#if quickInput.trim()}
-        <span class="filterCtl.hidden md:inline text-[11px] text-dim font-mono truncate max-w-md">
+        <span class="hidden md:inline text-[11px] text-dim font-mono truncate max-w-md">
           {#if quickParse?.ok && quickParse.event}
             <span class="text-success">✓</span>
             {quickParse.event.title} · {quickParse.event.date}{quickParse.event.startTime ? ` · ${quickParse.event.startTime}${quickParse.event.endTime ? `–${quickParse.event.endTime}` : ''}` : ' · all-day'}
