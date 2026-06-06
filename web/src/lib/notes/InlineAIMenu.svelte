@@ -37,6 +37,10 @@
   } from './inlineAIContextScope.svelte';
   import { createPresetFilterController } from './inlineAIPresetFilter.svelte';
   import {
+    createMenuPositionController,
+    installMenuDismissHandlers
+  } from './inlineAIMenuPosition.svelte';
+  import {
     type Preset,
     CATEGORY_LABELS
   } from './inline-ai-presets';
@@ -370,36 +374,19 @@
 
   // ── lifecycle ────────────────────────────────────────────────────
 
-  let viewportPos = $state({ left: 0, top: 0 });
-
-  function clampToViewport() {
-    if (!menuEl) return;
-    const rect = menuEl.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const margin = 8;
-    let left = event.x;
-    let top = event.y;
-    if (left + rect.width > vw - margin) left = vw - margin - rect.width;
-    if (left < margin) left = margin;
-    if (top + rect.height > vh - margin) {
-      // Flip above the trigger anchor when there's no room below.
-      top = Math.max(margin, event.y - rect.height - 28);
-    }
-    viewportPos = { left, top };
-  }
-
-  // Re-clamp whenever the visible content set changes — the library
-  // load is async (~50ms post-mount) and adds a chunk of vertical
-  // height; without this the menu can mount inside the viewport then
-  // overflow the bottom once the library cards render. Same effect
-  // applies when the user types a query that grows/shrinks the
-  // visible preset list. tick() defers to the post-render frame so
-  // the measurement reflects the new height.
+  // Menu position controller — viewport-clamped {left, top} the fixed
+  // wrapper consumes. Re-clamped via $effect whenever the visible
+  // content set changes (library fetch grows the menu after mount,
+  // user query shrinks/grows the preset list). tick() defers to the
+  // post-render frame so the measurement reflects the new height.
+  const positionCtl = createMenuPositionController({
+    getAnchor: () => ({ x: event.x, y: event.y }),
+    getMenuEl: () => menuEl
+  });
   $effect(() => {
     void visiblePresets;
     void libraryFiltered;
-    tick().then(clampToViewport);
+    tick().then(positionCtl.clamp);
   });
 
   onMount(() => {
@@ -408,31 +395,19 @@
     void presetCtl.loadLibrary();
     // Wait one tick for the menu to lay out so we measure its real
     // size before clamping.
-    tick().then(clampToViewport);
-    const onResize = () => clampToViewport();
-    const onDocClick = (e: MouseEvent) => {
-      if (!menuEl) return;
-      // Only the primary button closes the menu on outside-click.
-      // Right-click in the editor would otherwise dismiss the menu
-      // before the OS spell-check menu opened, eating the chance to
-      // act on the menu's current state.
-      if (e.button !== 0) return;
-      if (e.target instanceof Node && menuEl.contains(e.target)) return;
-      onClose();
-    };
-    window.addEventListener('resize', onResize);
-    document.addEventListener('mousedown', onDocClick);
-    return () => {
-      window.removeEventListener('resize', onResize);
-      document.removeEventListener('mousedown', onDocClick);
-    };
+    tick().then(positionCtl.clamp);
+    return installMenuDismissHandlers({
+      getMenuEl: () => menuEl,
+      onResize: positionCtl.clamp,
+      onOutsideClick: onClose
+    });
   });
 </script>
 
 <div
   bind:this={menuEl}
   class="fixed z-50 w-[22rem] max-w-[calc(100vw-1rem)] bg-surface0 border border-surface2 rounded shadow-xl text-text"
-  style="left: {viewportPos.left}px; top: {viewportPos.top}px;"
+  style="left: {positionCtl.pos.left}px; top: {positionCtl.pos.top}px;"
   role="dialog"
   aria-label="AI command menu"
 >
