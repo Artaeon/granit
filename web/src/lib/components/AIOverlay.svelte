@@ -42,11 +42,6 @@
   } from '$lib/chat/saveNoteService.svelte';
   import { suggestedModeForPath } from '$lib/chat/contextDefaults';
   import {
-    projectContextChips,
-    CALENDAR_CONTEXT_CHIPS,
-    GOAL_CONTEXT_CHIPS
-  } from '$lib/chat/contextChips';
-  import {
     loadActiveThreadId,
     persistActiveThreadId
   } from '$lib/chat/history';
@@ -79,6 +74,7 @@
   import ChatComposer from '$lib/components/aioverlay/ChatComposer.svelte';
   import ChatMessageList from '$lib/components/aioverlay/ChatMessageList.svelte';
   import AIOverlayHeader from '$lib/components/aioverlay/AIOverlayHeader.svelte';
+  import AIOverlayQuickActions from '$lib/components/aioverlay/AIOverlayQuickActions.svelte';
   import { list as listSharedPrompts, type RecentPrompt } from '$lib/ai/recentPrompts';
 
   // AIOverlay — global AI panel. Slides in from the right on
@@ -1072,100 +1068,24 @@
       </div>
     {/if}
 
-    <!-- Quick actions row. Two semantic groups separated by a hairline
-         divider — context-scoped actions on top (page agent + PM/Cal/
-         Goal chips), global utilities below (briefing/synopsis/triage/
-         deadlines). Section labels stay subtle but enterprise-grade:
-         tight uppercase caps with letter-spacing instead of bracketed
-         "PM:" notation. -->
-    <div class="px-4 py-2.5 border-b border-surface1 flex-shrink-0 space-y-2">
-      {#if pageAgent || currentProjectName || onCalendarPage || currentGoalId}
-        <div class="flex items-center gap-2 flex-wrap">
-          <span class="text-[10px] font-semibold uppercase tracking-[0.14em] text-dim flex-shrink-0">{currentProjectName ? 'Project' : onCalendarPage ? 'Calendar' : currentGoalId ? 'Goal' : 'Context'}</span>
-          {#if pageAgent}
-            <!-- Run page-scoped Agent — replaces the per-page "Agent"
-                 toolbar buttons. Navigates with ?agent=1 so the host
-                 page hydrates and opens its own AgentDialog. -->
-            <button
-              onclick={launchPageAgent}
-              title="Open the agent for this page"
-              class="px-2.5 py-1 min-h-[32px] text-xs bg-primary text-on-primary rounded font-medium hover:opacity-90 inline-flex items-center gap-1.5"
-            >
-              <span class="text-[10px] font-bold tracking-tight inline-flex items-center justify-center w-4 h-4 rounded-sm bg-mantle text-primary leading-none">{pageAgent.glyph}</span>
-              <span>Run agent</span>
-            </button>
-          {/if}
-          {#if currentProjectName}
-            {#each projectContextChips(currentProjectName) as c (c.label)}
-              <button
-                onclick={() => { input = c.prompt; }}
-                class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-              >{c.label}</button>
-            {/each}
-          {:else if onCalendarPage}
-            {#each CALENDAR_CONTEXT_CHIPS as c (c.label)}
-              <button
-                onclick={() => { input = c.prompt; }}
-                class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-              >{c.label}</button>
-            {/each}
-          {:else if currentGoalId}
-            {#each GOAL_CONTEXT_CHIPS as c (c.label)}
-              <button
-                onclick={() => { input = c.prompt; }}
-                class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 rounded text-primary hover:bg-surface1 inline-flex items-center transition-colors"
-              >{c.label}</button>
-            {/each}
-          {/if}
-        </div>
-      {/if}
-      <!-- Global utilities row — always present, separated from
-           context chips above. Stays plain so context actions read
-           as the headline. -->
-      <div class="flex items-center gap-2 flex-wrap">
-        <span class="text-[10px] font-semibold uppercase tracking-[0.14em] text-dim flex-shrink-0">Quick</span>
-        <button
-          onclick={runBriefing}
-          disabled={busy || $sabbath}
-          class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-text disabled:opacity-50 inline-flex items-center transition-colors"
-        >Briefing</button>
-        <button
-          onclick={runSynopsis}
-          disabled={busy || $sabbath}
-          class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-text disabled:opacity-50 inline-flex items-center transition-colors"
-        >Weekly synopsis</button>
-        <button
-          onclick={runTriage}
-          disabled={busy || $sabbath}
-          class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-text disabled:opacity-50 inline-flex items-center transition-colors"
-        >Triage</button>
-        <button
-          onclick={runDeadlines}
-          disabled={busy || $sabbath}
-          class="px-2.5 py-1 min-h-[32px] text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-text disabled:opacity-50 inline-flex items-center transition-colors"
-        >Deadlines</button>
-        <span class="flex-1"></span>
-        {#if messages.length > 0 || quickResult}
-          <button
-            onclick={() => void saveThreadAsNote()}
-            disabled={saving}
-            class="px-2 py-1 text-[11px] text-secondary hover:text-subtext hover:underline disabled:opacity-50 inline-flex items-center gap-1"
-            title="Save this thread as a markdown note under chat-history/"
-          >
-            <svg viewBox="0 0 24 24" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M5 4h11l3 3v13H5z"/>
-              <path d="M9 4v5h6V4M8 14h8M8 18h6" stroke-linecap="round"/>
-            </svg>
-            {saving ? 'saving…' : 'save'}
-          </button>
-          <button
-            onclick={clearChat}
-            class="px-2 py-1 text-[11px] text-dim hover:text-error transition-colors"
-            title="Clear the overlay"
-          >clear</button>
-        {/if}
-      </div>
-    </div>
+    <AIOverlayQuickActions
+      {pageAgent}
+      {currentProjectName}
+      {currentGoalId}
+      {onCalendarPage}
+      {busy}
+      sabbathActive={$sabbath}
+      hasContent={messages.length > 0 || !!quickResult}
+      {saving}
+      onLaunchAgent={launchPageAgent}
+      onPickChip={(p) => { input = p; }}
+      onBriefing={runBriefing}
+      onSynopsis={runSynopsis}
+      onTriage={runTriage}
+      onDeadlines={runDeadlines}
+      onSaveThread={() => void saveThreadAsNote()}
+      onClear={clearChat}
+    />
 
     <ChatHistoryRail
       bind:this={historyRailRef}
