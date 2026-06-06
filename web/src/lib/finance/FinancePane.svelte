@@ -3,8 +3,6 @@
   import { auth } from '$lib/stores/auth';
   import {
     api,
-    todayISO,
-    type FinIncomeStream,
     type FinGoal
   } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
@@ -25,6 +23,7 @@
   import { createFinanceAI } from '$lib/finance/financeAI.svelte';
   import { createFinanceAccountForm } from '$lib/finance/financeAccountForm.svelte';
   import { createFinanceSubscriptionForm } from '$lib/finance/financeSubscriptionForm.svelte';
+  import { createFinanceIncomeForm } from '$lib/finance/financeIncomeForm.svelte';
   import {
     ACCOUNT_COLORS,
     accColor,
@@ -54,6 +53,13 @@
   });
   const subscriptionForm = createFinanceSubscriptionForm({
     getAccounts: () => dataCtl.accounts,
+    reload: () => dataCtl.loadAll(),
+    onSuccess: (m) => toast.success(m),
+    onError: (m) => toast.error(m)
+  });
+  const incomeForm = createFinanceIncomeForm({
+    getAccounts: () => dataCtl.accounts,
+    getStreams: () => dataCtl.streams,
     reload: () => dataCtl.loadAll(),
     onSuccess: (m) => toast.success(m),
     onError: (m) => toast.error(m)
@@ -88,106 +94,7 @@
 
   // Subscription create / toggle / delete live on subscriptionForm.
 
-  // ── New / edit income stream modal ─────────────────────────────────
-  // One modal handles both create and edit — the UX is the same form
-  // either way. editingId tracks "we're editing this one" vs "we're
-  // making a fresh one"; the submit branches accordingly.
-  let incomeOpen = $state(false);
-  let editingIncomeId = $state<string | null>(null);
-  let incomeForm = $state({
-    name: '',
-    status: 'idea' as FinIncomeStream['status'],
-    kind: 'business' as FinIncomeStream['kind'],
-    projected: '',
-    actual: '',
-    currency: 'USD',
-    payout_day: '',
-    payout_cadence: 'monthly' as FinIncomeStream['payout_cadence'],
-    account_id: '',
-    project: '',
-    tags: '',
-    url: '',
-    notes: ''
-  });
-  function openIncome(s?: FinIncomeStream) {
-    if (s) {
-      editingIncomeId = s.id;
-      incomeForm = {
-        name: s.name,
-        status: s.status as FinIncomeStream['status'],
-        kind: s.kind as FinIncomeStream['kind'],
-        projected: (s.projected_monthly_cents / 100).toFixed(2),
-        actual: (s.actual_monthly_cents / 100).toFixed(2),
-        currency: s.currency,
-        payout_day: s.payout_day_of_month ? String(s.payout_day_of_month) : '',
-        payout_cadence: (s.payout_cadence ?? 'monthly') as FinIncomeStream['payout_cadence'],
-        account_id: s.account_id ?? '',
-        project: s.project ?? '',
-        tags: (s.tags ?? []).join(', '),
-        url: s.url ?? '',
-        notes: s.notes ?? ''
-      };
-    } else {
-      editingIncomeId = null;
-      incomeForm = {
-        name: '', status: 'idea', kind: 'business',
-        projected: '', actual: '',
-        currency: dataCtl.accounts[0]?.currency || 'USD',
-        payout_day: '',
-        payout_cadence: 'monthly',
-        account_id: dataCtl.accounts[0]?.id ?? '',
-        project: '',
-        tags: '',
-        url: '', notes: ''
-      };
-    }
-    incomeOpen = true;
-  }
-  async function submitIncome() {
-    try {
-      // Empty payout day means "unknown" — send as 0 so the server
-      // stores nothing. Days outside 1-31 get clamped at the form
-      // level so the schema stays sane regardless of weird input.
-      const day = incomeForm.payout_day ? Math.max(0, Math.min(31, parseInt(incomeForm.payout_day, 10))) : 0;
-      const body: Partial<FinIncomeStream> = {
-        name: incomeForm.name.trim(),
-        status: incomeForm.status,
-        kind: incomeForm.kind,
-        projected_monthly_cents: Math.round(parseFloat(incomeForm.projected || '0') * 100),
-        actual_monthly_cents: Math.round(parseFloat(incomeForm.actual || '0') * 100),
-        currency: incomeForm.currency.trim() || 'USD',
-        payout_day_of_month: day,
-        payout_cadence: incomeForm.payout_cadence || 'monthly',
-        account_id: incomeForm.account_id || undefined,
-        project: incomeForm.project.trim() || undefined,
-        tags: incomeForm.tags.split(',').map((t) => t.trim()).filter(Boolean),
-        url: incomeForm.url.trim() || undefined,
-        notes: incomeForm.notes.trim() || undefined,
-        // When the user flips a stream to active, stamp started_at if
-        // they haven't already — saves them re-typing the date.
-        started_at: incomeForm.status === 'active'
-          ? (dataCtl.streams.find((x) => x.id === editingIncomeId)?.started_at
-             || todayISO())
-          : undefined
-      };
-      if (editingIncomeId) {
-        await api.finPatchIncome(editingIncomeId, body);
-        toast.success('updated');
-      } else {
-        await api.finCreateIncome(body);
-        toast.success('income stream added');
-      }
-      incomeOpen = false;
-      editingIncomeId = null;
-      await dataCtl.loadAll();
-    } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
-  }
-  async function deleteIncome(s: FinIncomeStream) {
-    if (!confirm(`Delete "${s.name}"?`)) return;
-    try { await api.finDeleteIncome(s.id); await dataCtl.loadAll(); } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
+  // Income create / edit / delete live on incomeForm.
 
   // ── New goal modal ────────────────────────────────────────────────
   let goalOpen = $state(false);
@@ -492,7 +399,7 @@
         {/if}
 
         <div class="flex flex-wrap gap-2">
-          <button onclick={() => openIncome()} class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90">+ Income source</button>
+          <button onclick={() => incomeForm.openModal()} class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90">+ Income source</button>
           <button onclick={() => subscriptionForm.openModal()} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Subscription</button>
           <button onclick={() => accountForm.openModal()} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Account</button>
           <button onclick={openGoal} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Goal</button>
@@ -511,7 +418,7 @@
         <p class="text-xs text-dim">
           {dataCtl.streams.length} stream{dataCtl.streams.length === 1 ? '' : 's'} · active: {fmtMoney(dataCtl.overview?.income_monthly_actual_cents ?? 0, dataCtl.overview?.currency ?? '')} / mo · projected (incl. pipeline): {fmtMoney(dataCtl.overview?.income_monthly_projected_cents ?? 0, dataCtl.overview?.currency ?? '')} / mo
         </p>
-        <button onclick={() => openIncome()} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New income source</button>
+        <button onclick={() => incomeForm.openModal()} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New income source</button>
       </div>
       {#if dataCtl.streams.length === 0}
         <div class="bg-surface0 border border-surface1 rounded-lg p-6 text-center">
@@ -527,12 +434,12 @@
               {@const variance = s.actual_monthly_cents - s.projected_monthly_cents}
               <li class="bg-surface0 border border-surface1 rounded-lg p-3">
                 <div class="flex items-baseline gap-3 flex-wrap">
-                  <button onclick={() => openIncome(s)} class="font-medium text-text hover:underline">{s.name}</button>
+                  <button onclick={() => incomeForm.openModal(s)} class="font-medium text-text hover:underline">{s.name}</button>
                   <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded {tone.bg} {tone.text}">{tone.label}</span>
                   <span class="text-[11px] text-dim">{s.kind}</span>
                   <span class="flex-1"></span>
                   <span class="text-sm font-mono text-success">{fmtMoney(s.actual_monthly_cents, s.currency)} / mo</span>
-                  <button onclick={() => deleteIncome(s)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
+                  <button onclick={() => incomeForm.remove(s)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
                 </div>
                 <p class="text-[11px] text-dim mt-1">
                   projected: {fmtMoney(s.projected_monthly_cents, s.currency)}
@@ -563,12 +470,12 @@
               {@const tone = statusTone(s.status)}
               <li class="bg-surface0 border border-surface1 rounded-lg p-3">
                 <div class="flex items-baseline gap-3 flex-wrap">
-                  <button onclick={() => openIncome(s)} class="font-medium text-text hover:underline">{s.name}</button>
+                  <button onclick={() => incomeForm.openModal(s)} class="font-medium text-text hover:underline">{s.name}</button>
                   <span class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded {tone.bg} {tone.text}">{tone.label}</span>
                   <span class="text-[11px] text-dim">{s.kind}</span>
                   <span class="flex-1"></span>
                   <span class="text-sm font-mono text-info">→ {fmtMoney(s.projected_monthly_cents, s.currency)} / mo</span>
-                  <button onclick={() => deleteIncome(s)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
+                  <button onclick={() => incomeForm.remove(s)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
                 </div>
                 {#if s.project || (s.tags && s.tags.length > 0)}
                   <div class="flex flex-wrap items-center gap-1.5 mt-1">
@@ -593,10 +500,10 @@
           <ul class="space-y-2 opacity-60">
             {#each dataCtl.pausedStreams as s (s.id)}
               <li class="bg-surface0 border border-surface1 rounded-lg p-3 flex items-baseline gap-3 flex-wrap">
-                <button onclick={() => openIncome(s)} class="font-medium text-text hover:underline">{s.name}</button>
+                <button onclick={() => incomeForm.openModal(s)} class="font-medium text-text hover:underline">{s.name}</button>
                 <span class="text-[11px] text-dim">{s.kind} · last actual {fmtMoney(s.actual_monthly_cents, s.currency)}/mo</span>
                 <span class="flex-1"></span>
-                <button onclick={() => deleteIncome(s)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
+                <button onclick={() => incomeForm.remove(s)} class="text-xs text-dim hover:text-error" aria-label="delete">×</button>
               </li>
             {/each}
           </ul>
@@ -764,16 +671,16 @@
 
 <!-- ── New / edit income modal ──────────────────────────────────────── -->
 <EditModal
-  open={incomeOpen}
-  title={editingIncomeId ? 'Edit income source' : 'New income source'}
-  onClose={() => (incomeOpen = false)}
+  open={incomeForm.open}
+  title={incomeForm.editingId ? 'Edit income source' : 'New income source'}
+  onClose={() => incomeForm.close()}
 >
-  <form onsubmit={(e) => { e.preventDefault(); submitIncome(); }} class="p-4 space-y-3">
-      <input bind:value={incomeForm.name} required placeholder="Name (Day job, Side SaaS, Dividends…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+  <form onsubmit={(e) => { e.preventDefault(); incomeForm.submit(); }} class="p-4 space-y-3">
+      <input bind:value={incomeForm.form.name} required placeholder="Name (Day job, Side SaaS, Dividends…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       <div class="grid grid-cols-2 gap-2">
         <label class="block">
           <span class="text-[11px] text-dim">Status</span>
-          <select bind:value={incomeForm.status} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
+          <select bind:value={incomeForm.form.status} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
             <option value="idea">Idea (could bring money)</option>
             <option value="planned">Planned (working on it)</option>
             <option value="active">Active (bringing money now)</option>
@@ -782,7 +689,7 @@
         </label>
         <label class="block">
           <span class="text-[11px] text-dim">Type</span>
-          <select bind:value={incomeForm.kind} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
+          <select bind:value={incomeForm.form.kind} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
             <option value="employment">Employment / salary</option>
             <option value="freelance">Freelance / contract</option>
             <option value="business">Business / SaaS</option>
@@ -795,13 +702,13 @@
       <div class="grid grid-cols-3 gap-2 items-end">
         <label class="block col-span-1">
           <span class="text-[11px] text-dim">Projected / mo</span>
-          <input type="number" step="0.01" bind:value={incomeForm.projected} placeholder="0.00" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
+          <input type="number" step="0.01" bind:value={incomeForm.form.projected} placeholder="0.00" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
         </label>
         <label class="block col-span-1">
           <span class="text-[11px] text-dim">Actual / mo</span>
-          <input type="number" step="0.01" bind:value={incomeForm.actual} placeholder="0.00" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
+          <input type="number" step="0.01" bind:value={incomeForm.form.actual} placeholder="0.00" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
         </label>
-        <input bind:value={incomeForm.currency} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+        <input bind:value={incomeForm.form.currency} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       </div>
 
       <!-- Payout schedule. Day-of-month + cadence drives the
@@ -813,11 +720,11 @@
         <div class="grid grid-cols-2 gap-2">
           <label class="block">
             <span class="text-[11px] text-dim">Day of month (1-31)</span>
-            <input type="number" min="0" max="31" bind:value={incomeForm.payout_day} placeholder="e.g. 5" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
+            <input type="number" min="0" max="31" bind:value={incomeForm.form.payout_day} placeholder="e.g. 5" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
           </label>
           <label class="block">
             <span class="text-[11px] text-dim">Cadence</span>
-            <select bind:value={incomeForm.payout_cadence} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
+            <select bind:value={incomeForm.form.payout_cadence} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
               <option value="monthly">Monthly</option>
               <option value="yearly">Yearly (anchor month from started date)</option>
               <option value="quarterly">Quarterly (approx)</option>
@@ -836,25 +743,25 @@
       <div class="grid grid-cols-2 gap-2">
         <label class="block">
           <span class="text-[11px] text-dim">Lands in account</span>
-          <select bind:value={incomeForm.account_id} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
+          <select bind:value={incomeForm.form.account_id} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
             <option value="">— none —</option>
             {#each dataCtl.accounts as a}<option value={a.id}>{a.name}</option>{/each}
           </select>
         </label>
         <label class="block">
           <span class="text-[11px] text-dim">Linked project</span>
-          <select bind:value={incomeForm.project} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
+          <select bind:value={incomeForm.form.project} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
             <option value="">— none —</option>
             {#each dataCtl.projects as p}<option value={p.name}>{p.name}</option>{/each}
           </select>
         </label>
       </div>
-      <input bind:value={incomeForm.tags} placeholder="Tags (comma-separated, e.g. primary, w2)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      <input bind:value={incomeForm.url} placeholder="URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      <textarea bind:value={incomeForm.notes} rows="2" placeholder="Notes (idea details, next steps…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text resize-y focus:outline-none focus:border-primary"></textarea>
+      <input bind:value={incomeForm.form.tags} placeholder="Tags (comma-separated, e.g. primary, w2)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+      <input bind:value={incomeForm.form.url} placeholder="URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+      <textarea bind:value={incomeForm.form.notes} rows="2" placeholder="Notes (idea details, next steps…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text resize-y focus:outline-none focus:border-primary"></textarea>
     <div class="flex justify-end gap-2 pt-2">
-      <button type="button" onclick={() => (incomeOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-      <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">{editingIncomeId ? 'Save' : 'Add'}</button>
+      <button type="button" onclick={() => incomeForm.close()} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
+      <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">{incomeForm.editingId ? 'Save' : 'Add'}</button>
     </div>
   </form>
 </EditModal>
