@@ -1,25 +1,13 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
-  import {
-    api,
-    fmtDateISO,
-    todayISO,
-    type Project,
-    type Goal,
-    type SearchHit,
-    type Task,
-    type HabitInfo,
-    type Deadline,
-    type CalendarEvent
-  } from '$lib/api';
-  import { onWsEvent } from '$lib/ws';
   import { fuzzyScoreMulti } from '$lib/util/fuzzy';
   import { workspaceCommands } from '$lib/workspace/workspaceCommands';
   import NavIcon from './NavIcon.svelte';
   import type { Group, CmdItem } from './commandPalette/paletteTypes';
   import { createPaletteRecents } from './commandPalette/paletteRecents.svelte';
   import { PAGES, AGENTS } from './commandPalette/paletteCatalog';
+  import { createPaletteData } from './commandPalette/paletteData.svelte';
 
   // ── Surface name & history ──────────────────────────────────────────
   // Originally a notes-only quick switcher. As of this iteration the
@@ -37,109 +25,34 @@
   let inputEl: HTMLInputElement | undefined = $state();
 
   // ── Data caches ────────────────────────────────────────────────────
-  // Loaded lazily on first open. WS events refresh in the background
-  // so subsequent opens see fresh state. Empty arrays render nothing
-  // for that section.
-  let notes = $state<{ path: string; title: string }[]>([]);
-  let projects = $state<Project[]>([]);
-  let goals = $state<Goal[]>([]);
-  // Individual entity rows (Spotlight-style): open tasks, all habits,
-  // active deadlines, upcoming events. Indexed alongside Pages so the
-  // palette finds them with the same fuzzy filter — no separate UI.
-  let tasks = $state<Task[]>([]);
-  let habits = $state<HabitInfo[]>([]);
-  let deadlines = $state<Deadline[]>([]);
-  let events = $state<CalendarEvent[]>([]);
-  let dataLoaded = $state(false);
+  // Controller-owned — see paletteData.svelte for the seven indexed
+  // slices, the lazy load() pipeline, the WS refresh wiring, and the
+  // debounced full-text search. Loaded lazily on first open(); WS
+  // events refresh in the background so subsequent opens see fresh
+  // state.
+  const data = createPaletteData();
+  // Mirror state into local consts so the template + items derivation
+  // read unchanged.
+  const notes = $derived(data.notes);
+  const projects = $derived(data.projects);
+  const goals = $derived(data.goals);
+  const tasks = $derived(data.tasks);
+  const habits = $derived(data.habits);
+  const deadlines = $derived(data.deadlines);
+  const events = $derived(data.events);
+  const searchHits = $derived(data.searchHits);
+  const dataLoaded = $derived(data.dataLoaded);
 
-  // Live full-text search results — only consulted when the query is
-  // ≥3 chars. Surfaces ABOVE everything else (the user typed something
-  // specific enough to want body matches), but in its own section so
-  // the noise stays contained.
-  let searchHits = $state<SearchHit[]>([]);
-  let searchToken = 0;
-  async function runSearch(query: string) {
-    const token = ++searchToken;
-    if (query.trim().length < 3) {
-      searchHits = [];
-      return;
-    }
-    try {
-      const r = await api.search(query, 12);
-      if (token !== searchToken) return; // stale response, ignore
-      searchHits = r.results;
-    } catch {
-      if (token === searchToken) searchHits = [];
-    }
-  }
+  // Debounce the full-text search to 180ms after the last keystroke
+  // so we don't pummel /api/search on every character. The
+  // controller's runSearch enforces the ≥3-char gate + the
+  // stale-response guard.
   let searchDebounce: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
     const q2 = q;
     if (searchDebounce) clearTimeout(searchDebounce);
-    searchDebounce = setTimeout(() => runSearch(q2), 180);
+    searchDebounce = setTimeout(() => data.runSearch(q2), 180);
   });
-
-  async function loadData() {
-    // Fire all sources in parallel — the slowest gates dataLoaded.
-    // Errors per-source are swallowed so a /goals 500 doesn't kill
-    // the whole switcher (the user can still jump to pages + notes).
-    const np = api.listNotes({ limit: 30 }).then(
-      (r) => { notes = r.notes.map((n) => ({ path: n.path, title: n.title })); },
-      () => {}
-    );
-    const pp = api.listProjects().then(
-      (r) => { projects = r.projects; },
-      () => {}
-    );
-    const gp = api.listGoals().then(
-      (r) => { goals = r.goals; },
-      () => {}
-    );
-    // Open tasks — fuzzy filter searches the text + project name. We
-    // pull only open ones (closed tasks aren't actionable navigation
-    // targets); the /tasks page is the canonical home if the user
-    // wants archived/done. Cap defensively at 200 in case a heavy
-    // user has hundreds open — the palette ranks by score so
-    // a needle still finds the right row, but we don't ship a list
-    // of 500 to fuzzyScore on every keystroke.
-    const tp = api.listTasks({ status: 'open' }).then(
-      (r) => { tasks = r.tasks.slice(0, 200); },
-      () => {}
-    );
-    // All habits — usually <20, no cap needed.
-    const hp = api.listHabits().then(
-      (r) => { habits = r.habits; },
-      () => {}
-    );
-    // Active deadlines only (met/cancelled clutter the list).
-    const dp = api.tryListDeadlines().then(
-      (r) => {
-        const all = r ?? [];
-        deadlines = all.filter((d) => d.status === 'active');
-      },
-      () => {}
-    );
-    // Calendar events — next 14 days. Covers "go to my meeting"
-    // jumps. Past events aren't useful as nav targets; further-out
-    // events go through the calendar page directly.
-    const ep = fetchEventsWindow();
-    await Promise.allSettled([np, pp, gp, tp, hp, dp, ep]);
-    dataLoaded = true;
-  }
-
-  // Single window: today → today + 14 days. Shared by the initial
-  // loadData() call and the WS-driven event.changed refetch so the
-  // date math + cutoff stay in lockstep — previously the same loop
-  // existed twice and a change to one side could drift.
-  function fetchEventsWindow(): Promise<void> {
-    const today = todayISO();
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() + 14);
-    return api.calendar(today, fmtDateISO(cutoffDate)).then(
-      (r) => { events = r.events; },
-      () => {}
-    );
-  }
 
   // ── Recents persistence ────────────────────────────────────────────
   // Controller-owned — see paletteRecents.svelte for the cap, decay
@@ -156,7 +69,7 @@
     open = true;
     q = '';
     selected = 0;
-    if (!dataLoaded) loadData();
+    if (!dataLoaded) void data.load();
     tick().then(() => inputEl?.focus());
   }
   function close() {
@@ -257,67 +170,10 @@
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // Live-refresh every indexed slice on WS events. Each event type
-  // only refreshes the relevant slice so a task change doesn't drag a
-  // goals + projects + notes round-trip with it.
-  onMount(() =>
-    onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') {
-        api.listNotes({ limit: 30 }).then(
-          (r) => { notes = r.notes.map((n) => ({ path: n.path, title: n.title })); },
-          () => {}
-        );
-      }
-      if (ev.type === 'project.changed' || ev.type === 'project.removed') {
-        api.listProjects().then(
-          (r) => { projects = r.projects; },
-          () => {}
-        );
-      }
-      // Goals live in .granit/goals.json — broadcast as state.changed.
-      // We only refetch when the goals file specifically changes so a
-      // habits sidecar write doesn't trigger a goals API roundtrip.
-      if (ev.type === 'state.changed' && ev.path.endsWith('goals.json')) {
-        api.listGoals().then(
-          (r) => { goals = r.goals; },
-          () => {}
-        );
-      }
-      // Tasks — any task mutation invalidates the open-tasks list.
-      if (ev.type === 'task.changed') {
-        api.listTasks({ status: 'open' }).then(
-          (r) => { tasks = r.tasks.slice(0, 200); },
-          () => {}
-        );
-      }
-      // Habits sidecars live under .granit/habits/. A check-off or
-      // habit-add fires state.changed with that prefix.
-      if (ev.type === 'state.changed' && ev.path?.startsWith('.granit/habits/')) {
-        api.listHabits().then(
-          (r) => { habits = r.habits; },
-          () => {}
-        );
-      }
-      // Deadlines live in .granit/deadlines.json.
-      if (ev.type === 'state.changed' && ev.path?.endsWith('deadlines.json')) {
-        api.tryListDeadlines().then(
-          (r) => {
-            const all = r ?? [];
-            deadlines = all.filter((d) => d.status === 'active');
-          },
-          () => {}
-        );
-      }
-      // Calendar events — refetch the 14-day window on event mutations.
-      // Skipping note.changed here on purpose: note writes fire on
-      // every editor autosave keystroke, and piling a calendar refetch
-      // onto every one would burn bandwidth for the rare case where
-      // a note edit changes a scheduled-task event.
-      if (ev.type === 'event.changed' || ev.type === 'event.removed') {
-        void fetchEventsWindow();
-      }
-    })
-  );
+  // Live-refresh every indexed slice on WS events — controller-owned
+  // (see paletteData.installRefresh for the per-event-type slice
+  // routing). Cleanup runs on unmount.
+  onMount(() => data.installRefresh());
 
   function invoke(item: CmdItem | undefined) {
     if (!item) return;
