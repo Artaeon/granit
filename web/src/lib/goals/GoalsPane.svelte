@@ -4,7 +4,6 @@
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
   import { api, type Goal, type Project, type Task , todayISO } from '$lib/api';
-  import { rafThrottle } from '$lib/util/streamThrottle';
   import { onWsEvent } from '$lib/ws';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
@@ -38,6 +37,7 @@
     type GoalsStatusFilter
   } from '$lib/goals/goalsFilterState.svelte';
   import { createGoalsData } from '$lib/goals/goalsData.svelte';
+  import { createGoalsAiSuggest } from '$lib/goals/goalsAiSuggest.svelte';
   import { workspaceContext } from '$lib/workspace/workspaceContext.svelte';
 
   // Loaded data (dataCtl.goals + dataCtl.openTasks/dataCtl.doneTasks/dataCtl.projects sidecars) +
@@ -363,131 +363,11 @@
     toast.success('goal deleted');
   }
 
-  // ----- AI "next milestone" suggester -----
-  // Per-goal helper that asks the model for the next concrete
-  // milestone given the goal's title, description, target_date,
-  // existing milestones, and roll-up context. Routed through
-  // chatStream → /chat/stream so the audit / Sabbath / redaction /
-  // cost guards apply uniformly with every other AI feature in
-  // Granit. The page tracks a single in-flight suggestion at a
-  // time (only one card can be expanded), keyed by goalId.
-  //
-  // Output shape we ask the model for: a single concise milestone
-  // text (one line, action-oriented). The user can then click
-  // "Add as milestone" — which calls api.addGoalMilestone — or
-  // dismiss + retry. Streamed so tokens render progressively.
-  let aiGoalId = $state<string | null>(null);
-  let aiText = $state<string>('');
-  let aiBusy = $state(false);
-  let aiError = $state<string>('');
-  let aiAbort: AbortController | null = null;
-
-  function aiClose() {
-    aiAbort?.abort();
-    aiAbort = null;
-    aiGoalId = null;
-    aiText = '';
-    aiError = '';
-    aiBusy = false;
-  }
-
-  // Toggle handler used by the inline ✨ button — opens the panel
-  // for a fresh goal, closes it when clicked twice on the same goal.
-  function aiToggle(g: Goal) {
-    if (aiGoalId === g.id) {
-      aiClose();
-      return;
-    }
-    aiSuggest(g);
-  }
-
-  async function aiSuggest(g: Goal) {
-    // Always (re-)run — the "Try again" button calls this directly
-    // for the currently-open goal. The toggle behaviour lives in
-    // aiToggle so re-rolling stays a single click.
-    aiAbort?.abort();
-    aiAbort = null;
-    aiGoalId = g.id;
-    aiBusy = true;
-    aiError = '';
-    aiText = '';
-    aiAbort = new AbortController();
-
-    const ms = g.milestones ?? [];
-    const open = ms.filter((m) => !m.done).map((m) => m.text);
-    const done = ms.filter((m) => m.done).map((m) => m.text);
-    const roll = dataCtl.rollupFor(g);
-    // Compose a structured context block — keep it under ~2KB so
-    // the prompt cost stays predictable. Only fields with content
-    // are emitted, so a sparse goal yields a sparse prompt.
-    const ctx = [
-      `Goal: ${g.title}`,
-      g.description ? `Description: ${g.description}` : '',
-      g.target_date ? `Target date: ${g.target_date}` : '',
-      g.venture ? `Venture: ${g.venture}` : '',
-      g.project ? `Project: ${g.project}` : '',
-      g.category ? `Category: ${g.category}` : '',
-      open.length > 0 ? `Open milestones:\n${open.map((m) => `- ${m}`).join('\n')}` : '',
-      done.length > 0 ? `Completed milestones:\n${done.map((m) => `- ${m}`).join('\n')}` : '',
-      roll.open + roll.done > 0
-        ? `Linked tasks: ${roll.open} open, ${roll.done} done`
-        : ''
-    ].filter(Boolean).join('\n\n');
-
-    const userMessage =
-      'Propose ONE concrete next milestone for this goal. Rules:\n' +
-      '- One line, max ~12 words.\n' +
-      '- Action-oriented, starts with a verb (Draft, Ship, Interview, Outline, …).\n' +
-      "- Specific enough to know when it's done.\n" +
-      '- Must move the goal forward from where it stands now (avoid restating done milestones).\n' +
-      '- Output the milestone text only — no preamble, no quotes, no bullet, no period.\n\n' +
-      'Goal context:\n\n' + ctx;
-
-    // rAF throttle — aiText is rendered live.
-    const goalT = rafThrottle((full) => { aiText = full; });
-    try {
-      await api.chatStream(
-        [{ role: 'user', content: userMessage }],
-        undefined,
-        {
-          onChunk: goalT.onChunk,
-          onDone: () => {
-            goalT.flush();
-            aiBusy = false;
-            aiAbort = null;
-            // Trim once at end so the streaming UI shows tokens
-            // exactly as they arrive but the final value is clean.
-            aiText = aiText.trim().replace(/^["'\-•*]+\s*/, '').replace(/\.\s*$/, '');
-            if (!aiText) aiError = 'AI returned an empty suggestion.';
-          },
-          onError: (err) => {
-            goalT.flush();
-            aiBusy = false;
-            aiAbort = null;
-            aiError = err.message;
-          }
-        },
-        aiAbort.signal
-      );
-    } catch (e) {
-      aiBusy = false;
-      aiAbort = null;
-      aiError = errorMessage(e);
-    }
-  }
-
-  async function aiAdoptAsMilestone(g: Goal) {
-    const text = aiText.trim();
-    if (!text) return;
-    try {
-      await api.addGoalMilestone(g.id, { text });
-      toast.success('milestone added');
-      aiClose();
-      await dataCtl.load();
-    } catch (err) {
-      toast.error('Add failed: ' + (errorMessage(err)));
-    }
-  }
+  // AI "next milestone" suggester lives in goalsAiSuggest.svelte.
+  // The controller owns the open card id, streaming text, busy / error
+  // state, and the abort lifecycle. The page just calls toggle / close
+  // / adoptAsMilestone and reads via aiCtl.X.
+  const aiCtl = createGoalsAiSuggest({ dataCtl });
 
   // ─────────────────────────────────────────────────────────────────
   // AI "Weekly check-in" — page-level coaching
@@ -1177,7 +1057,7 @@
           {@const p = progress(g)}
           {@const tone = goalTargetTone(g.status, g.target_date)}
           {@const roll = dataCtl.rollupFor(g)}
-          {@const aiOpen = aiGoalId === g.id}
+          {@const aiOpen = aiCtl.aiGoalId === g.id}
           {@const isArchived = g.status === 'archived'}
           {@const isCompleted = g.status === 'completed'}
           {@const isStalled = dataCtl.stalledGoals.some((s) => s.id === g.id)}
@@ -1202,12 +1082,12 @@
               <div class="border-t border-surface1 px-3 py-1.5 flex items-center justify-end">
                 <button
                   type="button"
-                  onclick={() => aiToggle(g)}
+                  onclick={() => aiCtl.toggle(g)}
                   class="inline-flex items-center gap-1 text-[11px] {aiOpen ? 'text-primary' : 'text-dim hover:text-secondary'}"
                   title="ask AI for the next concrete milestone"
                   aria-label="suggest next milestone with AI"
                   aria-expanded={aiOpen}
-                  disabled={aiBusy && !aiOpen}
+                  disabled={aiCtl.aiBusy && !aiOpen}
                 >
                   {aiOpen ? '✕' : '✨'} {aiOpen ? 'close' : 'suggest next milestone'}
                 </button>
@@ -1215,38 +1095,38 @@
               {#if aiOpen}
                 <div class="border-t border-surface1 bg-mantle p-3">
                   <div class="text-[10px] uppercase tracking-wider text-dim mb-1">AI suggestion</div>
-                  {#if aiError}
-                    <div class="text-sm text-error mb-2">{aiError}</div>
+                  {#if aiCtl.aiError}
+                    <div class="text-sm text-error mb-2">{aiCtl.aiError}</div>
                   {/if}
-                  {#if aiText || aiBusy}
+                  {#if aiCtl.aiText || aiCtl.aiBusy}
                     <div class="text-sm text-text leading-snug min-h-[1.4em]">
-                      {aiText}{#if aiBusy}<span class="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-primary/60 animate-pulse rounded-sm"></span>{/if}
+                      {aiCtl.aiText}{#if aiCtl.aiBusy}<span class="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-primary/60 animate-pulse rounded-sm"></span>{/if}
                     </div>
                   {/if}
                   <div class="flex flex-wrap items-center gap-2 mt-2.5">
-                    {#if aiBusy}
+                    {#if aiCtl.aiBusy}
                       <button
                         type="button"
-                        onclick={() => aiAbort?.abort()}
+                        onclick={aiCtl.stop}
                         class="px-2 py-1 text-xs bg-surface1 text-subtext rounded hover:bg-surface2"
                       >Stop</button>
                     {:else}
                       <button
                         type="button"
-                        onclick={() => aiAdoptAsMilestone(g)}
-                        disabled={!aiText}
+                        onclick={() => aiCtl.adoptAsMilestone(g)}
+                        disabled={!aiCtl.aiText}
                         class="px-2.5 py-1 text-xs bg-primary text-on-primary rounded hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                       >+ Add as milestone</button>
                       <button
                         type="button"
-                        onclick={() => aiSuggest(g)}
+                        onclick={() => aiCtl.suggest(g)}
                         class="px-2 py-1 text-xs bg-surface1 text-subtext rounded hover:bg-surface2"
                         title="re-roll the suggestion"
                       >↻ Try again</button>
                     {/if}
                     <button
                       type="button"
-                      onclick={aiClose}
+                      onclick={aiCtl.close}
                       class="ml-auto text-xs text-dim hover:text-text"
                     >Dismiss</button>
                   </div>
