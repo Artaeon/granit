@@ -11,6 +11,13 @@
 // change, restore on re-entry to edit, clear on successful commit.
 // Drafts keyed per-goal so switching goals in the drawer doesn't
 // cross-contaminate.
+//
+// The "cancel-then-save" bug: Esc handlers used to flip
+// editingDesc=false; that unmounts the textarea, the browser fires
+// blur, commitDesc runs, and the just-Esc'd text gets patched
+// anyway. The cancelling flags below are checked before each commit
+// fires to short-circuit that path — same shape as
+// projectInlineEdit, which had this fixed first.
 
 import type { Goal } from '$lib/api';
 import {
@@ -35,6 +42,14 @@ export interface GoalDetailInlineEditController {
   commitDesc(): Promise<void>;
   commitNotes(): Promise<void>;
 
+  /** Esc handler for each editor — set the cancel flag BEFORE
+   *  flipping editing=false so the blur-on-unmount that follows
+   *  short-circuits the commit instead of silently persisting.
+   *  Also clears the draft + cancels the pending writer. */
+  cancelEditTitle(): void;
+  cancelEditDesc(): void;
+  cancelEditNotes(): void;
+
   /** Goal-switch reset — closes any open editor + cancels pending
    *  draft writers so the OLD goal's buffer doesn't bleed into the
    *  NEW goal's localStorage key. */
@@ -55,6 +70,12 @@ export function createGoalDetailInlineEdit(
   let titleBuf = $state('');
   let descBuf = $state('');
   let notesBuf = $state('');
+  // Cancel sentinels — set by cancelEdit*() before flipping
+  // editing=false, checked by commit*() so a blur fired by DOM
+  // unmount doesn't silently persist text the user just Esc'd.
+  let cancellingTitle = false;
+  let cancellingDesc = false;
+  let cancellingNotes = false;
 
   const titleDraftWriter = makeDraftWriter(400);
   const descDraftWriter = makeDraftWriter(400);
@@ -103,6 +124,7 @@ export function createGoalDetailInlineEdit(
   }
 
   async function commitTitle() {
+    if (cancellingTitle) { cancellingTitle = false; return; }
     editingTitle = false;
     const goal = deps.getGoal();
     if (goal && titleBuf.trim() && titleBuf !== goal.title) {
@@ -112,6 +134,7 @@ export function createGoalDetailInlineEdit(
     titleDraftWriter.cancel();
   }
   async function commitDesc() {
+    if (cancellingDesc) { cancellingDesc = false; return; }
     editingDesc = false;
     const goal = deps.getGoal();
     if (goal && descBuf !== (goal.description ?? '')) {
@@ -121,6 +144,7 @@ export function createGoalDetailInlineEdit(
     descDraftWriter.cancel();
   }
   async function commitNotes() {
+    if (cancellingNotes) { cancellingNotes = false; return; }
     editingNotes = false;
     const goal = deps.getGoal();
     if (goal && notesBuf !== (goal.notes ?? '')) {
@@ -130,10 +154,32 @@ export function createGoalDetailInlineEdit(
     notesDraftWriter.cancel();
   }
 
+  function cancelEditTitle() {
+    cancellingTitle = true;
+    editingTitle = false;
+    clearDraft(titleDraftKey());
+    titleDraftWriter.cancel();
+  }
+  function cancelEditDesc() {
+    cancellingDesc = true;
+    editingDesc = false;
+    clearDraft(descDraftKey());
+    descDraftWriter.cancel();
+  }
+  function cancelEditNotes() {
+    cancellingNotes = true;
+    editingNotes = false;
+    clearDraft(notesDraftKey());
+    notesDraftWriter.cancel();
+  }
+
   function reset() {
     editingTitle = false;
     editingDesc = false;
     editingNotes = false;
+    cancellingTitle = false;
+    cancellingDesc = false;
+    cancellingNotes = false;
     titleDraftWriter.cancel();
     descDraftWriter.cancel();
     notesDraftWriter.cancel();
@@ -158,6 +204,9 @@ export function createGoalDetailInlineEdit(
     commitTitle,
     commitDesc,
     commitNotes,
+    cancelEditTitle,
+    cancelEditDesc,
+    cancelEditNotes,
     reset
   };
 }

@@ -343,7 +343,7 @@
           <input
             bind:value={editCtl.titleBuf}
             onblur={commitTitle}
-            onkeydown={(e) => { if (e.key === 'Enter') commitTitle(); else if (e.key === 'Escape') editCtl.editingTitle = false; }}
+            onkeydown={(e) => { if (e.key === 'Enter') commitTitle(); else if (e.key === 'Escape') editCtl.cancelEditTitle(); }}
             use:focusOnMount
             class="text-base font-semibold flex-1 px-1 -mx-1 bg-surface0 border border-primary rounded text-text outline-none"
           />
@@ -495,7 +495,7 @@
             <textarea
               bind:value={editCtl.descBuf}
               onblur={commitDesc}
-              onkeydown={(e) => { if (e.key === 'Escape') editCtl.editingDesc = false; }}
+              onkeydown={(e) => { if (e.key === 'Escape') editCtl.cancelEditDesc(); }}
               use:focusOnMount
               rows="3"
               class="w-full px-3 py-2 bg-surface0 border border-primary rounded text-sm text-text outline-none"
@@ -821,7 +821,7 @@
             <textarea
               bind:value={editCtl.notesBuf}
               onblur={commitNotes}
-              onkeydown={(e) => { if (e.key === 'Escape') editCtl.editingNotes = false; }}
+              onkeydown={(e) => { if (e.key === 'Escape') editCtl.cancelEditNotes(); }}
               use:focusOnMount
               rows="4"
               class="w-full px-3 py-2 bg-surface0 border border-primary rounded text-sm text-text outline-none"
