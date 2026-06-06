@@ -26,7 +26,7 @@
 -->
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte';
-  import { api, type AIPromptEntry } from '$lib/api';
+  import type { AIPromptEntry } from '$lib/api';
   import { streamInlineAI } from '$lib/editor/inline-ai';
   import type { InlineAITriggerEvent } from '$lib/editor/inline-ai-trigger';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
@@ -35,12 +35,10 @@
     createContextScopeController,
     readSelectionSurround
   } from './inlineAIContextScope.svelte';
+  import { createPresetFilterController } from './inlineAIPresetFilter.svelte';
   import {
     type Preset,
-    type PresetCategory,
-    PRESETS,
-    CATEGORY_LABELS,
-    CATEGORY_ORDER
+    CATEGORY_LABELS
   } from './inline-ai-presets';
 
   interface Props {
@@ -61,7 +59,6 @@
   let promptInput = $state('');
   let promptEl: HTMLInputElement | undefined = $state();
   let menuEl: HTMLDivElement | undefined = $state();
-  let highlightedIdx = $state(0);
   let busy = $state(false);
 
   // Prompt history controller — per-note recents (Up/Down cycles),
@@ -74,40 +71,15 @@
   let history = $derived(historyCtl.history);
   let crossRecents = $derived(historyCtl.crossRecents);
 
-  // ── Prompt library — user-curated saved prompts ─────────────────
-  // Fetched once on mount; filtered to entries that match the current
-  // cursor state (selection vs empty) so the user only sees library
-  // items that make sense to fire right now. Rendered as a separate
-  // "Library" group after the curated categories — kept distinct so
-  // the user can tell "this is mine" from "this ships with granit."
-  let libraryAll = $state<AIPromptEntry[]>([]);
-  let libraryFiltered = $derived.by(() => {
-    const q = promptInput.trim().toLowerCase();
-    return libraryAll.filter((e) => {
-      // Scope filter — strict per cursor state, but 'either' shows in both.
-      if (hasSelection && e.scope === 'cursor') return false;
-      if (!hasSelection && e.scope === 'selection') return false;
-      // Text filter — same fuzzy substring as the preset list.
-      if (q && !e.label.toLowerCase().includes(q) && !e.prompt.toLowerCase().includes(q)) return false;
-      return true;
-    });
+  // Preset + library filter controller. Owns the static-preset
+  // filter (selection-mode aware, text-query fuzzy), the user-saved
+  // library fetch/filter, and the keyboard-nav highlight cursor.
+  const presetCtl = createPresetFilterController({
+    getHasSelection: () => hasSelection,
+    getQuery: () => promptInput
   });
-
-  async function loadLibrary() {
-    try {
-      const lib = await api.getAIPrompts();
-      libraryAll = lib.entries ?? [];
-    } catch (e) {
-      libraryAll = [];
-      // Library is a discoverability surface — a silent empty list
-      // looks like "user has no saved prompts" rather than "fetch
-      // failed". A console.warn at least leaves breadcrumbs for the
-      // user when they ask why their library is gone. Same shape as
-      // the inline-ai stream error path.
-      // eslint-disable-next-line no-console
-      console.warn('inline-ai library:', e instanceof Error ? e.message : String(e));
-    }
-  }
+  let visiblePresets = $derived(presetCtl.visiblePresets);
+  let libraryFiltered = $derived(presetCtl.libraryFiltered);
 
   // Run a library entry. Library entries are user-authored prompts —
   // they don't carry preset-style system/cursor prompt pairs, just a
@@ -134,36 +106,6 @@
   });
   let detectedSection = $derived(contextCtl.detectedSection);
   let effectiveNotePath = $derived(contextCtl.effectiveNotePath);
-
-  // ── presets ──────────────────────────────────────────────────────
-  // The static preset catalog lives in ./inline-ai-presets.ts — type
-  // defs, ordering, prompts. This component focuses on the runtime
-  // behaviour (filtering, keyboard nav, streaming, accept/reject).
-  // Adding a preset is a one-block edit in the sibling module.
-
-  // Filter presets by current mode + text query. Selection mode
-  // hides cursor-only chips and vice versa. Sort so categories cluster
-  // in CATEGORY_ORDER and the flat list lines up with the grouped
-  // render below.
-  let visiblePresets = $derived.by(() => {
-    const filtered = PRESETS.filter((p) => (hasSelection ? p.selection : p.cursor));
-    const q = promptInput.trim().toLowerCase();
-    const matched = q
-      ? filtered.filter((p) => p.label.toLowerCase().includes(q) || p.hint.toLowerCase().includes(q))
-      : filtered;
-    // Stable sort by category order; preserve insertion order within
-    // each category.
-    return matched.slice().sort((a, b) =>
-      CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
-    );
-  });
-
-  // Whenever the visible list changes (mode flip, filter), reset
-  // highlight so keyboard nav starts from the top.
-  $effect(() => {
-    void visiblePresets;
-    highlightedIdx = 0;
-  });
 
   // Set when the menu is closed (either explicitly or by parent-driven
   // unmount). runPreset/runCustomPrompt await on buildContextMessages
@@ -391,12 +333,12 @@
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      highlightedIdx = (highlightedIdx + 1) % Math.max(1, visiblePresets.length);
+      presetCtl.highlightedIdx = (presetCtl.highlightedIdx + 1) % Math.max(1, visiblePresets.length);
       return;
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      highlightedIdx = (highlightedIdx - 1 + visiblePresets.length) % Math.max(1, visiblePresets.length);
+      presetCtl.highlightedIdx = (presetCtl.highlightedIdx - 1 + visiblePresets.length) % Math.max(1, visiblePresets.length);
       return;
     }
     if (e.key === 'Enter') {
@@ -413,7 +355,7 @@
       const filtering = promptInput.trim().length > 0 && visiblePresets.length > 0;
       if (filtering) {
         // Filtered list — interpret Enter as picking the highlighted preset.
-        const p = visiblePresets[highlightedIdx];
+        const p = visiblePresets[presetCtl.highlightedIdx];
         if (p) runPreset(p);
         return;
       }
@@ -421,7 +363,7 @@
         runCustomPrompt();
         return;
       }
-      const p = visiblePresets[highlightedIdx];
+      const p = visiblePresets[presetCtl.highlightedIdx];
       if (p) runPreset(p);
     }
   }
@@ -463,7 +405,7 @@
   onMount(() => {
     promptEl?.focus();
     historyCtl.refreshCrossRecents();
-    void loadLibrary();
+    void presetCtl.loadLibrary();
     // Wait one tick for the menu to lay out so we measure its real
     // size before clamping.
     tick().then(clampToViewport);
@@ -556,7 +498,7 @@
 
   <!-- Action list — grouped by category. The flat index (i) still
        drives keyboard nav; headers between groups are zero-cost
-       visuals that don't affect highlightedIdx.
+       visuals that don't affect presetCtl.highlightedIdx.
        max-h adapts to viewport so a phone with the keyboard up
        doesn't get a list that runs off-screen. -->
   <ul class="max-h-[20rem] sm:max-h-[20rem] [max-height:50vh] overflow-y-auto py-1" role="listbox">
@@ -567,12 +509,12 @@
           {CATEGORY_LABELS[p.category]}
         </li>
       {/if}
-      <li role="option" aria-selected={i === highlightedIdx}>
+      <li role="option" aria-selected={i === presetCtl.highlightedIdx}>
         <button
           type="button"
           onclick={() => runPreset(p)}
-          onmouseenter={() => (highlightedIdx = i)}
-          class="w-full flex items-baseline justify-between gap-2 px-2 py-1.5 text-left {i === highlightedIdx ? 'bg-surface1' : 'hover:bg-surface1'}"
+          onmouseenter={() => (presetCtl.highlightedIdx = i)}
+          class="w-full flex items-baseline justify-between gap-2 px-2 py-1.5 text-left {i === presetCtl.highlightedIdx ? 'bg-surface1' : 'hover:bg-surface1'}"
           disabled={busy}
         >
           <span class="text-[13px] text-text">{p.label}</span>
@@ -595,7 +537,7 @@
       </li>
       {#each libraryFiltered as e (e.id)}
         <!-- aria-selected={false}: library entries aren't keyboard-
-             navigable via the highlightedIdx scheme (presets are);
+             navigable via the presetCtl.highlightedIdx scheme (presets are);
              they're click/tap targets. ARIA still requires the
              attribute on every role="option" so screen readers can
              announce list position correctly. -->
