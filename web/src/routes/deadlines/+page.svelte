@@ -34,7 +34,6 @@
     ventureHref
   } from '$lib/deadlines/deadlinesPageHelpers';
   import {
-    type GroupBy,
     monthBucket,
     monthLabel,
     bucketTitle as bucketTitleOf,
@@ -42,7 +41,7 @@
     buildGrouped
   } from '$lib/deadlines/deadlinesBuckets';
   import { createDeadlinesData } from '$lib/deadlines/deadlinesData.svelte';
-  import { loadStored, saveStored, loadStoredString, saveStoredString } from '$lib/util/storage';
+  import { createDeadlinesViewState } from '$lib/deadlines/deadlinesViewState.svelte';
 
   // Deadlines page — top-level "this matters by date X" markers backed
   // by .granit/deadlines.json. Distinct from Tasks (no checkbox / not
@@ -55,39 +54,14 @@
   // Active view + group-by are persisted in localStorage so the
   // user's last layout reopens with them.
 
-  type ViewMode = 'list' | 'timeline' | 'calendar';
-
-  const VIEW_KEY = 'granit.deadlines.view';
-  const GROUP_KEY = 'granit.deadlines.groupby';
-  const COLLAPSE_KEY = 'granit.deadlines.collapsedSections';
-
-  // Validate the persisted string against the union — tolerate a stale
-  // key from an older version that no longer maps to a real view.
-  const VIEW_VALUES = ['list', 'timeline', 'calendar'] as const;
-  const GROUP_VALUES = ['urgency', 'status', 'month'] as const;
-  const loadView = (): ViewMode => {
-    const v = loadStoredString(VIEW_KEY, 'list');
-    return (VIEW_VALUES as readonly string[]).includes(v) ? (v as ViewMode) : 'list';
-  };
-  const loadGroup = (): GroupBy => {
-    const v = loadStoredString(GROUP_KEY, 'urgency');
-    return (GROUP_VALUES as readonly string[]).includes(v) ? (v as GroupBy) : 'urgency';
-  };
-
-  let viewMode = $state<ViewMode>(loadView());
-  let groupBy = $state<GroupBy>(loadGroup());
-  // Section collapse state — Record<bucketKey, boolean>. Persisted so
-  // a user who collapsed "Met" once never has to do it again on
-  // reload. Absence falls through to the bucket-tone default in the
-  // DeadlinesListSections helper (live buckets open, archive buckets
-  // collapsed).
-  let collapsedSections = $state<Record<string, boolean>>(
-    loadStored<Record<string, boolean>>(COLLAPSE_KEY, {})
-  );
-
-  $effect(() => saveStoredString(VIEW_KEY, viewMode));
-  $effect(() => saveStoredString(GROUP_KEY, groupBy));
-  $effect(() => saveStored(COLLAPSE_KEY, collapsedSections));
+  // viewMode + groupBy + collapsedSections (plus their localStorage
+  // round-trip and the three-state section toggle) all live in the
+  // view-state controller. Read via viewCtl.X.
+  const viewCtl = createDeadlinesViewState();
+  let viewMode = $derived(viewCtl.viewMode);
+  let groupBy = $derived(viewCtl.groupBy);
+  let collapsedSections = $derived(viewCtl.collapsedSections);
+  const toggleSection = viewCtl.toggleSection;
 
   // Loaded sidecars (deadlines + goals/projects/ventures), the lazy
   // open-tasks pool, and the loading / busy flags live in the data
@@ -230,19 +204,6 @@
   }
   function bucketTone(b: string): string {
     return bucketToneOf(b, groupBy);
-  }
-
-  function toggleSection(key: string) {
-    // Three-state toggle: undefined → true → false → undefined. The
-    // undefined state means "use the default for this bucket tone" so
-    // the user can return to defaults by clicking twice.
-    const cur = collapsedSections[key];
-    if (cur === undefined) collapsedSections = { ...collapsedSections, [key]: true };
-    else if (cur === true) collapsedSections = { ...collapsedSections, [key]: false };
-    else {
-      const { [key]: _drop, ...rest } = collapsedSections;
-      collapsedSections = rest;
-    }
   }
 
   // ----- Stat strip -----
@@ -502,18 +463,14 @@
         e.preventDefault();
         setFilter('normal');
         break;
-      case 'v': {
+      case 'v':
         e.preventDefault();
-        const order: ViewMode[] = ['list', 'timeline', 'calendar'];
-        viewMode = order[(order.indexOf(viewMode) + 1) % order.length];
+        viewCtl.cycleView();
         break;
-      }
-      case 'g': {
+      case 'g':
         e.preventDefault();
-        const order: GroupBy[] = ['urgency', 'status', 'month'];
-        groupBy = order[(order.indexOf(groupBy) + 1) % order.length];
+        viewCtl.cycleGroup();
         break;
-      }
       case 'Escape':
         if (shortcutsOpen) {
           e.preventDefault();
@@ -553,8 +510,8 @@
     {q}
     bind:searchEl={searchInput}
     {shortcutsOpen}
-    onSelectView={(v) => (viewMode = v)}
-    onSelectGroup={(g) => (groupBy = g)}
+    onSelectView={(v) => (viewCtl.viewMode = v)}
+    onSelectGroup={(g) => (viewCtl.groupBy = g)}
     onSearchChange={(v) => (q = v)}
     onSearchKey={onSearchKey}
     onToggleShortcuts={() => (shortcutsOpen = !shortcutsOpen)}
