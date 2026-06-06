@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { beforeNavigate } from '$app/navigation';
   import { page } from '$app/stores';
   import { api, type Note } from '$lib/api';
   import { installWsReload } from '$lib/notes/wsReload.svelte';
@@ -14,7 +13,7 @@
   import Drawer from '$lib/components/Drawer.svelte';
   import { toast } from '$lib/components/toast';
   import { createFlashcardsAction } from '$lib/notes/flashcardsAction.svelte';
-  import { rememberScroll } from '$lib/notes/noteHistory';
+  import { installNoteLifecycleEffects } from '$lib/notes/noteLifecycleEffects.svelte';
   import { createPreviewScrollTracker } from '$lib/notes/previewScrollTracker.svelte';
   import { installNoteShortcuts } from '$lib/notes/noteKeyboardShortcuts.svelte';
   import { openResearchMode as openResearchModeFor } from '$lib/notes/researchMode';
@@ -59,8 +58,6 @@
   import NoteEditorBanners from '$lib/notes/NoteEditorBanners.svelte';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
   import { createNotePinAction } from '$lib/notes/notePinAction.svelte';
-  import { recordOpenNote, updateOpenNoteScroll } from '$lib/stores/open-note';
-  import { registerActiveEditor } from '$lib/stores/active-editor';
 
   // viewMode + focusMode + readingMode now live in a single
   // controller. See $lib/notes/viewModes for the contract; the
@@ -210,25 +207,11 @@
   // `undefined` until then and the toolbar simply doesn't render.
   let editorDOM = $derived(editor?.getDOM());
 
-  // Register the current editor view as the "active editor" so
-  // cross-surface features (AIOverlay's "insert at cursor", future
-  // drop-into-note actions) can target this note's cursor without
-  // each feature needing to know about the editor page. Deregisters
-  // on unmount or when the editor binding goes away.
-  $effect(() => {
-    const view = editor?.getView?.();
-    if (view) {
-      registerActiveEditor(view);
-      return () => registerActiveEditor(null);
-    }
-    return undefined;
-  });
-
-  // Per-note scroll position cache lives in $lib/notes/noteHistory —
-  // see the imports at the top. Pixel-accurate (not line-accurate)
-  // because line tracking misbehaves once the user changes font size
-  // or window width — pixels survive reflow because we restore on
-  // the same note (same width, same font) only.
+  // Per-note scroll position cache lives in $lib/notes/noteHistory.
+  // Pixel-accurate (not line-accurate) because line tracking
+  // misbehaves once the user changes font size or window width —
+  // pixels survive reflow because we restore on the same note (same
+  // width, same font) only.
 
   let treeDrawerOpen = $state(false);
   let infoDrawerOpen = $state(false);
@@ -250,20 +233,6 @@
   $effect(() => {
     const path = $page.params.path;
     if (path) load(decodeURIComponent(path));
-  });
-
-  // Feed the global open-note tray. Whenever the loaded note swaps to
-  // a new path, record it so the tray (mounted in the root layout)
-  // can surface a "jump back" chip from anywhere in the app. Triggers
-  // on note.path so a same-note refresh (WS reload) doesn't re-write
-  // the entry on every server bounce — only navigation does.
-  $effect(() => {
-    if (!note) return;
-    recordOpenNote({
-      path: note.path,
-      title: note.title || note.path,
-      scrollPos: editor?.getScrollTop?.() ?? 0
-    });
   });
 
   let draftRestored = $derived(pipe.draftRestored);
@@ -364,28 +333,16 @@
     autosaveDebounceMs: AUTOSAVE_DEBOUNCE_MS
   });
 
-  // Best-effort flush on SPA navigation. We can't synchronously block
-  // the navigation (await isn't honored by browser navigations), but the
-  // draft layer protects against data loss on the worst case — this just
-  // tries to push edits over the wire faster than the 2s debounce would.
-  beforeNavigate(() => {
-    if (dirty && !saving && note) {
-      // Body is already in localStorage via setDraft (synchronous
-      // per-keystroke write — see the draft effect comment).
-      // Fire-and-forget the save; it'll race the navigation but either
-      // outcome is safe (draft still on disk).
-      void save({ silent: true });
-    }
-    // Remember the scroll position so navigating back to this note
-    // returns to where the user was reading. Saved synchronously so
-    // even a forced reload (close tab) catches it. We mirror the
-    // value onto the open-note tray entry so the (optional) "resume
-    // at line N" hint can render without consulting noteHistory.
-    if (note && editor?.getScrollTop) {
-      const top = editor.getScrollTop();
-      rememberScroll(note.path, top);
-      updateOpenNoteScroll(note.path, top);
-    }
+  // Cross-surface lifecycle effects (active-editor registration +
+  // open-note tray + beforeunload prompt + beforeNavigate scroll
+  // snapshot) live in noteLifecycleEffects.
+  installNoteLifecycleEffects({
+    getNote: () => pipe.note,
+    getDirty: () => pipe.dirty,
+    getSaving: () => pipe.saving,
+    getEditorView: () => editor?.getView?.(),
+    getScrollTop: () => editor?.getScrollTop?.(),
+    save: (o) => save(o)
   });
 
   let saveStatus = $derived(saveStatusCtl.saveStatus);
@@ -459,23 +416,6 @@
       parentBody: body ?? ''
     });
   }
-
-  $effect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      // Save scroll position synchronously — beforeunload is the last
-      // chance before tab close. We also save on beforeNavigate
-      // (SPA-internal nav) so the two cover both paths.
-      if (note && editor?.getScrollTop) {
-        rememberScroll(note.path, editor.getScrollTop());
-      }
-      if (dirty) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  });
 
   // Live-reload current note from WS via a small controller that
   // coalesces note.changed bursts (PUT handler + file watcher fire
