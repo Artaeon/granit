@@ -14,14 +14,14 @@
   import { createPreviewScrollTracker } from '$lib/notes/previewScrollTracker.svelte';
   import { installNoteShortcuts } from '$lib/notes/noteKeyboardShortcuts.svelte';
   import { openResearchMode as openResearchModeFor } from '$lib/notes/researchMode';
-  import { noteCrumbs, visibleCrumbs as visibleCrumbsFn, crumbsCollapsed as crumbsCollapsedFn } from '$lib/notes/noteBreadcrumbs';
+  import { createNoteBreadcrumbsCtl } from '$lib/notes/noteBreadcrumbsCtl.svelte';
   import { createNoteSaveStatusCtl } from '$lib/notes/noteSaveStatusCtl.svelte';
   import { createNoteVersionCount } from '$lib/notes/noteVersionCount.svelte';
   import { createNotePipelineState } from '$lib/notes/notePipelineState.svelte';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
-  import { parseTagsField, addSuggestedTag, insertSuggestedLink } from '$lib/notes/frontmatterTagOps';
+  import { createNoteLinkSuggester } from '$lib/notes/noteLinkSuggester.svelte';
   import { saveFrontmatter as saveFrontmatterFn } from '$lib/notes/saveFrontmatter';
   import { saveNote as saveNoteFn } from '$lib/notes/saveNote';
   import { loadNote as loadNoteFn } from '$lib/notes/loadNote';
@@ -229,7 +229,7 @@
       scrollToLine: (n) => editor?.scrollToLine?.(n),
       setScrollTop: (top) => editor?.setScrollTop?.(top),
       closeDrawers: () => { overlays.treeDrawerOpen = false; overlays.infoDrawerOpen = false; },
-      setBreadcrumbExpanded: (v) => { breadcrumbExpanded = v; },
+      setBreadcrumbExpanded: (v) => { if (v) breadcrumbs.expand(); else breadcrumbs.reset(); },
       getLineParam: () => $page.url.searchParams.get('line'),
       getRawHash: () => $page.url.hash ? decodeURIComponent($page.url.hash.slice(1)) : '',
       save: (o) => save(o)
@@ -438,29 +438,19 @@
     return saveFrontmatterFn(next, pipe, saveCtx);
   }
 
-  // ----- Link-suggester glue -----
-  // Tags chip → append to frontmatter.tags (de-duplicated, via the
-  // existing saveFrontmatter pipeline). Link chip → insert at editor
-  // cursor or append to body if the editor is unmounted (preview view).
-  // Pure helpers live in $lib/notes/frontmatterTagOps.
-  let existingTagList = $derived(
-    parseTagsField(note?.frontmatter as Record<string, unknown> | undefined)
-  );
-
-  async function addSuggestedTagPage(tag: string) {
-    if (!note) return;
-    await addSuggestedTag(tag, { note, saveFrontmatter });
-  }
-
-  function insertSuggestedLinkPage(markup: string) {
-    insertSuggestedLink(markup, {
-      insertAtCursor: editor?.insertAtCursor,
-      appendToBody: (m) => {
-        pipe.body = pipe.body + (pipe.body.endsWith('\n') ? '' : '\n') + m + '\n';
-        pipe.dirty = true;
-      }
-    });
-  }
+  // Link-suggester glue (tag chip + link chip insert) lives in
+  // noteLinkSuggester — the route hands current-note + saveFrontmatter
+  // + the editor's insertAtCursor + the appendToBody fallback closure.
+  const linkSuggester = createNoteLinkSuggester({
+    getNote: () => note,
+    saveFrontmatter,
+    getInsertAtCursor: () => editor?.insertAtCursor,
+    appendToBody: (m) => {
+      pipe.body = pipe.body + (pipe.body.endsWith('\n') ? '' : '\n') + m + '\n';
+      pipe.dirty = true;
+    }
+  });
+  let existingTagList = $derived(linkSuggester.existingTagList);
 
   // ----- Daily-note navigation -----
   // Detection + date math + gotoDaily live in $lib/notes/dailyNoteNav.
@@ -478,13 +468,14 @@
   let dayActivitySegments = $derived(dailyNav.dayActivitySegments);
   const gotoDaily = dailyNav.gotoDaily;
 
-  // Folder breadcrumbs. Reset on real navigation is folded into
-  // load() since it's the only path that swaps note identity; the
-  // pure derivation + collapse rule lives in noteBreadcrumbs.
-  let breadcrumbExpanded = $state(false);
-  let allCrumbs = $derived(noteCrumbs(note?.path));
-  let visibleCrumbs = $derived(visibleCrumbsFn(allCrumbs, breadcrumbExpanded));
-  let crumbsCollapsed = $derived(crumbsCollapsedFn(allCrumbs, breadcrumbExpanded));
+  // Folder breadcrumbs — expanded toggle + the three derivations
+  // (allCrumbs / visibleCrumbs / crumbsCollapsed). load() calls
+  // breadcrumbs.reset() on real navigation; the header calls
+  // breadcrumbs.expand() from the "+N more" affordance.
+  const breadcrumbs = createNoteBreadcrumbsCtl({ getNote: () => note });
+  let allCrumbs = $derived(breadcrumbs.allCrumbs);
+  let visibleCrumbs = $derived(breadcrumbs.visibleCrumbs);
+  let crumbsCollapsed = $derived(breadcrumbs.crumbsCollapsed);
 
   let dailyLabel = $derived(dailyNav.dailyLabel);
 </script>
@@ -512,8 +503,8 @@
     onNavigateWikilink={navigateWikilink}
     onResetVisited={resetVisited}
     onSaveFrontmatter={saveFrontmatter}
-    onAddSuggestedTag={addSuggestedTagPage}
-    onInsertSuggestedLink={insertSuggestedLinkPage}
+    onAddSuggestedTag={linkSuggester.addSuggestedTag}
+    onInsertSuggestedLink={linkSuggester.insertSuggestedLink}
   />
 {/snippet}
 
@@ -581,7 +572,7 @@
         bind:overflowTriggerEl
         onOpenTreeDrawer={() => (overlays.treeDrawerOpen = true)}
         onOpenInfoDrawer={() => (overlays.infoDrawerOpen = true)}
-        onExpandBreadcrumbs={() => (breadcrumbExpanded = true)}
+        onExpandBreadcrumbs={breadcrumbs.expand}
         onSetViewMode={viewModes.setViewMode}
         onTogglePin={togglePin}
         onGotoDaily={gotoDaily}
