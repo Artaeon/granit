@@ -23,10 +23,6 @@ export function startOfMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), 1);
 }
 
-export function endOfMonth(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth() + 1, 0);
-}
-
 export function addDays(d: Date, n: number): Date {
   const x = new Date(d);
   x.setDate(d.getDate() + n);
@@ -219,14 +215,6 @@ export function consumedKey(ev: CalendarEvent, dayKey: string): string {
     ? 'id:' + ev.eventId
     : 'tit:' + (ev.title ?? '') + '|src:' + (ev.source ?? '');
   return cluster + '|' + dayKey;
-}
-
-// "P1 critical" → text-error, etc.
-export function priorityColor(p: number): string {
-  if (p === 1) return 'var(--color-error)';
-  if (p === 2) return 'var(--color-warning)';
-  if (p === 3) return 'var(--color-info)';
-  return 'var(--color-dim)';
 }
 
 // Group concurrent events into stacked columns so they render side-by-side.

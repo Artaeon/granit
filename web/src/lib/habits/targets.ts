@@ -33,7 +33,3 @@ export function setHabitTarget(name: string, target: number | null) {
   });
 }
 
-export function getHabitTarget(name: string): number | null {
-  const m = get(habitTargets);
-  return m[name] ?? null;
-}

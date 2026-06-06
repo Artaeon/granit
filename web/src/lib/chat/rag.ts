@@ -31,7 +31,7 @@ export type RagIndexEntry = {
 // Token-cleanup stopwords. Tiny English set — RAG queries are typically
 // short, and dropping these lets the score reflect content words rather
 // than 'the', 'a', etc.
-export const STOPWORDS = new Set([
+const STOPWORDS = new Set([
   'the', 'a', 'an', 'of', 'to', 'in', 'for', 'on', 'and', 'or', 'is', 'it', 'be',
   'are', 'was', 'were', 'this', 'that', 'with', 'from', 'as', 'by', 'at', 'but',
   'not', 'if', 'so', 'do', 'does', 'did', 'have', 'has', 'had', 'can', 'will',
@@ -57,7 +57,7 @@ export function isRagIndexLoaded(): boolean {
 
 /** Mark the cached index as stale so the next retrieveForRag triggers
  *  a fresh listNotes round-trip. Cheap — just flips a flag. */
-export function invalidateRagIndex(): void {
+function invalidateRagIndex(): void {
   ragIndexLoaded = false;
 }
 

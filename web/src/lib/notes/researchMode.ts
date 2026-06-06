@@ -11,7 +11,7 @@ import { aiOverlayPinned, openAIOverlay } from '$lib/stores/ai-overlay';
 /** Cap on the body excerpt seeded into the AI overlay. Bigger
  *  excerpts pay for themselves at the model tier but cost context
  *  budget the rest of the conversation needs. */
-export const RESEARCH_EXCERPT_MAX = 800;
+const RESEARCH_EXCERPT_MAX = 800;
 
 export function openResearchMode(note: Note, body: string): void {
   // Trim FIRST, then slice. The truncation marker should reflect

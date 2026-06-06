@@ -62,10 +62,6 @@ export function setSourceColor(source: string, tone: CalendarTone) {
   });
 }
 
-export function getSourceColor(source: string): CalendarTone {
-  return get(sourceColors)[source] ?? '';
-}
-
 /** Re-color an event in-place based on the saved per-source map.
  *  Pass-through for non-ICS events (no source) so callers don't
  *  need to gate the call. */

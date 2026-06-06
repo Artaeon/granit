@@ -13,7 +13,7 @@ export interface Crumb {
  *  the middle ones into an ellipsis. Showing the first two + last
  *  keeps the most relevant context (top-level area + immediate
  *  parent) without truncating the title. */
-export const CRUMB_COLLAPSE_THRESHOLD = 4;
+const CRUMB_COLLAPSE_THRESHOLD = 4;
 
 /** Folder crumbs for a note path. Last path segment (the filename)
  *  is intentionally excluded — the note's title already renders

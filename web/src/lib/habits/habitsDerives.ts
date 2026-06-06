@@ -14,7 +14,7 @@
 
 import type { HabitInfo } from '$lib/api';
 
-export const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 // Group the 90-day window by weekday and compute per-day completion
 // percent. Returns the day-of-week with the highest pct, or null when

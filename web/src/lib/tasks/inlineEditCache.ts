@@ -86,18 +86,3 @@ export async function loadTagsOnce(): Promise<{ tag: string; count: number }[]> 
   return tagsCache.promise;
 }
 
-export function invalidateProjects() {
-  projectsCache.loaded = false;
-  projectsCache.items = [];
-  projectsCache.promise = null;
-}
-export function invalidateGoals() {
-  goalsCache.loaded = false;
-  goalsCache.items = [];
-  goalsCache.promise = null;
-}
-export function invalidateTags() {
-  tagsCache.loaded = false;
-  tagsCache.items = [];
-  tagsCache.promise = null;
-}
