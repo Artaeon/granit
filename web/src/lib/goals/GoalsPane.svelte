@@ -29,7 +29,7 @@
   import GoalsPageHeader from '$lib/goals/GoalsPageHeader.svelte';
   import GoalsStatusChips from '$lib/goals/GoalsStatusChips.svelte';
   import GoalsAICheckinPanel, { type CheckinEntry } from '$lib/goals/GoalsAICheckinPanel.svelte';
-  import GoalsAIAuditPanel, { type AuditFinding } from '$lib/goals/GoalsAIAuditPanel.svelte';
+  import GoalsAIAuditPanel from '$lib/goals/GoalsAIAuditPanel.svelte';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import {
     createGoalsFilterState,
@@ -39,6 +39,7 @@
   import { createGoalsData } from '$lib/goals/goalsData.svelte';
   import { createGoalsAiSuggest } from '$lib/goals/goalsAiSuggest.svelte';
   import { createGoalsCheckin } from '$lib/goals/goalsCheckin.svelte';
+  import { createGoalsAudit } from '$lib/goals/goalsAudit.svelte';
   import { workspaceContext } from '$lib/workspace/workspaceContext.svelte';
 
   // Loaded data (dataCtl.goals + dataCtl.openTasks/dataCtl.doneTasks/dataCtl.projects sidecars) +
@@ -376,163 +377,10 @@
   // composition. Read via checkinCtl.X.
   const checkinCtl = createGoalsCheckin({ dataCtl });
 
-  // ─────────────────────────────────────────────────────────────────
-  // AI "Goal alignment audit" — strategy/execution drift detector
-  // ─────────────────────────────────────────────────────────────────
-  // Reads all active dataCtl.goals + open tasks + recently-completed tasks
-  // (last 14 days, no goalId) and asks the model: which clusters of
-  // tasks are NOT advancing any stated goal? Surfaces the gap that
-  // goal-setters typically can't see for themselves: the busywork
-  // that fills the day without moving the season.
-  //
-  // The audit is honest and non-judgmental — the user may be
-  // intentionally working off-goal (urgent maintenance, paid work,
-  // family emergency). The model's job is to surface the pattern,
-  // not to scold. The user can dismiss findings, mark a finding as
-  // "intentional" (no action), or jump to /tasks to re-link.
-  let auditOpen = $state(false);
-  let auditBusy = $state(false);
-  let auditError = $state('');
-  let auditFindings = $state<AuditFinding[]>([]);
-  let auditAbort: AbortController | null = null;
-  let auditDismissed = $state<Set<string>>(new Set());
-
-  // Tasks the audit looks at — in-flight + recently-done, both
-  // unlinked from any goal. Cap at 80 each so the prompt stays
-  // bounded; the model sees representative behaviour, not a full
-  // dump. Recently-done is limited to the last 14 days because
-  // older history isn't actionable for a "this season" check.
-  let auditScope = $derived.by(() => {
-    const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
-    const orphanOpen = dataCtl.openTasks
-      .filter((t) => !t.goalId && (t.text ?? '').trim().length > 0)
-      .slice(0, 80);
-    const orphanDoneRecent = dataCtl.doneTasks
-      .filter((t) => {
-        if (t.goalId) return false;
-        if (!t.completedAt) return false;
-        const d = new Date(t.completedAt).getTime();
-        return Number.isFinite(d) && d >= cutoff;
-      })
-      .slice(0, 80);
-    const linkedOpen = dataCtl.openTasks.filter((t) => t.goalId).length;
-    const linkedDone14 = dataCtl.doneTasks.filter((t) => {
-      if (!t.goalId || !t.completedAt) return false;
-      const d = new Date(t.completedAt).getTime();
-      return Number.isFinite(d) && d >= cutoff;
-    }).length;
-    return { orphanOpen, orphanDoneRecent, linkedOpen, linkedDone14 };
-  });
-
-  function auditClose() {
-    auditAbort?.abort();
-    auditAbort = null;
-    auditOpen = false;
-    auditBusy = false;
-    auditError = '';
-    auditFindings = [];
-    auditDismissed = new Set();
-  }
-
-  async function runAudit() {
-    if (auditBusy) return;
-    const activeGoals = dataCtl.goals.filter((g) => (g.status ?? 'active') === 'active');
-    if (activeGoals.length === 0) {
-      toast.error('No active goals to audit against.');
-      return;
-    }
-    const totalOrphan = auditScope.orphanOpen.length + auditScope.orphanDoneRecent.length;
-    if (totalOrphan === 0) {
-      toast.success('Every recent task is linked to a goal — nothing to audit.');
-      return;
-    }
-    auditAbort?.abort();
-    auditAbort = new AbortController();
-    auditOpen = true;
-    auditBusy = true;
-    auditError = '';
-    auditFindings = [];
-    auditDismissed = new Set();
-
-    const goalLines = activeGoals
-      .map((g) => `- ${g.title}${g.target_date ? ` (target ${g.target_date})` : ''}${g.venture ? ` [${g.venture}]` : ''}`)
-      .join('\n');
-    const orphanOpenLines = auditScope.orphanOpen.map((t) => `- ${t.text}`).join('\n');
-    const orphanDoneLines = auditScope.orphanDoneRecent.map((t) => `- ${t.text}`).join('\n');
-
-    const userMessage =
-      'You are an honest, non-judgmental auditor of where the user\'s actual work is going.\n' +
-      'Compare the user\'s ACTIVE GOALS to their TASKS that are NOT linked to any goal. ' +
-      'Find 2-5 clusters of unlinked tasks that share a theme. For each cluster, surface what is happening and ask whether it was intentional.\n\n' +
-      'Rules:\n' +
-      '- Be specific. "You worked on support" beats "you worked on miscellaneous things".\n' +
-      '- Cluster by theme (e.g. "support / maintenance", "finances / admin", "client work for X", "household").\n' +
-      '- Off-goal work is NOT inherently bad — paid work, urgent maintenance, family. Your job is to NAME the pattern, not to scold.\n' +
-      '- Include the rough count of tasks in each cluster and 2-3 representative task texts (verbatim).\n' +
-      '- The "question" should be honest and useful: "Was this week\'s 12 tasks on X the right call given goal Y is overdue?" — never generic.\n' +
-      '- Skip clusters with fewer than 2 tasks. Don\'t pad to hit a number; 2 sharp findings beat 5 mush ones.\n\n' +
-      'Return STRICT JSON ONLY (no markdown fences, no preamble), shape:\n' +
-      '[{"cluster": "...", "count": N, "sample": ["...", "..."], "observation": "...", "question": "..."}, ...]\n\n' +
-      'ACTIVE GOALS:\n' + (goalLines || '(none)') + '\n\n' +
-      `UNLINKED OPEN TASKS (${auditScope.orphanOpen.length}):\n` + (orphanOpenLines || '(none)') + '\n\n' +
-      `UNLINKED TASKS COMPLETED IN LAST 14 DAYS (${auditScope.orphanDoneRecent.length}):\n` + (orphanDoneLines || '(none)') + '\n\n' +
-      'For context the user already has linked work too: ' +
-      `${auditScope.linkedOpen} open tasks tied to goals, ${auditScope.linkedDone14} goal-linked tasks completed in 14d. ` +
-      'Don\'t mention this in your output unless it changes the verdict.';
-
-    let acc = '';
-    try {
-      await api.chatStream(
-        [{ role: 'user', content: userMessage }],
-        undefined,
-        {
-          onChunk: (c) => { acc += c; },
-          onDone: () => {
-            auditBusy = false;
-            auditAbort = null;
-            let cleaned = acc.trim();
-            if (cleaned.startsWith('```')) {
-              cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();
-            }
-            try {
-              const parsed = JSON.parse(cleaned);
-              if (!Array.isArray(parsed)) throw new Error('expected array');
-              auditFindings = parsed
-                .filter((p: unknown) => p && typeof p === 'object')
-                .map((p) => p as AuditFinding)
-                .filter((p) => typeof p.cluster === 'string' && typeof p.observation === 'string' && typeof p.question === 'string')
-                .map((p) => ({
-                  cluster: p.cluster,
-                  count: typeof p.count === 'number' ? p.count : (Array.isArray(p.sample) ? p.sample.length : 0),
-                  sample: Array.isArray(p.sample) ? p.sample.filter((s): s is string => typeof s === 'string').slice(0, 3) : [],
-                  observation: p.observation,
-                  question: p.question
-                }));
-              if (auditFindings.length === 0) {
-                auditError = 'AI returned no clusters — the work may already be aligned, or the parse failed.';
-              }
-            } catch (err) {
-              auditError = 'Couldn\'t parse audit: ' + (errorMessage(err));
-            }
-          },
-          onError: (err) => {
-            auditBusy = false;
-            auditAbort = null;
-            auditError = err.message;
-          }
-        },
-        auditAbort.signal
-      );
-    } catch (e) {
-      auditBusy = false;
-      auditAbort = null;
-      auditError = errorMessage(e);
-    }
-  }
-
-  function auditDismiss(f: AuditFinding) {
-    auditDismissed = new Set([...auditDismissed, f.cluster]);
-  }
+  // AI "Goal alignment audit" — lives in goalsAudit.svelte. Owns the
+  // open/busy/error/findings/dismissed state, the orphan-task scope
+  // derive, run/dismiss/stop/close. Read via auditCtl.X.
+  const auditCtl = createGoalsAudit({ dataCtl });
 
   // Header callback wiring — keeps the More dropdown closing when
   // the user picks something inside it.
@@ -544,8 +392,8 @@
   }
   function onToggleAudit() {
     moreOpen = false;
-    if (auditOpen) auditClose();
-    else void runAudit();
+    if (auditCtl.auditOpen) auditCtl.close();
+    else void auditCtl.run();
   }
 
   // Active-dataCtl.goals count is reused by the audit panel header.
@@ -562,8 +410,8 @@
     filteredCount={visibleGoals.length}
     checkinOpen={checkinCtl.checkinOpen}
     checkinBusy={checkinCtl.checkinBusy}
-    auditOpen={auditOpen}
-    auditBusy={auditBusy}
+    auditOpen={auditCtl.auditOpen}
+    auditBusy={auditCtl.auditBusy}
     moreOpen={moreOpen}
     onSelectView={(v) => (filterCtl.viewMode = v)}
     onToggleMore={onToggleMore}
@@ -601,20 +449,20 @@
       />
     {/if}
 
-    {#if auditOpen}
+    {#if auditCtl.auditOpen}
       <GoalsAIAuditPanel
-        findings={auditFindings}
-        dismissed={auditDismissed}
-        busy={auditBusy}
-        error={auditError}
-        orphanOpenCount={auditScope.orphanOpen.length}
-        orphanDoneCount={auditScope.orphanDoneRecent.length}
-        linkedCount={auditScope.linkedOpen + auditScope.linkedDone14}
+        findings={auditCtl.auditFindings}
+        dismissed={auditCtl.auditDismissed}
+        busy={auditCtl.auditBusy}
+        error={auditCtl.auditError}
+        orphanOpenCount={auditCtl.auditScope.orphanOpen.length}
+        orphanDoneCount={auditCtl.auditScope.orphanDoneRecent.length}
+        linkedCount={auditCtl.auditScope.linkedOpen + auditCtl.auditScope.linkedDone14}
         activeGoalsCount={activeGoalsCount}
-        onAbort={() => auditAbort?.abort()}
-        onRetry={() => void runAudit()}
-        onClose={auditClose}
-        onDismissFinding={auditDismiss}
+        onAbort={auditCtl.stop}
+        onRetry={() => void auditCtl.run()}
+        onClose={auditCtl.close}
+        onDismissFinding={auditCtl.dismiss}
       />
     {/if}
 
