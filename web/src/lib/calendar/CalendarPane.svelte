@@ -449,7 +449,7 @@
     <HeaderToolbar
       bind:view={viewCtl.view}
       bind:cursor={viewCtl.cursor}
-      {calView.headline}
+      headline={calView.headline}
       loading={dataCtl.loading}
       bind:monthDensity={viewCtl.monthDensity}
       bind:hourDensity={viewCtl.hourDensity}

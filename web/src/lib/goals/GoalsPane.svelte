@@ -331,7 +331,7 @@
         orphanOpenCount={auditCtl.auditScope.orphanOpen.length}
         orphanDoneCount={auditCtl.auditScope.orphanDoneRecent.length}
         linkedCount={auditCtl.auditScope.linkedOpen + auditCtl.auditScope.linkedDone14}
-        viewCtl.activeGoalsCount={viewCtl.activeGoalsCount}
+        activeGoalsCount={viewCtl.activeGoalsCount}
         onAbort={auditCtl.stop}
         onRetry={() => void auditCtl.run()}
         onClose={auditCtl.close}
