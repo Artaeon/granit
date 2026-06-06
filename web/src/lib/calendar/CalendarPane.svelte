@@ -3,11 +3,9 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
-  import { api, type CalendarEvent, type CalendarEventEntry, type CalendarFeed, type CalendarSource, type HabitInfo, type Project, type Task } from '$lib/api';
   import CalendarAgent from '$lib/calendar/CalendarAgent.svelte';
   import { EVENT_TYPES } from '$lib/calendar/eventTypes';
   import { toast } from '$lib/components/toast';
-  import { errorMessage } from '$lib/util/errorMessage';
   import { mediaQuery } from '$lib/util/mediaQuery';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import {
