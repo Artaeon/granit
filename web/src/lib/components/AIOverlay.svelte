@@ -21,6 +21,10 @@
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { AGENT_MODES } from '$lib/ai/agents';
   import { createAIContextManager } from '$lib/chat/aiContextManager.svelte';
+  import {
+    createAIStatusLoader,
+    createAISnapshotLoader
+  } from '$lib/chat/aiOverlayStatusLoader.svelte';
   import { buildPrelude } from '$lib/chat/prelude';
   import { commitParsedAction } from '$lib/chat/commitAction';
   import {
@@ -129,8 +133,14 @@
 
   let busy = $state(false);
 
-  // Status pill — what model the chat / actions will route to.
-  let statusInfo = $state<{ provider: string; model: string; sabbath: boolean } | null>(null);
+  // Status pill — provider · model · sabbath. Loader owns the
+  // monotonic-gen stale-response guard so a slow earlier call can't
+  // clobber a fresh later one.
+  const statusLoader = createAIStatusLoader();
+  // Vault snapshot — non-note routes use it as default chat context.
+  // Same gen guard pattern as the status loader; same "leave null on
+  // failure, surface unavailable chip" UX.
+  const snapshotLoader = createAISnapshotLoader();
 
   // Quick-action result. Cleared every time the user fires a new
   // action OR sends a chat message (chat takes over the body).
@@ -402,36 +412,9 @@
   // Which assistant indices have their Sources expanded. Closed by
   // default — the strip shows count + the user clicks to expand.
   let expandedSources = $state<Record<number, boolean>>({});
-  let snapshotLoading = $state(false);
-  // Use unknown so we don't lock the consumer into the snapshot
-  // shape — the backend evolves it independently.
-  let snapshotData = $state<unknown>(null);
-
-  // Monotonic counters for stale-response guards. Without these, a
-  // rapid close→reopen could fire two concurrent loadSnapshot calls;
-  // the slower (earlier) one then resolves LAST and clobbers fresh
-  // data with stale data. Same shape elsewhere in the code base
-  // (BacklinksPanel, chatSessionManager, MarkdownRenderer).
-  let snapshotGen = 0;
-  let statusGen = 0;
-
-  async function loadSnapshot() {
-    if (snapshotLoading) return;
-    const myGen = ++snapshotGen;
-    snapshotLoading = true;
-    try {
-      const r = await api.getAISnapshot();
-      if (myGen !== snapshotGen) return;
-      snapshotData = r.snapshot ?? null;
-    } catch (e) {
-      if (myGen !== snapshotGen) return;
-      snapshotData = null;
-      // eslint-disable-next-line no-console
-      console.warn('[ai-overlay] snapshot load failed:', errorMessage(e));
-    } finally {
-      if (myGen === snapshotGen) snapshotLoading = false;
-    }
-  }
+  // Snapshot loader owns its state + the stale-response guard; read
+  // via snapshotLoader.snapshotLoading / snapshotData, refire via
+  // snapshotLoader.load().
 
   // Note-aware chat. When the overlay opens on a /notes/<path>
   // page, we offer to attach that note as context to the chat
@@ -521,8 +504,8 @@
         // toggles can be flipped by the user once open.
         if (currentNotePath) {
           attachNote = true;
-        } else if (attachSnapshot && !snapshotData) {
-          void loadSnapshot();
+        } else if (attachSnapshot && !snapshotLoader.snapshotData) {
+          void snapshotLoader.load();
         }
         // Pending seed from a sidebar quick-action chip: switch
         // mode if requested, drop the text into the composer,
@@ -541,7 +524,7 @@
           }
         }
       });
-      void loadStatus();
+      void statusLoader.load();
       refreshPinnedIndex();
       tick().then(() => inputEl?.focus());
     }
@@ -571,23 +554,8 @@
     })
   );
 
-  async function loadStatus() {
-    const myGen = ++statusGen;
-    try {
-      const s = await api.getAIStatus();
-      if (myGen !== statusGen) return;
-      statusInfo = {
-        provider: s.global_provider,
-        model: s.global_model,
-        sabbath: !!s.sabbath_active
-      };
-    } catch (e) {
-      if (myGen !== statusGen) return;
-      statusInfo = null;
-      // eslint-disable-next-line no-console
-      console.warn('[ai-overlay] status load failed:', errorMessage(e));
-    }
-  }
+  // loadStatus moves into createAIStatusLoader — call
+  // statusLoader.load() instead.
 
   // Quick actions (briefing / synopsis / triage / deadlines) live in
   // $lib/chat/quickActionService — wired below. The service owns its
@@ -884,7 +852,7 @@
       currentGoalId,
       onCalendarPage,
       attachSnapshot,
-      snapshotData,
+      snapshotData: snapshotLoader.snapshotData,
       rag: aiCtx.rag,
       isFirstTurn,
       query,
@@ -1049,7 +1017,7 @@
     </button>
     <AIOverlayHeader
       {aiCtx}
-      {statusInfo}
+      statusInfo={statusLoader.statusInfo}
       {busy}
       bind:modePickerOpen
       bind:historyOpen
@@ -1063,7 +1031,7 @@
       onClose={close}
     />
 
-    {#if statusInfo?.sabbath || $sabbath}
+    {#if statusLoader.statusInfo?.sabbath || $sabbath}
       <div class="mx-4 mt-3 px-3 py-2 text-[11px] bg-warning text-on-primary rounded inline-flex items-center gap-2">
         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 3v3"/>
@@ -1164,11 +1132,11 @@
       {currentNotePath}
       bind:attachNote
       bind:attachSnapshot
-      {snapshotLoading}
-      {snapshotData}
+      snapshotLoading={snapshotLoader.snapshotLoading}
+      snapshotData={snapshotLoader.snapshotData}
       rag={aiCtx.rag}
       onSetRag={aiCtx.setRag}
-      onLoadSnapshot={() => void loadSnapshot()}
+      onLoadSnapshot={() => void snapshotLoader.load()}
     />
 
     <AIOverlayMentionedRefs refs={mentionedRefs} onRemove={removeMention} />
