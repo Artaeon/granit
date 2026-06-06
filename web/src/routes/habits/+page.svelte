@@ -11,6 +11,7 @@
   import { createHabitsAI } from '$lib/habits/habitsAI.svelte';
   import { createHabitsData } from '$lib/habits/habitsData.svelte';
   import { createHabitsRename } from '$lib/habits/habitsRename.svelte';
+  import { createHabitsStackEdit } from '$lib/habits/habitsStackEdit.svelte';
 
   // /habits — three view modes for the same data:
   //   • Today: large quick-tick cards, the morning/evening rhythm view
@@ -152,37 +153,17 @@
     editingTarget = null;
   }
 
-  // ----- Stack anchor ("after I do X, I do this") -----
-  // Behavioural-science staple: anchoring a new habit to an
-  // existing completed action makes consistency easier than
-  // willpower. Persisted server-side in
-  // .granit/habits-stacks.json via PUT /api/v1/habits/{name}/stack
-  // — same sidecar the TUI reads.
-  let editingStack = $state<string | null>(null);
-  let stackDraft = $state('');
-  function startStackEdit(h: HabitInfo) {
-    editingStack = h.name;
-    stackDraft = h.stackAfter ?? '';
-  }
-  function cancelStackEdit() {
-    editingStack = null;
-    stackDraft = '';
-  }
-  async function submitStackEdit(name: string) {
-    const next = stackDraft.trim();
-    dataCtl.busy = name;
-    try {
-      await api.setHabitStack(name, next);
-      editingStack = null;
-      stackDraft = '';
-      await dataCtl.load();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      (await import('$lib/components/toast')).toast.error(`stack update failed: ${msg}`);
-    } finally {
-      dataCtl.busy = null;
+  // Stack anchor ("after I do X, I do this") — inline-edit buffer
+  // + commit to .granit/habits-stacks.json. Behavioural-science
+  // staple. See lib/habits/habitsStackEdit for the details.
+  const stackCtl = createHabitsStackEdit({
+    setBusy: (key) => { dataCtl.busy = key; },
+    reload: () => dataCtl.load(),
+    onError: async (msg) => {
+      (await import('$lib/components/toast')).toast.error(msg);
     }
-  }
+  });
+  const editingStack = $derived(stackCtl.editingStack);
 
   // Rename + delete handlers: inline-edit buffer + confirm-then-call
   // delete. Both write through to dataCtl.busy so the row-level
@@ -713,7 +694,7 @@
                   <div class="mt-1.5 flex items-center gap-1.5 text-[11px] flex-wrap">
                     <span class="text-dim">after</span>
                     <select
-                      bind:value={stackDraft}
+                      bind:value={stackCtl.stackDraft}
                       class="px-1.5 py-0.5 bg-surface1 border border-surface2 rounded text-text text-[11px]"
                     >
                       <option value="">(none — clear anchor)</option>
@@ -724,15 +705,15 @@
                     <button
                       class="px-1.5 py-0.5 bg-primary text-on-primary rounded text-[11px] disabled:opacity-50"
                       disabled={busy === h.name}
-                      onclick={() => submitStackEdit(h.name)}
+                      onclick={() => stackCtl.submitStackEdit(h.name)}
                     >save</button>
-                    <button class="px-1.5 py-0.5 text-dim hover:text-text" onclick={cancelStackEdit}>cancel</button>
+                    <button class="px-1.5 py-0.5 text-dim hover:text-text" onclick={() => stackCtl.cancelStackEdit()}>cancel</button>
                   </div>
                 {:else if h.stackAfter}
                   <div class="mt-1.5 flex items-center gap-1.5 text-[11px] flex-wrap">
                     <button
                       type="button"
-                      onclick={() => startStackEdit(h)}
+                      onclick={() => stackCtl.startStackEdit(h)}
                       class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border border-secondary/40 bg-surface0 text-secondary hover:bg-surface1"
                       title="stack anchor — click to edit or clear"
                     >🔗 after {h.stackAfter}</button>
@@ -747,7 +728,7 @@
                   <div class="mt-1.5 flex items-center gap-1.5 text-[11px] flex-wrap">
                     <button
                       type="button"
-                      onclick={() => startStackEdit(h)}
+                      onclick={() => stackCtl.startStackEdit(h)}
                       class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1 text-dim border-surface2 hover:text-text"
                       title="anchor this habit to another habit you already do"
                     >+ stack after…</button>
