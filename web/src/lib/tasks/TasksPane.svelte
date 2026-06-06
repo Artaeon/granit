@@ -55,6 +55,7 @@
   import { createTasksDetail } from '$lib/tasks/tasksDetail.svelte';
   import { createTasksLoader } from '$lib/tasks/tasksLoader.svelte';
   import { installTasksFocusDeepLink } from '$lib/tasks/tasksFocusDeepLink.svelte';
+  import { triggerQuickCapture } from '$lib/util/triggerQuickCapture';
 
   // Loaded data (dataCtl.tasks/dataCtl.projects/dataCtl.goals/dataCtl.deadlines), dataCtl.loading flag,
   // dataCtl.parentMap/dataCtl.childCount/dataCtl.allTags/dataCtl.countOpen/dataCtl.countDone/dataCtl.stats, plus
@@ -352,20 +353,10 @@
     return 'Nothing to do right now.';
   });
 
-  // Trigger the global QuickCaptureFab (Mod-Shift-N opens it). We
-  // dispatch a synthetic keystroke rather than expose a new global
-  // store, so the existing handler in QuickCaptureFab.svelte owns
-  // open-state. Falls through gracefully if the fab isn't mounted.
-  function openQuickCapture() {
-    const evt = new KeyboardEvent('keydown', {
-      key: 'N',
-      code: 'KeyN',
-      metaKey: true,
-      shiftKey: true,
-      bubbles: true
-    });
-    window.dispatchEvent(evt);
-  }
+  // Quick-capture trigger lives in $lib/util/triggerQuickCapture so
+  // other panes / surfaces that want a "capture something" CTA reuse
+  // the same Mod-Shift-N synthesis.
+  const openQuickCapture = triggerQuickCapture;
 </script>
 
 
