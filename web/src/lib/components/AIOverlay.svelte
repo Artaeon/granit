@@ -4,7 +4,7 @@
   import { cubicOut } from 'svelte/easing';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { api, type ChatMessage } from '$lib/api';
+  import { api } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { sabbath } from '$lib/stores/sabbath';
   import {
@@ -25,6 +25,7 @@
     createAIStatusLoader,
     createAISnapshotLoader
   } from '$lib/chat/aiOverlayStatusLoader.svelte';
+  import { createAIOverlayState } from '$lib/chat/aiOverlayState.svelte';
   import { buildPrelude } from '$lib/chat/prelude';
   import { commitParsedAction } from '$lib/chat/commitAction';
   import {
@@ -36,19 +37,13 @@
     buildPageAgentTarget
   } from '$lib/chat/pageContext';
   import { installOverlayShortcuts } from '$lib/chat/overlayShortcuts';
-  import {
-    createQuickActionService,
-    type QuickActionRefs
-  } from '$lib/chat/quickActionService.svelte';
+  import { createQuickActionService } from '$lib/chat/quickActionService.svelte';
   import {
     createSaveNoteService,
     type SaveNoteRefs
   } from '$lib/chat/saveNoteService.svelte';
   import { installAIContextDefaults } from '$lib/chat/aiOverlayContextDefaults.svelte';
-  import {
-    loadActiveThreadId,
-    persistActiveThreadId
-  } from '$lib/chat/history';
+  import { persistActiveThreadId } from '$lib/chat/history';
   import {
     createChatHistoryManager,
     type ChatHistoryRefs
@@ -58,8 +53,7 @@
     type ChatSessionRefs,
     type PreludeBundle
   } from '$lib/chat/chatSessionManager.svelte';
-  import type { RagHit } from '$lib/chat/rag';
-  import { loadOverlayHistory, persistOverlayHistory } from '$lib/chat/overlaySessionHistory';
+  import { persistOverlayHistory } from '$lib/chat/overlaySessionHistory';
   import {
     handleSlashCommand as runSlashCommand,
     formatMemoryAsAssistantContent
@@ -73,7 +67,6 @@
   import { createVoiceDictation } from '$lib/chat/voiceDictation.svelte';
   import type SlashCommandPicker from '$lib/components/SlashCommandPicker.svelte';
   import type MentionPicker from '$lib/components/MentionPicker.svelte';
-  import type { MentionRef } from '$lib/components/MentionPicker.svelte';
   import ChatHistoryRail from '$lib/components/ChatHistoryRail.svelte';
   import ChatComposer from '$lib/components/aioverlay/ChatComposer.svelte';
   import ChatMessageList from '$lib/components/aioverlay/ChatMessageList.svelte';
@@ -131,7 +124,34 @@
     getPanelEl: () => panelEl
   });
 
-  let busy = $state(false);
+  // All the parent's shared mutable state — busy, input, messages,
+  // quickTitle/Result, save-as-note slots, save-to-library slots,
+  // thread history, RAG attribution, mentioned refs — lives in one
+  // controller. Each service receives `aiState` (or a small composite
+  // wrapping it with aiCtx/page derives) instead of its own
+  // hand-rolled getter/setter refs block. See aiOverlayState.svelte.ts
+  // for the field list + the why on the consolidation.
+  const aiState = createAIOverlayState();
+  // Local read-only aliases for the template + script-side reads.
+  // Writes go through aiState.X directly; bind: directives use
+  // bind:X={aiState.X} since $derived can't be l-value bound.
+  const busy = $derived(aiState.busy);
+  const input = $derived(aiState.input);
+  const messages = $derived(aiState.messages);
+  const mentionedRefs = $derived(aiState.mentionedRefs);
+  const quickTitle = $derived(aiState.quickTitle);
+  const quickResult = $derived(aiState.quickResult);
+  const saving = $derived(aiState.saving);
+  const savingMessageIdx = $derived(aiState.savingMessageIdx);
+  const copiedMessageIdx = $derived(aiState.copiedMessageIdx);
+  const savingLibraryIdx = $derived(aiState.savingLibraryIdx);
+  const savingLibraryBusy = $derived(aiState.savingLibraryBusy);
+  const activeThreadId = $derived(aiState.activeThreadId);
+  const historyOpen = $derived(aiState.historyOpen);
+  const pinnedIndex = $derived(aiState.pinnedIndex);
+  const editingUserIdx = $derived(aiState.editingUserIdx);
+  const lastRagHits = $derived(aiState.lastRagHits);
+  const perTurnRagHits = $derived(aiState.perTurnRagHits);
 
   // Status pill — provider · model · sabbath. Loader owns the
   // monotonic-gen stale-response guard so a slow earlier call can't
@@ -142,25 +162,12 @@
   // failure, surface unavailable chip" UX.
   const snapshotLoader = createAISnapshotLoader();
 
-  // Quick-action result. Cleared every time the user fires a new
-  // action OR sends a chat message (chat takes over the body).
-  let quickTitle = $state('');
-  let quickResult = $state('');
-
-  // Chat history — persisted to sessionStorage so closing the
-  // overlay (Esc / outside-click / Mod+J) doesn't lose the
-  // thread. Survives navigation within the tab; cleared on tab
-  // close or explicit reset. The full /chat page is still the
-  // place for save-as-note and long-running multi-day threads;
-  // this layer keeps a quick question alive long enough to come
-  // back to it after a tangent. The cap + key live in the
-  // overlaySessionHistory helper so any future surface that wants
-  // to share the same in-flight draft can use one definition.
-  let messages = $state<ChatMessage[]>(loadOverlayHistory());
-  let input = $state('');
+  // Persist the in-flight chat thread to sessionStorage so closing the
+  // overlay (Esc / outside-click / Mod+J) doesn't lose it. Survives
+  // navigation within the tab; cleared on tab close or explicit reset.
   $effect(() => {
-    void messages.length;
-    persistOverlayHistory(messages);
+    void aiState.messages.length;
+    persistOverlayHistory(aiState.messages);
   });
 
   // Cross-source recents the chat overlay surfaces above the composer
@@ -173,48 +180,16 @@
   function refreshCrossRecentInlinePrompts() {
     crossRecentInlinePrompts = listSharedPrompts({ source: 'inline', limit: 3 });
   }
-  // Re-derive whenever the conversation state changes — opens a fresh
-  // thread → recents become visible again; sends a message → fine to
-  // leave as-is since the strip won't render until messages clears.
   $effect(() => {
-    void messages.length;
+    void aiState.messages.length;
     refreshCrossRecentInlinePrompts();
   });
 
-  // ── Save-to-library state ───────────────────────────────────────
-  // The "+" button next to a user message opens an inline form for
-  // a short label. On submit we GET the current library, append a
-  // new entry with this message's content as the prompt, PUT the
-  // whole thing back. Per-message rather than per-thread because the
-  // user might want to save several specific prompts from one chat.
-  let savingLibraryIdx = $state<number | null>(null);
-  let savingLibraryLabel = $state('');
-  let savingLibraryBusy = $state(false);
-
-  // Save-as-note state (saveThreadAsNote in flight + per-message
-  // save / copy indicators). Owned here because the message list
-  // template reads them; behavior lives in saveNoteService below.
-  let saving = $state(false);
-  let savingMessageIdx = $state<number | null>(null);
-  let copiedMessageIdx = $state<number | null>(null);
-
   // Quick-action service — owns its own AbortController so a quick
   // action cancel does NOT touch chat send()'s abort lifecycle.
-  // Same refs pattern as chatHistoryManager: getter/setter pairs
-  // expose parent $state to the service; getter bodies are lazy so
-  // referencing later-declared state (messages/quickTitle/etc.) is
-  // safe.
-  const quickActionRefs: QuickActionRefs = {
-    get busy() { return busy; },
-    set busy(v) { busy = v; },
-    get quickTitle() { return quickTitle; },
-    set quickTitle(v) { quickTitle = v; },
-    get quickResult() { return quickResult; },
-    set quickResult(v) { quickResult = v; },
-    get messages() { return messages; },
-    set messages(v) { messages = v; }
-  };
-  const quickActions = createQuickActionService({ refs: quickActionRefs });
+  // aiState is a structural superset of QuickActionRefs so it passes
+  // directly; no hand-rolled refs object.
+  const quickActions = createQuickActionService({ refs: aiState });
   const {
     runBriefing,
     runSynopsis,
@@ -224,36 +199,38 @@
   } = quickActions;
 
   // Save-note service — owns the save / copy / library flows.
-  // currentProjectName / currentGoalId / onCalendarPage / mode are
-  // declared further down; the getters resolve them lazily at call
-  // time (user clicks a save button after onMount has run).
+  // SaveNoteRefs needs a handful of fields beyond aiState's surface
+  // (mode + rag from aiCtx, page-context derives), so the parent
+  // builds a small composite: every shared slot delegates to aiState,
+  // the derived ones project lazily. Getters resolve at call-time so
+  // forward references to currentProjectName / aiCtx are safe.
   const saveNoteRefs: SaveNoteRefs = {
-    get saving() { return saving; },
-    set saving(v) { saving = v; },
-    get savingMessageIdx() { return savingMessageIdx; },
-    set savingMessageIdx(v) { savingMessageIdx = v; },
-    get copiedMessageIdx() { return copiedMessageIdx; },
-    set copiedMessageIdx(v) { copiedMessageIdx = v; },
-    get savingLibraryIdx() { return savingLibraryIdx; },
-    set savingLibraryIdx(v) { savingLibraryIdx = v; },
-    get savingLibraryLabel() { return savingLibraryLabel; },
-    set savingLibraryLabel(v) { savingLibraryLabel = v; },
-    get savingLibraryBusy() { return savingLibraryBusy; },
-    set savingLibraryBusy(v) { savingLibraryBusy = v; },
-    get messages() { return messages; },
-    set messages(v) { messages = v; },
-    get quickTitle() { return quickTitle; },
-    set quickTitle(v) { quickTitle = v; },
-    get quickResult() { return quickResult; },
-    set quickResult(v) { quickResult = v; },
+    get saving() { return aiState.saving; },
+    set saving(v) { aiState.saving = v; },
+    get savingMessageIdx() { return aiState.savingMessageIdx; },
+    set savingMessageIdx(v) { aiState.savingMessageIdx = v; },
+    get copiedMessageIdx() { return aiState.copiedMessageIdx; },
+    set copiedMessageIdx(v) { aiState.copiedMessageIdx = v; },
+    get savingLibraryIdx() { return aiState.savingLibraryIdx; },
+    set savingLibraryIdx(v) { aiState.savingLibraryIdx = v; },
+    get savingLibraryLabel() { return aiState.savingLibraryLabel; },
+    set savingLibraryLabel(v) { aiState.savingLibraryLabel = v; },
+    get savingLibraryBusy() { return aiState.savingLibraryBusy; },
+    set savingLibraryBusy(v) { aiState.savingLibraryBusy = v; },
+    get messages() { return aiState.messages; },
+    set messages(v) { aiState.messages = v; },
+    get quickTitle() { return aiState.quickTitle; },
+    set quickTitle(v) { aiState.quickTitle = v; },
+    get quickResult() { return aiState.quickResult; },
+    set quickResult(v) { aiState.quickResult = v; },
+    get lastRagHits() { return aiState.lastRagHits; },
+    set lastRagHits(v) { aiState.lastRagHits = v; },
     get modeId() { return aiCtx.mode.id; },
     set modeId(_v) { /* read-only — saveNote never writes mode */ },
     get modeLabel() { return aiCtx.mode.label; },
     set modeLabel(_v) { /* read-only — derived from mode */ },
     get rag() { return aiCtx.rag; },
     set rag(v) { aiCtx.setRag(v); },
-    get lastRagHits() { return lastRagHits; },
-    set lastRagHits(v) { lastRagHits = v; },
     get currentProjectName() { return currentProjectName; },
     set currentProjectName(_v) { /* derived */ },
     get currentGoalId() { return currentGoalId; },
@@ -272,69 +249,50 @@
   } = saveNote;
 
   // ── Long-term thread history (localStorage, LRU 30) ──────────────
-  // sessionStorage above is the in-flight buffer (cleared on tab
+  // sessionStorage on aiState is the in-flight buffer (cleared on tab
   // close); this layer survives tab close + browser restart. Threads
   // get auto-saved on every full user→assistant exchange so the user
   // doesn't have to remember to "save". A "new thread" button stashes
-  // the current state and starts fresh; the picker below restores
-  // any past thread.
-  // Active-thread-id persistence shims + the key constant live in
-  // $lib/chat/history alongside the rest of the thread store. Same
-  // sessionStorage scope (per-tab) so a duplicated tab gets its
-  // own draft conversation.
-  let activeThreadId = $state<string>(loadActiveThreadId());
-  let historyOpen = $state(false);
+  // the current state and starts fresh; the picker below restores any
+  // past thread.
   let historyRailRef: ChatHistoryRail | undefined = $state();
-  // Pinned-state for the current thread's assistant messages, recomputed
-  // on thread change + pin toggle. Keyed by message index. Avoids hitting
-  // localStorage on every render of the chat list.
-  let pinnedIndex = $state<Record<number, boolean>>({});
 
-  // Inline-edit state for user messages. Null = nobody being edited.
-  // Lives in the parent because the message list's inline form binds
-  // editingUserDraft and the manager reads it on submit.
-  let editingUserIdx = $state<number | null>(null);
-  let editingUserDraft = $state('');
-
-  // Thread CRUD lives in $lib/chat/chatHistoryManager. The refs object
-  // exposes each reactive slot as a getter/setter pair so the manager
-  // can read and write parent $state through one indirection. Getter
-  // bodies are lazy — they're only evaluated when the manager methods
-  // are actually called (after onMount), so referencing later-declared
-  // state (messages/modeId/lastRagHits/perTurnRagHits/expandedSources)
-  // is safe even though those `let`s appear further down this file.
+  // ChatHistoryRefs needs one field beyond aiState's surface — modeId
+  // (read aiCtx, write goes through aiCtx.restoreMode so the persist
+  // + RAG-reset side-effects fire). Every other slot delegates to
+  // aiState; modeId is the only composite getter.
   const historyRefs: ChatHistoryRefs = {
-    get messages() { return messages; },
-    set messages(v) { messages = v; },
-    get activeThreadId() { return activeThreadId; },
-    set activeThreadId(v) { activeThreadId = v; },
+    get messages() { return aiState.messages; },
+    set messages(v) { aiState.messages = v; },
+    get activeThreadId() { return aiState.activeThreadId; },
+    set activeThreadId(v) { aiState.activeThreadId = v; },
+    get input() { return aiState.input; },
+    set input(v) { aiState.input = v; },
+    get pinnedIndex() { return aiState.pinnedIndex; },
+    set pinnedIndex(v) { aiState.pinnedIndex = v; },
+    get perTurnRagHits() { return aiState.perTurnRagHits; },
+    set perTurnRagHits(v) { aiState.perTurnRagHits = v; },
+    get expandedSources() { return aiState.expandedSources; },
+    set expandedSources(v) { aiState.expandedSources = v; },
+    get quickTitle() { return aiState.quickTitle; },
+    set quickTitle(v) { aiState.quickTitle = v; },
+    get quickResult() { return aiState.quickResult; },
+    set quickResult(v) { aiState.quickResult = v; },
+    get lastRagHits() { return aiState.lastRagHits; },
+    set lastRagHits(v) { aiState.lastRagHits = v; },
+    get historyOpen() { return aiState.historyOpen; },
+    set historyOpen(v) { aiState.historyOpen = v; },
+    get editingUserIdx() { return aiState.editingUserIdx; },
+    set editingUserIdx(v) { aiState.editingUserIdx = v; },
+    get editingUserDraft() { return aiState.editingUserDraft; },
+    set editingUserDraft(v) { aiState.editingUserDraft = v; },
     get modeId() { return aiCtx.modeId; },
-    set modeId(v) { aiCtx.restoreMode(v); },
-    get input() { return input; },
-    set input(v) { input = v; },
-    get pinnedIndex() { return pinnedIndex; },
-    set pinnedIndex(v) { pinnedIndex = v; },
-    get perTurnRagHits() { return perTurnRagHits; },
-    set perTurnRagHits(v) { perTurnRagHits = v; },
-    get expandedSources() { return expandedSources; },
-    set expandedSources(v) { expandedSources = v; },
-    get quickTitle() { return quickTitle; },
-    set quickTitle(v) { quickTitle = v; },
-    get quickResult() { return quickResult; },
-    set quickResult(v) { quickResult = v; },
-    get lastRagHits() { return lastRagHits; },
-    set lastRagHits(v) { lastRagHits = v; },
-    get historyOpen() { return historyOpen; },
-    set historyOpen(v) { historyOpen = v; },
-    get editingUserIdx() { return editingUserIdx; },
-    set editingUserIdx(v) { editingUserIdx = v; },
-    get editingUserDraft() { return editingUserDraft; },
-    set editingUserDraft(v) { editingUserDraft = v; }
+    set modeId(v) { aiCtx.restoreMode(v); }
   };
   const history = createChatHistoryManager({
     refs: historyRefs,
     getHistoryRail: () => historyRailRef,
-    isBusy: () => busy,
+    isBusy: () => aiState.busy,
     send: () => { void send(); },
     refocusInput: () => { tick().then(() => inputEl?.focus()); },
     scrollToBottom: () => {
@@ -397,24 +355,9 @@
   });
 
   let modePickerOpen = $state(false);
-  // Last retrieval result for transparency: 'AI saw notes A, B, C'.
-  // Cleared on every send so the user sees fresh attribution per
-  // turn rather than stale. The retrieval algorithm + the per-tab
-  // vault index live in $lib/chat/rag.ts.
-  let lastRagHits = $state<RagHit[]>([]);
-  // Per-turn map from assistant message index → RAG hits used for that
-  // turn. Lets each assistant reply render its own collapsible Sources
-  // list inline rather than only the most recent hits at the bottom of
-  // the panel. Cleared when the thread is reset; never persisted (the
-  // thread storage carries the messages; sources can be re-derived if
-  // needed and aren't worth bloating localStorage).
-  let perTurnRagHits = $state<Record<number, RagHit[]>>({});
-  // Which assistant indices have their Sources expanded. Closed by
-  // default — the strip shows count + the user clicks to expand.
-  let expandedSources = $state<Record<number, boolean>>({});
-  // Snapshot loader owns its state + the stale-response guard; read
-  // via snapshotLoader.snapshotLoading / snapshotData, refire via
-  // snapshotLoader.load().
+  // RAG attribution state — lastRagHits, perTurnRagHits, expandedSources
+  // — lives in aiState (used by chat session + save-note + history
+  // manager). Snapshot loader owns its own state via snapshotLoader.
 
   // Note-aware chat. When the overlay opens on a /notes/<path>
   // page, we offer to attach that note as context to the chat
@@ -518,7 +461,7 @@
           // selectMode handles persist + RAG-reset + announce in one
           // step so we don't repeat the wiring here.
           if (seed.modeId) aiCtx.selectMode(seed.modeId);
-          input = seed.text;
+          aiState.input = seed.text;
           if (seed.send) {
             tick().then(() => { void send(); });
           }
@@ -546,8 +489,8 @@
         if (mentionPickerOpen) mentionPickerOpen = false;
         else if (slashPickerOpen) slashPickerOpen = false;
         else if (modePickerOpen) modePickerOpen = false;
-        else if (historyOpen) {
-          historyOpen = false;
+        else if (aiState.historyOpen) {
+          aiState.historyOpen = false;
           refocusComposer();
         } else close();
       }
@@ -623,8 +566,8 @@
     // composer the moment we know the command was recognised.
     const handled = runSlashCommand(raw, AGENT_MODES, {
       appendAssistantReply: (userText, assistantContent) => {
-        messages = [
-          ...messages,
+        aiState.messages = [
+          ...aiState.messages,
           { role: 'user', content: userText },
           { role: 'assistant', content: assistantContent }
         ];
@@ -647,8 +590,8 @@
       },
       showMemory: async (userText) => {
         await aiCtx.loadAIMemory();
-        messages = [
-          ...messages,
+        aiState.messages = [
+          ...aiState.messages,
           { role: 'user', content: userText },
           { role: 'assistant', content: formatMemoryAsAssistantContent(aiCtx.aiMemoryFacts) }
         ];
@@ -683,14 +626,14 @@
       detachContext: () => {
         attachNote = false;
         attachSnapshot = false;
-        mentionedRefs = [];
+        aiState.mentionedRefs = [];
         toast.success('Context detached for the next message.');
         announce('Context detached for next message');
       },
       usageError: (msg) => toast.info(msg),
       refocusComposer
     });
-    if (handled) input = '';
+    if (handled) aiState.input = '';
     return handled;
   }
 
@@ -703,10 +646,12 @@
   // come back via onPick.
   let mentionPickerOpen = $state(false);
   let mentionPickerRef: MentionPicker | undefined = $state();
-  let mentionedRefs = $state<MentionRef[]>([]);
+  // mentionedRefs lives in aiState — shared with the chat session
+  // manager (consumed by send() as a strict system message, then
+  // cleared so a follow-up doesn't repeat them).
 
   function removeMention(idx: number) {
-    mentionedRefs = mentionedRefs.filter((_, i) => i !== idx);
+    aiState.mentionedRefs = aiState.mentionedRefs.filter((_, i) => i !== idx);
   }
 
   // ── Voice input ────────────────────────────────────────────────
@@ -719,8 +664,8 @@
   // $lib/chat/voiceDictation.svelte.ts; this component just hands
   // it accessors to the `input` $state.
   const voice = createVoiceDictation({
-    getInput: () => input,
-    setInput: (next) => { input = next; }
+    getInput: () => aiState.input,
+    setInput: (next) => { aiState.input = next; }
   });
   const voiceSupported = voice.supported;
   function toggleVoice() { voice.toggle(); }
@@ -801,24 +746,9 @@
   // Race fixes the extraction ships: onError silenced after abort,
   // scrollHeight read after tick, send() gated on in-flight save.
   // See chatSessionManager.svelte.ts for the why on each.
-  const sessionRefs: ChatSessionRefs = {
-    get input() { return input; },
-    set input(v) { input = v; },
-    get busy() { return busy; },
-    set busy(v) { busy = v; },
-    get messages() { return messages; },
-    set messages(v) { messages = v; },
-    get mentionedRefs() { return mentionedRefs; },
-    set mentionedRefs(v) { mentionedRefs = v; },
-    get lastRagHits() { return lastRagHits; },
-    set lastRagHits(v) { lastRagHits = v; },
-    get perTurnRagHits() { return perTurnRagHits; },
-    set perTurnRagHits(v) { perTurnRagHits = v; },
-    get quickTitle() { return quickTitle; },
-    set quickTitle(v) { quickTitle = v; },
-    get quickResult() { return quickResult; },
-    set quickResult(v) { quickResult = v; }
-  };
+  // ChatSessionRefs is a pure subset of aiState's surface — pass it
+  // directly. TS accepts the wider object.
+  const sessionRefs: ChatSessionRefs = aiState;
 
   async function buildPreludeForSession(
     query: string,
@@ -827,7 +757,7 @@
     const { messages: preludeMessages, ragHits } = await buildPrelude({
       mode: aiCtx.mode,
       aiMemoryFacts: aiCtx.aiMemoryFacts,
-      mentionedRefs,
+      mentionedRefs: aiState.mentionedRefs,
       currentNotePath,
       currentProjectName,
       currentGoalId,
@@ -896,9 +826,9 @@
       // sibling concerns (history rail's pinnedIndex, ui's
       // expandedSources, the active thread id). Centralise here so
       // the manager doesn't need a wider refs surface.
-      expandedSources = {};
-      pinnedIndex = {};
-      activeThreadId = '';
+      aiState.expandedSources = {};
+      aiState.pinnedIndex = {};
+      aiState.activeThreadId = '';
       persistActiveThreadId('');
     },
     getScrollEl: () => scrollEl
@@ -906,8 +836,8 @@
   const { send, sendFollowup, cancelInflight, clearChat } = chat;
 
   $effect(() => {
-    void messages.length;
-    void quickResult;
+    void aiState.messages.length;
+    void aiState.quickResult;
     tick().then(() => {
       if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
     });
@@ -1001,7 +931,7 @@
       statusInfo={statusLoader.statusInfo}
       {busy}
       bind:modePickerOpen
-      bind:historyOpen
+      bind:historyOpen={aiState.historyOpen}
       pinned={$aiOverlayPinned}
       {currentProjectName}
       {currentGoalId}
@@ -1033,7 +963,7 @@
       hasContent={messages.length > 0 || !!quickResult}
       {saving}
       onLaunchAgent={launchPageAgent}
-      onPickChip={(p) => { input = p; }}
+      onPickChip={(p) => { aiState.input = p; }}
       onBriefing={runBriefing}
       onSynopsis={runSynopsis}
       onTriage={runTriage}
@@ -1044,7 +974,7 @@
 
     <ChatHistoryRail
       bind:this={historyRailRef}
-      bind:open={historyOpen}
+      bind:open={aiState.historyOpen}
       {activeThreadId}
       onLoadThread={loadSavedThread}
       onDeleteThread={deleteSavedThread}
@@ -1073,13 +1003,13 @@
           {busy}
           {pinnedIndex}
           {perTurnRagHits}
-          bind:expandedSources
+          bind:expandedSources={aiState.expandedSources}
           {committedActions}
           {savingLibraryIdx}
-          bind:savingLibraryLabel
+          bind:savingLibraryLabel={aiState.savingLibraryLabel}
           {savingLibraryBusy}
           {editingUserIdx}
-          bind:editingUserDraft
+          bind:editingUserDraft={aiState.editingUserDraft}
           {copiedMessageIdx}
           {savingMessageIdx}
           {currentProjectName}
@@ -1100,8 +1030,8 @@
       {:else}
         <AIOverlayEmptyBody
           {voiceSupported}
-          onSendHelp={() => { input = '/help'; void send(); }}
-          onStartMention={() => { input = '@'; refocusComposer(); mentionPickerRef?.detectTrigger(); }}
+          onSendHelp={() => { aiState.input = '/help'; void send(); }}
+          onStartMention={() => { aiState.input = '@'; refocusComposer(); mentionPickerRef?.detectTrigger(); }}
           onToggleVoice={toggleVoice}
         />
       {/if}
@@ -1128,7 +1058,7 @@
            composer so chips don't drift in/out mid-conversation. -->
       <AIOverlayCrossSourceRecents
         prompts={crossRecentInlinePrompts}
-        onPick={(p) => { input = p; inputEl?.focus(); }}
+        onPick={(p) => { aiState.input = p; inputEl?.focus(); }}
       />
     {/if}
 
@@ -1144,7 +1074,7 @@
     />
 
     <ChatComposer
-      bind:input
+      bind:input={aiState.input}
       bind:inputEl
       {panelEl}
       bind:slashPickerOpen
@@ -1155,7 +1085,7 @@
       {busy}
       sabbathActive={$sabbath}
       onSubmit={() => { void send(); }}
-      onMentionPick={(ref) => { mentionedRefs = [...mentionedRefs, ref]; }}
+      onMentionPick={(ref) => { aiState.mentionedRefs = [...aiState.mentionedRefs, ref]; }}
     />
   </div>
 {/if}
