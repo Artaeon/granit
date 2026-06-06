@@ -17,6 +17,7 @@
 import { onMount } from 'svelte';
 import { installNoteAutosave } from '$lib/notes/noteAutosave.svelte';
 import { installWsReload } from '$lib/notes/wsReload.svelte';
+import { saveNote as saveNoteFn } from '$lib/notes/saveNote';
 import type { NotePipelineController } from '$lib/notes/notePipelineState.svelte';
 import type { EditorHandle } from '$lib/notes/editorHandle';
 
@@ -25,12 +26,16 @@ export interface SavePipelineOpts {
   /** Editor handle accessor — late-binding because the editor isn't
    *  mounted at install time. */
   getEditor: () => EditorHandle | undefined;
-  /** Save wrapper from the page (it owns the no-op short-circuit on
-   *  already-saving + the post-save draftRestored clear). */
-  save: (opts: { silent?: boolean }) => Promise<boolean>;
   /** Reload wrapper from the page — wsReload calls into it on a
    *  coalesced trailing edge. */
   reload: (path: string) => void;
+}
+
+export interface SavePipeline {
+  /** Body+frontmatter save with the conflict / draft / surgical-
+   *  mutation contract from saveNote.ts. Single-flighted on
+   *  pipe.saving. Other controllers wire this as their save callback. */
+  save: (opts?: { silent?: boolean }) => Promise<boolean>;
 }
 
 // Autosave debounce — 2 s after the last keystroke when the picker
@@ -45,8 +50,21 @@ const OWN_SAVE_QUIET_MS = 3000;
 // sync drop can fire 5+ events in a burst. One reload per burst.
 const WS_RELOAD_COALESCE_MS = 600;
 
-export function installSavePipeline(opts: SavePipelineOpts): void {
-  const { pipe, getEditor, save, reload } = opts;
+export function installSavePipeline(opts: SavePipelineOpts): SavePipeline {
+  const { pipe, getEditor, reload } = opts;
+
+  const saveCtx = {
+    getLiveBody: () => getEditor()?.getContent?.() ?? pipe.body
+  };
+
+  // Body+frontmatter save now lives in saveNote — see there for the
+  // conflict / draft / surgical-mutation contract. This wrapper just
+  // plumbs the pipe + saveCtx and clears the draftRestored badge on
+  // success.
+  async function save(opts: { silent?: boolean } = {}): Promise<boolean> {
+    if (pipe.saving) return !pipe.dirty;
+    return saveNoteFn(opts, pipe, saveCtx, () => { pipe.draftRestored = false; });
+  }
 
   installNoteAutosave({
     getNote: () => pipe.note,
@@ -79,4 +97,6 @@ export function installSavePipeline(opts: SavePipelineOpts): void {
       coalesceMs: WS_RELOAD_COALESCE_MS
     })
   );
+
+  return { save };
 }

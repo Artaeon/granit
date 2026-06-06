@@ -22,7 +22,6 @@
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { createNoteLinkSuggester } from '$lib/notes/noteLinkSuggester.svelte';
-  import { saveNote as saveNoteFn } from '$lib/notes/saveNote';
   import { createLoadNoteWrapper } from '$lib/notes/loadNoteWrapper.svelte';
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
   import { createViewportBreakpoints } from '$lib/notes/viewportBreakpoints.svelte';
@@ -240,26 +239,14 @@
   let saveFlash = $derived(saveStatusCtl.saveFlash);
   $effect(() => saveStatusCtl.install());
 
-  // Body+frontmatter save now lives in $lib/notes/saveNote — see
-  // there for the conflict / draft / surgical-mutation contract.
-  // Thin wrapper just plumbs in the shared pipe proxy and clears
-  // the draftRestored badge on success.
-  async function save(opts: { silent?: boolean } = {}): Promise<boolean> {
-    if (pipe.saving) return !pipe.dirty;
-    return saveNoteFn(opts, pipe, saveCtx, () => { pipe.draftRestored = false; });
-  }
-
-  const saveCtx = { getLiveBody: () => editor?.getContent?.() ?? pipe.body };
-
-  // Two persistence sub-pipelines bundled behind a single install:
-  // installNoteAutosave (dirty / debounce / draft-rAF / tab-hide /
-  // online-retry / unmount) + installWsReload (coalesced trailing-
-  // edge reload on WS `note.changed` bursts). See installSavePipeline
-  // for the shared deps + the magic-number defaults.
-  installSavePipeline({
+  // Persistence sub-pipelines (autosave + WS reload) + the save()
+  // wrapper itself live behind installSavePipeline. The returned
+  // `save` is the same wrapper other controllers (extractCtl,
+  // dailyNav, actions, lifecycle effects) wire as their save
+  // callback.
+  const { save } = installSavePipeline({
     pipe,
     getEditor: () => editor,
-    save: (o) => save(o),
     reload: (p) => void load(p, { force: true })
   });
 
