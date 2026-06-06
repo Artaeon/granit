@@ -8,6 +8,7 @@
     createProjectsListData,
     installProjectsListLive
   } from '$lib/projects/projectsListData.svelte';
+  import { createProjectsListFilter } from '$lib/projects/projectsListFilter.svelte';
   import { colorVar, statusTone } from '$lib/util/colors';
   import { isoWeekString, startOfIsoWeek } from '$lib/util/isoWeek';
   import { fmtDateISO as ymd } from '$lib/util/date';
@@ -102,8 +103,16 @@
     }
     return out;
   });
-  let q = $state('');
-  let statusFilter = $state<'all' | 'active' | 'paused' | 'completed' | 'archived'>('active');
+  const filterCtl = createProjectsListFilter({
+    getProjects: () => projects,
+    getVentureFilter: () => ventureFilter
+  });
+  const q = $derived(filterCtl.q);
+  const statusFilter = $derived(filterCtl.statusFilter);
+  const ventures = $derived(filterCtl.ventures);
+  const filtered = $derived(filterCtl.filtered);
+  const kanbanFeed = $derived(filterCtl.kanbanFeed);
+  const grouped = $derived(filterCtl.grouped);
   let createOpen = $state(false);
 
   // ── Stalled-projects radar ───────────────────────────────────────
@@ -398,17 +407,9 @@
 
   // ?venture=<name> scopes the list to a single venture. Cleared via the
   // header chip. Persisted to URL so a "venture roll-up" view is shareable.
+  // The `ventures` list, `filtered`, `kanbanFeed`, and `grouped`
+  // derivations live in projectsListFilter (filterCtl above).
   let ventureFilter = $derived($page.url.searchParams.get('venture') ?? '');
-  // Distinct venture names — both for the venture group headers and for
-  // ProjectCreate's autocomplete datalist.
-  let ventures = $derived.by(() => {
-    const set = new Set<string>();
-    for (const p of projects) {
-      const v = (p.venture ?? '').trim();
-      if (v) set.add(v);
-    }
-    return [...set].sort((a, b) => a.localeCompare(b));
-  });
 
   function selectProject(name: string) {
     const params = new URLSearchParams($page.url.searchParams);
@@ -442,89 +443,6 @@
     params.delete('venture');
     goto(`/projects?${params.toString()}`, { replaceState: true, keepFocus: true });
   }
-
-  // Kanban feed: all four status columns must always render, so we
-  // skip the statusFilter here — venture + search still apply.
-  // The sort matches `filtered` so a project's column position is
-  // deterministic across views.
-  let kanbanFeed = $derived.by(() => {
-    let list = projects;
-    if (ventureFilter) list = list.filter((p) => (p.venture ?? '') === ventureFilter);
-    const term = q.trim().toLowerCase();
-    if (term) {
-      list = list.filter((p) =>
-        p.name.toLowerCase().includes(term) ||
-        (p.description ?? '').toLowerCase().includes(term) ||
-        (p.tags ?? []).some((t) => t.toLowerCase().includes(term)) ||
-        (p.kind ?? '').toLowerCase().includes(term) ||
-        (p.venture ?? '').toLowerCase().includes(term)
-      );
-    }
-    // Within a column: priority desc, then name. Status is encoded
-    // by the column itself so no status tier needed here.
-    return [...list].sort((a, b) => {
-      const pa = a.priority ?? 0;
-      const pb = b.priority ?? 0;
-      if (pa !== pb) return pb - pa;
-      return a.name.localeCompare(b.name);
-    });
-  });
-
-  let filtered = $derived.by(() => {
-    let list = projects;
-    if (statusFilter !== 'all') list = list.filter((p) => (p.status ?? 'active') === statusFilter);
-    if (ventureFilter) list = list.filter((p) => (p.venture ?? '') === ventureFilter);
-    const term = q.trim().toLowerCase();
-    if (term) {
-      list = list.filter((p) =>
-        p.name.toLowerCase().includes(term) ||
-        (p.description ?? '').toLowerCase().includes(term) ||
-        (p.tags ?? []).some((t) => t.toLowerCase().includes(term)) ||
-        (p.kind ?? '').toLowerCase().includes(term) ||
-        (p.venture ?? '').toLowerCase().includes(term)
-      );
-    }
-    // Sort: active first → priority desc → name
-    return [...list].sort((a, b) => {
-      const sa = a.status ?? 'active';
-      const sb = b.status ?? 'active';
-      if (sa !== sb) {
-        const order = { active: 0, paused: 1, completed: 2, archived: 3 } as Record<string, number>;
-        return (order[sa] ?? 9) - (order[sb] ?? 9);
-      }
-      const pa = a.priority ?? 0;
-      const pb = b.priority ?? 0;
-      if (pa !== pb) return pb - pa;
-      return a.name.localeCompare(b.name);
-    });
-  });
-
-  // Group filtered projects by venture, preserving the sort order above.
-  // Projects without a venture land in a single 'Unassigned' group at the
-  // end — having one named bucket is less noisy than scattering them.
-  // When the user has explicitly filtered to a venture we skip the group
-  // headers entirely (the URL chip already conveys the scope).
-  type Group = { venture: string; projects: typeof projects };
-  let grouped = $derived.by((): Group[] => {
-    if (ventureFilter) return [{ venture: ventureFilter, projects: filtered }];
-    const map = new Map<string, typeof projects>();
-    for (const p of filtered) {
-      const v = (p.venture ?? '').trim() || '—';
-      const arr = map.get(v) ?? [];
-      arr.push(p);
-      map.set(v, arr);
-    }
-    const named: Group[] = [];
-    let unassigned: Group | null = null;
-    for (const [venture, list] of map) {
-      const g = { venture, projects: list };
-      if (venture === '—') unassigned = g;
-      else named.push(g);
-    }
-    named.sort((a, b) => a.venture.localeCompare(b.venture));
-    return unassigned ? [...named, unassigned] : named;
-  });
-
 
   async function created(p: Project) {
     createOpen = false;
@@ -598,7 +516,7 @@
            and board views hide the sidebar, so a compact mirror sits
            in the toolbar so the user isn't search-blind here. -->
       <input
-        bind:value={q}
+        bind:value={filterCtl.q}
         placeholder="filter…"
         class="text-xs px-2 py-1 bg-surface0 border border-surface1 rounded text-text placeholder:text-dim focus:outline-none focus:border-primary min-h-[32px] w-32 sm:w-40"
         aria-label="filter projects"
@@ -610,7 +528,7 @@
       {#if viewMode !== 'kanban'}
         <select
           value={statusFilter}
-          onchange={(e) => (statusFilter = (e.target as HTMLSelectElement).value as typeof statusFilter)}
+          onchange={(e) => (filterCtl.statusFilter = (e.target as HTMLSelectElement).value as typeof statusFilter)}
           class="text-xs px-2 py-1 bg-surface0 border border-surface1 rounded text-subtext min-h-[32px]"
           aria-label="filter by status"
         >
@@ -653,7 +571,7 @@
     </header>
     <div class="px-3 py-2 space-y-2 flex-shrink-0">
       <input
-        bind:value={q}
+        bind:value={filterCtl.q}
         placeholder="filter… (name, kind, venture, tag)"
         class="w-full px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
       />
@@ -665,7 +583,7 @@
         {#each ['active', 'paused', 'completed', 'archived', 'all'] as s}
           <button
             class="flex-1 min-w-[3.5rem] px-1 py-1.5 sm:py-0.5 rounded {statusFilter === s ? 'bg-surface1 text-text' : 'text-dim hover:text-text hover:bg-surface0'}"
-            onclick={() => (statusFilter = s as typeof statusFilter)}
+            onclick={() => (filterCtl.statusFilter = s as typeof statusFilter)}
           >{s}</button>
         {/each}
       </div>
