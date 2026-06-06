@@ -39,11 +39,7 @@
   import MobileEditorToolbar from '$lib/editor/MobileEditorToolbar.svelte';
   import InlineAIMenu from '$lib/notes/InlineAIMenu.svelte';
   import AIActionBar from '$lib/notes/AIActionBar.svelte';
-  import {
-    inlineAITriggerExtension,
-    type InlineAITriggerEvent
-  } from '$lib/editor/inline-ai-trigger';
-  import { inlineAIObserver, type InlineAIState } from '$lib/editor/inline-ai';
+  import { createInlineAIBridge } from '$lib/notes/inlineAIBridge.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
   import NotePresentation from '$lib/notes/NotePresentation.svelte';
   import NoteStatusBar from '$lib/notes/NoteStatusBar.svelte';
@@ -136,9 +132,12 @@
   let notFound = $derived(pipe.notFound);
   let creatingNote = $state(false);
 
-  // Inline AI menu — populated by the inline-ai-trigger extension when
-  // the user hits Cmd-K or types "/ai". Cleared when the menu closes.
-  let aiTriggerEvent = $state<InlineAITriggerEvent | null>(null);
+  // Inline-AI bridge — CodeMirror trigger extension + state observer
+  // forwarding into reactive $state slots. Lives in inlineAIBridge.
+  const aiBridge = createInlineAIBridge();
+  let aiTriggerEvent = $derived(aiBridge.triggerEvent);
+  let aiGhostState = $derived(aiBridge.ghostState);
+  const editorAIExtensions = aiBridge.extensions;
 
   // Flashcard-scheduling lives in flashcardsAction — same Q:/A: parse
   // + 5-step (1/3/7/14/30 day) schedule + toast branches. The page
@@ -149,11 +148,6 @@
     closeOverflow: () => { overlays.overflowOpen = false; }
   });
   let schedulingFlashcards = $derived(flashcards.schedulingFlashcards);
-
-  // Inline AI ghost state — observed by inlineAIObserver, drives the
-  // floating <AIActionBar> that surfaces Keep / Try again / Discard /
-  // Stop buttons next to the ghost text. Null when no ghost is active.
-  let aiGhostState = $state<InlineAIState | null>(null);
 
   // Cursor (line/col/selLen) + scroll-progress for the editor.
   // Controller exposes ready-made onCursor / onScroll callbacks the
@@ -355,24 +349,6 @@
   // overlays controller) because it's bound via `bind:overflowTriggerEl`
   // on the NoteHeader and the parent has to own the lvalue.
   let overflowTriggerEl: HTMLButtonElement | undefined = $state();
-
-  // ── Editor extra extensions ─────────────────────────────────────
-  // Editor.svelte reads extraExtensions ONCE at setupView time, so
-  // this array must not be re-created on every render. Two host
-  // bridges live here:
-  //   • inlineAITriggerExtension — turns Cmd-K / "/ai" into a menu
-  //     open event the page renders via <InlineAIMenu>.
-  //   • inlineAIObserver — fires whenever the inline-AI state field
-  //     changes (start/stream/done/clear) so the page can render the
-  //     floating <AIActionBar> with the right buttons.
-  const editorAIExtensions = [
-    inlineAITriggerExtension((e) => {
-      aiTriggerEvent = e;
-    }),
-    inlineAIObserver((s) => {
-      aiGhostState = s;
-    })
-  ];
 
   async function navigateWikilink(target: string) {
     // Best-effort flush of any pending edit. We never block navigation on
@@ -856,7 +832,7 @@
     event={aiTriggerEvent}
     notePath={note.path}
     body={bodyForPreview}
-    onClose={() => (aiTriggerEvent = null)}
+    onClose={aiBridge.clearTrigger}
   />
 {/if}
 
