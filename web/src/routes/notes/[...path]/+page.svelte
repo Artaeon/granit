@@ -31,6 +31,7 @@
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
   import { createViewportBreakpoints } from '$lib/notes/viewportBreakpoints.svelte';
   import { createPreviewBodyMirror } from '$lib/notes/previewBodyMirror.svelte';
+  import { createNoteWordStats } from '$lib/notes/noteWordStats.svelte';
   import {
     parseDailyDate,
     shiftDate,
@@ -621,46 +622,20 @@
     })
   );
 
-  // Drive the status-bar counters off the rAF-throttled mirror, not
-  // the raw `body`. Each derivation here allocates a new array per
-  // keystroke (trim+split for wordCount, split for lineCount), which
-  // is O(N) in body length. On a 100 KB note that's ~3–8 ms per
-  // keystroke just to refresh the status bar — a real contributor to
-  // the editor-freeze the user reports on long notes. The status bar
-  // can absolutely tolerate one frame of lag (16 ms); pinning it to
-  // bodyForPreview coalesces the work with the preview parse instead
-  // of firing it 60–200×/s on a fast typer.
-  let wordCount = $derived.by(() => {
-    const t = bodyForPreview.trim();
-    return t ? t.split(/\s+/).length : 0;
+  // Status-bar counters + word goal live in $lib/notes/noteWordStats —
+  // see there for the rationale on tying everything to bodyForPreview
+  // (rAF-coalesced) rather than the raw body. The page reads each
+  // metric via a $derived alias.
+  const wordStats = createNoteWordStats({
+    getBodyForPreview: () => bodyForPreview,
+    getNote: () => note
   });
-  let charCount = $derived(bodyForPreview.length);
-  let lineCount = $derived(bodyForPreview ? bodyForPreview.split('\n').length : 0);
-  // Reading time at ~225 wpm — average silent reading speed. Floor of
-  // 1 minute so a short note doesn't read "0 min". Hidden under 50
-  // words because "<1 min" on a tiny note is noise.
-  let readingMinutes = $derived(Math.max(1, Math.round(wordCount / 225)));
-
-  // Word-count goal — frontmatter `target_words: 1500` turns the
-  // status-bar word count into a progress indicator. Common shape
-  // for journaling / essay drafts where the user committed to a
-  // target. We render a thin progress bar under the count + a
-  // percentage label so progress is visible at a glance without
-  // taking footer space when no target is set.
-  let wordGoal = $derived.by<number | null>(() => {
-    const fm = note?.frontmatter as Record<string, unknown> | undefined;
-    if (!fm) return null;
-    const v = fm.target_words ?? fm.word_goal;
-    if (typeof v === 'number' && v > 0) return Math.floor(v);
-    if (typeof v === 'string') {
-      const n = parseInt(v, 10);
-      if (!Number.isNaN(n) && n > 0) return n;
-    }
-    return null;
-  });
-  let wordGoalPct = $derived(
-    wordGoal ? Math.min(100, Math.round((wordCount / wordGoal) * 100)) : 0
-  );
+  let wordCount = $derived(wordStats.wordCount);
+  let charCount = $derived(wordStats.charCount);
+  let lineCount = $derived(wordStats.lineCount);
+  let readingMinutes = $derived(wordStats.readingMinutes);
+  let wordGoal = $derived(wordStats.wordGoal);
+  let wordGoalPct = $derived(wordStats.wordGoalPct);
 
   // Cursor position state — populated by the Editor's onCursor
   // callback. line:col is 1-indexed (matches what every editor
