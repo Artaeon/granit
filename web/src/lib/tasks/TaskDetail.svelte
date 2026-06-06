@@ -5,7 +5,6 @@
   import { cleanTaskText } from '$lib/util/taskParse';
   import Drawer from '$lib/components/Drawer.svelte';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
-  import { loadDraft, clearDraft, makeDraftWriter } from '$lib/util/draftAutosave';
   import {
     recurrenceOptions,
     triageStates,
@@ -16,6 +15,7 @@
   import { createTaskDetailLinks } from './taskDetailLinks.svelte';
   import { createTaskDetailSubtasks } from './taskDetailSubtasks.svelte';
   import { createTaskDetailAIDecompose } from './taskDetailAIDecompose.svelte';
+  import { createTaskDetailInlineEdit } from './taskDetailInlineEdit.svelte';
 
   // TaskDetail is the side-drawer that pops open when the user clicks
   // a task card. Editable fields not already inline-editable on the card:
@@ -41,7 +41,6 @@
     openAIOverlay({ text: buildAskAIPrompt(task), send: false });
   }
 
-  let notesBuf = $state('');
   let recurrenceBuf = $state('');
   let busy = $state(false);
   // Editable scheduling. The drawer was previously read-only here;
@@ -49,15 +48,19 @@
   let dueBuf = $state('');
   let schedDateBuf = $state(''); // YYYY-MM-DD
   let schedTimeBuf = $state(''); // HH:MM
-  // Inline title editing — click the title to edit, Enter / blur to
-  // commit, Esc to cancel.
-  let titleEditing = $state(false);
-  let titleBuf = $state('');
   // Tags + estimate edits would round-trip through the task line's
   // #tag / est:Nm markers (parseTaskInput handles them on read), but
   // the patchTask API doesn't currently expose direct fields for
   // either. Keeping these read-only on the drawer for now — quick-add
   // bar is the canonical surface for setting them at create time.
+
+  // Title + notes buffers, draft autosave, and the inline-edit
+  // commit/cancel/start helpers. See taskDetailInlineEdit.svelte.ts.
+  const inlineEdit = createTaskDetailInlineEdit({
+    getTask: () => task,
+    patch: (p) => patch(p)
+  });
+  inlineEdit.install();
 
   // Linkable-entity lookup for the Project / Goal / Deadline <select>s.
   // Lazy-loaded on first open per session; see taskDetailLinks.svelte.ts.
@@ -117,18 +120,11 @@
     }
     if (task.id === lastInitialisedTaskId) return;
     lastInitialisedTaskId = task.id;
-    // Prefer a saved draft for notes — that's the most recent intent.
-    // Title draft is loaded only when the user actually opens the
-    // title editor (titleEditing toggle); otherwise the displayed
-    // title comes from the canonical task.text.
-    const notesDraft = loadDraft<string | null>(`task.notes.${task.id}`, null);
-    notesBuf = (notesDraft !== null && notesDraft !== '') ? notesDraft : (task.notes ?? '');
+    inlineEdit.initFor(task);
     recurrenceBuf = task.recurrence ?? '';
     dueBuf = task.dueDate ?? '';
     schedDateBuf = task.scheduledStart ? task.scheduledStart.slice(0, 10) : '';
     schedTimeBuf = task.scheduledStart ? task.scheduledStart.slice(11, 16) : '';
-    titleEditing = false;
-    titleBuf = cleanTaskText(task.text);
     aiDecomp.reset();
     subtasksCtl.reset();
     void links.load();
@@ -148,46 +144,6 @@
     }
   }
 
-  // Draft autosave for the two long-form buffers in this drawer
-  // (notes + title). The other buffers — due, scheduled date/time,
-  // recurrence — are short controls that commit on change; their
-  // loss-on-reload exposure is bounded to "the keystroke you just
-  // typed", not paragraphs of work. Keep the drafts per-task-id so
-  // switching tasks doesn't cross-contaminate.
-  const notesDraftWriter = makeDraftWriter(400);
-  const titleDraftWriter = makeDraftWriter(400);
-  function notesDraftKey() { return task ? `task.notes.${task.id}` : ''; }
-  function titleDraftKey() { return task ? `task.title.${task.id}` : ''; }
-
-  // Notes textarea is always rendered (no edit toggle) so we gate the
-  // draft write on "actually differs from server state" instead of
-  // an editing flag. Without this gate every task open would write
-  // a stale-equal draft, accumulating localStorage entries forever.
-  $effect(() => {
-    if (!task || !notesDraftKey()) return;
-    if (notesBuf === (task.notes ?? '')) return;
-    notesDraftWriter.save(notesDraftKey(), notesBuf);
-  });
-  $effect(() => {
-    if (!task || !titleEditing || !titleDraftKey()) return;
-    if (titleBuf === cleanTaskText(task.text)) return;
-    titleDraftWriter.save(titleDraftKey(), titleBuf);
-  });
-
-  async function commitNotes() {
-    if (!task) return;
-    if (notesBuf === (task.notes ?? '')) {
-      // No change to persist — but drop the draft so it doesn't
-      // resurrect on next mount with stale-equal content.
-      clearDraft(notesDraftKey());
-      notesDraftWriter.cancel();
-      return;
-    }
-    await patch({ notes: notesBuf });
-    clearDraft(notesDraftKey());
-    notesDraftWriter.cancel();
-  }
-
   async function setRecurrence(r: string) {
     recurrenceBuf = r;
     await patch({ recurrence: r });
@@ -199,40 +155,6 @@
   async function setProject(name: string) { await patch({ projectId: name }); }
   async function setGoal(id: string) { await patch({ goalId: id }); }
   async function setDeadline(id: string) { await patch({ deadlineId: id }); }
-
-  // Title edit. cleanTaskText strips inline markers (!1 / due:.. / #tag)
-  // for display; we round-trip the user's edit as the new task text and
-  // let the parser re-extract markers from the new line on the next
-  // read. Empty title is a no-op.
-  async function commitTitle() {
-    if (!task) { titleEditing = false; return; }
-    const next = titleBuf.trim();
-    if (!next || next === cleanTaskText(task.text)) {
-      titleEditing = false;
-      clearDraft(titleDraftKey());
-      titleDraftWriter.cancel();
-      return;
-    }
-    titleEditing = false;
-    await patch({ text: next });
-    clearDraft(titleDraftKey());
-    titleDraftWriter.cancel();
-  }
-  function cancelTitleEdit() {
-    if (task) titleBuf = cleanTaskText(task.text);
-    titleEditing = false;
-    clearDraft(titleDraftKey());
-    titleDraftWriter.cancel();
-  }
-  // When the user opens the title editor, prefer a stale draft over
-  // the canonical title text. Called from the onclick that flips
-  // titleEditing → true.
-  function startTitleEdit() {
-    if (!task) return;
-    const draft = loadDraft<string | null>(titleDraftKey(), null);
-    titleBuf = (draft !== null && draft !== '') ? draft : cleanTaskText(task.text);
-    titleEditing = true;
-  }
 
   // Date / time edits. The backend accepts dueDate as 'YYYY-MM-DD' or
   // empty to clear. scheduledStart is 'YYYY-MM-DDTHH:MM' (local, no
@@ -333,13 +255,13 @@
             {/if}
           </button>
           <div class="flex-1 min-w-0">
-            {#if titleEditing}
+            {#if inlineEdit.titleEditing}
               <input
-                bind:value={titleBuf}
-                onblur={commitTitle}
+                bind:value={inlineEdit.titleBuf}
+                onblur={inlineEdit.commitTitle}
                 onkeydown={(e) => {
-                  if (e.key === 'Enter') { e.preventDefault(); void commitTitle(); }
-                  else if (e.key === 'Escape') { e.preventDefault(); cancelTitleEdit(); }
+                  if (e.key === 'Enter') { e.preventDefault(); void inlineEdit.commitTitle(); }
+                  else if (e.key === 'Escape') { e.preventDefault(); inlineEdit.cancelTitleEdit(); }
                 }}
                 disabled={busy}
                 aria-label="task title"
@@ -348,7 +270,7 @@
             {:else}
               <button
                 type="button"
-                onclick={startTitleEdit}
+                onclick={inlineEdit.startTitleEdit}
                 class="text-base font-medium text-text break-words text-left w-full hover:bg-surface1 rounded px-2 py-1 -mx-2 -my-1 transition-colors {task.done ? 'line-through text-dim' : ''}"
                 title="click to rename"
               >{cleanTaskText(task.text)}</button>
@@ -702,8 +624,8 @@
         <section>
           <h4 class="text-[11px] uppercase tracking-wider text-dim mb-1.5">Notes</h4>
           <textarea
-            bind:value={notesBuf}
-            onblur={commitNotes}
+            bind:value={inlineEdit.notesBuf}
+            onblur={inlineEdit.commitNotes}
             placeholder="any details, links, context…"
             rows="4"
             class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
