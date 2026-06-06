@@ -77,6 +77,10 @@
   import AIOverlayQuickActions from '$lib/components/aioverlay/AIOverlayQuickActions.svelte';
   import AIOverlayContextChips from '$lib/components/aioverlay/AIOverlayContextChips.svelte';
   import AIOverlayComposerStrip from '$lib/components/aioverlay/AIOverlayComposerStrip.svelte';
+  import AIOverlayEmptyBody from '$lib/components/aioverlay/AIOverlayEmptyBody.svelte';
+  import AIOverlayRagStrip from '$lib/components/aioverlay/AIOverlayRagStrip.svelte';
+  import AIOverlayMentionedRefs from '$lib/components/aioverlay/AIOverlayMentionedRefs.svelte';
+  import AIOverlayCrossSourceRecents from '$lib/components/aioverlay/AIOverlayCrossSourceRecents.svelte';
   import { list as listSharedPrompts, type RecentPrompt } from '$lib/ai/recentPrompts';
 
   // AIOverlay — global AI panel. Slides in from the right on
@@ -1145,58 +1149,16 @@
           onSendFollowup={sendFollowup}
         />
       {:else}
-        <!-- Empty state. Surface the few power-user shortcuts so a
-             new user knows the surface is denser than it looks. The
-             three shortcut chips below are tappable on mobile and
-             pre-fill the composer; the user reads what they do, taps
-             one, gets immediate momentum. -->
-        <div class="text-xs text-dim leading-relaxed">
-          <p class="mb-3 text-text">Ask anything, or pick a starter.</p>
-          <div class="flex flex-wrap gap-1.5 mb-3">
-            <button
-              type="button"
-              onclick={() => { input = '/help'; void send(); }}
-              class="tap-target px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary text-[11px] transition-colors"
-            >See what's here</button>
-            <button
-              type="button"
-              onclick={() => { input = '@'; refocusComposer(); mentionPickerRef?.detectTrigger(); }}
-              class="tap-target px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary text-[11px] transition-colors"
-            >Reference an item</button>
-            {#if voiceSupported}
-              <button
-                type="button"
-                onclick={toggleVoice}
-                class="tap-target px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary text-[11px] transition-colors"
-              >Dictate</button>
-            {/if}
-          </div>
-          <p class="text-[11px] leading-relaxed">
-            <kbd class="px-1 py-0.5 bg-surface1 rounded font-mono text-[10px]">Mod+J</kbd> toggle ·
-            <kbd class="px-1 py-0.5 bg-surface1 rounded font-mono text-[10px]">/</kbd> commands ·
-            <kbd class="px-1 py-0.5 bg-surface1 rounded font-mono text-[10px]">@</kbd> entities ·
-            <kbd class="px-1 py-0.5 bg-surface1 rounded font-mono text-[10px]">Mod+1..9</kbd> mode
-          </p>
-        </div>
+        <AIOverlayEmptyBody
+          {voiceSupported}
+          onSendHelp={() => { input = '/help'; void send(); }}
+          onStartMention={() => { input = '@'; refocusComposer(); mentionPickerRef?.detectTrigger(); }}
+          onToggleVoice={toggleVoice}
+        />
       {/if}
     </div>
 
-    {#if lastRagHits.length > 0}
-      <!-- RAG attribution strip — shows which vault notes the
-           assistant saw on the last turn so the user can verify
-           grounding. Click any to open the actual note. Compact
-           by default; line-truncates on mobile. -->
-      <div class="border-t border-surface1 px-4 py-1.5 flex items-center gap-1.5 flex-wrap text-[11px] flex-shrink-0">
-        <span class="text-dim">retrieved:</span>
-        {#each lastRagHits as h (h.path)}
-          <a
-            href="/notes/{encodeURIComponent(h.path)}"
-            class="text-secondary hover:underline truncate max-w-[12rem]"
-            title={h.path}
-          >{h.title}</a>
-        {/each}
-      </div>
-    {/if}
+    <AIOverlayRagStrip hits={lastRagHits} />
 
     <AIOverlayContextChips
       {currentNotePath}
@@ -1209,47 +1171,16 @@
       onLoadSnapshot={() => void loadSnapshot()}
     />
 
-    {#if mentionedRefs.length > 0}
-      <!-- Mentioned-entities chip strip. Surfaces above the composer
-           so the user sees what entity context will be attached to
-           the next send. Click × to drop one. Cleared automatically
-           after the message goes out. -->
-      <div class="border-t border-surface1 px-4 py-1.5 flex flex-wrap gap-1 text-[11px] flex-shrink-0">
-        <span class="text-dim self-center">refs:</span>
-        {#each mentionedRefs as r, i (r.kind + ':' + r.id + ':' + i)}
-          <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary text-on-primary">
-            <span class="text-[9px] uppercase tracking-wider">{r.kind}</span>
-            <span class="truncate max-w-[10rem]" title={r.title}>{r.title}</span>
-            <button
-              type="button"
-              onclick={() => removeMention(i)}
-              class="hover:text-error leading-none"
-              aria-label="Remove reference"
-            >×</button>
-          </span>
-        {/each}
-      </div>
-    {/if}
+    <AIOverlayMentionedRefs refs={mentionedRefs} onRemove={removeMention} />
 
-    <!-- Cross-source recents — prompts the user wrote in the inline
-         AI menu on a note. Only renders when this is a fresh chat
-         (no messages yet) AND the composer is empty, so we don't
-         drift items in/out under the user's fingers mid-conversation.
-         Click a chip → loads it into the composer; the user reviews
-         then sends. We don't auto-send (the inline menu's context
-         may not apply here, so the user might want to edit first). -->
-    {#if !busy && !$sabbath && messages.length === 0 && input.trim().length === 0 && crossRecentInlinePrompts.length > 0}
-      <div class="border-t border-surface1 px-4 py-1.5 flex flex-wrap items-center gap-1 text-[11px] flex-shrink-0">
-        <span class="text-dim self-center" title="recent prompts from the inline AI menu in your notes">from notes:</span>
-        {#each crossRecentInlinePrompts as r, i (r.prompt + ':' + i)}
-          <button
-            type="button"
-            onclick={() => { input = r.prompt; inputEl?.focus(); }}
-            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-subtext max-w-[14rem] truncate"
-            title={r.notePath ? `from ${r.notePath}: ${r.prompt}` : r.prompt}
-          >↗ {r.prompt}</button>
-        {/each}
-      </div>
+    {#if !busy && !$sabbath && messages.length === 0 && input.trim().length === 0}
+      <!-- Visibility gate stays in the parent — we only want to
+           render the recents strip on a fresh thread with an empty
+           composer so chips don't drift in/out mid-conversation. -->
+      <AIOverlayCrossSourceRecents
+        prompts={crossRecentInlinePrompts}
+        onPick={(p) => { input = p; inputEl?.focus(); }}
+      />
     {/if}
 
     <AIOverlayComposerStrip
