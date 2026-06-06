@@ -7,6 +7,7 @@
   import HubToolsSection from './HubToolsSection.svelte';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { createHubData, installHubDataLive } from '$lib/hub/hubData.svelte';
+  import { createHubView } from '$lib/hub/hubView.svelte';
 
   // Two tabs: 'links' (the existing launcher) and 'tools' (the new
   // setup-command catalogue). Default to links because the existing
@@ -38,8 +39,15 @@
   const loading = $derived(dataCtl.loading);
   const load = dataCtl.load;
 
-  let q = $state('');
-  let categoryFilter = $state('');
+  // Filter + group view — the read-only projection over items. Owns
+  // q, categoryFilter and the categories / visibleItems / grouped
+  // derivations. Extracted to $lib/hub/hubView so the chunky
+  // $derived.by closures live next to each other instead of crowding
+  // the page.
+  const viewCtl = createHubView({ getItems: () => dataCtl.items });
+  const categories = $derived(viewCtl.categories);
+  const visibleItems = $derived(viewCtl.visibleItems);
+  const grouped = $derived(viewCtl.grouped);
 
   // Add / edit modal state. editing = null means "create"; an
   // HubItem instance means "edit this".
@@ -75,69 +83,6 @@
   onMount(() => {
     load();
     return installHubDataLive({ reload: load });
-  });
-
-  // Categories with counts, sorted by frequency desc — the most-
-  // used categories surface first in the chip row. Items without
-  // a category land under "Other".
-  let categories = $derived.by(() => {
-    const m = new Map<string, number>();
-    for (const it of items) {
-      const c = (it.category ?? '').trim() || 'Other';
-      m.set(c, (m.get(c) ?? 0) + 1);
-    }
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  });
-
-  // Filtered + grouped view. Search matches title / url / category /
-  // notes / username (NOT password — that would surface secrets via
-  // the search field). Category filter narrows to a single bucket.
-  let visibleItems = $derived.by(() => {
-    let out = items;
-    if (categoryFilter) {
-      const cf = categoryFilter.toLowerCase();
-      out = out.filter((it) => (it.category ?? 'Other').toLowerCase() === cf);
-    }
-    const term = q.trim().toLowerCase();
-    if (term) {
-      out = out.filter((it) =>
-        it.title.toLowerCase().includes(term) ||
-        (it.url ?? '').toLowerCase().includes(term) ||
-        (it.category ?? '').toLowerCase().includes(term) ||
-        (it.notes ?? '').toLowerCase().includes(term) ||
-        (it.username ?? '').toLowerCase().includes(term)
-      );
-    }
-    return out;
-  });
-
-  // Group the visible items by category so the page reads as
-  // clusters rather than a flat list. Favorites stay pinned across
-  // all groups by sorting them to the top of each bucket.
-  type Group = { key: string; items: HubItem[] };
-  let grouped = $derived.by((): Group[] => {
-    const m = new Map<string, HubItem[]>();
-    for (const it of visibleItems) {
-      const cat = (it.category ?? '').trim() || 'Other';
-      const arr = m.get(cat) ?? [];
-      arr.push(it);
-      m.set(cat, arr);
-    }
-    const out: Group[] = [];
-    for (const [key, list] of m) {
-      list.sort((a, b) => {
-        if (!!a.favorite !== !!b.favorite) return a.favorite ? -1 : 1;
-        return a.title.localeCompare(b.title);
-      });
-      out.push({ key, items: list });
-    }
-    out.sort((a, b) => {
-      // Other always last — known categories before the catch-all
-      if (a.key === 'Other' && b.key !== 'Other') return 1;
-      if (b.key === 'Other' && a.key !== 'Other') return -1;
-      return a.key.localeCompare(b.key);
-    });
-    return out;
   });
 
   function openCreate() {
@@ -402,20 +347,20 @@
     <!-- Search + category chips -->
     <div class="space-y-3 mb-4">
       <input
-        bind:value={q}
+        bind:value={viewCtl.q}
         placeholder="search title, url, notes, username…"
         class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
       />
       {#if categories.length > 0}
         <div class="flex flex-wrap gap-1.5">
           <button
-            onclick={() => (categoryFilter = '')}
-            class="px-2.5 py-0.5 text-xs rounded {categoryFilter === '' ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+            onclick={() => (viewCtl.categoryFilter = '')}
+            class="px-2.5 py-0.5 text-xs rounded {viewCtl.categoryFilter === '' ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
           >All <span class="opacity-70 ml-0.5">{items.length}</span></button>
           {#each categories as [c, n]}
             <button
-              onclick={() => (categoryFilter = categoryFilter === c ? '' : c)}
-              class="px-2.5 py-0.5 text-xs rounded {categoryFilter === c ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
+              onclick={() => (viewCtl.categoryFilter = viewCtl.categoryFilter === c ? '' : c)}
+              class="px-2.5 py-0.5 text-xs rounded {viewCtl.categoryFilter === c ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
             >{c} <span class="opacity-70 ml-0.5">{n}</span></button>
           {/each}
         </div>
