@@ -51,7 +51,7 @@
   import { createTasksViewState } from '$lib/tasks/tasksViewState.svelte';
   import { createTasksData } from '$lib/tasks/tasksData.svelte';
   import { createTasksSelection } from '$lib/tasks/tasksSelection.svelte';
-  import { workspaceContext } from '$lib/workspace/workspaceContext.svelte';
+  import { createTasksDetail } from '$lib/tasks/tasksDetail.svelte';
 
   // Loaded data (dataCtl.tasks/dataCtl.projects/dataCtl.goals/dataCtl.deadlines), dataCtl.loading flag,
   // dataCtl.parentMap/dataCtl.childCount/dataCtl.allTags/dataCtl.countOpen/dataCtl.countDone/dataCtl.stats, plus
@@ -199,39 +199,17 @@
   // openSnoozePickerForCursor; bindings into children pass through
   // its getter/setter pairs the same way viewCtl bindings do.
   const selCtl = createTasksSelection({ getFiltered: () => filterCtl.filtered });
-  let detailTask = $state<Task | null>(null);
-  let detailOpen = $state(false);
+  // Detail drawer + context menu state lives in
+  // $lib/tasks/tasksDetail. openDetail also publishes to the
+  // workspace context bus for adjacent AI panes.
+  const detCtl = createTasksDetail();
+  const openDetail = detCtl.openDetail;
+  const openContext = detCtl.openContext;
 
   // Swipe-hint banner + dismissal lives in $lib/tasks/TasksSwipeHint —
   // owns its own localStorage flag + touch-device probe + 8-second
   // auto-dismiss timer. The parent decides `applicable` (list view
   // with at least one card visible) at the render site.
-
-  // Context menu state — driven by TaskCard's onContextMenu hook.
-  // The menu mounts at the click position with {ctxTask, ctxX, ctxY}.
-  let ctxTask = $state<Task | null>(null);
-  let ctxX = $state(0);
-  let ctxY = $state(0);
-
-  function openDetail(t: Task) {
-    detailTask = t;
-    detailOpen = true;
-    // Publish to the workspace context bus so an AI pane in the
-    // adjacent slot can surface this task as context. Best-effort
-    // — if the user isn't running TasksPane inside the workspace
-    // shell, nothing reads the bus and the publish is a no-op.
-    workspaceContext.publish({
-      paneKind: 'tasks',
-      itemId: t.id,
-      label: t.text,
-      excerpt: t.notePath
-    });
-  }
-  function openContext(t: Task, x: number, y: number) {
-    ctxTask = t;
-    ctxX = x;
-    ctxY = y;
-  }
 
   // Deep-link `?focus=<task-id>` opens the detail drawer for that
   // task on load. The dashboard's TodayStream widget links here so
@@ -794,19 +772,22 @@
   </div>
 </div>
 
-<TaskDetail bind:open={detailOpen} task={detailTask} onChanged={async () => {
+<TaskDetail bind:open={detCtl.detailOpen} task={detCtl.detailTask} onChanged={async () => {
   await load();
   // Refresh the in-drawer task copy from the freshly-loaded list so subsequent
   // edits see latest state.
-  if (detailTask) detailTask = dataCtl.tasks.find((t) => t.id === detailTask!.id) ?? detailTask;
+  if (detCtl.detailTask) {
+    const id = detCtl.detailTask.id;
+    detCtl.detailTask = dataCtl.tasks.find((t) => t.id === id) ?? detCtl.detailTask;
+  }
 }} />
 
-{#if ctxTask}
+{#if detCtl.ctxTask}
   <TaskContextMenu
-    task={ctxTask}
-    x={ctxX}
-    y={ctxY}
-    onClose={() => (ctxTask = null)}
+    task={detCtl.ctxTask}
+    x={detCtl.ctxX}
+    y={detCtl.ctxY}
+    onClose={detCtl.closeContext}
     onChanged={load}
     onOpenDetail={openDetail}
   />
