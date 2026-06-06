@@ -54,6 +54,7 @@
   import { createTasksSelection } from '$lib/tasks/tasksSelection.svelte';
   import { createTasksDetail } from '$lib/tasks/tasksDetail.svelte';
   import { createTasksLoader } from '$lib/tasks/tasksLoader.svelte';
+  import { installTasksFocusDeepLink } from '$lib/tasks/tasksFocusDeepLink.svelte';
 
   // Loaded data (dataCtl.tasks/dataCtl.projects/dataCtl.goals/dataCtl.deadlines), dataCtl.loading flag,
   // dataCtl.parentMap/dataCtl.childCount/dataCtl.allTags/dataCtl.countOpen/dataCtl.countDone/dataCtl.stats, plus
@@ -212,22 +213,12 @@
   // auto-dismiss timer. The parent decides `applicable` (list view
   // with at least one card visible) at the render site.
 
-  // Deep-link `?focus=<task-id>` opens the detail drawer for that
-  // task on load. The dashboard's TodayStream widget links here so
-  // a click on a scheduled / due task lands directly on its detail
-  // instead of the user having to scroll-and-find. Only fires once
-  // per change in the URL+task-list pairing — without that guard a
-  // re-rendered dataCtl.tasks list would re-open the drawer every load.
-  let lastFocusedFromUrl = $state<string | null>(null);
-  $effect(() => {
-    const focusId = $page.url.searchParams.get('focus');
-    if (!focusId || dataCtl.tasks.length === 0) return;
-    if (focusId === lastFocusedFromUrl) return;
-    const t = dataCtl.tasks.find((x) => x.id === focusId);
-    if (t) {
-      openDetail(t);
-      lastFocusedFromUrl = focusId;
-    }
+  // Deep-link `?focus=<task-id>` opens the detail drawer. The
+  // single-fire-per-change guard lives inside the installer.
+  installTasksFocusDeepLink({
+    getFocusId: () => $page.url.searchParams.get('focus'),
+    getTasks: () => dataCtl.tasks,
+    openDetail
   });
 
   // view + groupBy persistence handled inside viewCtl.
