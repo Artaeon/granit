@@ -9,7 +9,6 @@
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
   import { openAIOverlay, aiOverlayPinned } from '$lib/stores/ai-overlay';
-  import { rafThrottle } from '$lib/util/streamThrottle';
   import { isoWeekString, startOfIsoWeek } from '$lib/util/isoWeek';
   import { fmtDateISO as ymd } from '$lib/util/date';
   import { focusOnMount } from '$lib/util/focusOnMount';
@@ -22,6 +21,7 @@
     createProjectAIHealth,
     type HealthMomentum
   } from './projectAIHealth.svelte';
+  import { createProjectAIBrief } from './projectAIBrief.svelte';
 
   let { project, onClose, onUpdated, onDeleted, onOpenDashboard }: {
     project: Project;
@@ -484,102 +484,19 @@
   // draft sits in a review pane above the description editor — the
   // user accepts (saves to description) or dismisses; it never
   // silently overwrites.
-  let aiBrief = $state('');
-  let aiBriefBusy = $state(false);
-  let aiBriefError = $state('');
-  let aiBriefAbort: AbortController | null = null;
-  let aiBriefSaving = $state(false);
-
-  async function runAIBrief() {
-    if (aiBriefBusy) return;
-    aiBriefBusy = true;
-    aiBriefError = '';
-    aiBrief = '';
-    aiBriefAbort = new AbortController();
-    // rAF throttle so the live brief render isn't repainted per token.
-    const briefT = rafThrottle((full) => { aiBrief = full; });
-
-    const ctx = [
-      `Project name: ${project.name}`,
-      project.kind ? `Kind: ${project.kind}` : '',
-      project.venture ? `Venture: ${project.venture}` : '',
-      project.tags && project.tags.length > 0 ? `Tags: ${project.tags.join(', ')}` : '',
-      project.next_action ? `Stated next action: ${project.next_action}` : '',
-      openTasks.length > 0
-        ? `Open tasks (suggest scope):\n${openTasks
-            .slice(0, 15)
-            .map((t) => `- ${t.text}`)
-            .join('\n')}`
-        : '',
-      doneTasks.length > 0
-        ? `Already shipped:\n${[...doneTasks]
-            .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
-            .slice(0, 8)
-            .map((t) => `- ${t.text}`)
-            .join('\n')}`
-        : '',
-      linkedGoals.length > 0
-        ? `Linked goals:\n${linkedGoals.map((g) => `- ${g.title}`).join('\n')}`
-        : ''
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-
-    // Tight system prompt: one paragraph, three things in order,
-    // no bullets, no preamble, no invented stakeholders. The "tasks
-    // are the truth, not the name" line steers the model away from
-    // making up scope from a fancy project name.
-    const system =
-      'You write tight project briefs the user can paste into a description field. ' +
-      'Output ONE paragraph, 2-4 sentences, plain prose. No headings, no bullets, no preamble like "This project is about" or "The goal of". ' +
-      'Cover three things in this order: (1) what this project IS in concrete terms, (2) what "done" looks like, (3) who or what depends on it (or "nothing yet" if unclear). ' +
-      'Infer from the task list — the tasks are the truth, not the name. ' +
-      'Do not invent stakeholders, deadlines, or technologies that are not in the context. ' +
-      'No corporate sludge: no "synergy", "leverage", "robust", "best-in-class", "stakeholders aligning", "drive value". ' +
-      'Under 70 words.';
-    const user = `Write a brief for this project.\n\n${ctx}`;
-
-    try {
-      await api.chatStream(
-        [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ],
-        undefined,
-        {
-          onChunk: briefT.onChunk,
-          onDone: () => { briefT.flush(); },
-          onError: (err) => { briefT.flush(); aiBriefError = err.message; }
-        },
-        aiBriefAbort.signal
-      );
-    } finally {
-      aiBriefBusy = false;
-      aiBriefAbort = null;
-    }
-  }
-  function cancelAIBrief() {
-    aiBriefAbort?.abort();
-  }
-  async function applyAIBrief() {
-    const text = aiBrief.trim();
-    if (!text) return;
-    aiBriefSaving = true;
-    try {
-      const ok = await patch({ description: text });
-      if (ok) {
-        aiBrief = '';
-        aiBriefError = '';
-      }
-    } finally {
-      aiBriefSaving = false;
-    }
-  }
-  function dismissAIBrief() {
-    aiBriefAbort?.abort();
-    aiBrief = '';
-    aiBriefError = '';
-  }
+  // AI "project brief" controller. See projectAIBrief.svelte for the
+  // prompt + the why on no-bullets-no-preamble-no-corporate-sludge.
+  const aiBriefCtl = createProjectAIBrief({
+    getProject: () => project,
+    getOpenTasks: () => openTasks,
+    getDoneTasks: () => doneTasks,
+    getLinkedGoals: () => linkedGoals,
+    applyDescription: (text) => patch({ description: text })
+  });
+  const runAIBrief = aiBriefCtl.run;
+  const cancelAIBrief = aiBriefCtl.cancel;
+  const applyAIBrief = aiBriefCtl.apply;
+  const dismissAIBrief = aiBriefCtl.dismiss;
 </script>
 
 <div class="h-full flex flex-col overflow-hidden">
@@ -902,25 +819,25 @@
                there's enough signal to ground a brief in (a task
                or a linked goal). With nothing to read, the model
                would just paraphrase the project name. -->
-          {#if !project.description && !aiBrief && !aiBriefBusy && (projectTasks.length > 0 || linkedGoals.length > 0)}
+          {#if !project.description && !aiBriefCtl.aiBrief && !aiBriefCtl.aiBriefBusy && (projectTasks.length > 0 || linkedGoals.length > 0)}
             <button
               onclick={() => void runAIBrief()}
               class="text-[11px] px-2 py-0.5 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary"
               title="Ask the AI to draft a one-paragraph brief from the project's tasks + goals"
             >✨ draft brief</button>
-          {:else if aiBriefBusy}
+          {:else if aiBriefCtl.aiBriefBusy}
             <button onclick={cancelAIBrief} class="text-[11px] text-warning hover:underline">cancel</button>
           {/if}
         </div>
 
-        {#if aiBriefError}
+        {#if aiBriefCtl.aiBriefError}
           <div class="text-xs text-error border border-error bg-surface0 rounded px-3 py-2 mb-2">
-            {aiBriefError}
+            {aiBriefCtl.aiBriefError}
             <button onclick={dismissAIBrief} class="ml-2 underline">dismiss</button>
           </div>
         {/if}
 
-        {#if aiBrief || aiBriefBusy}
+        {#if aiBriefCtl.aiBrief || aiBriefCtl.aiBriefBusy}
           <!-- Draft brief in review state. The user has to accept
                (saves to description) or dismiss — never silently
                overwrites the field. The "grounded in N tasks + M
@@ -932,23 +849,23 @@
               <span class="text-dim font-mono">grounded in {projectTasks.length} task{projectTasks.length === 1 ? '' : 's'}{linkedGoals.length > 0 ? ` + ${linkedGoals.length} goal${linkedGoals.length === 1 ? '' : 's'}` : ''}</span>
             </div>
             <div class="px-3 py-2 text-sm text-text whitespace-pre-wrap break-words min-h-[2rem]">
-              {aiBrief || '…'}
+              {aiBriefCtl.aiBrief || '…'}
             </div>
-            {#if !aiBriefBusy && aiBrief}
+            {#if !aiBriefCtl.aiBriefBusy && aiBriefCtl.aiBrief}
               <div class="px-3 py-2 border-t border-surface2 flex items-center gap-2">
                 <button
                   onclick={() => void applyAIBrief()}
-                  disabled={aiBriefSaving}
+                  disabled={aiBriefCtl.aiBriefSaving}
                   class="text-[11px] px-2 py-0.5 rounded bg-primary text-on-primary hover:opacity-90 disabled:opacity-50"
-                >{aiBriefSaving ? 'saving…' : 'save as description'}</button>
+                >{aiBriefCtl.aiBriefSaving ? 'saving…' : 'save as description'}</button>
                 <button
                   onclick={() => void runAIBrief()}
-                  disabled={aiBriefSaving}
+                  disabled={aiBriefCtl.aiBriefSaving}
                   class="text-[11px] px-2 py-0.5 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary"
                 >regenerate</button>
                 <button
                   onclick={dismissAIBrief}
-                  disabled={aiBriefSaving}
+                  disabled={aiBriefCtl.aiBriefSaving}
                   class="text-[11px] text-dim hover:text-error ml-auto"
                 >dismiss</button>
               </div>
