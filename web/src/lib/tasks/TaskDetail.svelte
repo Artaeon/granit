@@ -15,6 +15,7 @@
     buildAskAIPrompt
   } from './taskDetailHelpers';
   import { createTaskDetailLinks } from './taskDetailLinks.svelte';
+  import { createTaskDetailSubtasks } from './taskDetailSubtasks.svelte';
 
   // TaskDetail is the side-drawer that pops open when the user clicks
   // a task card. Editable fields not already inline-editable on the card:
@@ -226,100 +227,16 @@
     }
   }
 
-  // ── Manual subtask add ────────────────────────────────────────────
-  // Companion to the AI Decompose flow — sometimes the user just
-  // wants to type one specific subtask. Enter commits, Esc clears.
-  // Mirrors acceptSubtask's parentLine wiring so the new task lands
-  // as an indented child, not a flat sibling.
-  let manualSubtaskBuf = $state('');
-  let manualSubtaskBusy = $state(false);
-  async function addManualSubtask() {
-    if (!task) return;
-    const text = manualSubtaskBuf.trim();
-    if (!text || manualSubtaskBusy) return;
-    manualSubtaskBusy = true;
-    try {
-      const created = await api.createTask({
-        notePath: task.notePath,
-        text,
-        goalId: task.goalId,
-        deadlineId: task.deadlineId,
-        parentLine: task.lineNum
-      });
-      if (task.projectId && created?.id) {
-        try {
-          await api.patchTask(created.id, { projectId: task.projectId });
-        } catch {}
-      }
-      manualSubtaskBuf = '';
-      await onChanged?.();
-      await loadSubtasks();
-      toast.success('Subtask added');
-    } catch (e) {
-      toast.error('Add failed: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      manualSubtaskBusy = false;
-    }
-  }
-
-  // ── Existing subtasks list ────────────────────────────────────────
-  // Fetched whenever the drawer opens for a task — pulls all tasks
-  // in the same notePath, filters to those whose parentLine matches
-  // OUR lineNum. The list is small (single note's worth) so we just
-  // do a fresh fetch on open rather than wiring an upstream prop.
-  // Refreshed after any add / toggle so the user sees the result.
-  //
-  // subtasksGen is a generation counter — every loadSubtasks call
-  // bumps it, and the in-flight response only commits if its
-  // captured generation still matches. Without this, closing or
-  // re-targeting the drawer mid-fetch lets a stale response land
-  // and overwrite the new task's subtask list (or call onChanged on
-  // an unmounted drawer).
-  let subtasks = $state<Task[]>([]);
-  let subtasksLoaded = $state(false);
-  let subtasksGen = 0;
-  async function loadSubtasks() {
-    const gen = ++subtasksGen;
-    if (!task) {
-      subtasks = [];
-      subtasksLoaded = true;
-      return;
-    }
-    const pinnedTask = task;
-    try {
-      const r = await api.listTasks({ note: pinnedTask.notePath });
-      if (gen !== subtasksGen) return; // superseded — drop the response
-      // Match by parentLine — that's what the parser computes for
-      // every indented task it parses. Also exclude the parent itself.
-      subtasks = r.tasks
-        .filter((t) => t.id !== pinnedTask.id && t.parentLine === pinnedTask.lineNum)
-        .sort((a, b) => a.lineNum - b.lineNum);
-      subtasksLoaded = true;
-    } catch {
-      if (gen !== subtasksGen) return;
-      subtasks = [];
-      subtasksLoaded = true;
-    }
-  }
-  async function toggleSubtaskDone(s: Task) {
-    try {
-      await api.patchTask(s.id, { done: !s.done });
-      await onChanged?.();
-      await loadSubtasks();
-    } catch (e) {
-      toast.error('Save failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-  async function deleteSubtask(s: Task) {
-    if (!confirm(`Delete subtask "${cleanTaskText(s.text)}"?`)) return;
-    try {
-      await api.deleteTask(s.id);
-      await onChanged?.();
-      await loadSubtasks();
-    } catch (e) {
-      toast.error('Delete failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
+  // Subtask list + manual add + toggle / delete behaviour, plus the
+  // generation-guarded reload that protects against drawer re-target
+  // races. See taskDetailSubtasks.svelte.ts.
+  const subtasksCtl = createTaskDetailSubtasks({
+    getTask: () => task,
+    onChanged: () => onChanged?.()
+  });
+  const subtasks = $derived(subtasksCtl.subtasks);
+  const subtasksLoaded = $derived(subtasksCtl.loaded);
+  async function loadSubtasks() { await subtasksCtl.load(); }
 
   // ── Archive (soft-delete) ─────────────────────────────────────────
   // Markdown line stays intact; sidecar Archived flag flips. List
@@ -380,11 +297,9 @@
     aiDecompError = '';
     aiDecompSubtasks = [];
     aiDecompBusy = false;
-    manualSubtaskBuf = '';
-    subtasks = [];
-    subtasksLoaded = false;
+    subtasksCtl.reset();
     void links.load();
-    void loadSubtasks();
+    void subtasksCtl.load();
   });
 
   async function patch(patch: Parameters<typeof api.patchTask>[1]) {
@@ -651,7 +566,7 @@
                 <li class="flex items-center gap-2 text-xs group hover:bg-surface0 rounded px-1 py-0.5 -mx-1">
                   <button
                     type="button"
-                    onclick={() => void toggleSubtaskDone(s)}
+                    onclick={() => void subtasksCtl.toggleDone(s)}
                     class="w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0
                       {s.done ? 'bg-success border-success' : 'border-surface2 hover:border-primary'}"
                     aria-label={s.done ? 'mark not done' : 'mark done'}
@@ -668,7 +583,7 @@
                   {/if}
                   <button
                     type="button"
-                    onclick={() => void deleteSubtask(s)}
+                    onclick={() => void subtasksCtl.remove(s)}
                     class="text-dim hover:text-error text-base leading-none flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                     aria-label="delete subtask"
                     title="delete subtask"
@@ -680,20 +595,20 @@
           <div class="flex items-center gap-1.5">
             <input
               type="text"
-              bind:value={manualSubtaskBuf}
+              bind:value={subtasksCtl.manualBuf}
               onkeydown={(e) => {
-                if (e.key === 'Enter') { e.preventDefault(); void addManualSubtask(); }
-                else if (e.key === 'Escape') { manualSubtaskBuf = ''; }
+                if (e.key === 'Enter') { e.preventDefault(); void subtasksCtl.addManual(); }
+                else if (e.key === 'Escape') { subtasksCtl.manualBuf = ''; }
               }}
-              disabled={manualSubtaskBusy}
+              disabled={subtasksCtl.manualBusy}
               placeholder="Add subtask (Enter)"
               autocomplete="off"
               class="flex-1 min-w-0 px-2 py-1 bg-surface0 border border-surface1 rounded text-xs text-text focus:outline-none focus:border-primary disabled:opacity-50"
             />
             <button
               type="button"
-              onclick={() => void addManualSubtask()}
-              disabled={!manualSubtaskBuf.trim() || manualSubtaskBusy}
+              onclick={() => void subtasksCtl.addManual()}
+              disabled={!subtasksCtl.manualBuf.trim() || subtasksCtl.manualBusy}
               class="px-2 py-1 text-xs bg-primary text-on-primary rounded font-medium hover:opacity-90 disabled:opacity-50 flex-shrink-0"
               title="Add subtask (Enter)"
             >+</button>
