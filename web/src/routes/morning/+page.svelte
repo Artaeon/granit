@@ -21,7 +21,8 @@
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
   import { api, todayISO, type Task, type HabitInfo, type Goal, type Deadline, type PrayerIntention, type CalendarEvent } from '$lib/api';
-  import { scriptures, scriptureOfTheDay } from '$lib/morning/scriptures';
+  import { scriptures } from '$lib/morning/scriptures';
+  import { createMorningScripture } from '$lib/morning/morningScripture.svelte';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -40,10 +41,7 @@
   let activeIntentions = $state<PrayerIntention[]>([]);
 
   // ─── Form state ───────────────────────────────────────────────────
-  let scripture = $state(scriptureOfTheDay());
-  let customScripture = $state('');
-  let customSource = $state('');
-  let scripturePickerOpen = $state(false);
+  const scriptureCtl = createMorningScripture();
 
   let winSentence = $state('');
   let goal = $state('');
@@ -103,9 +101,9 @@
   }
   function persist() {
     const s: Snapshot = {
-      scriptureSource: scripture.source,
-      customScripture,
-      customSource,
+      scriptureSource: scriptureCtl.scripture.source,
+      customScripture: scriptureCtl.customScripture,
+      customSource: scriptureCtl.customSource,
       winSentence,
       goal,
       linkedGoalId,
@@ -120,12 +118,11 @@
   function restore() {
     const s = loadStored<Snapshot | null>(STORAGE_KEY, null);
     if (!s) return false;
-    if (s.scriptureSource) {
-      const m = scriptures.find((x) => x.source === s.scriptureSource);
-      if (m) scripture = m;
-    }
-    customScripture = s.customScripture ?? '';
-    customSource = s.customSource ?? '';
+    scriptureCtl.restore({
+      scriptureSource: s.scriptureSource,
+      customScripture: s.customScripture,
+      customSource: s.customSource
+    });
     winSentence = s.winSentence ?? '';
     goal = s.goal ?? '';
     linkedGoalId = s.linkedGoalId ?? '';
@@ -138,7 +135,7 @@
   }
   function clearPersisted() { saveStored<Snapshot>(STORAGE_KEY, undefined); }
   $effect(() => {
-    void scripture; void customScripture; void customSource;
+    void scriptureCtl.scripture; void scriptureCtl.customScripture; void scriptureCtl.customSource;
     void winSentence; void goal; void linkedGoalId;
     void pickedTasks; void pickedHabits; void pickedIntentions;
     void thoughts; void newHabit;
@@ -217,10 +214,7 @@
   });
 
   // ─── Derived ──────────────────────────────────────────────────────
-  const activeScripture = $derived.by(() => {
-    if (customScripture.trim()) return { text: customScripture.trim(), source: customSource.trim() };
-    return scripture;
-  });
+  const activeScripture = $derived(scriptureCtl.active);
   const greeting = $derived.by(() => {
     const h = new Date().getHours();
     if (h < 5) return 'Late night';
@@ -568,14 +562,14 @@
         </blockquote>
         <button
           type="button"
-          onclick={() => (scripturePickerOpen = !scripturePickerOpen)}
+          onclick={() => (scriptureCtl.pickerOpen = !scriptureCtl.pickerOpen)}
           class="text-[11px] text-dim hover:text-text mt-1"
         >
-          {scripturePickerOpen ? 'hide picker' : 'change verse'}
+          {scriptureCtl.pickerOpen ? 'hide picker' : 'change verse'}
         </button>
       {/if}
 
-      {#if scripturePickerOpen}
+      {#if scriptureCtl.pickerOpen}
         <div class="mt-3 p-3 bg-mantle border border-surface1 rounded space-y-3">
           <div>
             <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5">From rotation</div>
@@ -583,19 +577,19 @@
               {#each scriptures as s}
                 <button
                   type="button"
-                  onclick={() => { scripture = s; customScripture = ''; customSource = ''; }}
+                  onclick={() => scriptureCtl.pick(s)}
                   class="text-xs px-2.5 py-1.5 rounded border
                     sm:text-[11px] sm:px-2 sm:py-0.5
-                    {scripture === s && !customScripture ? 'border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary'}"
+                    {scriptureCtl.scripture === s && !scriptureCtl.customScripture ? 'border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary'}"
                 >{s.source}</button>
               {/each}
             </div>
           </div>
           <div>
             <div class="text-[10px] uppercase tracking-wider text-dim mb-1.5">Or paste your own</div>
-            <input bind:value={customScripture} placeholder="quote / verse text"
+            <input bind:value={scriptureCtl.customScripture} placeholder="quote / verse text"
               class="w-full px-2 py-1.5 mb-1.5 bg-surface0 border border-surface1 rounded text-sm" />
-            <input bind:value={customSource} placeholder="source"
+            <input bind:value={scriptureCtl.customSource} placeholder="source"
               class="w-full px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm" />
           </div>
         </div>
