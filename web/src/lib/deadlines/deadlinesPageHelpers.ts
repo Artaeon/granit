@@ -8,8 +8,66 @@
 //
 // daysUntil already lives in ./util — we don't duplicate it here.
 
-import type { Deadline } from '$lib/api';
+import type { Deadline, DeadlineImportance } from '$lib/api';
 import { daysUntil } from './util';
+
+export interface DeadlineStats {
+  overdue: number;
+  thisWeek: number;
+  thisMonth: number;
+  later: number;
+  met: number;
+}
+
+const importanceRank: Record<DeadlineImportance, number> = {
+  critical: 0,
+  high: 1,
+  normal: 2
+};
+
+/** One-line "shape of your deadlines" summary. Computed from the
+ *  SCOPED list — caller passes the URL-scoped subset, not the chip-
+ *  filtered one, so the strip stays a global glance not a filtered
+ *  view. Cancelled rows skipped entirely; met counted under met. */
+export function deadlineStats(scoped: Deadline[]): DeadlineStats {
+  let overdue = 0,
+    thisWeek = 0,
+    thisMonth = 0,
+    later = 0,
+    met = 0;
+  for (const d of scoped) {
+    if (d.status === 'cancelled') continue;
+    if (d.status === 'met') {
+      met++;
+      continue;
+    }
+    const days = daysUntil(d.date);
+    if (days < 0) overdue++;
+    else if (days <= 7) thisWeek++;
+    else if (days <= 31) thisMonth++;
+    else later++;
+  }
+  return { overdue, thisWeek, thisMonth, later, met };
+}
+
+/** Top-3 most-urgent active rows for the "Coming up" hero strip.
+ *  critical → high → normal, then earliest date. */
+export function comingUpRows(scoped: Deadline[]): Deadline[] {
+  const active = scoped.filter((d) => d.status !== 'met' && d.status !== 'cancelled');
+  return [...active]
+    .sort((a, b) => {
+      const ra = importanceRank[a.importance] ?? 2;
+      const rb = importanceRank[b.importance] ?? 2;
+      if (ra !== rb) return ra - rb;
+      return a.date.localeCompare(b.date);
+    })
+    .slice(0, 3);
+}
+
+/** Timeline view rows — all filtered deadlines, sorted earliest-first. */
+export function timelineRowsOf(filtered: Deadline[]): Deadline[] {
+  return [...filtered].sort((a, b) => a.date.localeCompare(b.date));
+}
 
 /** Today as YYYY-MM-DD in the user's local timezone — matches
  *  daysUntil's local-midnight semantics so "today" labels line up. */

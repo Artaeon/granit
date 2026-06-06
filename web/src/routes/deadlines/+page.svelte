@@ -23,7 +23,6 @@
   import DeadlinesTimeline from '$lib/deadlines/DeadlinesTimeline.svelte';
   import DeadlinesCalendar from '$lib/deadlines/DeadlinesCalendar.svelte';
   import DeadlineDrawer from '$lib/deadlines/DeadlineDrawer.svelte';
-  import { daysUntil } from '$lib/deadlines/util';
   import {
     todayISO,
     isValidDate,
@@ -31,7 +30,10 @@
     countdown,
     projectHref,
     goalHref,
-    ventureHref
+    ventureHref,
+    deadlineStats,
+    comingUpRows,
+    timelineRowsOf
   } from '$lib/deadlines/deadlinesPageHelpers';
   import {
     monthBucket,
@@ -167,25 +169,11 @@
     return bucketToneOf(b, groupBy);
   }
 
-  // ----- Stat strip -----
-  // One-line "shape of your deadlines" summary, computed from the
-  // SCOPED list (so deep-links from a project show project-only
-  // counts) but BEFORE the importance filter — the strip is a global
-  // glance, not a filtered view. Reads from `grouped` would be
-  // wrong: that's already filtered. Recompute from `scoped` directly.
-  let stats = $derived.by(() => {
-    let overdue = 0, thisWeek = 0, thisMonth = 0, later = 0, met = 0;
-    for (const d of scoped) {
-      if (d.status === 'cancelled') continue;
-      if (d.status === 'met') { met++; continue; }
-      const days = daysUntil(d.date);
-      if (days < 0) overdue++;
-      else if (days <= 7) thisWeek++;
-      else if (days <= 31) thisMonth++;
-      else later++;
-    }
-    return { overdue, thisWeek, thisMonth, later, met };
-  });
+  // Stat strip — one-line "shape of your deadlines" summary,
+  // computed from the SCOPED list (so deep-links from a project show
+  // project-only counts) but BEFORE the importance filter. Pure
+  // helper, see $lib/deadlines/deadlinesPageHelpers.deadlineStats.
+  let stats = $derived(deadlineStats(scoped));
 
   // ----- Drawer / form -----
 
@@ -341,33 +329,14 @@
     return g?.title ?? '(unknown)';
   }
 
-  // ----- "Coming up" hero strip -----
-  // Three most-urgent active rows (critical→high→normal, then
-  // earliest date). Replaces the single hero card on first paint
-  // because the user often has multiple critical things stacked and
-  // showing only one hides the next-on-deck. Falls back to whatever's
-  // available when fewer than three are upcoming.
-  let comingUp = $derived.by(() => {
-    const active = scoped.filter((d) => d.status !== 'met' && d.status !== 'cancelled');
-    const importanceRank: Record<DeadlineImportance, number> = { critical: 0, high: 1, normal: 2 };
-    return [...active]
-      .sort((a, b) => {
-        const ra = importanceRank[a.importance] ?? 2;
-        const rb = importanceRank[b.importance] ?? 2;
-        if (ra !== rb) return ra - rb;
-        return a.date.localeCompare(b.date);
-      })
-      .slice(0, 3);
-  });
+  // "Coming up" hero strip — top-3 most-urgent active rows
+  // (critical → high → normal, then earliest date). Pure helper, see
+  // $lib/deadlines/deadlinesPageHelpers.comingUpRows.
+  let comingUp = $derived(comingUpRows(scoped));
 
-  // ----- Timeline view -----
-  // Vertical rail of all (filtered) deadlines, sorted earliest-first,
-  // visually grouped by month. Row position on the rail communicates
-  // urgency; gap height between rows is proportional to days-between
-  // (clamped) so distant deadlines visibly drift apart from clustered ones.
-  let timelineRows = $derived.by(() => {
-    return [...filtered].sort((a, b) => a.date.localeCompare(b.date));
-  });
+  // Timeline view — all (filtered) deadlines, sorted earliest-first.
+  // Pure helper, see $lib/deadlines/deadlinesPageHelpers.timelineRowsOf.
+  let timelineRows = $derived(timelineRowsOf(filtered));
 
   // ----- Keyboard shortcuts -----
   //
