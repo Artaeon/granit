@@ -15,11 +15,11 @@
   } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { fuzzyScoreMulti } from '$lib/util/fuzzy';
-  import { loadStored, saveStored } from '$lib/util/storage';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { workspaceCommands } from '$lib/workspace/workspaceCommands';
   import NavIcon from './NavIcon.svelte';
   import type { Group, CmdItem, AgentCmd } from './commandPalette/paletteTypes';
+  import { createPaletteRecents } from './commandPalette/paletteRecents.svelte';
 
   // ── Surface name & history ──────────────────────────────────────────
   // Originally a notes-only quick switcher. As of this iteration the
@@ -142,19 +142,11 @@
   }
 
   // ── Recents persistence ────────────────────────────────────────────
-  // Stored as an ID-array ordered most-recent-first. We cap aggressively
-  // (24 entries) so localStorage stays small and ranking stays meaningful
-  // — a recent that hasn't been used in months doesn't deserve to crowd
-  // out the freshly-touched ones.
-  const RECENT_KEY = 'granit.quickswitcher.recent';
-  const RECENT_CAP = 24;
-  let recents = $state<string[]>(loadStored<string[]>(RECENT_KEY, []));
-
-  function bumpRecent(id: string) {
-    const next = [id, ...recents.filter((r) => r !== id)].slice(0, RECENT_CAP);
-    recents = next;
-    saveStored(RECENT_KEY, next);
-  }
+  // Controller-owned — see paletteRecents.svelte for the cap, decay
+  // curve, and persistence shape. The items derivation reads
+  // recents.recencyBoost(id) per row; invoke() calls recents.bump(id)
+  // before navigating so a same-tab redirect can't lose the write.
+  const recents = createPaletteRecents();
 
   // ── Page index ─────────────────────────────────────────────────────
   // Every top-level destination in the app. The set mirrors what the
@@ -496,7 +488,7 @@
     // Bump recent BEFORE running the action so a same-tab navigation
     // doesn't race us to localStorage. Content hits aren't tracked —
     // they're query-driven, not destinations the user will repeat.
-    if (item.group !== 'Content') bumpRecent(item.id);
+    if (item.group !== 'Content') recents.bump(item.id);
     close();
     void item.run();
   }
@@ -505,23 +497,10 @@
   // Each section produces CmdItems independently, then merges into a
   // single list. Sorting is: group-rank (Content > Pages > Projects >
   // Goals > Notes > Agents) for empty/short queries, fuzzy-score within
-  // a group. Recents get a +250 bump within their section so the user's
-  // last-touched project floats above one they haven't opened in a year.
-  //
-  // The recency bonus is additive (not a hard floor) so an exact-match
-  // on a fresh item still beats a stale recent — the muscle memory of
-  // "I just typed three letters and got the right thing" is preserved
-  // even when the recents list is large.
-
-  const RECENT_BUMP = 250;
-
-  function recencyBoost(id: string): number {
-    const idx = recents.indexOf(id);
-    if (idx < 0) return 0;
-    // Linear decay over the recents cap so the most-recent gets the
-    // full bump and the oldest in the list gets ~10% of it.
-    return RECENT_BUMP * (1 - (idx / RECENT_CAP) * 0.9);
-  }
+  // a group. Recents get an additive bump within their section (see
+  // recents.recencyBoost) so the user's last-touched project floats
+  // above one they haven't opened in a year — but exact-matches on
+  // fresh items still beat stale recents.
 
   let items = $derived.by((): CmdItem[] => {
     const needle = q.trim();
@@ -542,7 +521,7 @@
       });
       // Stash the score on the item via a parallel map below — we
       // need it for sort but don't want it on the public shape.
-      scoreMap.set(id, sc + recencyBoost(id));
+      scoreMap.set(id, sc + recents.recencyBoost(id));
     }
 
     // Workspace commands — split / close / swap focused pane. Each
@@ -560,7 +539,7 @@
         group: 'Workspace',
         run: wc.run
       });
-      scoreMap.set(wc.id, sc + recencyBoost(wc.id));
+      scoreMap.set(wc.id, sc + recents.recencyBoost(wc.id));
     }
 
     // Projects
@@ -576,7 +555,7 @@
         group: 'Projects',
         run: () => goto('/projects/' + encodeURIComponent(pr.name))
       });
-      scoreMap.set(id, sc + recencyBoost(id));
+      scoreMap.set(id, sc + recents.recencyBoost(id));
     }
 
     // Goals
@@ -592,7 +571,7 @@
         group: 'Goals',
         run: () => goto('/goals?focus=' + encodeURIComponent(g.id))
       });
-      scoreMap.set(id, sc + recencyBoost(id));
+      scoreMap.set(id, sc + recents.recencyBoost(id));
     }
 
     // Notes (cap 30 from listNotes — already mod-time-desc on the
@@ -613,7 +592,7 @@
       // Empty-needle: rank by mod-time (server-order). Push the
       // recency-bump on top so a freshly-touched note still leads.
       const empty = !needle;
-      scoreMap.set(id, (empty ? 100 - i : sc) + recencyBoost(id));
+      scoreMap.set(id, (empty ? 100 - i : sc) + recents.recencyBoost(id));
     }
 
     // Tasks — open ones, indexed by text + project. Empty needle:
@@ -640,7 +619,7 @@
         group: 'Tasks',
         run: () => goto('/tasks?focus=' + encodeURIComponent(t.id))
       });
-      scoreMap.set(id, sc + recencyBoost(id));
+      scoreMap.set(id, sc + recents.recencyBoost(id));
     }
 
     // Calendar events — next 14 days. Detail line carries the
@@ -667,7 +646,7 @@
         // event from the visible day. Future v2: add date routing.
         run: () => goto('/calendar')
       });
-      scoreMap.set(id, sc + recencyBoost(id));
+      scoreMap.set(id, sc + recents.recencyBoost(id));
     }
 
     // Deadlines — active only (filtered at load time). Date proximity
@@ -691,7 +670,7 @@
         // distinguishing fields (date + importance + project).
         run: () => goto('/deadlines')
       });
-      scoreMap.set(id, sc + recencyBoost(id));
+      scoreMap.set(id, sc + recents.recencyBoost(id));
     }
 
     // Habits — usually a small set (<20). All show on empty needle so
@@ -708,7 +687,7 @@
         group: 'Habits',
         run: () => goto('/habits')
       });
-      scoreMap.set(id, sc + recencyBoost(id));
+      scoreMap.set(id, sc + recents.recencyBoost(id));
     }
 
     // Agent commands
@@ -725,7 +704,7 @@
         hint: a.hint,
         run: a.run
       });
-      scoreMap.set(id, sc + recencyBoost(id));
+      scoreMap.set(id, sc + recents.recencyBoost(id));
     }
 
     // Content (full-text) — query-driven, no recents bump, scored by
