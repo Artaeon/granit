@@ -7,7 +7,6 @@
   import { inlineMd } from '$lib/util/inlineMd';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
   import { focusOnMount } from '$lib/util/focusOnMount';
-  import { loadDraft, clearDraft, makeDraftWriter } from '$lib/util/draftAutosave';
   import {
     createGoalDetailAIMilestones,
     type MilestoneProposal
@@ -18,6 +17,7 @@
   } from './goalDetailAITasks.svelte';
   import { createGoalDetailVerses } from './goalDetailVerses.svelte';
   import { createGoalDetailTasksBurnup } from './goalDetailTasksBurnup.svelte';
+  import { createGoalDetailInlineEdit } from './goalDetailInlineEdit.svelte';
 
   // Detail-and-edit drawer for a single goal. Mirrors ProjectDetail's
   // approach: every field commits via PATCH on blur / explicit toggle so
@@ -43,12 +43,13 @@
   } = $props();
 
   let saving = $state(false);
-  let titleBuf = $state('');
-  let editingTitle = $state(false);
-  let descBuf = $state('');
-  let editingDesc = $state(false);
-  let notesBuf = $state('');
-  let editingNotes = $state(false);
+  // Inline-edit + draft autosave for title / description / notes
+  // live in goalDetailInlineEdit. Notes is the highest loss risk —
+  // long-form journal — so the draft layer matters most there.
+  const editCtl = createGoalDetailInlineEdit({
+    getGoal: () => goal,
+    patch: (p) => patch(p)
+  });
 
   // Milestones — local input buffers for the "add" form and per-row edits.
   let newMilestoneText = $state('');
@@ -91,12 +92,7 @@
     void goal?.id;
     if (goal) loadGoalTasks();
     if (goal && lastGoalId && lastGoalId !== goal.id) {
-      editingTitle = false;
-      editingDesc = false;
-      editingNotes = false;
-      titleDraftWriter.cancel();
-      descDraftWriter.cancel();
-      notesDraftWriter.cancel();
+      editCtl.reset();
     }
     if (goal) lastGoalId = goal.id;
   });
@@ -178,46 +174,10 @@
     }
   }
 
-  // Draft autosave for the three inline-editable fields. Same pattern
-  // as ProjectDetail — buffer-to-localStorage on change, restore on
-  // re-entry to edit, clear on successful commit. Keyed per-goal so
-  // switching goals in the drawer doesn't cross-contaminate. Notes
-  // field is the longest-form of the three and the highest loss risk.
-  const titleDraftWriter = makeDraftWriter(400);
-  const descDraftWriter = makeDraftWriter(400);
-  const notesDraftWriter = makeDraftWriter(400);
-  function titleDraftKey() { return goal ? `goal.title.${goal.id}` : ''; }
-  function descDraftKey() { return goal ? `goal.description.${goal.id}` : ''; }
-  function notesDraftKey() { return goal ? `goal.notes.${goal.id}` : ''; }
-
-  $effect(() => {
-    if (editingTitle && titleDraftKey()) titleDraftWriter.save(titleDraftKey(), titleBuf);
-  });
-  $effect(() => {
-    if (editingDesc && descDraftKey()) descDraftWriter.save(descDraftKey(), descBuf);
-  });
-  $effect(() => {
-    if (editingNotes && notesDraftKey()) notesDraftWriter.save(notesDraftKey(), notesBuf);
-  });
-
-  async function commitTitle() {
-    editingTitle = false;
-    if (goal && titleBuf.trim() && titleBuf !== goal.title) await patch({ title: titleBuf.trim() });
-    clearDraft(titleDraftKey());
-    titleDraftWriter.cancel();
-  }
-  async function commitDesc() {
-    editingDesc = false;
-    if (goal && descBuf !== (goal.description ?? '')) await patch({ description: descBuf });
-    clearDraft(descDraftKey());
-    descDraftWriter.cancel();
-  }
-  async function commitNotes() {
-    editingNotes = false;
-    if (goal && notesBuf !== (goal.notes ?? '')) await patch({ notes: notesBuf });
-    clearDraft(notesDraftKey());
-    notesDraftWriter.cancel();
-  }
+  // commit hooks bound to controller methods.
+  const commitTitle = editCtl.commitTitle;
+  const commitDesc = editCtl.commitDesc;
+  const commitNotes = editCtl.commitNotes;
 
   async function setStatus(s: Goal['status']) { await patch({ status: s }); }
 
@@ -379,21 +339,17 @@
     <div class="flex flex-col h-full">
       <header class="px-3 py-2 border-b border-surface1 flex items-center gap-2 flex-shrink-0">
         <span class="w-3 h-3 rounded-full flex-shrink-0" style="background: {colorVar(goal.color)}"></span>
-        {#if editingTitle}
+        {#if editCtl.editingTitle}
           <input
-            bind:value={titleBuf}
+            bind:value={editCtl.titleBuf}
             onblur={commitTitle}
-            onkeydown={(e) => { if (e.key === 'Enter') commitTitle(); else if (e.key === 'Escape') editingTitle = false; }}
+            onkeydown={(e) => { if (e.key === 'Enter') commitTitle(); else if (e.key === 'Escape') editCtl.editingTitle = false; }}
             use:focusOnMount
             class="text-base font-semibold flex-1 px-1 -mx-1 bg-surface0 border border-primary rounded text-text outline-none"
           />
         {:else}
           <button
-            onclick={() => {
-              const draft = loadDraft<string | null>(titleDraftKey(), null);
-              titleBuf = (draft && draft !== '') ? draft : goal.title;
-              editingTitle = true;
-            }}
+            onclick={editCtl.startEditTitle}
             class="text-base font-semibold text-text flex-1 text-left truncate hover:text-primary"
             title="click to rename"
           >{goal.title}</button>
@@ -535,22 +491,18 @@
         <!-- Description -->
         <section>
           <h3 class="text-xs uppercase tracking-wider text-dim font-medium mb-1.5">Description</h3>
-          {#if editingDesc}
+          {#if editCtl.editingDesc}
             <textarea
-              bind:value={descBuf}
+              bind:value={editCtl.descBuf}
               onblur={commitDesc}
-              onkeydown={(e) => { if (e.key === 'Escape') editingDesc = false; }}
+              onkeydown={(e) => { if (e.key === 'Escape') editCtl.editingDesc = false; }}
               use:focusOnMount
               rows="3"
               class="w-full px-3 py-2 bg-surface0 border border-primary rounded text-sm text-text outline-none"
             ></textarea>
           {:else}
             <button
-              onclick={() => {
-                const draft = loadDraft<string | null>(descDraftKey(), null);
-                descBuf = (draft && draft !== '') ? draft : (goal.description ?? '');
-                editingDesc = true;
-              }}
+              onclick={editCtl.startEditDesc}
               class="w-full text-left px-3 py-2 text-sm rounded hover:bg-surface0 {goal.description ? 'text-text' : 'text-dim italic'}"
             >{#if goal.description}{@html inlineMd(goal.description)}{:else}click to add a description…{/if}</button>
           {/if}
@@ -865,22 +817,18 @@
         <!-- Notes -->
         <section>
           <h3 class="text-xs uppercase tracking-wider text-dim font-medium mb-1.5">Notes</h3>
-          {#if editingNotes}
+          {#if editCtl.editingNotes}
             <textarea
-              bind:value={notesBuf}
+              bind:value={editCtl.notesBuf}
               onblur={commitNotes}
-              onkeydown={(e) => { if (e.key === 'Escape') editingNotes = false; }}
+              onkeydown={(e) => { if (e.key === 'Escape') editCtl.editingNotes = false; }}
               use:focusOnMount
               rows="4"
               class="w-full px-3 py-2 bg-surface0 border border-primary rounded text-sm text-text outline-none"
             ></textarea>
           {:else}
             <button
-              onclick={() => {
-                const draft = loadDraft<string | null>(notesDraftKey(), null);
-                notesBuf = (draft && draft !== '') ? draft : (goal.notes ?? '');
-                editingNotes = true;
-              }}
+              onclick={editCtl.startEditNotes}
               class="w-full text-left px-3 py-2 text-sm rounded hover:bg-surface0 whitespace-pre-wrap {goal.notes ? 'text-text' : 'text-dim italic'}"
             >{goal.notes || 'click to add notes…'}</button>
           {/if}
