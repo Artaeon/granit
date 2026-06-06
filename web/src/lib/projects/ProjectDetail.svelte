@@ -8,7 +8,6 @@
   import TaskRow from '$lib/components/TaskRow.svelte';
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
   import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
-  import { openAIOverlay, aiOverlayPinned } from '$lib/stores/ai-overlay';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { onWsEvent } from '$lib/ws';
   import {
@@ -19,6 +18,7 @@
   import { createProjectDetailData } from './projectDetailData.svelte';
   import { createProjectInlineEdit } from './projectInlineEdit.svelte';
   import { createProjectStats } from './projectStats.svelte';
+  import { askAIAboutProject, openProjectResearch } from './projectAISeed';
 
   let { project, onClose, onUpdated, onDeleted, onOpenDashboard }: {
     project: Project;
@@ -140,69 +140,14 @@
     await patch({ goals });
   }
 
-  // Open the AI overlay pre-seeded with this project's context.
-  // The seed includes name + status + description + open-task count
-  // + linked goals so the model can answer "what's blocking this?",
-  // "what should I work on next?", "draft a status update" without
-  // the user having to re-state the project's basics.
-  function askAIAboutThisProject(): void {
-    const lines = [`I'm working on this project:`, '', `- ${project.name}`];
-    if (project.status) lines.push(`- status: ${project.status}`);
-    if (project.description && project.description.trim() !== '') {
-      lines.push(`- description: ${project.description.trim()}`);
-    }
-    if (project.next_action && project.next_action.trim() !== '') {
-      lines.push(`- next action: ${project.next_action.trim()}`);
-    }
-    const openTasks = projectTasks.filter((t) => !t.done);
-    if (openTasks.length > 0) {
-      lines.push(`- ${openTasks.length} open task${openTasks.length === 1 ? '' : 's'}`);
-    }
-    if (linkedGoals.length > 0) {
-      const titles = linkedGoals.map((g) => g.title).join('; ');
-      lines.push(`- linked goals: ${titles}`);
-    }
-    lines.push('', `What would help me move this forward?`);
-    openAIOverlay({ text: lines.join('\n'), send: false });
+  // AI overlay seeders — composing the project's context into a chat
+  // seed lives in projectAISeed. Bound to one-liner aliases here so
+  // the existing template onclick handlers stay terse.
+  function askAIAboutThisProject() {
+    askAIAboutProject({ project, projectTasks, linkedGoals });
   }
-
-  // Research mode — same context as askAIAboutThisProject but:
-  //   1. Pins the AI overlay as a side rail so it stays visible while
-  //      the user navigates project notes, tasks, deadlines, etc.
-  //   2. Frames the seed as exploration ("explore angles") rather
-  //      than action ("move this forward"). The dialogue tone follows.
-  // No new UI surface — composes the existing AIOverlay + the pin
-  // store. Phase 2 will add an "open project's primary note in
-  // research mode" jump that also navigates the editor.
-  function openResearchMode(): void {
-    const lines = [
-      `I'm in research mode on this project:`,
-      '',
-      `- ${project.name}`
-    ];
-    if (project.status) lines.push(`- status: ${project.status}`);
-    if (project.description && project.description.trim() !== '') {
-      lines.push(`- description: ${project.description.trim()}`);
-    }
-    if (project.category) lines.push(`- category: ${project.category}`);
-    const openTasks = projectTasks.filter((t) => !t.done);
-    if (openTasks.length > 0) {
-      lines.push(`- ${openTasks.length} open task${openTasks.length === 1 ? '' : 's'}`);
-    }
-    if (linkedGoals.length > 0) {
-      const titles = linkedGoals.map((g) => g.title).join('; ');
-      lines.push(`- linked goals: ${titles}`);
-    }
-    lines.push(
-      '',
-      `Help me think about this. What angles haven't I considered? What questions should I be asking? Don't rush to recommendations — explore with me.`
-    );
-    // Pin the overlay so it stays as a side rail while the user
-    // moves through project notes / tasks / deadlines. The note
-    // editor and project view both reserve space for the pinned
-    // rail via the document.documentElement.ai-pinned class.
-    aiOverlayPinned.set(true);
-    openAIOverlay({ text: lines.join('\n'), send: false });
+  function openResearchMode() {
+    openProjectResearch({ project, projectTasks, linkedGoals });
   }
 
   async function deleteProject() {
