@@ -33,6 +33,7 @@
   import TasksCardList from '$lib/tasks/TasksCardList.svelte';
   import TasksQuickAddBar from '$lib/tasks/TasksQuickAddBar.svelte';
   import TasksEmptyStates from '$lib/tasks/TasksEmptyStates.svelte';
+  import TasksPresetsBar from '$lib/tasks/TasksPresetsBar.svelte';
   import { installTasksKeyboard } from '$lib/tasks/useTasksKeyboard';
   import { createTasksUrlSync } from '$lib/tasks/tasksUrlSync';
   import { createTasksGroupAdd } from '$lib/tasks/tasksGroupAdd.svelte';
@@ -748,39 +749,7 @@
            filter state under a name; clicking a preset chip
            re-applies all stored fields. Long-press / right-click to
            delete via the small × on the active chip. -->
-      {#if presetCtl.visiblePresets.length > 0 || true}
-        <div class="px-3 py-1.5 border-b border-surface1 flex items-center gap-1.5 text-xs flex-shrink-0 flex-wrap">
-          <span class="text-dim font-mono uppercase tracking-wider">presets</span>
-          {#if presetCtl.isShowingStarters}
-            <span class="text-[10px] text-dim italic font-mono" title="Built-in starter presets — save your own and these go away">starter</span>
-          {/if}
-          {#each presetCtl.visiblePresets as p (p.name)}
-            {@const active = presetCtl.matches(p)}
-            {@const isStarter = presetCtl.isShowingStarters}
-            <span
-              class="inline-flex items-center rounded overflow-hidden border
-                {active ? 'border-primary bg-surface1 text-primary' : 'border-surface1 bg-surface0 text-subtext hover:border-primary'}"
-            >
-              <button
-                onclick={() => presetCtl.apply(p)}
-                class="px-2 py-0.5"
-              >{p.name}</button>
-              {#if active && !isStarter}
-                <button
-                  onclick={() => presetCtl.remove(p.name)}
-                  title="Remove preset"
-                  class="px-1.5 py-0.5 text-dim hover:text-error border-l border-surface1"
-                >×</button>
-              {/if}
-            </span>
-          {/each}
-          <button
-            onclick={() => presetCtl.capture()}
-            title="Save the current filters as a named preset"
-            class="px-2 py-0.5 text-dim hover:text-primary border border-dashed border-surface1 hover:border-primary rounded"
-          >+ save current</button>
-        </div>
-      {/if}
+      <TasksPresetsBar {presetCtl} />
       <!-- Active-filter chip row. Surfaces every non-default filter
            as an x-removable chip so the user can SEE what's filtering
            the visible list and dismiss any single one in one click —
