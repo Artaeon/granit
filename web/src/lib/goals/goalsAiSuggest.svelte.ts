@@ -62,8 +62,13 @@ export function createGoalsAiSuggest(deps: GoalsAiSuggestDeps): GoalsAiSuggestCo
   let aiError = $state<string>('');
   let aiAbort: AbortController | null = null;
 
+  // Stop — abort + null abort + flip busy synchronously so the
+  // Stop button swaps to Rerun instantly. Without these the UI
+  // lags until chatStream's finally settles.
   function stop() {
     aiAbort?.abort();
+    aiAbort = null;
+    aiBusy = false;
   }
 
   function close() {

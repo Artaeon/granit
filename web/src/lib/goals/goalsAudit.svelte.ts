@@ -86,8 +86,12 @@ export function createGoalsAudit(deps: GoalsAuditDeps): GoalsAuditController {
     return { orphanOpen, orphanDoneRecent, linkedOpen, linkedDone14 };
   });
 
+  // Stop — abort + null abort + flip busy synchronously so the
+  // Stop button swaps to Rerun instantly.
   function stop() {
     auditAbort?.abort();
+    auditAbort = null;
+    auditBusy = false;
   }
 
   function close() {

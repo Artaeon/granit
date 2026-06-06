@@ -77,8 +77,12 @@ export function createGoalsCheckin(deps: GoalsCheckinDeps): GoalsCheckinControll
     })
   );
 
+  // Stop — abort + null abort + flip busy synchronously so the
+  // Stop button swaps to Rerun instantly.
   function stop() {
     checkinAbort?.abort();
+    checkinAbort = null;
+    checkinBusy = false;
   }
 
   function close() {
