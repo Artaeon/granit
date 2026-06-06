@@ -7,11 +7,7 @@
     type Deadline,
     type DeadlineCreate,
     type DeadlineImportance,
-    type DeadlineStatus,
-    type Goal,
-    type Project,
-    type Task,
-    type Venture
+    type DeadlineStatus
   } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -45,6 +41,7 @@
     bucketTone as bucketToneOf,
     buildGrouped
   } from '$lib/deadlines/deadlinesBuckets';
+  import { createDeadlinesData } from '$lib/deadlines/deadlinesData.svelte';
   import { loadStored, saveStored, loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // Deadlines page — top-level "this matters by date X" markers backed
@@ -92,16 +89,24 @@
   $effect(() => saveStoredString(GROUP_KEY, groupBy));
   $effect(() => saveStored(COLLAPSE_KEY, collapsedSections));
 
-  let deadlines = $state<Deadline[]>([]);
-  let goals = $state<Goal[]>([]);
-  let projects = $state<Project[]>([]);
-  let ventures = $state<Venture[]>([]);
-  // Open tasks pool used by the "link to tasks" multi-select. Loaded
-  // lazily on drawer open so the page paints fast even on big vaults.
-  let openTasks = $state<Task[]>([]);
-  let tasksLoaded = $state(false);
-  let loading = $state(false);
-  let busy = $state(false);
+  // Loaded sidecars (deadlines + goals/projects/ventures), the lazy
+  // open-tasks pool, and the loading / busy flags live in the data
+  // controller. Read via dataCtl.X; the $derived aliases below keep
+  // the rest of the script body terse where it works against rows.
+  const dataCtl = createDeadlinesData({ isAuthed: () => !!$auth });
+  let deadlines = $derived(dataCtl.deadlines);
+  let goals = $derived(dataCtl.goals);
+  let projects = $derived(dataCtl.projects);
+  let ventures = $derived(dataCtl.ventures);
+  let openTasks = $derived(dataCtl.openTasks);
+  let tasksLoaded = $derived(dataCtl.tasksLoaded);
+  let loading = $derived(dataCtl.loading);
+  // load() + ensureTasksLoaded() proxy onto the controller. Keeping
+  // the local names lets the rest of the page (onMount, save, quick-
+  // actions, openCreate/openEdit) call them without touching dataCtl
+  // and avoids a ripple-rewrite of every call site.
+  const load = () => dataCtl.load();
+  const ensureTasksLoaded = () => dataCtl.ensureTasksLoaded();
 
   // Active importance filter — null = show all; otherwise filter to
   // the matching importance value. The chip row at the top reads + writes this.
@@ -135,39 +140,6 @@
   let fProject = $state('');
   let fVenture = $state('');
   let fTaskIds = $state<string[]>([]);
-
-  async function load() {
-    if (!$auth) return;
-    loading = true;
-    try {
-      const [dl, gl, pl, vl] = await Promise.all([
-        api.listDeadlines(),
-        api.listGoals().catch(() => ({ goals: [] as Goal[], total: 0 })),
-        api.listProjects().catch(() => ({ projects: [] as Project[], total: 0 })),
-        api.listVentures().catch(() => ({ ventures: [] as Venture[], total: 0 }))
-      ]);
-      deadlines = dl.deadlines;
-      goals = gl.goals;
-      projects = pl.projects;
-      ventures = vl.ventures;
-    } catch (e) {
-      toast.error('load failed: ' + (errorMessage(e)));
-    } finally {
-      loading = false;
-    }
-  }
-
-  async function ensureTasksLoaded() {
-    if (tasksLoaded) return;
-    try {
-      const r = await api.listTasks({ status: 'open' });
-      openTasks = r.tasks;
-    } catch {
-      openTasks = [];
-    } finally {
-      tasksLoaded = true;
-    }
-  }
 
   // Coalesced reload — load() runs four parallel API calls
   // (deadlines, tasks, projects, goals) and rebuilds the derived
@@ -352,7 +324,7 @@
       toast.warning('date must be YYYY-MM-DD');
       return;
     }
-    busy = true;
+    dataCtl.busy = true;
     try {
       const payload: DeadlineCreate = {
         title: fTitle.trim(),
@@ -377,14 +349,14 @@
     } catch (e) {
       toast.error('save failed: ' + (errorMessage(e)));
     } finally {
-      busy = false;
+      dataCtl.busy = false;
     }
   }
 
   async function remove() {
     if (!editing) return;
     if (!confirm(`Delete "${editing.title}"? This can't be undone.`)) return;
-    busy = true;
+    dataCtl.busy = true;
     try {
       await api.deleteDeadline(editing.id);
       toast.success('deleted');
@@ -393,7 +365,7 @@
     } catch (e) {
       toast.error('delete failed: ' + (errorMessage(e)));
     } finally {
-      busy = false;
+      dataCtl.busy = false;
     }
   }
 
@@ -742,7 +714,7 @@
 <DeadlineDrawer
   bind:open={drawerOpen}
   {editing}
-  {busy}
+  busy={dataCtl.busy}
   bind:fTitle
   bind:fDate
   bind:fDescription
