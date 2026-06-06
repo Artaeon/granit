@@ -41,6 +41,8 @@
     installMenuDismissHandlers
   } from './inlineAIMenuPosition.svelte';
   import { createMenuKeyHandler } from './inlineAIMenuKeys';
+  import InlineAIRecents from './InlineAIRecents.svelte';
+  import InlineAIContextBar from './InlineAIContextBar.svelte';
   import {
     type Preset,
     CATEGORY_LABELS
@@ -384,43 +386,16 @@
     {#if busy}<span class="text-[10px] text-dim font-mono">…</span>{/if}
   </div>
 
-  <!-- Recents — top 3 history items as one-click pills so users don't
-       have to hit Up repeatedly to fish out a recent prompt. Hidden
-       once the user starts typing a fresh prompt (the list would
-       drift out from under their fingers and pop in/out as they
-       filter). Click runs the prompt immediately as a custom Ask.
-       Below the per-note recents, an optional row of recents from
-       the chat overlay so prompts the user wrote in conversation
-       are one click away here too. -->
+  <!-- Recents — top 3 per-note recents plus optional chat-overlay
+       recents as one-click pills. Hidden once the user starts typing
+       a fresh prompt (the list would drift out from under their
+       fingers and pop in/out as they filter). -->
   {#if (history.length > 0 || crossRecents.length > 0) && promptInput.length === 0 && !busy}
-    <div class="px-2 py-1 border-b border-surface1 space-y-0.5">
-      {#if history.length > 0}
-        <div class="flex flex-wrap items-center gap-1">
-          <span class="text-[10px] text-dim font-mono uppercase tracking-wider">recent:</span>
-          {#each history.slice(0, 3) as h, i (h + ':' + i)}
-            <button
-              type="button"
-              onclick={() => { promptInput = h; runCustomPrompt(); }}
-              class="text-[11px] px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-text max-w-[12rem] truncate"
-              title={h}
-            >{h}</button>
-          {/each}
-        </div>
-      {/if}
-      {#if crossRecents.length > 0}
-        <div class="flex flex-wrap items-center gap-1">
-          <span class="text-[10px] text-dim font-mono uppercase tracking-wider" title="from the Cmd+J chat sidebar">from chat:</span>
-          {#each crossRecents as r, i (r.prompt + ':' + i)}
-            <button
-              type="button"
-              onclick={() => { promptInput = r.prompt; runCustomPrompt(); }}
-              class="text-[11px] px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 text-subtext max-w-[12rem] truncate"
-              title={r.prompt}
-            >↗ {r.prompt}</button>
-          {/each}
-        </div>
-      {/if}
-    </div>
+    <InlineAIRecents
+      {history}
+      {crossRecents}
+      run={(p) => { promptInput = p; runCustomPrompt(); }}
+    />
   {/if}
 
   <!-- Action list — grouped by category. The flat index (i) still
@@ -484,53 +459,16 @@
     {/if}
   </ul>
 
-  <!-- Context bar — wraps on narrow screens so the toggles don't
-       overflow the menu width; keyboard hint hides on touch since
-       there are no chords to read. -->
-  <div class="flex items-center flex-wrap gap-x-1.5 gap-y-1 px-2 py-1.5 border-t border-surface1 text-[10px] font-mono">
-    <span class="text-dim">scope:</span>
-    <!-- Note vs. section — exclusive toggle. The note button is
-         always available; the section button only when the cursor
-         actually lives inside a heading section. -->
-    <button
-      type="button"
-      onclick={() => (contextCtl.scope = 'note')}
-      class="px-1 py-0.5 rounded {contextCtl.scope === 'note' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
-      title="send the entire note body to AI"
-    >note</button>
-    {#if detectedSection}
-      <button
-        type="button"
-        onclick={() => (contextCtl.scope = 'section')}
-        class="px-1 py-0.5 rounded {contextCtl.scope === 'section' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
-        title="send only the current section: {detectedSection.heading}"
-      >§ {detectedSection.heading.length > 14 ? detectedSection.heading.slice(0, 14) + '…' : detectedSection.heading}</button>
-    {/if}
-    <span class="text-dim opacity-40 mx-0.5">|</span>
-    <button
-      type="button"
-      onclick={() => (contextCtl.useLinkedNotes = !contextCtl.useLinkedNotes)}
-      class="px-1 py-0.5 rounded {contextCtl.useLinkedNotes ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
-      title="include short body snippets from up to 6 linked notes (both backlinks and outgoing wikilinks) — the AI then reasons over actual content, not just titles"
-    >+ linked notes</button>
-    <button
-      type="button"
-      onclick={() => (contextCtl.useRecentJots = !contextCtl.useRecentJots)}
-      class="px-1 py-0.5 rounded {contextCtl.useRecentJots ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
-      title="include the last 7 days of daily notes"
-    >+ 7d jots</button>
-    <!-- Hand-off to the global chat sidebar. Seeded with the note
-         path + selection + the prompt the user was typing; nothing
-         gets inserted into the doc by this path. -->
-    <button
-      type="button"
-      onclick={sendToChat}
-      disabled={busy}
-      class="px-1 py-0.5 rounded bg-surface0 text-dim hover:bg-surface1 hover:text-text"
-      title="open the Cmd+J chat sidebar pre-filled with this note + your prompt"
-    >↗ chat</button>
-    <span class="ml-auto text-dim opacity-60 hidden sm:inline">
-      ↑↓ {history.length > 0 ? 'history/pick' : 'pick'} · ⏎ run · Esc
-    </span>
-  </div>
+  <InlineAIContextBar
+    scope={contextCtl.scope}
+    useLinkedNotes={contextCtl.useLinkedNotes}
+    useRecentJots={contextCtl.useRecentJots}
+    {detectedSection}
+    {busy}
+    hasHistory={history.length > 0}
+    setScope={(s) => { contextCtl.scope = s; }}
+    setUseLinkedNotes={(on) => { contextCtl.useLinkedNotes = on; }}
+    setUseRecentJots={(on) => { contextCtl.useRecentJots = on; }}
+    onSendToChat={sendToChat}
+  />
 </div>
