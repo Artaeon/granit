@@ -19,6 +19,7 @@
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { workspaceCommands } from '$lib/workspace/workspaceCommands';
   import NavIcon from './NavIcon.svelte';
+  import type { Group, CmdItem, AgentCmd } from './commandPalette/paletteTypes';
 
   // ── Surface name & history ──────────────────────────────────────────
   // Originally a notes-only quick switcher. As of this iteration the
@@ -29,37 +30,6 @@
   // because the old "actions only" Mod-K never carried its weight).
   // Recent picks bubble to the top within each section, persisted to
   // localStorage so muscle memory survives across reloads.
-
-  type Group =
-    | 'Pages'
-    | 'Workspace'
-    | 'Projects'
-    | 'Goals'
-    | 'Notes'
-    | 'Tasks'
-    | 'Events'
-    | 'Deadlines'
-    | 'Habits'
-    | 'Agents'
-    | 'Content';
-
-  interface CmdItem {
-    /** Stable ID — also the localStorage recent key. Pages: 'page:/path',
-     *  Projects: 'project:<name>', Goals: 'goal:<id>', Notes: 'note:<path>',
-     *  Agents: 'agent:<slug>'. Content (search hits) are excluded from
-     *  recents because they're query-driven, not destinations. */
-    id: string;
-    label: string;
-    detail?: string;
-    icon: string;
-    group: Group;
-    /** Keyboard hint rendered on the right (e.g. 'Mod+P', 'a' on /tasks).
-     *  Optional — most items don't carry a hotkey. */
-    hint?: string;
-    /** Pure side-effect. Closes the palette before running so the caller
-     *  doesn't have to. */
-    run: () => void | Promise<void>;
-  }
 
   let open = $state(false);
   let q = $state('');
@@ -241,15 +211,6 @@
   // prelude can pick up entity context; the overlay then opens in that
   // mode. The `text: ''` seed keeps the composer empty — the user has
   // chosen the posture, not the prompt.
-  interface AgentCmd {
-    slug: string;
-    label: string;
-    detail: string;
-    icon: string;
-    hint?: string;
-    run: () => void | Promise<void>;
-  }
-
   const AGENTS: AgentCmd[] = [
     {
       slug: 'briefing',
