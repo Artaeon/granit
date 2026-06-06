@@ -46,7 +46,7 @@
     createFocusPlanStore
   } from '$lib/tasks/aiAgentStore';
   import { isStale } from '$lib/tasks/tasksHelpers';
-  import { createPresetsController } from '$lib/tasks/tasksPresets.svelte';
+  import { createPresetsControllerForCtls } from '$lib/tasks/tasksPresets.svelte';
   import { createTasksFilterState } from '$lib/tasks/tasksFilterState.svelte';
   import { createTasksViewState } from '$lib/tasks/tasksViewState.svelte';
   import { createTasksData } from '$lib/tasks/tasksData.svelte';
@@ -357,43 +357,10 @@
 
   // Saved filter presets — name a combination of status / q / tag /
   // project / priority / goal / deadline / view / viewCtl.groupBy, pin it
-  // as a one-click chip above the dataCtl.stats row. Persisted to
-  // localStorage. The CRUD + starter set live in
-  // $lib/tasks/tasksPresets; this page reaches them via the snapshot
-  // bridge so the controller stays decoupled from the page's let
-  // bindings.
-  const presetCtl = createPresetsController({
-    getSnapshot: () => ({
-      status: filterCtl.status,
-      q: filterCtl.q,
-      tagFilters: [...filterCtl.tagFilters],
-      projectFilter: filterCtl.projectFilter,
-      priorityFilter: filterCtl.priorityFilter,
-      goalFilter: filterCtl.goalFilter,
-      deadlineFilter: filterCtl.deadlineFilter,
-      view: viewCtl.view,
-      groupBy: viewCtl.groupBy,
-      sortBy: viewCtl.sortBy,
-      sourceFilter: filterCtl.sourceFilter,
-      smartFilter: filterCtl.smartFilter,
-      archivedMode: filterCtl.archivedMode
-    }),
-    applySnapshot: (s) => {
-      filterCtl.status = s.status;
-      filterCtl.q = s.q;
-      filterCtl.tagFilters = [...s.tagFilters];
-      filterCtl.projectFilter = s.projectFilter;
-      filterCtl.priorityFilter = s.priorityFilter;
-      filterCtl.goalFilter = s.goalFilter;
-      filterCtl.deadlineFilter = s.deadlineFilter;
-      viewCtl.view = s.view;
-      viewCtl.groupBy = s.groupBy;
-      viewCtl.sortBy = s.sortBy;
-      filterCtl.sourceFilter = s.sourceFilter;
-      filterCtl.smartFilter = s.smartFilter;
-      filterCtl.archivedMode = s.archivedMode;
-    }
-  });
+  // as a one-click chip above the stats row. Persisted to
+  // localStorage. The CRUD + starter set + the filterCtl/viewCtl
+  // snapshot bridge live in $lib/tasks/tasksPresets.
+  const presetCtl = createPresetsControllerForCtls(filterCtl, viewCtl);
 
   // dataCtl.stats moved into dataCtl.
 

@@ -208,3 +208,49 @@ export function createPresetsController(deps: PresetsControllerDeps): PresetsCon
     matches
   };
 }
+
+// Convenience wrapper for the common case: snapshot is just the
+// twelve fields owned across filterCtl + viewCtl. Saves the host
+// surface ~50 LOC of getter/setter boilerplate without locking the
+// underlying controller into a specific shape (callers with a
+// different bridge can still use createPresetsController directly).
+import type { TasksFilterStateController } from './tasksFilterState.svelte';
+import type { TasksViewStateController } from './tasksViewState.svelte';
+
+export function createPresetsControllerForCtls(
+  filterCtl: TasksFilterStateController,
+  viewCtl: TasksViewStateController
+): PresetsController {
+  return createPresetsController({
+    getSnapshot: () => ({
+      status: filterCtl.status,
+      q: filterCtl.q,
+      tagFilters: [...filterCtl.tagFilters],
+      projectFilter: filterCtl.projectFilter,
+      priorityFilter: filterCtl.priorityFilter,
+      goalFilter: filterCtl.goalFilter,
+      deadlineFilter: filterCtl.deadlineFilter,
+      view: viewCtl.view,
+      groupBy: viewCtl.groupBy,
+      sortBy: viewCtl.sortBy,
+      sourceFilter: filterCtl.sourceFilter,
+      smartFilter: filterCtl.smartFilter,
+      archivedMode: filterCtl.archivedMode
+    }),
+    applySnapshot: (s) => {
+      filterCtl.status = s.status;
+      filterCtl.q = s.q;
+      filterCtl.tagFilters = [...s.tagFilters];
+      filterCtl.projectFilter = s.projectFilter;
+      filterCtl.priorityFilter = s.priorityFilter;
+      filterCtl.goalFilter = s.goalFilter;
+      filterCtl.deadlineFilter = s.deadlineFilter;
+      viewCtl.view = s.view;
+      viewCtl.groupBy = s.groupBy;
+      viewCtl.sortBy = s.sortBy;
+      filterCtl.sourceFilter = s.sourceFilter;
+      filterCtl.smartFilter = s.smartFilter;
+      filterCtl.archivedMode = s.archivedMode;
+    }
+  });
+}
