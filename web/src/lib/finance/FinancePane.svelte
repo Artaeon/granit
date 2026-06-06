@@ -4,7 +4,6 @@
   import {
     api,
     todayISO,
-    type FinAccount,
     type FinSubscription,
     type FinIncomeStream,
     type FinGoal
@@ -26,6 +25,7 @@
   } from '$lib/finance/financeViewState.svelte';
   import { createFinanceData } from '$lib/finance/financeData.svelte';
   import { createFinanceAI } from '$lib/finance/financeAI.svelte';
+  import { createFinanceAccountForm } from '$lib/finance/financeAccountForm.svelte';
   import {
     ACCOUNT_COLORS,
     accColor,
@@ -45,6 +45,12 @@
   const viewCtl = createFinanceViewState();
   const dataCtl = createFinanceData({
     isAuthed: () => !!$auth,
+    onError: (m) => toast.error(m)
+  });
+  const accountForm = createFinanceAccountForm({
+    getAccounts: () => dataCtl.accounts,
+    reload: () => dataCtl.loadAll(),
+    onSuccess: (m) => toast.success(m),
     onError: (m) => toast.error(m)
   });
   const aiCtl = createFinanceAI({
@@ -73,49 +79,7 @@
 
   // statusTone moved to financeFmt.
 
-  // ── New-account modal ─────────────────────────────────────────────
-  let accOpen = $state(false);
-  let accForm = $state({ name: '', kind: 'checking', currency: 'USD', balance: '0', institution: '', color: '', tags: '', notes: '' });
-  function openAcc() {
-    accForm = { name: '', kind: 'checking', currency: dataCtl.accounts[0]?.currency || 'USD', balance: '0', institution: '', color: '', tags: '', notes: '' };
-    accOpen = true;
-  }
-  async function submitAcc() {
-    try {
-      await api.finCreateAccount({
-        name: accForm.name.trim(),
-        kind: accForm.kind,
-        currency: accForm.currency.trim(),
-        balance_cents: Math.round(parseFloat(accForm.balance || '0') * 100),
-        institution: accForm.institution.trim() || undefined,
-        color: accForm.color || undefined,
-        tags: accForm.tags.split(',').map((t) => t.trim()).filter(Boolean),
-        notes: accForm.notes.trim() || undefined
-      });
-      accOpen = false;
-      toast.success('account created');
-      await dataCtl.loadAll();
-    } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-  async function deleteAcc(a: FinAccount) {
-    if (!confirm(`Delete account "${a.name}"?`)) return;
-    try { await api.finDeleteAccount(a.id); await dataCtl.loadAll(); } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-  // Inline balance edit on blur — no modal for the most-frequent edit.
-  async function saveBalance(a: FinAccount, ev: Event) {
-    const v = parseFloat((ev.currentTarget as HTMLInputElement).value);
-    if (!Number.isFinite(v)) return;
-    const cents = Math.round(v * 100);
-    if (cents === a.balance_cents) return;
-    try {
-      await api.finPatchAccount(a.id, { balance_cents: cents, as_of: todayISO() });
-      await dataCtl.loadAll();
-    } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
-  }
+  // Account create / inline balance edit / delete live on accountForm.
 
   // ── New-subscription modal ─────────────────────────────────────────
   let subOpen = $state(false);
@@ -580,7 +544,7 @@
         <div class="flex flex-wrap gap-2">
           <button onclick={() => openIncome()} class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90">+ Income source</button>
           <button onclick={openSub} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Subscription</button>
-          <button onclick={openAcc} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Account</button>
+          <button onclick={() => accountForm.openModal()} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Account</button>
           <button onclick={openGoal} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Goal</button>
         </div>
 
@@ -776,7 +740,7 @@
     {:else if viewCtl.tab === 'accounts'}
       <div class="flex justify-between items-center mb-3">
         <p class="text-xs text-dim">{dataCtl.accounts.length} accounts · {fmtMoney(dataCtl.overview?.net_worth_cents ?? 0, dataCtl.overview?.currency ?? '')} net worth</p>
-        <button onclick={openAcc} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New account</button>
+        <button onclick={() => accountForm.openModal()} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New account</button>
       </div>
       {#if dataCtl.accounts.length === 0}
         <p class="text-sm text-dim italic">No accounts yet — add your first to start tracking.</p>
@@ -797,11 +761,11 @@
                     type="number"
                     step="0.01"
                     value={(a.balance_cents / 100).toFixed(2)}
-                    onblur={(e) => saveBalance(a, e)}
+                    onblur={(e) => accountForm.saveBalance(a, e)}
                     class="w-28 bg-mantle border border-surface1 rounded px-1.5 py-0.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary"
                   />
                 </label>
-                <button onclick={() => deleteAcc(a)} class="text-xs text-dim hover:text-error">delete</button>
+                <button onclick={() => accountForm.remove(a)} class="text-xs text-dim hover:text-error">delete</button>
               </div>
               {#if (a.tags && a.tags.length > 0) || a.as_of}
                 <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
@@ -947,14 +911,14 @@
 
 <!-- ── New-account modal ────────────────────────────────────────────── -->
 <EditModal
-  open={accOpen}
+  open={accountForm.open}
   maxWidth="sm"
   title="New account"
-  onClose={() => (accOpen = false)}
+  onClose={() => accountForm.close()}
 >
-  <form onsubmit={(e) => { e.preventDefault(); submitAcc(); }} class="p-4 space-y-3">
-      <input bind:value={accForm.name} required placeholder="Name" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      <select bind:value={accForm.kind} class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
+  <form onsubmit={(e) => { e.preventDefault(); accountForm.submit(); }} class="p-4 space-y-3">
+      <input bind:value={accountForm.form.name} required placeholder="Name" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+      <select bind:value={accountForm.form.kind} class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
         <option value="checking">Checking</option>
         <option value="savings">Savings</option>
         <option value="cash">Cash</option>
@@ -963,23 +927,23 @@
         <option value="loan">Loan</option>
       </select>
       <div class="flex gap-2">
-        <input bind:value={accForm.currency} placeholder="USD" class="w-20 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-        <input type="number" step="0.01" bind:value={accForm.balance} placeholder="0.00" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
+        <input bind:value={accountForm.form.currency} placeholder="USD" class="w-20 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+        <input type="number" step="0.01" bind:value={accountForm.form.balance} placeholder="0.00" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
       </div>
-      <input bind:value={accForm.institution} placeholder="Institution (Chase, Apple Card…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+      <input bind:value={accountForm.form.institution} placeholder="Institution (Chase, Apple Card…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
       <!-- Color palette swatches — visually pick the row pip rather
            than typing a name. Empty pip = "no color". -->
       <div class="flex items-center gap-2">
         <span class="text-[11px] text-dim">Color</span>
-        <button type="button" onclick={() => (accForm.color = '')} class="w-5 h-5 rounded-full border border-surface2 {accForm.color === '' ? 'ring-2 ring-primary' : ''}" aria-label="no color"></button>
+        <button type="button" onclick={() => (accountForm.form.color = '')} class="w-5 h-5 rounded-full border border-surface2 {accountForm.form.color === '' ? 'ring-2 ring-primary' : ''}" aria-label="no color"></button>
         {#each ACCOUNT_COLORS as c}
-          <button type="button" onclick={() => (accForm.color = c)} class="w-5 h-5 rounded-full {accForm.color === c ? 'ring-2 ring-primary' : ''}" style="background: {accColor(c)}" aria-label={c}></button>
+          <button type="button" onclick={() => (accountForm.form.color = c)} class="w-5 h-5 rounded-full {accountForm.form.color === c ? 'ring-2 ring-primary' : ''}" style="background: {accColor(c)}" aria-label={c}></button>
         {/each}
       </div>
-    <input bind:value={accForm.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-    <input bind:value={accForm.notes} placeholder="Notes (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    <input bind:value={accountForm.form.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    <input bind:value={accountForm.form.notes} placeholder="Notes (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
     <div class="flex justify-end gap-2 pt-2">
-      <button type="button" onclick={() => (accOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
+      <button type="button" onclick={() => accountForm.close()} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
       <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Create</button>
     </div>
   </form>
