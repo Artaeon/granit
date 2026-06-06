@@ -38,6 +38,7 @@ import { errorMessage } from '$lib/util/errorMessage';
 import { saveProposals, loadProposals } from '$lib/util/proposalCache';
 import { extractJsonBlock } from '$lib/util/jsonExtract';
 import { rafThrottle } from '$lib/util/streamThrottle';
+import { isAbortError } from '$lib/util/aiErrors';
 import {
   buildPlanDayPrompt,
   roundUpTo15Min,
@@ -52,14 +53,6 @@ const TRIAGE_KEY = 'granit.ai.triage.proposals';
 const DEADLINE_KEY = 'granit.ai.deadlines.proposals';
 
 // ── Shared helpers ─────────────────────────────────────────────────
-
-// AbortError detection is tricky cross-engine: Chromium fetches
-// occasionally surface "BodyStreamBuffer was aborted" instead of
-// the canonical DOMException name. Centralised so triage + deadline
-// + focus stay consistent.
-function isAbortError(err: unknown): boolean {
-  return err instanceof DOMException && err.name === 'AbortError';
-}
 
 // Map an AI feature-toggle error into a user-readable hint pointing
 // at Settings → AI features. Same wording the inline code used
