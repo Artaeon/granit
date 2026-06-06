@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
-  import { api, fmtDateISO, type DayActivityItem, type Jot, type Note } from '$lib/api';
+  import { api, fmtDateISO, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { rafThrottle } from '$lib/util/streamThrottle';
   import Skeleton from '$lib/components/Skeleton.svelte';
@@ -15,6 +15,7 @@
   import JotsComposer from '$lib/jots/JotsComposer.svelte';
   import JotItem from '$lib/jots/JotItem.svelte';
   import JotsShortcutsOverlay from '$lib/jots/JotsShortcutsOverlay.svelte';
+  import { createJotsFeedData } from '$lib/jots/jotsFeedData.svelte';
 
   // Amplenote-style infinite-scroll feed of every daily note. The page
   // talks to /api/v1/jots which paginates server-side — fetching N
@@ -22,16 +23,18 @@
   // endpoint keeps it to one round-trip per page no matter how many
   // years of dailies the user has accumulated.
 
-  let jots = $state<Jot[]>([]);
-  let cursor = $state<string | null>(null);
-  let loading = $state(false);
-  let done = $state(false);
-  let error = $state('');
-
-  // Daily folder, pulled from the user's config so jump-to-day knows
-  // where to navigate. Read once on mount; settings changes mid-session
-  // are rare and a refresh recovers cleanly.
-  let dailyFolder = $state('');
+  const feed = createJotsFeedData({
+    isAuthed: () => !!$auth
+  });
+  // Bind read-side aliases via $derived so the rest of the page reads
+  // these names unchanged after the controller hand-off.
+  let jots = $derived(feed.jots);
+  let loading = $derived(feed.loading);
+  let done = $derived(feed.done);
+  let error = $derived(feed.error);
+  let dailyFolder = $derived(feed.dailyFolder);
+  let dayActivityCache = $derived(feed.dayActivityCache);
+  let dayActivityLoading = $derived(feed.dayActivityLoading);
 
   // Inline search state
   let searchText = $state('');
@@ -150,66 +153,6 @@
   // Sentinel + observer for infinite scroll.
   let sentinel: HTMLDivElement | undefined = $state();
   let observer: IntersectionObserver | null = null;
-
-  // ─── per-day activity (lazy, on-expand) ──────────────────────────
-  // The Jots feed shows one daily-note body per entry; under it a
-  // collapsed <details> block surfaces every OTHER thing created on
-  // that same day (notes, tasks created/completed, events, habits,
-  // prayer, hub items). Each block fetches lazily on first open so
-  // a long scroll doesn't N+1 the API.
-  // Per-date cache + loading flags as plain records — Svelte 5
-  // tracks property additions and re-renders on reassignment, so
-  // this is the simplest reactive pattern for "memo by string key".
-  let dayActivityCache = $state<Record<string, DayActivityItem[]>>({});
-  let dayActivityLoading = $state<Record<string, boolean>>({});
-
-  async function loadDayActivity(date: string) {
-    if (dayActivityCache[date] !== undefined || dayActivityLoading[date]) return;
-    dayActivityLoading = { ...dayActivityLoading, [date]: true };
-    try {
-      const r = await api.dayActivity(date);
-      dayActivityCache = { ...dayActivityCache, [date]: r.items };
-    } catch {
-      // Soft-fail — empty list keeps the UI honest; user can refresh.
-      dayActivityCache = { ...dayActivityCache, [date]: [] };
-    } finally {
-      const next = { ...dayActivityLoading };
-      delete next[date];
-      dayActivityLoading = next;
-    }
-  }
-
-  // Eager-but-bounded prefetch of dayActivity for newly-loaded jots so
-  // the inline header counts populate without each card needing to be
-  // scrolled into view. Caps concurrency at 4 to avoid hammering the
-  // server when a fresh-load brings in 20 dates at once; pages 2+ only
-  // add another 20 each, so total in-flight stays small.
-  let prefetchQueue: string[] = [];
-  let prefetchActive = 0;
-  const PREFETCH_CONCURRENCY = 4;
-  function enqueuePrefetch(dates: string[]) {
-    for (const d of dates) {
-      if (dayActivityCache[d] !== undefined) continue;
-      if (dayActivityLoading[d]) continue;
-      if (prefetchQueue.includes(d)) continue;
-      prefetchQueue.push(d);
-    }
-    drainPrefetch();
-  }
-  function drainPrefetch() {
-    while (prefetchActive < PREFETCH_CONCURRENCY && prefetchQueue.length > 0) {
-      const next = prefetchQueue.shift();
-      if (!next) break;
-      prefetchActive += 1;
-      // loadDayActivity is idempotent — it short-circuits on a cache
-      // hit and writes to the same maps the expand-for-details path
-      // reads from.
-      loadDayActivity(next).finally(() => {
-        prefetchActive -= 1;
-        drainPrefetch();
-      });
-    }
-  }
 
   // ─── AI: multi-mode panel ────────────────────────────────────────
   // One AI panel below the toolbar that switches between three modes
@@ -434,75 +377,6 @@
     } catch {
       toast.error('clipboard blocked');
     }
-  }
-
-  // ── jot path / regex ──────────────────────────────────────────────
-  // Mirrors the server's filter — a vault-relative path is a daily note
-  // iff it's `<folder>/YYYY-MM-DD.md` or just `YYYY-MM-DD.md` (when no
-  // folder is configured). Used to scope WS-driven refetches.
-  function jotMatches(path: string): { date: string; folder: string } | null {
-    const m = path.match(/^(?:(.+)\/)?(\d{4}-\d{2}-\d{2})\.md$/);
-    if (!m) return null;
-    const folder = m[1] ?? '';
-    if (folder !== dailyFolder) return null;
-    return { date: m[2], folder };
-  }
-
-  async function loadMore() {
-    if (loading || done || !$auth) return;
-    loading = true;
-    error = '';
-    try {
-      const params: { before?: string; limit: number } = { limit: 20 };
-      if (cursor) params.before = cursor;
-      const r = await api.listJots(params);
-      jots = [...jots, ...r.jots];
-      cursor = r.nextBefore;
-      if (!r.hasMore) done = true;
-      // Queue inline-count prefetch for the new dates so headers
-      // populate before the user scrolls each into view.
-      enqueuePrefetch(r.jots.map((j) => j.date));
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    } finally {
-      loading = false;
-    }
-  }
-
-  // Refetch a single jot by date and patch it into the array (or
-  // prepend if it didn't exist before — i.e. today's daily was just
-  // created).
-  async function refetchJot(date: string) {
-    try {
-      // /jots is sort-desc + cursor-based; to grab a single date we ask
-      // for the page just-after it (before = date+1day) limited to 1.
-      const next = nextDateISO(date);
-      const r = await api.listJots({ before: next, limit: 1 });
-      const fresh = r.jots.find((j) => j.date === date);
-      if (!fresh) {
-        // The jot was deleted (or never existed) — drop it from the
-        // list if it's there.
-        jots = jots.filter((j) => j.date !== date);
-        return;
-      }
-      const idx = jots.findIndex((j) => j.date === date);
-      if (idx >= 0) {
-        jots = [...jots.slice(0, idx), fresh, ...jots.slice(idx + 1)];
-      } else {
-        // New (today's) daily — prepend, keeping desc order intact.
-        const insertAt = jots.findIndex((j) => j.date < date);
-        if (insertAt < 0) jots = [...jots, fresh];
-        else jots = [...jots.slice(0, insertAt), fresh, ...jots.slice(insertAt)];
-      }
-    } catch {
-      // Soft-fail: a refetch error shouldn't blow up the page.
-    }
-  }
-
-  function nextDateISO(d: string): string {
-    const dt = new Date(d + 'T00:00:00');
-    dt.setUTCDate(dt.getUTCDate() + 1);
-    return fmtDateISO(dt);
   }
 
   // Midnight today, recomputed reactively via $derived.by — used as the
@@ -733,7 +607,7 @@
       // WS will re-fetch; queue an immediate optimistic refetch too in
       // case the WS round-trip lags.
       const today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
-      scheduleRefetch(today);
+      feed.scheduleRefetch(today);
       composerEl?.focus();
     } catch (e) {
       toast.error('failed to add jot: ' + (e instanceof Error ? e.message : String(e)));
@@ -821,7 +695,7 @@
         // End-of-feed: load another page first so the user sees motion
         // instead of an abrupt stop, then scroll to the bottom of
         // what's currently rendered.
-        loadMore();
+        feed.loadMore();
         document.getElementById('jots-scroll')?.scrollTo({
           top: document.getElementById('jots-scroll')?.scrollHeight ?? 0,
           behavior: 'smooth'
@@ -831,34 +705,11 @@
   }
 
   // ── lifecycle ─────────────────────────────────────────────────────
-  // Debounce WS-driven refetches per-date — a flurry of writes (the
-  // user typing into a daily) shouldn't trigger a refetch per
-  // keystroke. 500ms feels live without thrashing.
-  const pendingRefetch = new Map<string, ReturnType<typeof setTimeout>>();
-  function scheduleRefetch(date: string) {
-    const existing = pendingRefetch.get(date);
-    if (existing) clearTimeout(existing);
-    const t = setTimeout(() => {
-      pendingRefetch.delete(date);
-      refetchJot(date);
-    }, 500);
-    pendingRefetch.set(date, t);
-  }
 
   onMount(() => {
     // Resolve the daily folder so jump-to-day + WS scoping work.
-    api
-      .getConfig()
-      .then((c) => {
-        dailyFolder = (c.daily_notes_folder ?? '').replace(/\/+$/, '');
-      })
-      .catch(() => {
-        // No config endpoint or failure → assume vault root, which is
-        // the default-config behavior anyway.
-        dailyFolder = '';
-      });
-
-    loadMore();
+    feed.loadConfig();
+    feed.loadMore();
 
     // Hook up the IntersectionObserver once the sentinel is in the DOM.
     const setupObserver = () => {
@@ -866,7 +717,7 @@
       observer = new IntersectionObserver(
         (entries) => {
           for (const e of entries) {
-            if (e.isIntersecting) loadMore();
+            if (e.isIntersecting) feed.loadMore();
           }
         },
         { rootMargin: '400px' }
@@ -878,9 +729,9 @@
 
     const offWs = onWsEvent((ev) => {
       if (ev.type !== 'note.changed' && ev.type !== 'note.removed') return;
-      const m = jotMatches(ev.path);
+      const m = feed.jotMatches(ev.path);
       if (!m) return;
-      scheduleRefetch(m.date);
+      feed.scheduleRefetch(m.date);
     });
 
     window.addEventListener('keydown', onShortcutKey);
@@ -889,8 +740,7 @@
       observer?.disconnect();
       offWs();
       window.removeEventListener('keydown', onShortcutKey);
-      for (const t of pendingRefetch.values()) clearTimeout(t);
-      pendingRefetch.clear();
+      feed.dispose();
     };
   });
 </script>
@@ -1029,7 +879,7 @@
               activity={dayActivityCache[jot.date]}
               activityLoading={!!dayActivityLoading[jot.date]}
               onWikilink={handleWikilink}
-              onExpandActivity={loadDayActivity}
+              onExpandActivity={feed.loadDayActivity}
             />
           </li>
         {/each}
