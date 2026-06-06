@@ -7,8 +7,8 @@
   import Skeleton from '$lib/components/Skeleton.svelte';
   import Heatmap from '$lib/components/Heatmap.svelte';
   import { habitTargets, setHabitTarget } from '$lib/habits/targets';
-  import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import { focusOnMount } from '$lib/util/focusOnMount';
+  import { createHabitsViewState, type HabitsView } from '$lib/habits/habitsViewState.svelte';
 
   // /habits — three view modes for the same data:
   //   • Today: large quick-tick cards, the morning/evening rhythm view
@@ -17,22 +17,9 @@
   // Sort + insight (best day of week) work across all three views so
   // the user's preference sticks regardless of which lens they pick.
 
-  type View = 'today' | 'week' | 'list' | 'heatmap';
-  type Sort = 'streak' | 'completion' | 'alpha' | 'behind';
-
-  // Persist per-device so a user who lives in Week view doesn't have
-  // to toggle every time. List remains the default for first-time
-  // users — the 90-day grid is the most informative entry point.
-  const VIEW_KEY = 'granit.habits.view';
-  const SORT_KEY = 'granit.habits.sort';
-
-  let view = $state<View>(loadStoredString(VIEW_KEY, 'list') as View);
-  let sortBy = $state<Sort>(loadStoredString(SORT_KEY, 'streak') as Sort);
-
-  $effect(() => saveStoredString(VIEW_KEY, view));
-  $effect(() => saveStoredString(SORT_KEY, sortBy));
-
   let data = $state<HabitsResponse | null>(null);
+  const viewCtl = createHabitsViewState({ getData: () => data });
+  const sortedHabits = $derived(viewCtl.sortedHabits);
   let loading = $state(false);
   let busy = $state<string | null>(null);
 
@@ -311,25 +298,6 @@
       busy = null;
     }
   }
-
-  // ----- Sorting -----
-  // Each sort key maps to a comparator. "behind" surfaces struggling
-  // habits at the top so a Sunday review naturally shows what needs
-  // attention without scrolling.
-  let sortedHabits = $derived.by(() => {
-    if (!data) return [] as HabitInfo[];
-    const list = [...data.habits];
-    switch (sortBy) {
-      case 'streak':
-        return list.sort((a, b) => b.currentStreak - a.currentStreak);
-      case 'completion':
-        return list.sort((a, b) => b.last30Pct - a.last30Pct);
-      case 'behind':
-        return list.sort((a, b) => a.last7Pct - b.last7Pct);
-      case 'alpha':
-        return list.sort((a, b) => a.name.localeCompare(b.name));
-    }
-  });
 
   // ----- Insight: best day of week -----
   // Group the 90-day window by weekday and compute per-day completion
@@ -713,8 +681,8 @@
           ] as o}
             <button
               type="button"
-              class="px-3 py-1.5 capitalize transition-colors {view === o.v ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-              onclick={() => (view = o.v as View)}
+              class="px-3 py-1.5 capitalize transition-colors {viewCtl.view === o.v ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
+              onclick={() => (viewCtl.view = o.v as HabitsView)}
             >{o.label}</button>
           {/each}
         </div>
@@ -749,7 +717,7 @@
         <label class="text-xs text-dim flex items-center gap-1.5">
           sort
           <select
-            bind:value={sortBy}
+            bind:value={viewCtl.sortBy}
             class="text-xs bg-surface0 border border-surface1 rounded px-2 py-1 text-text"
             aria-label="sort habits"
           >
@@ -797,7 +765,7 @@
           The same checkboxes show up as tasks in the TUI — both views stay in sync via the markdown.
         </p>
       </div>
-    {:else if data && view === 'today'}
+    {:else if data && viewCtl.view === 'today'}
       <!-- ===== TODAY VIEW ===== -->
       <!-- Large quick-tick cards focused on today. The big checkbox
            is the one the user wants to hit fast in the morning or
@@ -905,7 +873,7 @@
           </div>
         {/each}
       </div>
-    {:else if data && view === 'week'}
+    {:else if data && viewCtl.view === 'week'}
       <!-- ===== WEEK VIEW ===== -->
       <!-- 7-column grid: each row a habit, each column a day. Header
            row labels the day-of-week + date (M/D). Last column is
@@ -1141,7 +1109,7 @@
           </article>
         {/each}
       </div>
-    {:else if data && view === 'heatmap'}
+    {:else if data && viewCtl.view === 'heatmap'}
       <!-- Year-at-a-glance per habit. The Heatmap component handles
            layout + tooltips; we just feed it {date, value} pairs.
            value = 1 when done, 0 otherwise — binary maxes the
