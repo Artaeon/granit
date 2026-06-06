@@ -5,7 +5,10 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
-  import EditModal from '$lib/components/EditModal.svelte';
+  import FinanceIncomeModal from '$lib/finance/FinanceIncomeModal.svelte';
+  import FinanceAccountModal from '$lib/finance/FinanceAccountModal.svelte';
+  import FinanceSubscriptionModal from '$lib/finance/FinanceSubscriptionModal.svelte';
+  import FinanceGoalModal from '$lib/finance/FinanceGoalModal.svelte';
   import {
     SNAPSHOT_SYSTEM_PROMPT,
     SUB_AUDIT_SYSTEM_PROMPT,
@@ -23,7 +26,6 @@
   import { createFinanceIncomeForm } from '$lib/finance/financeIncomeForm.svelte';
   import { createFinanceGoalForm } from '$lib/finance/financeGoalForm.svelte';
   import {
-    ACCOUNT_COLORS,
     accColor,
     fmtMoney,
     relDate,
@@ -79,8 +81,11 @@
     chatStream: api.chatStream
   });
 
-  // accColor / fmtMoney / relDate live in financeFmt now.
-  // dataCtl.loadAll() + dataCtl.accountName() live on dataCtl now.
+  // Everything user-facing now lives behind a controller: dataCtl
+  // (loaders + derives + accountName lookup), accountForm /
+  // subscriptionForm / incomeForm / goalForm (each modal's CRUD
+  // wrappers), aiCtl (snapshot + sub-audit streams), viewCtl (tab),
+  // and financeFmt (pure formatters). This file just wires them.
 
   onMount(() => {
     dataCtl.loadAll();
@@ -90,21 +95,6 @@
       dataCtl.loadAll();
     });
   });
-
-  // statusTone moved to financeFmt.
-
-  // Account create / inline balance edit / delete live on accountForm.
-
-  // Subscription create / toggle / delete live on subscriptionForm.
-
-  // Income create / edit / delete live on incomeForm.
-
-  // Goal create / delete live on goalForm.
-
-  // Income-stream split (active/pipeline/paused) + 30-day cashflow
-  // timeline + dataCtl.accountName lookup live on dataCtl now.
-
-  // dayOf / dayLabel moved to financeFmt.
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -635,212 +625,10 @@
   </div>
 </div>
 
-<!-- ── New / edit income modal ──────────────────────────────────────── -->
-<EditModal
-  open={incomeForm.open}
-  title={incomeForm.editingId ? 'Edit income source' : 'New income source'}
-  onClose={() => incomeForm.close()}
->
-  <form onsubmit={(e) => { e.preventDefault(); incomeForm.submit(); }} class="p-4 space-y-3">
-      <input bind:value={incomeForm.form.name} required placeholder="Name (Day job, Side SaaS, Dividends…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      <div class="grid grid-cols-2 gap-2">
-        <label class="block">
-          <span class="text-[11px] text-dim">Status</span>
-          <select bind:value={incomeForm.form.status} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
-            <option value="idea">Idea (could bring money)</option>
-            <option value="planned">Planned (working on it)</option>
-            <option value="active">Active (bringing money now)</option>
-            <option value="paused">Paused</option>
-          </select>
-        </label>
-        <label class="block">
-          <span class="text-[11px] text-dim">Type</span>
-          <select bind:value={incomeForm.form.kind} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
-            <option value="employment">Employment / salary</option>
-            <option value="freelance">Freelance / contract</option>
-            <option value="business">Business / SaaS</option>
-            <option value="investment">Investment / dividends</option>
-            <option value="royalty">Royalty</option>
-            <option value="other">Other</option>
-          </select>
-        </label>
-      </div>
-      <div class="grid grid-cols-3 gap-2 items-end">
-        <label class="block col-span-1">
-          <span class="text-[11px] text-dim">Projected / mo</span>
-          <input type="number" step="0.01" bind:value={incomeForm.form.projected} placeholder="0.00" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-        </label>
-        <label class="block col-span-1">
-          <span class="text-[11px] text-dim">Actual / mo</span>
-          <input type="number" step="0.01" bind:value={incomeForm.form.actual} placeholder="0.00" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-        </label>
-        <input bind:value={incomeForm.form.currency} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      </div>
-
-      <!-- Payout schedule. Day-of-month + cadence drives the
-           cashflow timeline projection. Empty day = unknown
-           schedule; the stream still shows everywhere else but
-           doesn't render on the date strip. -->
-      <fieldset class="border border-surface1 rounded p-3 space-y-2">
-        <legend class="text-[11px] text-dim px-1">Payout schedule</legend>
-        <div class="grid grid-cols-2 gap-2">
-          <label class="block">
-            <span class="text-[11px] text-dim">Day of month (1-31)</span>
-            <input type="number" min="0" max="31" bind:value={incomeForm.form.payout_day} placeholder="e.g. 5" class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-          </label>
-          <label class="block">
-            <span class="text-[11px] text-dim">Cadence</span>
-            <select bind:value={incomeForm.form.payout_cadence} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
-              <option value="monthly">Monthly</option>
-              <option value="yearly">Yearly (anchor month from started date)</option>
-              <option value="quarterly">Quarterly (approx)</option>
-              <option value="weekly">Weekly (approx)</option>
-            </select>
-          </label>
-        </div>
-        <p class="text-[11px] text-dim">
-          Salary on the 5th? Set day=5, cadence=monthly. Leave day blank if you don't want it on the timeline.
-        </p>
-      </fieldset>
-
-      <!-- Project + account links. Both optional — useful for
-           ventures (link to the project that's the venture) and
-           dividend dataCtl.streams (link to the investment account). -->
-      <div class="grid grid-cols-2 gap-2">
-        <label class="block">
-          <span class="text-[11px] text-dim">Lands in account</span>
-          <select bind:value={incomeForm.form.account_id} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
-            <option value="">— none —</option>
-            {#each dataCtl.accounts as a}<option value={a.id}>{a.name}</option>{/each}
-          </select>
-        </label>
-        <label class="block">
-          <span class="text-[11px] text-dim">Linked project</span>
-          <select bind:value={incomeForm.form.project} class="mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
-            <option value="">— none —</option>
-            {#each dataCtl.projects as p}<option value={p.name}>{p.name}</option>{/each}
-          </select>
-        </label>
-      </div>
-      <input bind:value={incomeForm.form.tags} placeholder="Tags (comma-separated, e.g. primary, w2)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      <input bind:value={incomeForm.form.url} placeholder="URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      <textarea bind:value={incomeForm.form.notes} rows="2" placeholder="Notes (idea details, next steps…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text resize-y focus:outline-none focus:border-primary"></textarea>
-    <div class="flex justify-end gap-2 pt-2">
-      <button type="button" onclick={() => incomeForm.close()} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-      <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">{incomeForm.editingId ? 'Save' : 'Add'}</button>
-    </div>
-  </form>
-</EditModal>
-
-<!-- ── New-account modal ────────────────────────────────────────────── -->
-<EditModal
-  open={accountForm.open}
-  maxWidth="sm"
-  title="New account"
-  onClose={() => accountForm.close()}
->
-  <form onsubmit={(e) => { e.preventDefault(); accountForm.submit(); }} class="p-4 space-y-3">
-      <input bind:value={accountForm.form.name} required placeholder="Name" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      <select bind:value={accountForm.form.kind} class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
-        <option value="checking">Checking</option>
-        <option value="savings">Savings</option>
-        <option value="cash">Cash</option>
-        <option value="credit">Credit card</option>
-        <option value="investment">Investment</option>
-        <option value="loan">Loan</option>
-      </select>
-      <div class="flex gap-2">
-        <input bind:value={accountForm.form.currency} placeholder="USD" class="w-20 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-        <input type="number" step="0.01" bind:value={accountForm.form.balance} placeholder="0.00" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-      </div>
-      <input bind:value={accountForm.form.institution} placeholder="Institution (Chase, Apple Card…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-      <!-- Color palette swatches — visually pick the row pip rather
-           than typing a name. Empty pip = "no color". -->
-      <div class="flex items-center gap-2">
-        <span class="text-[11px] text-dim">Color</span>
-        <button type="button" onclick={() => (accountForm.form.color = '')} class="w-5 h-5 rounded-full border border-surface2 {accountForm.form.color === '' ? 'ring-2 ring-primary' : ''}" aria-label="no color"></button>
-        {#each ACCOUNT_COLORS as c}
-          <button type="button" onclick={() => (accountForm.form.color = c)} class="w-5 h-5 rounded-full {accountForm.form.color === c ? 'ring-2 ring-primary' : ''}" style="background: {accColor(c)}" aria-label={c}></button>
-        {/each}
-      </div>
-    <input bind:value={accountForm.form.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-    <input bind:value={accountForm.form.notes} placeholder="Notes (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-    <div class="flex justify-end gap-2 pt-2">
-      <button type="button" onclick={() => accountForm.close()} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-      <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Create</button>
-    </div>
-  </form>
-</EditModal>
-
-<!-- ── New-subscription modal ───────────────────────────────────────── -->
-<EditModal
-  open={subscriptionForm.open}
-  maxWidth="sm"
-  title="New subscription"
-  onClose={() => subscriptionForm.close()}
->
-  <form onsubmit={(e) => { e.preventDefault(); subscriptionForm.submit(); }} class="p-4 space-y-3">
-      <input bind:value={subscriptionForm.form.name} required placeholder="Name (Netflix, Spotify…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      <div class="flex gap-2">
-        <input type="number" step="0.01" bind:value={subscriptionForm.form.amount} required placeholder="9.99" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-        <input bind:value={subscriptionForm.form.currency} class="w-20 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-        <select bind:value={subscriptionForm.form.cadence} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
-          <option value="weekly">/ week</option>
-          <option value="monthly">/ month</option>
-          <option value="quarterly">/ quarter</option>
-          <option value="yearly">/ year</option>
-        </select>
-      </div>
-      <label class="block text-xs text-dim">Next renewal
-        <input type="date" bind:value={subscriptionForm.form.next_renewal} class="block mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      </label>
-      <div class="grid grid-cols-2 gap-2">
-        {#if dataCtl.accounts.length > 0}
-          <select bind:value={subscriptionForm.form.account_id} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
-            <option value="">— no account —</option>
-            {#each dataCtl.accounts as a}<option value={a.id}>{a.name}</option>{/each}
-          </select>
-        {/if}
-        <select bind:value={subscriptionForm.form.project} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
-          <option value="">— no project —</option>
-          {#each dataCtl.projects as p}<option value={p.name}>{p.name}</option>{/each}
-        </select>
-      </div>
-    <input bind:value={subscriptionForm.form.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-    <input bind:value={subscriptionForm.form.category} placeholder="Category (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-    <input bind:value={subscriptionForm.form.url} placeholder="Manage URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-    <div class="flex justify-end gap-2 pt-2">
-      <button type="button" onclick={() => subscriptionForm.close()} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-      <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Add</button>
-    </div>
-  </form>
-</EditModal>
-
-<!-- ── New-goal modal ───────────────────────────────────────────────── -->
-<EditModal
-  open={goalForm.open}
-  maxWidth="sm"
-  title="New financial goal"
-  onClose={() => goalForm.close()}
->
-  <form onsubmit={(e) => { e.preventDefault(); goalForm.submit(); }} class="p-4 space-y-3">
-      <input bind:value={goalForm.form.name} required placeholder="Name (Emergency fund, Pay off card…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      <select bind:value={goalForm.form.kind} class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
-        <option value="savings">Savings (build up to target)</option>
-        <option value="payoff">Payoff (shrink debt to zero)</option>
-        <option value="networth">Net worth (aggregate target)</option>
-      </select>
-      <div class="flex gap-2">
-        <input type="number" step="0.01" bind:value={goalForm.form.target} required placeholder="Target" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-        <input type="number" step="0.01" bind:value={goalForm.form.current} placeholder="Current" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-        <input bind:value={goalForm.form.currency} class="w-20 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      </div>
-      <label class="block text-xs text-dim">Target date (optional)
-        <input type="date" bind:value={goalForm.form.target_date} class="block mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      </label>
-    <div class="flex justify-end gap-2 pt-2">
-      <button type="button" onclick={() => goalForm.close()} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
-      <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Add</button>
-    </div>
-  </form>
-</EditModal>
+<!-- Per-modal markup lives in dedicated components. Each receives
+     its controller plus any extra slices it needs from dataCtl
+     (account / project pickers). The page just owns the wire-up. -->
+<FinanceIncomeModal {incomeForm} accounts={dataCtl.accounts} projects={dataCtl.projects} />
+<FinanceAccountModal {accountForm} />
+<FinanceSubscriptionModal {subscriptionForm} accounts={dataCtl.accounts} projects={dataCtl.projects} />
+<FinanceGoalModal {goalForm} />
