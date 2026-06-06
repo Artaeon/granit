@@ -176,9 +176,25 @@ export function createTaskDetailAIDecompose(deps: TaskDetailAIDecomposeDeps): Ta
     }
   }
 
-  function cancel() { abort?.abort(); }
+  // Stop — abort the in-flight stream but KEEP the partial output +
+  // error so the user can retry without losing context. Flip busy +
+  // null abort synchronously so the "cancel" button swaps to
+  // "regenerate" instantly; without these the UI stays stuck on
+  // cancel until chatStream's `finally` block settles (which can
+  // lag if the abort is mid-await).
+  function cancel() {
+    abort?.abort();
+    abort = null;
+    busy = false;
+  }
 
+  // Close — abort + wipe. Without the abort, an in-flight stream's
+  // rafThrottle would keep writing into raw/subtasks after we
+  // cleared them, leaving a half-replaced phantom.
   function dismiss() {
+    abort?.abort();
+    abort = null;
+    busy = false;
     raw = '';
     error = '';
     subtasks = [];
