@@ -20,6 +20,7 @@
   import { openResearchMode as openResearchModeFor } from '$lib/notes/researchMode';
   import { noteCrumbs, visibleCrumbs as visibleCrumbsFn, crumbsCollapsed as crumbsCollapsedFn } from '$lib/notes/noteBreadcrumbs';
   import { createNoteSaveStatusCtl } from '$lib/notes/noteSaveStatusCtl.svelte';
+  import { createNoteVersionCount } from '$lib/notes/noteVersionCount.svelte';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
@@ -482,30 +483,11 @@
   let historyOpen = $state(false);
   let helpOpen = $state(false);
 
-  // Snapshot count for the current note — surfaces history existence
-  // via a small chip in NoteHeader. Refreshes on note swap and after
-  // every successful save (modTime ticks). The listHistory endpoint
-  // is O(1) since the v3 manifest sidecar, so re-fetching per save is
-  // cheap.
-  let versionCount = $state(0);
-  let versionCountGen = 0;
-  $effect(() => {
-    const path = note?.path;
-    void note?.modTime;
-    if (!path) {
-      versionCount = 0;
-      return;
-    }
-    const myGen = ++versionCountGen;
-    void (async () => {
-      try {
-        const data = await api.listHistory(path);
-        if (myGen === versionCountGen) versionCount = data.versions?.length ?? 0;
-      } catch {
-        if (myGen === versionCountGen) versionCount = 0;
-      }
-    })();
-  });
+  // Snapshot-count fetcher lives in noteVersionCount — refreshes on
+  // note swap and every save (modTime tick), with a generation guard
+  // so stale fetches can't write into the current note's chip.
+  const versionCountCtl = createNoteVersionCount({ getNote: () => note });
+  let versionCount = $derived(versionCountCtl.versionCount);
   // Audio mode — read-aloud player for the current note. Browser
   // SpeechSynthesis only, no backend. Closed by default; opens via
   // the toolbar button.
