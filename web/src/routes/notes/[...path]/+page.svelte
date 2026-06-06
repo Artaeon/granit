@@ -19,7 +19,7 @@
   import { createNoteVersionCount } from '$lib/notes/noteVersionCount.svelte';
   import { createNotePipelineState } from '$lib/notes/notePipelineState.svelte';
   import { createMissingNoteCtl } from '$lib/notes/createMissingNote.svelte';
-  import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
+  import NoteEditorRootOverlays from '$lib/notes/NoteEditorRootOverlays.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { createNoteLinkSuggester } from '$lib/notes/noteLinkSuggester.svelte';
   import { createLoadNoteWrapper } from '$lib/notes/loadNoteWrapper.svelte';
@@ -29,18 +29,9 @@
   import { createNoteWordStats } from '$lib/notes/noteWordStats.svelte';
   import { shiftDate } from '$lib/notes/dailyNote';
   import { createDailyNoteNav } from '$lib/notes/dailyNoteNav.svelte';
-  import PrintPreview from '$lib/notes/PrintPreview.svelte';
-  import HistoryPanel from '$lib/notes/HistoryPanel.svelte';
-  import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
-  import SelectionToolbar from '$lib/editor/SelectionToolbar.svelte';
-  import MobileEditorToolbar from '$lib/editor/MobileEditorToolbar.svelte';
-  import InlineAIMenu from '$lib/notes/InlineAIMenu.svelte';
-  import AIActionBar from '$lib/notes/AIActionBar.svelte';
   import { createInlineAIBridge } from '$lib/notes/inlineAIBridge.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
-  import NotePresentation from '$lib/notes/NotePresentation.svelte';
   import NoteStatusBar from '$lib/notes/NoteStatusBar.svelte';
-  import NoteOverflowMenu from '$lib/notes/NoteOverflowMenu.svelte';
   import NoteInfoRail from '$lib/notes/NoteInfoRail.svelte';
   import NoteHeader from '$lib/notes/NoteHeader.svelte';
   import NoteEditorBanners from '$lib/notes/NoteEditorBanners.svelte';
@@ -626,134 +617,33 @@
   {/if}
 </div>
 
-<!-- Extract-to-note dialog. Lives at the page root so it overlays
-     above the editor + sidebars on every viewport size. The
-     ExtractRequest is null when no extraction is in flight, so the
-     dialog renders nothing. -->
-<ExtractToNoteDialog
-  request={extractCtl.request}
-  sourcePath={note?.path ?? ''}
-  onConfirm={extractCtl.confirm}
-  onDismiss={extractCtl.dismiss}
+<!-- Page-root overlay + floating-toolbar cluster (ExtractDialog,
+     PrintPreview, HistoryPanel, ShortcutsHelp, NotePresentation,
+     SelectionToolbar, MobileEditorToolbar, AIActionBar, InlineAIMenu,
+     NoteOverflowMenu). Extracted to <NoteEditorRootOverlays>. -->
+<NoteEditorRootOverlays
+  {note}
+  {bodyForPreview}
+  {overlays}
+  {viewModes}
+  editorDOM={editorDOM}
+  editorView={editor?.getView?.()}
+  dispatchChord={(chord) => editor?.dispatchChord(chord)}
+  insertAtCursor={(text) => editor?.insertAtCursor(text)}
+  openFind={() => editor?.openFind()}
+  {overflowTriggerEl}
+  {readingMode}
+  {focusMode}
+  extractRequest={extractCtl.request}
+  onExtractConfirm={extractCtl.confirm}
+  onExtractDismiss={extractCtl.dismiss}
+  onHistoryRestore={(restoredBody) => { pipe.body = restoredBody; pipe.dirty = true; }}
+  {aiTriggerEvent}
+  {aiGhostState}
+  onAITriggerClose={aiBridge.clearTrigger}
+  {schedulingFlashcards}
+  onScheduleFlashcards={flashcards.run}
 />
-
-<!-- Print preview overlay. Renders nothing while closed; mounted at
-     the page root so its `body > *:not(.print-overlay)` print rule
-     reliably hides everything else. -->
-{#if note}
-  <PrintPreview
-    bind:open={overlays.printOpen}
-    title={note.title || note.path}
-    body={bodyForPreview}
-    sourcePath={note.path}
-    onClose={() => (overlays.printOpen = false)}
-  />
-{/if}
-
-<!-- Version history overlay. Restore returns the body of the chosen
-     snapshot; we set `body` so the editor reflects it immediately,
-     mark dirty so the next autosave persists the restored content,
-     and let the panel's own loadVersions() refresh the list (the
-     pre-restore content was itself snapshotted server-side). -->
-{#if note}
-  <HistoryPanel
-    bind:open={overlays.historyOpen}
-    notePath={note.path}
-    currentBody={bodyForPreview}
-    onRestore={(restoredBody: string) => {
-      pipe.body = restoredBody;
-      pipe.dirty = true;
-    }}
-  />
-{/if}
-
-<!-- Keyboard cheat sheet. Triggered by "?" anywhere outside an
-     editable surface, or via the toolbar help button. -->
-<ShortcutsHelpOverlay
-  bind:open={overlays.helpOpen}
-  onClose={() => (overlays.helpOpen = false)}
-/>
-
-<!-- Slideshow / presentation mode — fullscreen deck view. Mounted
-     at the page root so it overlays sidebars; component renders
-     nothing while closed. -->
-{#if note}
-  <NotePresentation
-    body={bodyForPreview}
-    title={note.title || note.path}
-    open={overlays.presentationOpen}
-    onClose={() => (overlays.presentationOpen = false)}
-  />
-{/if}
-
-<!-- Floating selection toolbar — appears above any text selection
-     inside the editor. The chord-dispatch path means buttons take
-     the same code route as the keyboard shortcuts (single source
-     of truth: the keymap). Hidden on mobile via CSS and on print
-     surfaces. -->
-<SelectionToolbar
-  container={editorDOM}
-  onCommand={(chord) => editor?.dispatchChord(chord)}
-/>
-
-<!-- Mobile-only floating formatting bar — anchored above the on-screen
-     keyboard while the editor is focused. Dispatches through the same
-     chord path as desktop shortcuts (single source of truth: the
-     keymap); also exposes literal-insert buttons for the highest-value
-     mobile snippets (checkbox / wikilink / tag) that don't map to a
-     keymap chord. Self-hides off-mobile via md:hidden inside the
-     component. -->
-<MobileEditorToolbar
-  contentDOM={editorDOM}
-  onCommand={(chord) => editor?.dispatchChord(chord)}
-  onInsert={(text) => editor?.insertAtCursor(text)}
-/>
-
-<!-- Floating action bar that follows the inline-AI ghost. During
-     streaming it offers a Stop button; after completion it offers
-     Keep / Try again / Discard. Keyboard chords (Tab / ⌘R / Esc)
-     still work — the bar is the click-discoverable surface for the
-     same actions. -->
-<AIActionBar view={editor?.getView?.()} aiState={aiGhostState} />
-
-<!-- Inline AI menu — Notion-style command palette anchored at the
-     cursor. Opens on Cmd-/ or when the user types "/ai" at the start
-     of a line. Streams output as ghost text in the editor; the user
-     accepts/rejects/regenerates without ever leaving the document. -->
-{#if aiTriggerEvent && note}
-  <InlineAIMenu
-    event={aiTriggerEvent}
-    notePath={note.path}
-    body={bodyForPreview}
-    onClose={aiBridge.clearTrigger}
-  />
-{/if}
-
-<!-- Overflow menu popover — secondary header actions (find,
-     history, PDF, slideshow, audio, reading mode, focus mode,
-     flashcards, keyboard shortcuts). Rendered with position:
-     fixed and viewport-clamped coordinates so it escapes any
-     ancestor overflow and never lands off-screen. Self-contained
-     since the 2026-05-28 extraction. -->
-{#if note}
-  <NoteOverflowMenu
-    bind:open={overlays.overflowOpen}
-    triggerEl={overflowTriggerEl}
-    audioOpen={overlays.audioOpen}
-    {readingMode}
-    {focusMode}
-    {schedulingFlashcards}
-    onOpenFind={() => editor?.openFind()}
-    onOpenHistory={() => (overlays.historyOpen = true)}
-    onOpenPrint={() => (overlays.printOpen = true)}
-    onOpenPresentation={() => (overlays.presentationOpen = true)}
-    onToggleAudio={() => (overlays.audioOpen = !overlays.audioOpen)}
-    onToggleReadingMode={viewModes.toggleReadingMode}
-    onToggleFocusMode={viewModes.toggleFocusMode}
-    onScheduleFlashcards={flashcards.run}
-    onOpenHelp={() => (overlays.helpOpen = true)}
-  />
-{/if}
 
 <style>
   /* save-flash animation lives in $lib/notes/NoteHeader.svelte alongside
