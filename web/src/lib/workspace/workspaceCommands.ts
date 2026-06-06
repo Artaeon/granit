@@ -13,6 +13,7 @@ import { PANES, findPane, type PaneKind } from './paneRegistry';
 import { workspaceStoreSingleton } from './workspaceStore.svelte';
 import { leaves } from './splitTree';
 import { WORKSPACE_PRESETS } from './workspacePresets';
+import { loadUserPresets, saveUserPreset, cloneWithNewIds } from './userPresets';
 import { toast } from '$lib/components/toast';
 
 export type WorkspaceCmd = {
@@ -72,6 +73,39 @@ export function workspaceCommands(): WorkspaceCmd[] {
       }
     });
   }
+
+  // User-saved presets — parity with WorkspaceNewMenu. Each entry
+  // applies a saved layout (with fresh ids so duplicate-apply doesn't
+  // collide) and jumps to /workspace.
+  for (const p of loadUserPresets()) {
+    out.push({
+      id: 'workspace:new:user:' + p.id,
+      label: `New workspace: ${p.name}`,
+      detail: 'Your saved preset',
+      icon: 'workspace',
+      run: () => {
+        store.createWithLayout(p.name, cloneWithNewIds(p.layout));
+        void goto('/workspace');
+      }
+    });
+  }
+
+  // Save current layout as preset. Prompts for a name; persists via
+  // userPresets so the entry shows up in WorkspaceNewMenu's "Your
+  // presets" section AND in future palette opens.
+  out.push({
+    id: 'workspace:save-as-preset',
+    label: 'Save current layout as preset',
+    detail: store.active?.name ?? '—',
+    icon: 'workspace',
+    run: () => {
+      if (typeof window === 'undefined') return;
+      const name = window.prompt('Save layout as preset.\nName:', store.active.name);
+      if (!name) return;
+      const saved = saveUserPreset(name, store.active.layout);
+      toast.success(`Saved preset "${saved.name}"`);
+    }
+  });
 
   // Backup / portability. Clipboard pair — the user copies JSON out,
   // pastes it in. Pairs nicely with the CLI `granit backup` for
