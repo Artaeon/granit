@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { page } from '$app/stores';
-  import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
   import CalendarAgent from '$lib/calendar/CalendarAgent.svelte';
   import { EVENT_TYPES } from '$lib/calendar/eventTypes';
@@ -25,6 +24,7 @@
   import { installCalendarLifecycle } from '$lib/calendar/calendarLifecycle';
   import { createCalendarKeyboard, createCalendarSwipe } from '$lib/calendar/calendarKeyboard.svelte';
   import { createCalendarEventMutations } from '$lib/calendar/calendarEventMutations';
+  import { applyCalendarUrlIntents } from '$lib/calendar/calendarUrlIntents';
   import {
     addDays,
     endOfWeek,
@@ -130,31 +130,15 @@
 
   // Mobile detection moved to the mediaQuery store + $effect above.
 
-  // Deep-link: ?plan=1 (optionally with &project=NAME) flips on plan
-  // mode so other pages — e.g. the project detail's "schedule next
-  // action" button — can hand off into the calendar in the right state.
-  // ?project=NAME (without &plan) just scopes the viewCtl.view to that
-  // project — the "open this project's calendar" hand-off.
-  onMount(() => {
-    if (typeof window === 'undefined') return;
-    const url = new URL(window.location.href);
-    if (url.searchParams.get('plan') === '1' && !viewCtl.planMode) {
-      viewCtl.planMode = true;
-      viewCtl.view = 'day';
-    }
-    const proj = url.searchParams.get('project');
-    if (proj) filterCtl.projectFilter = proj;
-    // ?agent=1 launches the Calendar Agent — used by the chat sidebar.
-    if (url.searchParams.get('agent') === '1') {
-      agentOpen = true;
-      const params = new URLSearchParams(url.searchParams);
-      params.delete('agent');
-      void goto(`/calendar${params.toString() ? '?' + params : ''}`, {
-        replaceState: true,
-        keepFocus: true
-      });
-    }
-  });
+  // ?plan / ?project / ?agent URL intents — applied once on mount.
+  // See calendarUrlIntents.ts for what each param does.
+  onMount(() =>
+    applyCalendarUrlIntents({
+      viewCtl,
+      filterCtl,
+      openAgent: () => (agentOpen = true)
+    })
+  );
 
   // Initial loads + WS subscription live in calendarLifecycle.
   onMount(() => installCalendarLifecycle({ dataCtl }));
