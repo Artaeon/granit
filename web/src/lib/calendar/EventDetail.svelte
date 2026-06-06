@@ -5,6 +5,7 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import { eventStartDate, eventEndDate, fmtTime, eventTypeColor } from './utils';
   import { createEventDetailLoaders } from './eventDetailLoaders.svelte';
+  import { createEventDetailDelete } from './eventDetailDelete.svelte';
   import { duplicateEventPlusOneWeek, createMeetingNoteForEvent } from './calendarEventMutations';
   import { findEventType } from './eventTypes';
   import TimeInput from './TimeInput.svelte';
@@ -51,6 +52,19 @@
   const loaders = createEventDetailLoaders();
   const projects = $derived(loaders.projects);
   const sources = $derived(loaders.sources);
+
+  // Delete / skip / reset controller. Owns the inline scope picker
+  // state (deletePrompt) and dispatches confirm / skip / reset
+  // mutations. busy is shared with save / duplicate via setBusy so
+  // only one mutation can run at a time and the action row's
+  // disabled state stays consistent.
+  const deleteCtl = createEventDetailDelete({
+    getEvent: () => event,
+    setBusy: (v) => { busy = v; },
+    close: () => { open = false; },
+    onChanged: () => onChanged?.()
+  });
+  const deletePrompt = $derived(deleteCtl.deletePrompt);
 
   // 24-hour HH:MM picker buffers — bindable strings owned here and
   // forwarded to the shared TimeInput component (paired HH+MM selects
@@ -320,156 +334,10 @@
     }
   }
 
-  // Delete prompt state. Recurring events open an inline "what
-  // scope?" picker instead of native confirm() dialogs. The previous
-  // flow stacked two confirm()s where the safe path was OK and the
-  // destructive series-wide delete sat behind Cancel — a user who
-  // second-guessed the operation and clicked Cancel to abort would
-  // instead trigger the catastrophic path. The inline picker makes
-  // the three outcomes (this one / entire series / abort) explicit
-  // buttons with no Cancel-bypass trapdoor.
-  let deletePrompt = $state<'none' | 'recurring-native' | 'recurring-ics'>('none');
-
-  async function deleteEvent() {
-    if (!event?.eventId) return;
-    if (event.rrule && event.type === 'ics_event' && event.source) {
-      deletePrompt = 'recurring-ics';
-      return;
-    }
-    // All-day recurring events have event.date but NO event.start —
-    // the previous gate required event.start and silently fell
-    // through to the nuclear delete-whole-series path. Accept either
-    // anchor so daily/weekly all-day series stop getting wiped when
-    // the user means "skip just today". exDateKey() already handles
-    // both shapes (event.start for timed, event.date for all-day).
-    if (event.rrule && event.type === 'event' && event.eventId && (event.start || event.date)) {
-      deletePrompt = 'recurring-native';
-      return;
-    }
-    // Non-recurring path — single VEVENT, one confirm + DELETE.
-    if (!confirm(`Delete event "${event.title}"?`)) return;
-    busy = true;
-    try {
-      if (event.type === 'ics_event' && event.source) {
-        await api.deleteICSEvent(event.source, event.eventId);
-      } else {
-        await api.deleteEvent(event.eventId);
-      }
-      onChanged?.();
-      open = false;
-      toast.success('event deleted');
-    } catch (err) {
-      toast.error('delete failed: ' + (errorMessage(err)));
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function confirmDeleteOccurrence() {
-    if (!event?.eventId) return;
-    busy = true;
-    try {
-      if (deletePrompt === 'recurring-ics' && event.source) {
-        // EXDATE the source series at this occurrence's anchor. For
-        // timed events that's event.start; for all-day events the
-        // feed emits `date` instead. Backend accepts either form.
-        const anchor = event.start ?? event.date;
-        if (!anchor) {
-          toast.error("Can't identify this occurrence — edit the series instead.");
-          return;
-        }
-        await api.skipICSOccurrence(event.source, event.eventId, anchor);
-      } else if (deletePrompt === 'recurring-native') {
-        const key = exDateKey();
-        if (!key) {
-          toast.error("Can't identify this occurrence — edit the series instead.");
-          return;
-        }
-        await api.skipEventOccurrence(event.eventId, key);
-      } else {
-        return;
-      }
-      deletePrompt = 'none';
-      onChanged?.();
-      open = false;
-      toast.success('this occurrence skipped · series unchanged');
-    } catch (err) {
-      toast.error('skip failed: ' + errorMessage(err));
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function confirmDeleteSeries() {
-    if (!event?.eventId) return;
-    busy = true;
-    try {
-      if (deletePrompt === 'recurring-ics' && event.source) {
-        await api.deleteICSEvent(event.source, event.eventId);
-      } else if (deletePrompt === 'recurring-native') {
-        await api.deleteEvent(event.eventId);
-      } else {
-        return;
-      }
-      deletePrompt = 'none';
-      onChanged?.();
-      open = false;
-      toast.success('entire series deleted');
-    } catch (err) {
-      toast.error('delete failed: ' + errorMessage(err));
-    } finally {
-      busy = false;
-    }
-  }
-
-  function cancelDeletePrompt() {
-    deletePrompt = 'none';
-  }
-
-  // Local alias so call sites read the same as before.
+  // Local alias for saveEdit's exDateKey call site — the override
+  // write path is still owned by the modal until the edit controller
+  // lands in a later pass.
   function exDateKey(): string { return computeExDateKey(event); }
-
-  // Reset a per-occurrence override back to series defaults. The
-  // server side accepts an empty override body at the same key as
-  // a clear; this surfaces it as a one-click action when an event
-  // carries the override_key marker.
-  async function resetOccurrence() {
-    if (!event?.eventId || !event.override_key) return;
-    if (!confirm(`Reset "${event.title}" on this date back to the series defaults?`)) return;
-    busy = true;
-    try {
-      await api.overrideEventOccurrence(event.eventId, event.override_key, {});
-      onChanged?.();
-      open = false;
-      toast.success('Occurrence reset to series defaults');
-    } catch (err) {
-      toast.error('reset failed: ' + (errorMessage(err)));
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function skipOccurrence() {
-    if (!event?.eventId || !event.rrule) return;
-    if (event.type !== 'event') {
-      toast.info('Skipping ICS occurrences isn\'t supported yet — edit the source calendar.');
-      return;
-    }
-    const key = exDateKey();
-    if (!key) return;
-    if (!confirm(`Skip just this occurrence of "${event.title}"? The rest of the series stays.`)) return;
-    busy = true;
-    try {
-      await api.skipEventOccurrence(event.eventId, key);
-      onChanged?.();
-      open = false;
-      toast.success('Occurrence cancelled · series unchanged');
-    } catch (err) {
-      toast.error('skip failed: ' + (errorMessage(err)));
-    } finally {
-      busy = false;
-    }
-  }
 
   async function toggleDone() {
     if (!event?.taskId) return;
@@ -757,7 +625,7 @@
             <button type="submit" disabled={busy} class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded disabled:opacity-50">save</button>
             <button type="button" onclick={() => (editing = false)} class="px-3 py-1.5 text-sm text-subtext hover:text-text">cancel</button>
             <span class="flex-1"></span>
-            <button type="button" onclick={deleteEvent} disabled={busy} class="px-3 py-1.5 text-sm text-error hover:bg-surface0 rounded">delete</button>
+            <button type="button" onclick={deleteCtl.deleteEvent} disabled={busy} class="px-3 py-1.5 text-sm text-error hover:bg-surface0 rounded">delete</button>
           </div>
         </form>
       {:else}
@@ -771,10 +639,10 @@
           eventTitle={event.title}
           action="delete"
           onChoose={(scope) => {
-            if (scope === 'this') void confirmDeleteOccurrence();
-            else if (scope === 'series') void confirmDeleteSeries();
+            if (scope === 'this') void deleteCtl.confirmDeleteOccurrence();
+            else if (scope === 'series') void deleteCtl.confirmDeleteSeries();
           }}
-          onCancel={cancelDeletePrompt}
+          onCancel={deleteCtl.cancelDeletePrompt}
           {busy}
         />
       {/if}
@@ -808,7 +676,7 @@
                  distinct verb from 'delete' so the user's mental
                  model of cancel-once vs end-series stays clear. -->
             <button
-              onclick={skipOccurrence}
+              onclick={deleteCtl.skipOccurrence}
               disabled={busy}
               class="px-3 py-1.5 text-sm bg-surface0 text-warning rounded hover:bg-surface1"
               title="Cancel just this occurrence — keep the rest of the series"
@@ -822,14 +690,14 @@
                  occurrence or non-recurring event) so the action
                  row doesn't grow buttons that wouldn't do anything. -->
             <button
-              onclick={resetOccurrence}
+              onclick={deleteCtl.resetOccurrence}
               disabled={busy}
               class="px-3 py-1.5 text-sm bg-surface0 text-info rounded hover:bg-surface1"
               title="Drop the per-occurrence override and inherit the series defaults"
             >reset this</button>
           {/if}
           <button
-            onclick={deleteEvent}
+            onclick={deleteCtl.deleteEvent}
             disabled={busy || deletePrompt !== 'none'}
             class="px-3 py-1.5 text-sm text-error hover:bg-surface0 rounded disabled:opacity-50"
             title={event.rrule ? 'Pick scope: this occurrence or the entire series' : 'Delete this event'}
