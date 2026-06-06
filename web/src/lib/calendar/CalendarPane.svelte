@@ -5,16 +5,8 @@
   import CalendarAgent from '$lib/calendar/CalendarAgent.svelte';
   import { EVENT_TYPES } from '$lib/calendar/eventTypes';
   import { toast } from '$lib/components/toast';
-  import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
-  import {
-    createCalendarViewState,
-    type View,
-    type HourDensity
-  } from '$lib/calendar/calendarViewState.svelte';
-  import {
-    createCalendarFilterState,
-    type EventFilterKey
-  } from '$lib/calendar/calendarFilterState.svelte';
+  import { createCalendarViewState } from '$lib/calendar/calendarViewState.svelte';
+  import { createCalendarFilterState } from '$lib/calendar/calendarFilterState.svelte';
   import { createCalendarData } from '$lib/calendar/calendarData.svelte';
   import { createCalendarDetail } from '$lib/calendar/calendarDetail.svelte';
   import { createCalendarCreateDialogs } from '$lib/calendar/calendarCreateDialogs.svelte';
@@ -33,7 +25,7 @@
   import AgendaView from '$lib/calendar/AgendaView.svelte';
   import YearView from '$lib/calendar/YearView.svelte';
   import MiniMonth from '$lib/calendar/MiniMonth.svelte';
-  import { sourceColors, setSourceColor, applySourceColor, type CalendarTone } from '$lib/calendar/sourceColors';
+  import { sourceColors, setSourceColor, type CalendarTone } from '$lib/calendar/sourceColors';
   import EventDetail from '$lib/calendar/EventDetail.svelte';
   import QuickCreateScheduled from '$lib/calendar/QuickCreateScheduled.svelte';
   import CreateEvent from '$lib/calendar/CreateEvent.svelte';
