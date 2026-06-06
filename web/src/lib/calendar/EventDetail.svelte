@@ -1,10 +1,10 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { api, type CalendarEvent, type CalendarSource, type Project, type EventStatus, todayISO } from '$lib/api';
+  import { api, type CalendarEvent, type EventStatus, todayISO } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
-  import { onMount } from 'svelte';
   import { eventStartDate, eventEndDate, fmtTime, eventTypeColor } from './utils';
+  import { createEventDetailLoaders } from './eventDetailLoaders.svelte';
   import { findEventType } from './eventTypes';
   import TimeInput from './TimeInput.svelte';
   import RecurrenceEditor from './RecurrenceEditor.svelte';
@@ -42,19 +42,14 @@
   let editChannels = $state<string[]>([]);
   let editTags = $state<string[]>([]);
 
-  // Project list — loaded once on mount so the picker is populated by
-  // the time the user clicks 'edit'. Failure degrades silently to "No
-  // project" only.
-  let projects = $state<Project[]>([]);
-  async function loadProjects() {
-    try {
-      const r = await api.listProjects();
-      projects = r.projects ?? [];
-    } catch {
-      projects = [];
-    }
-  }
-  onMount(loadProjects);
+  // Project list + calendar source list — both loaded once at mount
+  // by the loaders controller. Failure degrades silently to empty
+  // arrays (the project picker hides itself; icsWritable falls back
+  // to event.editable). Reactive reads via getters keep the markup
+  // shapes unchanged.
+  const loaders = createEventDetailLoaders();
+  const projects = $derived(loaders.projects);
+  const sources = $derived(loaders.sources);
 
   // 24-hour HH:MM picker buffers — bindable strings owned here and
   // forwarded to the shared TimeInput component (paired HH+MM selects
@@ -93,19 +88,6 @@
   // Hidden for ICS events (no override path) and for non-recurring
   // events.
   let editScope = $state<'instance' | 'series'>('instance');
-
-  // Calendar sources — needed to know if an ICS event came from a
-  // writable .ics file. Loaded once on mount; refreshed on demand.
-  let sources = $state<CalendarSource[]>([]);
-  async function loadSources() {
-    try {
-      const r = await api.listCalendarSources();
-      sources = r.sources;
-    } catch {
-      sources = [];
-    }
-  }
-  onMount(loadSources);
 
   // ICS events from a writable calendar are editable through the
   // ics-events endpoints; events.json events keep their existing path.
