@@ -49,6 +49,7 @@
   import { createTasksFilterState } from '$lib/tasks/tasksFilterState.svelte';
   import { createTasksViewState } from '$lib/tasks/tasksViewState.svelte';
   import { createTasksData } from '$lib/tasks/tasksData.svelte';
+  import { createTasksSelection } from '$lib/tasks/tasksSelection.svelte';
   import { workspaceContext } from '$lib/workspace/workspaceContext.svelte';
 
   // Loaded data (dataCtl.tasks/dataCtl.projects/dataCtl.goals/dataCtl.deadlines), dataCtl.loading flag,
@@ -190,7 +191,13 @@
   // pipeline + busy flag. The parent still owns aiFocusHours
   // (passed bindable) so TasksPlanMyDay above the bar reads the same
   // value without an extra round-trip.
-  let selectedIds = $state<Set<string>>(new Set());
+
+  // Cursor (j/k navigation) + bulk-selection state lives in
+  // $lib/tasks/tasksSelection. The controller owns cursorIdx +
+  // selectedIds + focusCursor + selectAllOrClear +
+  // openSnoozePickerForCursor; bindings into children pass through
+  // its getter/setter pairs the same way viewCtl bindings do.
+  const selCtl = createTasksSelection({ getFiltered: () => filterCtl.filtered });
   let detailTask = $state<Task | null>(null);
   let detailOpen = $state(false);
 
@@ -391,31 +398,9 @@
   // See tasksLifecycle.ts for the why on the 600ms window.
   onMount(() => installTasksLifecycle({ load }));
 
-  // ---------------------------------------------------------------------------
-  // Keyboard shortcuts (j/k navigate, x select, e edit, d done, p priority).
-  // Mirrors the TUI's task manager bindings as far as the web allows. Skipped
-  // when the user is typing into an input so we don't eat letters mid-search.
-  // The cursor is page-local; we only navigate within the current `filterCtl.filtered`
-  // list. Discoverable via the '?' button in the header.
-  // ---------------------------------------------------------------------------
-  let cursorIdx = $state<number>(-1);
-  $effect(() => {
-    // Reset cursor when the filterCtl.filtered list shrinks past it. We read the
-    // whole `filterCtl.filtered` array (not just .length) so any change to the
-    // filter pipeline retriggers — a swap that keeps length identical
-    // but rearranges items could otherwise leave the cursor pointing
-    // at a stale row. The Math.max(0, …) keeps cursorIdx valid (>= 0)
-    // even when filterCtl.filtered is empty; cursor-read sites also `?.` against
-    // out-of-bounds so a flicker between the effect firing and the
-    // render path resolves gracefully.
-    void filterCtl.filtered;
-    if (cursorIdx >= filterCtl.filtered.length) {
-      cursorIdx = Math.max(0, filterCtl.filtered.length - 1);
-    }
-  });
-
-  // isTypingTarget lives in $lib/util/isTypingTarget — shared with
-  // /projects and /goals page-level hotkey handlers.
+  // Keyboard shortcut wiring + cursor + selection state lives in
+  // selCtl (see tasksSelection.svelte.ts); the install call below
+  // bridges selCtl into useTasksKeyboard's refs object.
 
   async function cyclePriorityOf(t: Task) {
     try {
@@ -423,53 +408,9 @@
     } catch {}
   }
 
-  function focusCursor(idx: number) {
-    cursorIdx = Math.max(0, Math.min(filterCtl.filtered.length - 1, idx));
-    // Scroll the focused row into view; the data-task-id attr on the
-    // wrapper element gives us a stable selector across re-renders.
-    const t = filterCtl.filtered[cursorIdx];
-    if (!t) return;
-    queueMicrotask(() => {
-      const el = document.querySelector(`[data-task-id="${t.id}"]`) as HTMLElement | null;
-      if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    });
-  }
-
   // VIEW_CYCLE + VIEW_DIGIT_MAP live in $lib/tasks/tasksHelpers — same
   // vocabulary shared with the future workspace shell so the chord
-  // walks the same tab order whether dataCtl.tasks lives as a route or a pane.
-
-  // Trigger the in-card snooze picker for the cursor task. The picker
-  // is owned by TaskCard and anchored to its own snooze button (so the
-  // popover positions correctly), so the cleanest cross-component
-  // invocation is to .click() the button via the data-task-id wrapper.
-  // Falls back silently if the row hasn't rendered yet — the keydown
-  // handler's early-return already guarded against an empty filter.
-  function openSnoozePickerForCursor() {
-    const t = cursorIdx >= 0 ? filterCtl.filtered[cursorIdx] : null;
-    if (!t) return;
-    const row = document.querySelector(`[data-task-id="${t.id}"]`);
-    if (!row) return;
-    const btn = row.querySelector('button[aria-label="snooze"]') as HTMLButtonElement | null;
-    if (btn) btn.click();
-  }
-
-  // Bulk select-all toggle. Distinct from BulkBar's checkbox: this
-  // operates on every item in the currently-filtered list (including
-  // groups collapsed by the user — selection IS the union). Re-firing
-  // with everything already selected clears, so the chord doubles as
-  // an escape hatch without needing a separate Esc press.
-  function selectAllOrClear() {
-    if (filterCtl.filtered.length === 0) return;
-    const allSelected = filterCtl.filtered.every((t) => selectedIds.has(t.id));
-    if (allSelected) {
-      selectedIds = new Set();
-      toast.info('Selection cleared');
-      return;
-    }
-    selectedIds = new Set(filterCtl.filtered.map((t) => t.id));
-    toast.success(`Selected ${filterCtl.filtered.length} task${filterCtl.filtered.length === 1 ? '' : 's'}`);
-  }
+  // walks the same tab order whether tasks lives as a route or a pane.
 
   // Page-scoped keyboard handler lives in useTasksKeyboard. The refs
   // object exposes the parent's controllers + action callbacks; the
@@ -479,8 +420,8 @@
     installTasksKeyboard({
       getView: () => viewCtl.view,
       getFiltered: () => filterCtl.filtered,
-      getCursorIdx: () => cursorIdx,
-      getSelectionSize: () => selectedIds.size,
+      getCursorIdx: () => selCtl.cursorIdx,
+      getSelectionSize: () => selCtl.selectedIds.size,
       isHelpOpen: () => viewCtl.helpOpen,
       setHelpOpen: (v) => (viewCtl.helpOpen = v),
       isFilterPanelOpen: () => viewCtl.filterPanelOpen,
@@ -488,14 +429,9 @@
       cycleView: (dir) => viewCtl.cycleView(dir),
       setView: (v) => (viewCtl.view = v),
       setAgentOpen: (v) => (agentOpen = v),
-      focusCursor,
-      selectAllOrClear,
-      toggleSelectedFor: (id) => {
-        const next = new Set(selectedIds);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        selectedIds = next;
-      },
+      focusCursor: selCtl.focusCursor,
+      selectAllOrClear: selCtl.selectAllOrClear,
+      toggleSelectedFor: selCtl.toggleSelected,
       toggleDoneFor: (t) => {
         toggleDoneOf(t).catch(() => {});
       },
@@ -503,8 +439,8 @@
       cyclePriorityFor: (t) => {
         void cyclePriorityOf(t);
       },
-      openSnoozeForCursor: openSnoozePickerForCursor,
-      clearSelection: () => (selectedIds = new Set())
+      openSnoozeForCursor: selCtl.openSnoozePickerForCursor,
+      clearSelection: selCtl.clear
     })
   );
 
@@ -738,12 +674,12 @@
       {/if}
     {/if}
 
-    {#if selectedIds.size > 0}
+    {#if selCtl.selectedIds.size > 0}
       <BulkBar
-        count={selectedIds.size}
-        ids={Array.from(selectedIds)}
-        onClear={() => (selectedIds = new Set())}
-        onChanged={async () => { selectedIds = new Set(); await load(); }}
+        count={selCtl.selectedIds.size}
+        ids={Array.from(selCtl.selectedIds)}
+        onClear={selCtl.clear}
+        onChanged={async () => { selCtl.clear(); await load(); }}
       />
     {/if}
 
@@ -764,7 +700,7 @@
           {filterCtl}
           {dataCtl}
           {viewCtl}
-          bind:selectedIds
+          bind:selectedIds={selCtl.selectedIds}
           {load}
           onOpenDetail={openDetail}
           onOpenContext={openContext}
@@ -774,7 +710,7 @@
           tasks={filterCtl.filtered}
           bind:mode={viewCtl.kanbanMode}
           bind:swimlane={viewCtl.kanbanSwimlane}
-          bind:selectedIds
+          bind:selectedIds={selCtl.selectedIds}
           onChanged={load}
           onOpenDetail={openDetail}
           onContextMenu={openContext}
@@ -795,8 +731,8 @@
           {filterCtl}
           {dataCtl}
           {viewCtl}
-          {cursorIdx}
-          bind:selectedIds
+          cursorIdx={selCtl.cursorIdx}
+          bind:selectedIds={selCtl.selectedIds}
           {load}
           onOpenDetail={openDetail}
           onOpenContext={openContext}
@@ -812,8 +748,8 @@
             {filterCtl}
             {dataCtl}
             {viewCtl}
-            {cursorIdx}
-            bind:selectedIds
+            cursorIdx={selCtl.cursorIdx}
+            bind:selectedIds={selCtl.selectedIds}
             {load}
             onOpenDetail={openDetail}
             onOpenContext={openContext}
@@ -830,8 +766,8 @@
             {filterCtl}
             {dataCtl}
             {viewCtl}
-            {cursorIdx}
-            bind:selectedIds
+            cursorIdx={selCtl.cursorIdx}
+            bind:selectedIds={selCtl.selectedIds}
             {load}
             onOpenDetail={openDetail}
             onOpenContext={openContext}
@@ -844,8 +780,8 @@
             {filterCtl}
             {dataCtl}
             {viewCtl}
-            {cursorIdx}
-            bind:selectedIds
+            cursorIdx={selCtl.cursorIdx}
+            bind:selectedIds={selCtl.selectedIds}
             dim
             {load}
             onOpenDetail={openDetail}
@@ -877,7 +813,7 @@
         <SectionList
           groups={viewCtl.listGroups}
           filtered={filterCtl.filtered}
-          cursorIdx={cursorIdx}
+          cursorIdx={selCtl.cursorIdx}
           compactCards={viewCtl.compactCards}
           childCount={dataCtl.childCount}
           collapsedIds={dataCtl.collapsedIds}
@@ -885,7 +821,7 @@
           groupAddKey={groupAddCtl.key}
           bind:groupAddText={groupAddCtl.text}
           groupAddBusy={groupAddCtl.busy}
-          bind:selectedIds
+          bind:selectedIds={selCtl.selectedIds}
           isHiddenByCollapse={dataCtl.isHiddenByCollapse}
           onToggleSection={viewCtl.toggleSection}
           onToggleCollapse={dataCtl.toggleCollapsed}
@@ -929,7 +865,7 @@
      "agent over what I'm looking at" is the default. -->
 <TaskAgent
   open={agentOpen}
-  tasks={selectedIds.size > 0 ? filterCtl.filtered.filter((t) => selectedIds.has(t.id)) : filterCtl.filtered}
+  tasks={selCtl.selectedIds.size > 0 ? filterCtl.filtered.filter((t) => selCtl.selectedIds.has(t.id)) : filterCtl.filtered}
   todayISO={todayISO()}
   availableProjects={dataCtl.projects.map((p) => p.name)}
   onClose={() => (agentOpen = false)}
