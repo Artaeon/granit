@@ -25,6 +25,7 @@
   import { createCalendarRecurringScope } from '$lib/calendar/calendarRecurringScope.svelte';
   import { createCalendarQuickEvent } from '$lib/calendar/calendarQuickEvent.svelte';
   import { installCalendarLifecycle } from '$lib/calendar/calendarLifecycle';
+  import { createCalendarKeyboard, createCalendarSwipe } from '$lib/calendar/calendarKeyboard.svelte';
   import {
     addDays,
     endOfWeek,
@@ -227,67 +228,18 @@
 
   // prev / next / gotoToday moved into viewCtl.
 
-  // Keyboard shortcuts. Active only when nothing else has focus (so we
-  // don't steal keystrokes from the create-event modal's inputs).
-  // Mirrors Google Calendars default bindings so muscle memory carries
-  // over: t = today, j/n = next, k/p = prev, d/w/m/y/a = viewCtl.view, ? = help.
-  function isTextField(el: EventTarget | null): boolean {
-    if (!(el instanceof HTMLElement)) return false;
-    const tag = el.tagName;
-    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
-  }
-
-  let showShortcutHelp = $state(false);
-
-  function onKeydown(e: KeyboardEvent) {
-    if (isTextField(e.target)) return;
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    // Don't fight the create / detail drawers — they own their own
-    // keyboard surface (Escape to close, Enter to submit).
-    if (dlgCtl.createOpen || dlgCtl.createEventOpen || dlgCtl.unifiedOpen || detCtl.detailOpen || dlgCtl.findTimeOpen) return;
-    switch (e.key) {
-      case 't': viewCtl.gotoToday(); break;
-      case 'j': case 'n': viewCtl.next(); break;
-      case 'k': case 'p': viewCtl.prev(); break;
-      case 'd': viewCtl.view = 'day'; break;
-      case 'w': viewCtl.view = 'week'; break;
-      case 'W': viewCtl.view = 'workweek'; break; // Shift+W = workweek (Mon–Fri)
-      case 'm': viewCtl.view = 'month'; break;
-      case 'y': viewCtl.view = 'year'; break;
-      case 'a': viewCtl.view = 'agenda'; break; // 'a' = agenda viewCtl.view (matches
-                                        // Google Calendar). Shift+A
-                                        // opens the calendar agent.
-      case 'A': agentOpen = true; break;
-      case 'f': dlgCtl.findTimeOpen = true; break; // 'f' = find a free slot
-      case '?': showShortcutHelp = !showShortcutHelp; break;
-      default: return;
-    }
-    e.preventDefault();
-  }
-
-  // Touch swipe to navigate. Triggered on the main grid container; a
-  // horizontal swipe of >60px (with vertical movement <40px so we dont
-  // hijack scroll) counts. Mobile users can flick between weeks the
-  // same way they would on Google Calendar / iOS Calendar.
-  let touchStartX = 0;
-  let touchStartY = 0;
-  let touchActive = false;
-  function onTouchStart(e: TouchEvent) {
-    if (e.touches.length !== 1) { touchActive = false; return; }
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    touchActive = true;
-  }
-  function onTouchEnd(e: TouchEvent) {
-    if (!touchActive) return;
-    touchActive = false;
-    if (e.changedTouches.length !== 1) return;
-    const dx = e.changedTouches[0].clientX - touchStartX;
-    const dy = e.changedTouches[0].clientY - touchStartY;
-    if (Math.abs(dy) > 40) return; // mostly vertical → let scroll happen
-    if (Math.abs(dx) < 60) return; // too short
-    if (dx > 0) viewCtl.prev(); else viewCtl.next();
-  }
+  // Keyboard shortcuts + touch-swipe-to-navigate live in
+  // calendarKeyboard.svelte. The keyboard controller exposes
+  // kbCtl.showShortcutHelp + onKeydown; the swipe handlers attach to the
+  // grid container's ontouchstart/end below.
+  const kbCtl = createCalendarKeyboard({
+    viewCtl,
+    dlgCtl,
+    detCtl,
+    openAgent: () => (agentOpen = true)
+  });
+  const onKeydown = kbCtl.onKeydown;
+  const { onTouchStart, onTouchEnd } = createCalendarSwipe(viewCtl);
 
   // clickEvent + toggleMealEvent live in detCtl. Bind the local
   // alias so all existing call sites keep their one-word reference.
@@ -891,7 +843,7 @@
       onGotoToday={viewCtl.gotoToday}
       onTogglePlanMode={viewCtl.togglePlanMode}
       onFindTime={() => (dlgCtl.findTimeOpen = true)}
-      onShowShortcuts={() => (showShortcutHelp = true)}
+      onShowShortcuts={() => (kbCtl.showShortcutHelp = true)}
       onOpenFilterDrawer={() => (filterCtl.filterDrawerOpen = true)}
       onCapture={() => {
         // Seed UnifiedCreate with the next round hour so the user
@@ -1095,7 +1047,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-{#if showShortcutHelp}
+{#if kbCtl.showShortcutHelp}
   <!-- Backdrop only closes when the click LANDS on the backdrop itself,
        not when it bubbles up from a child. Avoids the button-in-button
        HTML invalidity from a previous version while keeping the
@@ -1105,8 +1057,8 @@
     aria-modal="true"
     aria-labelledby="shortcuts-title"
     class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-    onclick={(e) => { if (e.target === e.currentTarget) showShortcutHelp = false; }}
-    onkeydown={(e) => { if (e.key === 'Escape') showShortcutHelp = false; }}
+    onclick={(e) => { if (e.target === e.currentTarget) kbCtl.showShortcutHelp = false; }}
+    onkeydown={(e) => { if (e.key === 'Escape') kbCtl.showShortcutHelp = false; }}
     tabindex="-1"
   >
     <div class="bg-mantle border border-surface1 rounded-lg p-5 max-w-sm w-full max-h-[90dvh] overflow-y-auto text-left shadow-xl">
@@ -1127,7 +1079,7 @@
       </dl>
       <p class="text-[11px] text-dim italic mt-3">On mobile: swipe left/right to navigate.</p>
       <button
-        onclick={() => (showShortcutHelp = false)}
+        onclick={() => (kbCtl.showShortcutHelp = false)}
         class="mt-4 px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded hover:border-primary"
       >close</button>
     </div>
