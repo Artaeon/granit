@@ -13,13 +13,13 @@
   import { fmtDateISO as ymd } from '$lib/util/date';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { onWsEvent } from '$lib/ws';
-  import { loadDraft, clearDraft, makeDraftWriter } from '$lib/util/draftAutosave';
   import {
     createProjectAIHealth,
     type HealthMomentum
   } from './projectAIHealth.svelte';
   import { createProjectAIBrief } from './projectAIBrief.svelte';
   import { createProjectDetailData } from './projectDetailData.svelte';
+  import { createProjectInlineEdit } from './projectInlineEdit.svelte';
 
   let { project, onClose, onUpdated, onDeleted, onOpenDashboard }: {
     project: Project;
@@ -34,13 +34,14 @@
     onOpenDashboard?: () => void;
   } = $props();
 
-  // Local edit buffer — committed via patch on blur or save.
-  let editingDescription = $state(false);
-  let descBuf = $state('');
-  let editingNextAction = $state(false);
-  let nextActionBuf = $state('');
-  let editingName = $state(false);
-  let nameBuf = $state('');
+  // Inline-edit + draft autosave for the three editable text fields
+  // (description, next_action, name) live in projectInlineEdit. The
+  // controller owns the buffer + cancelling sentinels + commit
+  // wrappers; the parent only wires patch + reset.
+  const editCtl = createProjectInlineEdit({
+    getProject: () => project,
+    patch: (p) => patch(p)
+  });
 
   // Loaded data + loaders live in projectDetailData. Read via
   // dataCtl.projectTasks / linkedGoals / projectVision / loadingTasks
@@ -78,13 +79,7 @@
     // writers so the prior project's buffers don't bleed into the
     // new project's localStorage key.
     if (lastProjectName && lastProjectName !== project.name) {
-      editingDescription = false;
-      editingNextAction = false;
-      editingName = false;
-      cancellingDesc = false;
-      cancellingNextAction = false;
-      descDraftWriter.cancel();
-      nextActionDraftWriter.cancel();
+      editCtl.reset();
     }
     lastProjectName = project.name;
   });
@@ -111,56 +106,11 @@
     }
   }
 
-  // Draft autosave for the inline-editable fields. Description +
-  // next_action use onblur to persist, which means a reload while
-  // the textarea has focus loses the typed content. The draft layer
-  // catches that — written to localStorage on every change, restored
-  // when the user re-enters edit mode, cleared on successful commit.
-  // Keyed by project.name so switching projects doesn't cross-
-  // contaminate drafts.
-  const descDraftWriter = makeDraftWriter(400);
-  const nextActionDraftWriter = makeDraftWriter(400);
-  // Cancel flags — set by Escape handlers before flipping editing=false,
-  // checked by commit functions so the blur event that fires when the
-  // textarea unmounts doesn't silently persist text the user just
-  // tried to discard. Without these, Esc → editingDescription=false →
-  // DOM unmount → browser fires blur → commitDescription runs → typed
-  // text patched to server. Cancel-then-save bug.
-  let cancellingDesc = $state(false);
-  let cancellingNextAction = $state(false);
-  function descDraftKey(): string {
-    return `project.description.${project.name}`;
-  }
-  function nextActionDraftKey(): string {
-    return `project.nextAction.${project.name}`;
-  }
-  $effect(() => {
-    if (editingDescription) descDraftWriter.save(descDraftKey(), descBuf);
-  });
-  $effect(() => {
-    if (editingNextAction) nextActionDraftWriter.save(nextActionDraftKey(), nextActionBuf);
-  });
-
-  async function commitDescription() {
-    if (cancellingDesc) { cancellingDesc = false; return; }
-    editingDescription = false;
-    if (descBuf !== (project.description ?? '')) await patch({ description: descBuf });
-    // Whether the patch fired or not, the user closed the editor —
-    // the in-buffer text is no longer "in-flight", clear the draft.
-    clearDraft(descDraftKey());
-    descDraftWriter.cancel();
-  }
-  async function commitNextAction() {
-    if (cancellingNextAction) { cancellingNextAction = false; return; }
-    editingNextAction = false;
-    if (nextActionBuf !== (project.next_action ?? '')) await patch({ next_action: nextActionBuf });
-    clearDraft(nextActionDraftKey());
-    nextActionDraftWriter.cancel();
-  }
-  async function commitName() {
-    editingName = false;
-    if (nameBuf && nameBuf !== project.name) await patch({ name: nameBuf });
-  }
+  // commitDescription / commitNextAction / commitName live in
+  // editCtl; aliases keep the template call sites terse.
+  const commitDescription = editCtl.commitDescription;
+  const commitNextAction = editCtl.commitNextAction;
+  const commitName = editCtl.commitName;
 
   async function setStatus(status: string) {
     await patch({ status });
@@ -449,17 +399,17 @@
       </svg>
     </button>
     <span class="w-3 h-3 rounded-full flex-shrink-0" style="background: {colorVar(project.color)}"></span>
-    {#if editingName}
+    {#if editCtl.editingName}
       <input
-        bind:value={nameBuf}
+        bind:value={editCtl.nameBuf}
         onblur={commitName}
-        onkeydown={(e) => { if (e.key === 'Enter') commitName(); else if (e.key === 'Escape') editingName = false; }}
+        onkeydown={(e) => { if (e.key === 'Enter') commitName(); else if (e.key === 'Escape') editCtl.editingName = false; }}
         use:focusOnMount
         class="text-base sm:text-lg font-semibold flex-1 px-1 -mx-1 bg-surface0 border border-primary rounded text-text outline-none"
       />
     {:else}
       <button
-        onclick={() => { nameBuf = project.name; editingName = true; }}
+        onclick={editCtl.startEditName}
         class="text-base sm:text-lg font-semibold text-text truncate flex-1 text-left hover:text-primary"
         title="click to rename"
       >{project.name}</button>
@@ -810,20 +760,14 @@
           </div>
         {/if}
 
-        {#if editingDescription}
+        {#if editCtl.editingDescription}
           <textarea
-            bind:value={descBuf}
+            bind:value={editCtl.descBuf}
             onblur={commitDescription}
             onkeydown={(e) => {
               if (e.key === 'Escape') {
                 e.preventDefault();
-                // Set the cancel flag BEFORE flipping editingDescription
-                // so the blur-on-unmount that follows can short-circuit
-                // commitDescription instead of silently persisting.
-                cancellingDesc = true;
-                editingDescription = false;
-                clearDraft(descDraftKey());
-                descDraftWriter.cancel();
+                editCtl.cancelEditDescription();
               }
             }}
             use:focusOnMount
@@ -832,11 +776,7 @@
           ></textarea>
         {:else}
           <button
-            onclick={() => {
-              const draft = loadDraft<string | null>(descDraftKey(), null);
-              descBuf = (draft && draft !== '') ? draft : (project.description ?? '');
-              editingDescription = true;
-            }}
+            onclick={editCtl.startEditDescription}
             class="w-full text-left px-3 py-2 text-sm rounded hover:bg-surface0 {project.description ? 'text-text' : 'text-dim italic'}"
           >{project.description || 'click to add a description…'}</button>
         {/if}
@@ -891,18 +831,15 @@
             title="open the calendar in plan mode to drag tasks onto the grid"
           >schedule →</a>
         </div>
-        {#if editingNextAction}
+        {#if editCtl.editingNextAction}
           <input
-            bind:value={nextActionBuf}
+            bind:value={editCtl.nextActionBuf}
             onblur={commitNextAction}
             onkeydown={(e) => {
               if (e.key === 'Enter') commitNextAction();
               else if (e.key === 'Escape') {
                 e.preventDefault();
-                cancellingNextAction = true;
-                editingNextAction = false;
-                clearDraft(nextActionDraftKey());
-                nextActionDraftWriter.cancel();
+                editCtl.cancelEditNextAction();
               }
             }}
             use:focusOnMount
@@ -910,11 +847,7 @@
           />
         {:else}
           <button
-            onclick={() => {
-              const draft = loadDraft<string | null>(nextActionDraftKey(), null);
-              nextActionBuf = (draft && draft !== '') ? draft : (project.next_action ?? '');
-              editingNextAction = true;
-            }}
+            onclick={editCtl.startEditNextAction}
             class="w-full text-left px-3 py-2.5 rounded text-sm border border-warning bg-surface0 text-warning hover:bg-surface1 {!project.next_action ? 'italic opacity-70' : 'font-medium'}"
           >→ {project.next_action || 'what\'s the next concrete step?'}</button>
         {/if}
