@@ -19,7 +19,7 @@
   import { installNoteShortcuts } from '$lib/notes/noteKeyboardShortcuts.svelte';
   import { openResearchMode as openResearchModeFor } from '$lib/notes/researchMode';
   import { noteCrumbs, visibleCrumbs as visibleCrumbsFn, crumbsCollapsed as crumbsCollapsedFn } from '$lib/notes/noteBreadcrumbs';
-  import { saveStatus as saveStatusFn, lastSavedDisplay as lastSavedDisplayFn } from '$lib/notes/noteSaveStatus';
+  import { createNoteSaveStatusCtl } from '$lib/notes/noteSaveStatusCtl.svelte';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
@@ -356,12 +356,6 @@
   // The 412 catch branch in save() sets lastSaveError to a string
   // starting with "Conflict:"; nothing else uses that prefix.
   let conflictDetected = $derived(saveFailed && lastSaveError.startsWith('Conflict'));
-  // Single 1s tick that both relative-time labels (saveStatus in
-  // the header + lastSavedDisplay in the status bar) derive from.
-  // Previously each surface had its own setInterval (1s + 5s) plus
-  // a manual `void nowTick` keep-alive — now there's one interval
-  // and both labels stay reactive purely through $derived deps.
-  let nowTick = $state(Date.now());
   let saveFailed = $state(false);
   // Consecutive save-failure counter. Resets to 0 on any success.
   // Used by the in-page banner below to show a sticky, dismiss-only-
@@ -370,11 +364,19 @@
   let saveFailCount = $state(0);
   let lastSaveError = $state('');
 
-  // Tick once per second so "saved Ns ago" stays accurate.
-  $effect(() => {
-    const t = setInterval(() => (nowTick = Date.now()), 1000);
-    return () => clearInterval(t);
+  // Save-status presentation surface (nowTick + saveStatus +
+  // lastSavedDisplay + saveFlash) lives in noteSaveStatusCtl. The
+  // page reads each via a $derived alias and runs install() inside
+  // a single $effect for lifecycle binding.
+  const saveStatusCtl = createNoteSaveStatusCtl({
+    getSaving: () => saving,
+    getDirty: () => dirty,
+    getSaveFailed: () => saveFailed,
+    getLastSavedAt: () => lastSavedAt
   });
+  let nowTick = $derived(saveStatusCtl.nowTick);
+  let saveFlash = $derived(saveStatusCtl.saveFlash);
+  $effect(() => saveStatusCtl.install());
 
   // Body+frontmatter save now lives in $lib/notes/saveNote — see
   // there for the conflict / draft / surgical-mutation contract.
@@ -464,34 +466,7 @@
     }
   });
 
-  // Save status string + last-saved relative time live in
-  // $lib/notes/noteSaveStatus. Both track nowTick implicitly via the
-  // subtraction, so the derivation re-runs once a second.
-  let saveStatus = $derived(saveStatusFn({ saving, saveFailed, dirty, lastSavedAt, nowTick }));
-
-  // Brief flash after each successful autosave so the user can SEE
-  // that an autosave actually fired. Without this, saves are invisible
-  // — the status bar updates silently and the user has no positive
-  // confirmation that their work made it to disk. The flash window is
-  // 1.2s (long enough to register, short enough not to nag) and
-  // doesn't fire when the save was triggered by an explicit Mod-S
-  // (those already get a toast.success). The flash is a CSS-driven
-  // outline pulse; the existing saveStatus label still drives the
-  // text content of the button.
-  let saveFlash = $state(false);
-  let saveFlashTimer: ReturnType<typeof setTimeout> | null = null;
-  $effect(() => {
-    if (!lastSavedAt) return;
-    saveFlash = true;
-    if (saveFlashTimer) clearTimeout(saveFlashTimer);
-    saveFlashTimer = setTimeout(() => {
-      saveFlash = false;
-      saveFlashTimer = null;
-    }, 1200);
-    return () => {
-      if (saveFlashTimer) { clearTimeout(saveFlashTimer); saveFlashTimer = null; }
-    };
-  });
+  let saveStatus = $derived(saveStatusCtl.saveStatus);
 
   // ----- Extract-to-note (Mod-Shift-X) -----
   // Controller owns the ExtractRequest state machine + create-then-
@@ -641,7 +616,7 @@
   let cursorCol = $state(1);
   let cursorSelLen = $state(0);
 
-  let lastSavedDisplay = $derived(lastSavedDisplayFn(lastSavedAt, nowTick));
+  let lastSavedDisplay = $derived(saveStatusCtl.lastSavedDisplay);
 
   // All window-level keyboard shortcuts (? / Mod-/ / Mod-Shift-Z /
   // Mod-Shift-R / Mod-Shift-P / Mod-Shift-←/→) live in a single
