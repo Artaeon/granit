@@ -23,6 +23,7 @@
     noteTitle,
     noteBodyExcerpt
   } from '$lib/ventures/venturesDetailHelpers';
+  import { createVenturesDetailAISummary } from '$lib/ventures/venturesDetailAISummary.svelte';
 
   // Venture detail page — single aggregation view answering "what's
   // the current state of this venture, all in one place?". The
@@ -65,10 +66,16 @@
   // parsing — keeps this page small, and the model is prompted for
   // plain prose). Audit-gated automatically because chatStream goes
   // through /chat/stream → gateChat + auditChat.
-  let aiBusy = $state(false);
-  let aiText = $state('');
-  let aiError = $state('');
-  let aiAbort: AbortController | null = null;
+  const aiSummary = createVenturesDetailAISummary({
+    getVenture: () => venture,
+    getProjects: () => projects,
+    getGoals: () => goals,
+    getActiveDeadlines: () => activeDeadlines,
+    getActiveIntentions: () => activeIntentions
+  });
+  let aiBusy = $derived(aiSummary.busy);
+  let aiText = $derived(aiSummary.text);
+  let aiError = $derived(aiSummary.error);
 
   // The route param is the raw venture name (URL-encoded). We
   // case-insensitive-match on the server (ventures.Find) but keep
@@ -148,7 +155,7 @@
       unsub();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
-      aiAbort?.abort();
+      aiSummary.dismiss();
     };
   });
 
@@ -157,11 +164,7 @@
   $effect(() => {
     void name;
     load();
-    aiAbort?.abort();
-    aiAbort = null;
-    aiBusy = false;
-    aiText = '';
-    aiError = '';
+    aiSummary.dismiss();
     tab = 'overview';
   });
 
@@ -215,102 +218,6 @@
     }
     return list;
   });
-
-  // ----- AI summary -----
-  // Build a compact JSON snapshot of everything the model needs to write
-  // a concise narrative. We omit free-text fields that could explode
-  // the prompt (project notes, goal review_log) and cap each list to
-  // a sensible number — the model gets the shape, not the entire
-  // history. notePath is undefined because the venture isn't a note;
-  // chatStream's notePath param is just for note-aware context.
-  function buildVentureSnapshot(): string {
-    if (!venture) return '{}';
-    return JSON.stringify(
-      {
-        venture: {
-          name: venture.name,
-          mission: venture.mission || undefined,
-          description: venture.description || undefined,
-          status: venture.status ?? 'active',
-          tags: venture.tags ?? undefined
-        },
-        projects: projects.slice(0, 20).map((p) => ({
-          name: p.name,
-          status: p.status ?? 'active',
-          kind: p.kind || undefined,
-          description: p.description ? p.description.slice(0, 200) : undefined,
-          progress: p.progress ?? undefined,
-          tasksOpen: (p.tasksTotal ?? 0) - (p.tasksDone ?? 0),
-          tasksDone: p.tasksDone ?? 0,
-          dueDate: p.due_date || undefined,
-          nextAction: p.next_action || undefined
-        })),
-        goals: goals.slice(0, 20).map((g) => ({
-          title: g.title,
-          status: g.status ?? 'active',
-          targetDate: g.target_date || undefined,
-          milestonesDone: (g.milestones ?? []).filter((m) => m.done).length,
-          milestonesTotal: (g.milestones ?? []).length
-        })),
-        deadlines: activeDeadlines.slice(0, 10).map((d) => ({
-          title: d.title,
-          date: d.date,
-          daysUntil: daysUntil(d.date),
-          importance: d.importance || undefined
-        })),
-        prayerIntentions: activeIntentions.slice(0, 10).map((p) => ({
-          text: p.text.slice(0, 160),
-          startedAt: p.started_at || undefined
-        }))
-      },
-      null,
-      2
-    );
-  }
-
-  async function summarize() {
-    if (!venture || aiBusy) return;
-    aiAbort?.abort();
-    aiAbort = new AbortController();
-    aiBusy = true;
-    aiError = '';
-    aiText = '';
-    const snap = buildVentureSnapshot();
-    const system =
-      'You are a concise venture analyst. The user will give you a JSON snapshot of one venture (mission, projects with progress, goals with milestones, upcoming deadlines, prayer intentions). Write a brief plain-prose status summary in 4-6 sentences. Lead with momentum (where things are moving), name 1-2 specific risks or near-term deadlines, and end with a single suggested next focus. Be specific — reference real names and numbers. No markdown, no bullets, no headers. Plain paragraphs only.';
-    const user = `Venture snapshot:\n\n\`\`\`json\n${snap}\n\`\`\`\n\nWrite the status summary now.`;
-    let buf = '';
-    try {
-      await api.chatStream(
-        [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ],
-        undefined,
-        {
-          onChunk: (c) => {
-            buf += c;
-            aiText = buf;
-          },
-          onDone: () => {},
-          onError: (err) => {
-            aiError = err.message;
-          }
-        },
-        aiAbort.signal
-      );
-    } finally {
-      aiBusy = false;
-      aiAbort = null;
-    }
-  }
-
-  function dismissAI() {
-    aiAbort?.abort();
-    aiBusy = false;
-    aiText = '';
-    aiError = '';
-  }
 
   // Status change for the venture itself — surfaced as a select beside
   // the status badge in the hero so the user can re-bucket from the
@@ -427,7 +334,7 @@
                without crowding the title row on small screens. The
                actual summary renders below the metric strip. -->
           <button
-            onclick={summarize}
+            onclick={aiSummary.summarize}
             disabled={aiBusy}
             class="hidden sm:inline-flex flex-shrink-0 items-center gap-1.5 px-2.5 py-1.5 text-xs bg-surface0 border border-surface1 hover:border-primary rounded text-subtext hover:text-primary disabled:opacity-50"
             title="AI status summary"
@@ -531,7 +438,7 @@
               <span>AI status summary</span>
             </h2>
             <button
-              onclick={dismissAI}
+              onclick={aiSummary.dismiss}
               class="text-dim hover:text-text text-sm leading-none"
               aria-label="dismiss summary"
             >×</button>
