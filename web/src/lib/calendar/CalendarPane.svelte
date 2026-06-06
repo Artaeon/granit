@@ -23,6 +23,7 @@
   import { createCalendarDetail } from '$lib/calendar/calendarDetail.svelte';
   import { createCalendarCreateDialogs } from '$lib/calendar/calendarCreateDialogs.svelte';
   import { createCalendarRecurringScope } from '$lib/calendar/calendarRecurringScope.svelte';
+  import { createCalendarQuickEvent } from '$lib/calendar/calendarQuickEvent.svelte';
   import {
     addDays,
     endOfWeek,
@@ -47,7 +48,6 @@
   import HeaderToolbar from '$lib/calendar/HeaderToolbar.svelte';
   import CalendarFilterChips from '$lib/calendar/CalendarFilterChips.svelte';
   import RecurringScopePicker from '$lib/calendar/RecurringScopePicker.svelte';
-  import { parseEventInput, type ParseResult } from '$lib/calendar/quickCreate';
   import TaskBacklog from '$lib/calendar/TaskBacklog.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
   import { onWsEvent } from '$lib/ws';
@@ -244,32 +244,9 @@
   // recognised so the user can see whether the parse worked before
   // hitting Enter — saves the "type, submit, get a wrong event,
   // delete, retry" loop.
-  let quickInput = $state('');
-  let quickBusy = $state(false);
-  const quickParse = $derived<ParseResult | null>(
-    quickInput.trim() ? parseEventInput(quickInput) : null
-  );
-
-  async function submitQuickEvent() {
-    if (!quickParse?.ok || !quickParse.event || quickBusy) return;
-    quickBusy = true;
-    try {
-      const ev = quickParse.event;
-      await api.createEvent({
-        title: ev.title,
-        date: ev.date,
-        start_time: ev.startTime,
-        end_time: ev.endTime
-      });
-      quickInput = '';
-      toast.success('event created');
-      await dataCtl.load();
-    } catch (err) {
-      toast.error('create failed: ' + (errorMessage(err)));
-    } finally {
-      quickBusy = false;
-    }
-  }
+  // Quick-event input + parse + submit live in calendarQuickEvent.
+  const quickEvtCtl = createCalendarQuickEvent({ dataCtl });
+  const submitQuickEvent = quickEvtCtl.submit;
   // filterCtl.typeCounts + filterCtl.visibleFilterChips derivations moved into filterCtl.
 
   // Pipeline / channel-lanes overlay — a single toggle that renders
@@ -997,26 +974,26 @@
     >
       <span class="text-base flex-shrink-0" aria-hidden="true">＋</span>
       <input
-        bind:value={quickInput}
+        bind:value={quickEvtCtl.quickInput}
         placeholder='e.g. "lunch tomorrow 12pm 1h" or "team mtg fri 14:00-15:00"'
         class="flex-1 min-w-0 px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
         aria-label="quick-create event"
-        disabled={quickBusy}
+        disabled={quickEvtCtl.quickBusy}
       />
-      {#if quickInput.trim()}
+      {#if quickEvtCtl.quickInput.trim()}
         <span class="hidden md:inline text-[11px] text-dim font-mono truncate max-w-md">
-          {#if quickParse?.ok && quickParse.event}
+          {#if quickEvtCtl.quickParse?.ok && quickEvtCtl.quickParse.event}
             <span class="text-success">✓</span>
-            {quickParse.event.title} · {quickParse.event.date}{quickParse.event.startTime ? ` · ${quickParse.event.startTime}${quickParse.event.endTime ? `–${quickParse.event.endTime}` : ''}` : ' · all-day'}
+            {quickEvtCtl.quickParse.event.title} · {quickEvtCtl.quickParse.event.date}{quickEvtCtl.quickParse.event.startTime ? ` · ${quickEvtCtl.quickParse.event.startTime}${quickEvtCtl.quickParse.event.endTime ? `–${quickEvtCtl.quickParse.event.endTime}` : ''}` : ' · all-day'}
           {:else}
-            <span class="text-warning">{quickParse?.hint ?? 'parsing…'}</span>
+            <span class="text-warning">{quickEvtCtl.quickParse?.hint ?? 'parsing…'}</span>
           {/if}
         </span>
         <button
           type="submit"
-          disabled={!quickParse?.ok || quickBusy}
+          disabled={!quickEvtCtl.quickParse?.ok || quickEvtCtl.quickBusy}
           class="px-2.5 py-1 text-xs bg-primary text-on-primary rounded font-medium disabled:opacity-40 flex-shrink-0"
-        >{quickBusy ? '…' : 'Add'}</button>
+        >{quickEvtCtl.quickBusy ? '…' : 'Add'}</button>
       {/if}
     </form>
 
