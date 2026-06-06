@@ -8,6 +8,10 @@
   import EntityDeadlines from '$lib/deadlines/EntityDeadlines.svelte';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { loadDraft, clearDraft, makeDraftWriter } from '$lib/util/draftAutosave';
+  import {
+    createGoalDetailAIMilestones,
+    type MilestoneProposal
+  } from './goalDetailAIMilestones.svelte';
 
   // Detail-and-edit drawer for a single goal. Mirrors ProjectDetail's
   // approach: every field commits via PATCH on blur / explicit toggle so
@@ -232,81 +236,16 @@
   // chips inline in the Milestones section. Goes through the
   // chat audit gate so each suggestion is logged with token
   // counts in settings → AI features.
-  interface MilestoneProposal { text: string; due_date?: string }
-  let aiMilestoneBusy = $state(false);
-  let aiMilestoneProposals = $state<MilestoneProposal[]>([]);
-  let aiMilestoneError = $state('');
-  let aiMilestoneAbort: AbortController | null = null;
-
-  async function suggestMilestones() {
-    if (!goal || aiMilestoneBusy) return;
-    aiMilestoneBusy = true;
-    aiMilestoneError = '';
-    aiMilestoneProposals = [];
-    aiMilestoneAbort = new AbortController();
-    const existing = (goal.milestones ?? []).map((m) => `- ${m.text}${m.due_date ? ` (due ${m.due_date})` : ''}`).join('\n');
-    const ctx = [
-      `Goal: ${goal.title}`,
-      goal.description ? `Description: ${goal.description}` : '',
-      goal.target_date ? `Target date: ${goal.target_date}` : '',
-      existing ? `Existing milestones:\n${existing}` : 'No milestones yet.'
-    ].filter(Boolean).join('\n\n');
-    const userMessage =
-      'Suggest 3-5 concrete milestones to break this goal down into trackable, finishable steps. ' +
-      'Each milestone should be specific enough that the user knows when it\'s done. ' +
-      'Distribute due dates evenly between today and the target date when one is given; otherwise omit due_date.\n\n' +
-      'Return STRICT JSON ONLY (no markdown fences, no preamble), shape:\n' +
-      '[{"text": "...", "due_date": "YYYY-MM-DD"}, ...]\n\n' +
-      'Goal context:\n\n' + ctx;
-    let acc = '';
-    try {
-      await api.chatStream(
-        [{ role: 'user', content: userMessage }],
-        undefined,
-        {
-          onChunk: (c) => { acc += c; },
-          onError: (err) => { aiMilestoneError = err.message; }
-        },
-        aiMilestoneAbort.signal
-      );
-      // Strip optional code fences and parse.
-      let cleaned = acc.trim();
-      if (cleaned.startsWith('```')) {
-        cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();
-      }
-      const parsed = JSON.parse(cleaned);
-      if (!Array.isArray(parsed)) throw new Error('expected array');
-      aiMilestoneProposals = parsed
-        .filter((p: unknown) => p && typeof p === 'object' && typeof (p as MilestoneProposal).text === 'string')
-        .map((p) => ({
-          text: (p as MilestoneProposal).text.trim(),
-          due_date: typeof (p as MilestoneProposal).due_date === 'string' ? (p as MilestoneProposal).due_date : undefined
-        }))
-        .slice(0, 5);
-    } catch (err) {
-      if (!aiMilestoneError) {
-        const msg = errorMessage(err);
-        aiMilestoneError = `Couldn't parse suggestions: ${msg}`;
-      }
-    } finally {
-      aiMilestoneBusy = false;
-      aiMilestoneAbort = null;
-    }
-  }
-  function cancelMilestoneAI() { aiMilestoneAbort?.abort(); }
-  async function acceptMilestone(p: MilestoneProposal) {
-    if (!goal) return;
-    try {
-      await api.addGoalMilestone(goal.id, { text: p.text, due_date: p.due_date });
-      aiMilestoneProposals = aiMilestoneProposals.filter((x) => x !== p);
-      await onUpdated();
-    } catch (e) {
-      toast.error('add failed: ' + (errorMessage(e)));
-    }
-  }
-  function skipMilestone(p: MilestoneProposal) {
-    aiMilestoneProposals = aiMilestoneProposals.filter((x) => x !== p);
-  }
+  // AI milestone suggester — state + stream + accept/skip live in
+  // goalDetailAIMilestones. The parent reads aiMilestoneCtl.X.
+  const aiMilestoneCtl = createGoalDetailAIMilestones({
+    getGoal: () => goal,
+    onUpdated
+  });
+  const suggestMilestones = aiMilestoneCtl.suggest;
+  const cancelMilestoneAI = aiMilestoneCtl.cancel;
+  const acceptMilestone = aiMilestoneCtl.accept;
+  const skipMilestone = aiMilestoneCtl.skip;
 
   // ── AI-proposed THIS-WEEK tasks ─────────────────────────────────
   // Bridges the strategy/execution gap by asking the model for 3-5
@@ -858,7 +797,7 @@
         <section>
           <div class="flex items-baseline gap-2 mb-2">
             <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">Milestones</h3>
-            {#if aiMilestoneBusy}
+            {#if aiMilestoneCtl.busy}
               <button
                 onclick={cancelMilestoneAI}
                 class="text-[11px] text-warning hover:underline"
@@ -872,21 +811,21 @@
             {/if}
           </div>
 
-          {#if aiMilestoneError}
+          {#if aiMilestoneCtl.error}
             <div class="mb-2 px-3 py-2 text-xs text-error border border-error bg-surface0 rounded">
-              {aiMilestoneError}
+              {aiMilestoneCtl.error}
             </div>
           {/if}
-          {#if aiMilestoneProposals.length > 0}
+          {#if aiMilestoneCtl.proposals.length > 0}
             <!-- AI proposals panel. Each row is accept / skip — accept
                  calls api.addGoalMilestone with the proposed text + due
                  date. Skip just dismisses. Same shape as the inbox-
                  triage proposals on /tasks so the muscle memory carries
                  over. -->
             <div class="mb-3 px-3 py-2 bg-surface1 border border-surface2 rounded">
-              <div class="text-[10px] uppercase tracking-wider text-secondary font-semibold mb-1.5">AI suggestions ({aiMilestoneProposals.length})</div>
+              <div class="text-[10px] uppercase tracking-wider text-secondary font-semibold mb-1.5">AI suggestions ({aiMilestoneCtl.proposals.length})</div>
               <ul class="space-y-1.5">
-                {#each aiMilestoneProposals as p (p.text)}
+                {#each aiMilestoneCtl.proposals as p (p.text)}
                   <li class="flex items-start gap-2 text-xs">
                     <div class="flex-1 min-w-0">
                       <div class="text-text">{p.text}</div>
