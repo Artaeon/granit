@@ -56,6 +56,7 @@
   import NoteOverflowMenu from '$lib/notes/NoteOverflowMenu.svelte';
   import NoteInfoRail from '$lib/notes/NoteInfoRail.svelte';
   import NoteHeader from '$lib/notes/NoteHeader.svelte';
+  import NoteEditorBanners from '$lib/notes/NoteEditorBanners.svelte';
   import { ensurePinnedLoaded, pinnedNotes, togglePin as togglePinPath } from '$lib/notes/pinnedNotes';
   import { recordOpenNote, updateOpenNoteScroll } from '$lib/stores/open-note';
   import { registerActiveEditor } from '$lib/stores/active-editor';
@@ -821,100 +822,36 @@
            this note. Renders nothing when frontmatter has neither
            field, or none of the deadlines match. -->
       <NoteDeadlinesStrip frontmatter={note.frontmatter ?? null} />
-      {#if draftRestored}
-        <!-- Persistent affordance while editing on top of a localStorage
-             draft. Previously the user only saw a 3s toast, then nothing —
-             they couldn't tell "why are my changes here?" when revisiting
-             a recovered note. Clears on next successful save. -->
-        <div class="px-3 py-1.5 text-xs flex items-center gap-2 bg-warning/15 border-b border-warning/30 text-text">
-          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 flex-shrink-0 text-warning" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>
-          </svg>
-          <span class="flex-1">Editing a restored draft from this browser — saves on disk reflect what's typed here.</span>
-          <button
-            onclick={() => (pipe.draftRestored = false)}
-            class="px-1.5 py-0.5 text-[10px] text-dim hover:text-text"
-            aria-label="dismiss"
-          >dismiss</button>
-        </div>
-      {/if}
-      <!-- Conflict banner — the file on disk moved forward since we
-           loaded it (412 Precondition Failed from putNote's If-Match
-           guard). Two explicit choices, never silent overwrite:
-           Reload server version (discard local changes for the
-           server's body), or Overwrite anyway (skip If-Match on the
-           next save and stomp the server's version). Lives above the
-           transient-failure banner so it can't be hidden behind it. -->
-      {#if conflictDetected && note}
-        <div
-          role="status"
-          class="px-3 sm:px-4 py-2 border-b border-warning bg-warning/10 text-text text-xs sm:text-sm flex items-center gap-3"
-        >
-          <span class="flex-shrink-0 text-warning" aria-hidden="true">⚠</span>
-          <span class="flex-1 min-w-0">
-            <strong class="font-semibold">Conflict</strong> — this note was changed elsewhere (another tab, TUI, or sync) since you opened it. Your local edits are safe; choose how to resolve.
-          </span>
-          <button
-            type="button"
-            onclick={() => { pipe.lastLoadedPath = ''; void load(note!.path, { force: true }); }}
-            class="px-2.5 py-1 rounded bg-surface0 hover:bg-surface1 text-text font-medium flex-shrink-0"
-          >
-            Reload server version
-          </button>
-          <button
-            type="button"
-            onclick={() => {
-              pipe.forceNextSave = true;
-              // Route Overwrite back through the SAME save shape that
-              // hit 412. If the conflict was a tag-chip / frontmatter
-              // change, replaying through save() (body) would drop the
-              // user's intended edit and stomp the server's body too;
-              // we re-run saveFrontmatter with the held next-payload
-              // and forceNextSave so the originally-attempted change
-              // is the one that lands.
-              if (pendingFrontmatter) {
-                const next = pendingFrontmatter;
-                void saveFrontmatter(next);
-              } else {
-                void save({ silent: false });
-              }
-            }}
-            disabled={saving}
-            class="px-2.5 py-1 rounded bg-warning/30 hover:bg-warning/40 text-text font-medium flex-shrink-0 disabled:opacity-50"
-          >
-            {saving ? 'overwriting…' : 'Overwrite anyway'}
-          </button>
-        </div>
-      {/if}
-      <!-- Repeated-save-failure banner. Goes sticky after the 2nd
-           consecutive failure — earlier failures are surfaced via
-           the per-failure toast. The threshold avoids alarming the
-           user on a one-off network blip while still making prolonged
-           outages obvious. The banner exposes the actual error and a
-           manual "retry now" button so the user has agency rather
-           than waiting on the silent autosave loop. Drafts on
-           localStorage protect their content meanwhile. -->
-      {#if saveFailCount >= 2 && !conflictDetected && note}
-        <div
-          role="status"
-          class="px-3 sm:px-4 py-2 border-b border-error bg-surface0 text-error text-xs sm:text-sm flex items-center gap-3"
-        >
-          <span class="flex-shrink-0" aria-hidden="true">⚠</span>
-          <span class="flex-1 min-w-0">
-            <strong class="font-semibold">Autosave failing</strong> ({saveFailCount} attempt{saveFailCount === 1 ? '' : 's'})
-            {#if lastSaveError}<span class="text-error/80"> — {lastSaveError}</span>{/if}.
-            Your edits are saved locally and will sync when the server is reachable.
-          </span>
-          <button
-            type="button"
-            onclick={() => save({ silent: false })}
-            disabled={saving}
-            class="px-2.5 py-1 rounded bg-surface0 hover:bg-surface1 text-error font-medium flex-shrink-0 disabled:opacity-50"
-          >
-            {saving ? 'retrying…' : 'retry now'}
-          </button>
-        </div>
-      {/if}
+      <!-- Save-related banners (draft-restored / conflict / autosave-
+           failing) extracted to <NoteEditorBanners>. Each renders
+           nothing on a clean state; the conflict banner gates on its
+           own derived flag, so unrelated failures can't hide it. -->
+      <NoteEditorBanners
+        {draftRestored}
+        {conflictDetected}
+        {saveFailCount}
+        {lastSaveError}
+        {saving}
+        onDismissDraftBadge={() => (pipe.draftRestored = false)}
+        onReload={() => { pipe.lastLoadedPath = ''; void load(note!.path, { force: true }); }}
+        onOverwrite={() => {
+          pipe.forceNextSave = true;
+          // Route Overwrite back through the SAME save shape that
+          // hit 412. If the conflict was a tag-chip / frontmatter
+          // change, replaying through save() (body) would drop the
+          // user's intended edit and stomp the server's body too;
+          // we re-run saveFrontmatter with the held next-payload
+          // and forceNextSave so the originally-attempted change is
+          // the one that lands.
+          if (pendingFrontmatter) {
+            const next = pendingFrontmatter;
+            void saveFrontmatter(next);
+          } else {
+            void save({ silent: false });
+          }
+        }}
+        onRetry={() => save({ silent: false })}
+      />
       <!-- Reading-progress bar — thin tinted strip showing how far
            through the note the user has scrolled. Hidden when
            progress is essentially 0 (note fits in viewport) so it
