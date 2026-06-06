@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type HabitInfo, todayISO } from '$lib/api';
+  import { type HabitInfo } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import Heatmap from '$lib/components/Heatmap.svelte';
@@ -12,6 +12,7 @@
   import { createHabitsData } from '$lib/habits/habitsData.svelte';
   import { createHabitsRename } from '$lib/habits/habitsRename.svelte';
   import { createHabitsStackEdit } from '$lib/habits/habitsStackEdit.svelte';
+  import { createHabitsAdd } from '$lib/habits/habitsAdd.svelte';
 
   // /habits — three view modes for the same data:
   //   • Today: large quick-tick cards, the morning/evening rhythm view
@@ -41,6 +42,18 @@
   const viewCtl = createHabitsViewState({ getData: () => dataCtl.data });
   const sortedHabits = $derived(viewCtl.sortedHabits);
 
+  // Add-habit form: open/closed state + name buffer + submit handler
+  // that lands the new habit on today's daily note via a toggleHabit
+  // call with done=false. See lib/habits/habitsAdd for the details.
+  const addCtl = createHabitsAdd({
+    getToday: () => dataCtl.data?.today,
+    reload: () => dataCtl.load(),
+    onError: async (msg) => {
+      (await import('$lib/components/toast')).toast.error(msg);
+    }
+  });
+  const addBusy = $derived(addCtl.addBusy);
+
   // AI surfaces: pattern insight (observations on existing data) and
   // suggest-from-goals (generative — proposes new habits laddering
   // toward active goals). Both stream through chatStream and share
@@ -48,8 +61,8 @@
   const aiCtl = createHabitsAI({
     getData: () => dataCtl.data,
     adopt: async (name: string) => {
-      addName = name;
-      await addHabit();
+      addCtl.addName = name;
+      await addCtl.addHabit();
     }
   });
   const aiInsights = $derived(aiCtl.insightLines);
@@ -58,36 +71,6 @@
   const suggestedHabits = $derived(aiCtl.suggested);
   const suggestBusy = $derived(aiCtl.suggestBusy);
   const suggestError = $derived(aiCtl.suggestError);
-
-  // Add-habit-from-web. The existing toggleHabit endpoint already
-  // auto-creates the `- [ ] habit` line when the supplied name
-  // doesn't match anything in today's `## Habits` section (and
-  // creates the section + minimal frontmatter when the daily note
-  // doesn't exist yet). So "add a habit" is just a toggle call with
-  // done=false on a fresh name.
-  let addOpen = $state(false);
-  let addName = $state('');
-  let addBusy = $state(false);
-
-  async function addHabit(e?: Event) {
-    e?.preventDefault();
-    const name = addName.trim();
-    if (!name || addBusy) return;
-    addBusy = true;
-    try {
-      // done=false for a fresh "track this" intent (the user hasn't
-      // done it today yet, just wants the habit in the list).
-      await api.toggleHabit(name, data?.today ?? todayISO(), false);
-      addName = '';
-      addOpen = false;
-      await dataCtl.load();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      (await import('$lib/components/toast')).toast.error(`couldn't add habit: ${msg}`);
-    } finally {
-      addBusy = false;
-    }
-  }
 
   onMount(() => {
     dataCtl.load();
@@ -225,22 +208,22 @@
         {/if}
         <button
           type="button"
-          onclick={() => (addOpen = !addOpen)}
+          onclick={() => (addCtl.addOpen = !addCtl.addOpen)}
           class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
-        >{addOpen ? 'cancel' : '+ Add habit'}</button>
+        >{addCtl.addOpen ? 'cancel' : '+ Add habit'}</button>
       </div>
     </header>
 
-    {#if addOpen}
+    {#if addCtl.addOpen}
       <!-- Add-habit form. Single field — name only. Adds an unticked
            checkbox to today's daily note's ## Habits section (the
            server creates the section / file if needed). The user can
            then toggle it done from the same page or set per-day
            later. Keeps capture friction at a single keystroke beyond
            "where do I click". -->
-      <form onsubmit={addHabit} class="bg-surface0 border border-surface1 rounded-lg p-3 mb-4 flex flex-wrap gap-2 items-center">
+      <form onsubmit={(e) => addCtl.addHabit(e)} class="bg-surface0 border border-surface1 rounded-lg p-3 mb-4 flex flex-wrap gap-2 items-center">
         <input
-          bind:value={addName}
+          bind:value={addCtl.addName}
           required
           use:focusOnMount
           placeholder="habit name (e.g. morning movement, no doomscrolling)…"
@@ -248,7 +231,7 @@
         />
         <button
           type="submit"
-          disabled={!addName.trim() || addBusy}
+          disabled={!addCtl.addName.trim() || addBusy}
           class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
         >{addBusy ? '…' : 'add to today'}</button>
       </form>
