@@ -1,19 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
-  import {
-    api,
-    type Venture,
-    type Project,
-    type Goal,
-    type Deadline,
-    type PrayerIntention,
-    type Note
-  } from '$lib/api';
+  import { api } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
-  import { daysUntil } from '$lib/deadlines/util';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import {
     colorVar,
@@ -24,6 +15,10 @@
     noteBodyExcerpt
   } from '$lib/ventures/venturesDetailHelpers';
   import { createVenturesDetailAISummary } from '$lib/ventures/venturesDetailAISummary.svelte';
+  import {
+    createVenturesDetailData,
+    type VenturesDetailTab
+  } from '$lib/ventures/venturesDetailData.svelte';
 
   // Venture detail page — single aggregation view answering "what's
   // the current state of this venture, all in one place?". The
@@ -47,17 +42,36 @@
   // small "preview" form, so power users who want to scan everything
   // at once get it on one screen; deep dives switch tabs.
 
-  type Tab = 'overview' | 'projects' | 'goals' | 'links' | 'notes';
+  let tab = $state<VenturesDetailTab>('overview');
 
-  let venture = $state<Venture | null>(null);
-  let projects = $state<Project[]>([]);
-  let goals = $state<Goal[]>([]);
-  let deadlines = $state<Deadline[]>([]);
-  let intentions = $state<PrayerIntention[]>([]);
-  let linkedNotes = $state<Note[]>([]);
-  let loading = $state(false);
-  let notFound = $state(false);
-  let tab = $state<Tab>('overview');
+  // The route param is the raw venture name (URL-encoded). We
+  // case-insensitive-match on the server (ventures.Find) but keep
+  // the user's original casing in the displayed name; the lookup
+  // here is exact-equality on the decoded segment.
+  let name = $derived(decodeURIComponent($page.params.name ?? ''));
+
+  // ----- Data controller -----
+  // Owns the loaded state arrays, the parallel load(), and every
+  // derived rollup the page renders against. The page reads through
+  // $derived getters so existing template bindings stay
+  // identifier-level (no `data.X` dotted access in markup churn).
+  const data = createVenturesDetailData({ getName: () => name });
+  let venture = $derived(data.venture);
+  let projects = $derived(data.projects);
+  let goals = $derived(data.goals);
+  let linkedNotes = $derived(data.linkedNotes);
+  let loading = $derived(data.loading);
+  let notFound = $derived(data.notFound);
+  let activeProjects = $derived(data.activeProjects);
+  let pausedProjects = $derived(data.pausedProjects);
+  let activeGoals = $derived(data.activeGoals);
+  let activeDeadlines = $derived(data.activeDeadlines);
+  let activeIntentions = $derived(data.activeIntentions);
+  let aggregateTasksOpen = $derived(data.aggregateTasksOpen);
+  let aggregateTasksDone = $derived(data.aggregateTasksDone);
+  let aggregateProgress = $derived(data.aggregateProgress);
+  let nextDeadline = $derived(data.nextDeadline);
+  let tabs = $derived(data.tabs);
 
   // ----- AI summary state -----
   // The "Summarize" button hits chatStream with a compact JSON snapshot
@@ -67,87 +81,27 @@
   // plain prose). Audit-gated automatically because chatStream goes
   // through /chat/stream → gateChat + auditChat.
   const aiSummary = createVenturesDetailAISummary({
-    getVenture: () => venture,
-    getProjects: () => projects,
-    getGoals: () => goals,
-    getActiveDeadlines: () => activeDeadlines,
-    getActiveIntentions: () => activeIntentions
+    getVenture: () => data.venture,
+    getProjects: () => data.projects,
+    getGoals: () => data.goals,
+    getActiveDeadlines: () => data.activeDeadlines,
+    getActiveIntentions: () => data.activeIntentions
   });
   let aiBusy = $derived(aiSummary.busy);
   let aiText = $derived(aiSummary.text);
   let aiError = $derived(aiSummary.error);
 
-  // The route param is the raw venture name (URL-encoded). We
-  // case-insensitive-match on the server (ventures.Find) but keep
-  // the user's original casing in the displayed name; the lookup
-  // here is exact-equality on the decoded segment.
-  let name = $derived(decodeURIComponent($page.params.name ?? ''));
-
-  async function load() {
-    if (!name) return;
-    loading = true;
-    notFound = false;
-    try {
-      // Fetch venture + the four linked-entity lists in parallel.
-      // Each list endpoint we already use elsewhere, so the browser
-      // typically has the response in cache. Promise.allSettled so
-      // a single failing module (deadlines disabled, prayer disabled)
-      // doesn't take the whole page down.
-      const [vRes, pRes, gRes, dRes, iRes, nRes] = await Promise.allSettled([
-        api.getVenture(name),
-        api.listProjects(),
-        api.listGoals(),
-        api.tryListDeadlines(),
-        api.listPrayer(),
-        // Notes search by venture name — the server's full-text index
-        // surfaces notes that mention the name in body or frontmatter.
-        // Best-effort; if the search endpoint is unavailable we just
-        // hide the Notes tab content.
-        api.listNotes({ q: name, limit: 30 })
-      ]);
-
-      if (vRes.status !== 'fulfilled') {
-        notFound = true;
-        return;
-      }
-      venture = vRes.value;
-
-      // Filter each list by venture (case-insensitive — the server
-      // does the same on Find, so a project tagged with lowercase
-      // venture name still rolls up to the canonical record).
-      const lowerName = name.toLowerCase();
-      const allProjects = pRes.status === 'fulfilled' ? pRes.value.projects : [];
-      const allGoals = gRes.status === 'fulfilled' ? gRes.value.goals : [];
-      const allDeadlines = dRes.status === 'fulfilled' ? (dRes.value ?? []) : [];
-      const allIntentions = iRes.status === 'fulfilled' ? iRes.value.intentions : [];
-      const allNotes = nRes.status === 'fulfilled' ? nRes.value.notes : [];
-
-      projects = allProjects.filter((p) => (p.venture ?? '').toLowerCase() === lowerName);
-      goals = allGoals.filter((g) => (g.venture ?? '').toLowerCase() === lowerName);
-      deadlines = allDeadlines.filter((d) => (d.venture ?? '').toLowerCase() === lowerName);
-      intentions = allIntentions.filter((p) => (p.venture ?? '').toLowerCase() === lowerName);
-      // Notes don't have a structured venture field — full-text match
-      // is the best signal we have, and we trust the server's relevance
-      // ordering. We trim to the top 12 so the tab stays scannable.
-      linkedNotes = allNotes.slice(0, 12);
-    } catch (e) {
-      toast.error('failed to load venture: ' + (errorMessage(e)));
-    } finally {
-      loading = false;
-    }
-  }
-
   onMount(() => {
-    load();
+    data.load();
     const unsub = onWsEvent((ev) => {
-      if (ev.type === 'state.changed' && ev.path === '.granit/ventures.json') load();
-      if (ev.type.startsWith('project.')) load();
-      if (ev.type === 'state.changed' && ev.path === '.granit/goals.json') load();
-      if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') load();
-      if (ev.type === 'state.changed' && ev.path === '.granit/prayer/intentions.json') load();
+      if (ev.type === 'state.changed' && ev.path === '.granit/ventures.json') data.load();
+      if (ev.type.startsWith('project.')) data.load();
+      if (ev.type === 'state.changed' && ev.path === '.granit/goals.json') data.load();
+      if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') data.load();
+      if (ev.type === 'state.changed' && ev.path === '.granit/prayer/intentions.json') data.load();
     });
     const onVisible = () => {
-      if (document.visibilityState === 'visible') load();
+      if (document.visibilityState === 'visible') data.load();
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
@@ -163,73 +117,23 @@
   // venture to another). Reset AI summary too — it's per-venture.
   $effect(() => {
     void name;
-    load();
+    data.load();
     aiSummary.dismiss();
     tab = 'overview';
-  });
-
-  // ----- Derived rollups -----
-
-  let activeProjects = $derived(projects.filter((p) => (p.status ?? 'active') === 'active'));
-  let pausedProjects = $derived(projects.filter((p) => p.status === 'paused'));
-  let activeGoals = $derived(goals.filter((g) => (g.status ?? 'active') === 'active'));
-  let activeDeadlines = $derived(
-    deadlines.filter((d) => d.status !== 'met' && d.status !== 'cancelled')
-  );
-  let activeIntentions = $derived(intentions.filter((p) => p.status === 'praying'));
-
-  // Aggregate task counts across the venture's projects — a single
-  // "23 open · 7 done" line at the top of the page is the fastest
-  // read on overall momentum.
-  let aggregateTasksOpen = $derived(
-    projects.reduce((acc, p) => acc + ((p.tasksTotal ?? 0) - (p.tasksDone ?? 0)), 0)
-  );
-  let aggregateTasksDone = $derived(projects.reduce((acc, p) => acc + (p.tasksDone ?? 0), 0));
-
-  // Average progress across active projects (each project's progress
-  // is already derived server-side from its goals + tasks).
-  let aggregateProgress = $derived.by(() => {
-    if (activeProjects.length === 0) return 0;
-    const sum = activeProjects.reduce((acc, p) => acc + (p.progress ?? 0), 0);
-    return sum / activeProjects.length;
-  });
-
-  // Next deadline — the one with the smallest non-negative daysUntil
-  // among active deadlines. Used in the hero metric tile.
-  let nextDeadline = $derived.by(() => {
-    if (activeDeadlines.length === 0) return null;
-    return [...activeDeadlines].sort((a, b) => daysUntil(a.date) - daysUntil(b.date))[0];
-  });
-
-  // Tab button helpers — counts on each tab so the user can see what's
-  // behind each one without flipping. Tabs hide entirely when the
-  // venture has nothing in that bucket and there's nothing actionable
-  // there (overview/projects/goals always show; links/notes hide on
-  // empty since they're additive).
-  let tabs = $derived.by(() => {
-    const list: Array<{ id: Tab; label: string; count?: number }> = [
-      { id: 'overview', label: 'Overview' },
-      { id: 'projects', label: 'Projects', count: projects.length },
-      { id: 'goals', label: 'Goals', count: goals.length },
-      { id: 'links', label: 'Deadlines & prayer', count: activeDeadlines.length + activeIntentions.length }
-    ];
-    if (linkedNotes.length > 0) {
-      list.push({ id: 'notes', label: 'Notes', count: linkedNotes.length });
-    }
-    return list;
   });
 
   // Status change for the venture itself — surfaced as a select beside
   // the status badge in the hero so the user can re-bucket from the
   // detail page without bouncing back to /ventures.
   async function changeStatus(next: 'active' | 'paused' | 'archived') {
-    if (!venture || (venture.status ?? 'active') === next) return;
+    const v = data.venture;
+    if (!v || (v.status ?? 'active') === next) return;
     try {
-      const updated = await api.patchVenture(venture.name, { status: next });
-      venture = updated;
-      toast.success(`${venture.name} → ${next}`);
+      const updated = await api.patchVenture(v.name, { status: next });
+      data.venture = updated;
+      toast.success(`${updated.name} → ${next}`);
     } catch (err) {
-      toast.error('update failed: ' + (errorMessage(err)));
+      toast.error('update failed: ' + errorMessage(err));
     }
   }
 
