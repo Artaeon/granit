@@ -217,11 +217,24 @@ export function createProjectAIHealth(deps: ProjectAIHealthDeps): ProjectAIHealt
     }
   }
 
+  // Stop — abort the stream but KEEP the partial raw + error for
+  // retry. Flip busy + null abort synchronously so the "stop"
+  // button swaps to "rerun" instantly; without this the UI lags
+  // until chatStream's finally settles (which can take a tick
+  // when the abort fires mid-await).
   function cancel() {
     aiHealthAbort?.abort();
+    aiHealthAbort = null;
+    aiHealthBusy = false;
   }
 
+  // Close — abort + wipe. The abort matters because rafThrottle
+  // can still flush a queued frame after we clear aiHealthRaw,
+  // producing a phantom one-frame rewrite.
   function clear() {
+    aiHealthAbort?.abort();
+    aiHealthAbort = null;
+    aiHealthBusy = false;
     aiHealth = null;
     aiHealthRaw = '';
     aiHealthError = '';

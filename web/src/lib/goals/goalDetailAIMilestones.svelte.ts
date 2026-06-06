@@ -105,8 +105,13 @@ export function createGoalDetailAIMilestones(
     }
   }
 
+  // Stop — abort the stream but keep the partial proposals + error
+  // for retry. Flip busy + null abort synchronously so the "stop"
+  // button swaps to "suggest" instantly.
   function cancel() {
     abort?.abort();
+    abort = null;
+    busy = false;
   }
 
   async function accept(p: MilestoneProposal) {

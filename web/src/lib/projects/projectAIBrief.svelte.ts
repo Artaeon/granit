@@ -127,8 +127,14 @@ export function createProjectAIBrief(deps: ProjectAIBriefDeps): ProjectAIBriefCo
     }
   }
 
+  // Stop — abort the stream but KEEP the partial aiBrief for
+  // retry. Flip busy + null abort synchronously so the UI swaps
+  // to "rerun" instantly; without this the button lags until
+  // chatStream's finally settles.
   function cancel() {
     aiBriefAbort?.abort();
+    aiBriefAbort = null;
+    aiBriefBusy = false;
   }
 
   async function apply() {
@@ -146,8 +152,12 @@ export function createProjectAIBrief(deps: ProjectAIBriefDeps): ProjectAIBriefCo
     }
   }
 
+  // Close — abort + wipe. abort first so a queued rafThrottle
+  // frame can't repopulate aiBrief after we clear it.
   function dismiss() {
     aiBriefAbort?.abort();
+    aiBriefAbort = null;
+    aiBriefBusy = false;
     aiBrief = '';
     aiBriefError = '';
   }
