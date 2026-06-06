@@ -30,7 +30,7 @@ export type GoalFormState = {
 
 export interface FinanceGoalFormController {
   open: boolean;
-  form: GoalFormState;
+  readonly form: GoalFormState;
   openModal(): void;
   close(): void;
   submit(): Promise<void>;
@@ -97,7 +97,6 @@ export function createFinanceGoalForm(
     get open() { return open; },
     set open(v) { open = v; },
     get form() { return form; },
-    set form(v) { form = v; },
     openModal,
     close,
     submit,

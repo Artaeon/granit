@@ -41,7 +41,7 @@ export type AccountFormState = {
 
 export interface FinanceAccountFormController {
   open: boolean;
-  form: AccountFormState;
+  readonly form: AccountFormState;
   /** Reset the form to defaults (first existing account's currency)
    *  and open the modal. */
   openModal(): void;
@@ -128,8 +128,10 @@ export function createFinanceAccountForm(
   return {
     get open() { return open; },
     set open(v) { open = v; },
+    // form is read-only; the modal binds individual fields via
+    // `bind:value={ctl.form.X}` (Svelte 5 handles nested-property
+    // writes through the object reference). openModal() owns reset.
     get form() { return form; },
-    set form(v) { form = v; },
     openModal,
     close,
     submit,

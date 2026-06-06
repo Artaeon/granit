@@ -51,7 +51,7 @@ export type IncomeFormState = {
 
 export interface FinanceIncomeFormController {
   open: boolean;
-  form: IncomeFormState;
+  readonly form: IncomeFormState;
   /** Null when creating a fresh stream; the stream id when editing. */
   editingId: string | null;
   /** Open the modal. Pass an existing stream to edit; omit for a
@@ -180,7 +180,6 @@ export function createFinanceIncomeForm(
     get open() { return open; },
     set open(v) { open = v; },
     get form() { return form; },
-    set form(v) { form = v; },
     get editingId() { return editingId; },
     set editingId(v) { editingId = v; },
     openModal,

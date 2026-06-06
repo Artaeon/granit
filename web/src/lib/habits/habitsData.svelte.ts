@@ -37,8 +37,8 @@ export interface HabitsDataDeps {
 }
 
 export interface HabitsDataController {
-  data: HabitsResponse | null;
-  loading: boolean;
+  readonly data: HabitsResponse | null;
+  readonly loading: boolean;
   /** Single-cell busy key (`${name}|${date}` for a dot toggle,
    *  bare name for rename / delete / stack edits). Page surfaces
    *  read this to disable individual buttons. */
@@ -177,9 +177,10 @@ export function createHabitsData(deps: HabitsDataDeps): HabitsDataController {
 
   return {
     get data() { return data; },
-    set data(v) { data = v; },
     get loading() { return loading; },
-    set loading(v) { loading = v; },
+    // busy stays bidirectional — rename / stack / add controllers
+    // write through deps.setBusy which is wired to `(v) => { busy = v; }`
+    // from the parent. Drop the others — no caller writes them.
     get busy() { return busy; },
     set busy(v) { busy = v; },
     get bulkBusy() { return bulkBusy; },

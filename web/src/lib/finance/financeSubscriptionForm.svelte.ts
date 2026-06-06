@@ -37,7 +37,7 @@ export type SubscriptionFormState = {
 
 export interface FinanceSubscriptionFormController {
   open: boolean;
-  form: SubscriptionFormState;
+  readonly form: SubscriptionFormState;
   openModal(): void;
   close(): void;
   submit(): Promise<void>;
@@ -130,7 +130,6 @@ export function createFinanceSubscriptionForm(
     get open() { return open; },
     set open(v) { open = v; },
     get form() { return form; },
-    set form(v) { form = v; },
     openModal,
     close,
     submit,
