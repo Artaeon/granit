@@ -30,6 +30,7 @@
   import { installNoteAutosave } from '$lib/notes/noteAutosave.svelte';
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
   import { createViewportBreakpoints } from '$lib/notes/viewportBreakpoints.svelte';
+  import { createPreviewBodyMirror } from '$lib/notes/previewBodyMirror.svelte';
   import {
     parseDailyDate,
     shiftDate,
@@ -105,82 +106,16 @@
 
   let note = $state<Note | null>(null);
   let body = $state('');
-  // bodyForPreview is the rAF-throttled mirror that drives the
-  // MarkdownRenderer. Without this, every keystroke would re-parse
-  // the full document (60–200×/sec on fast typing for a 600-line
-  // note), since CodeMirror's updateListener writes `body` at
-  // microtask speed. The throttle coalesces multiple keystrokes per
-  // frame down to one parse, while keeping `body` live for save
-  // logic, dirty tracking, and slash-command parsing that need the
-  // unthrottled value. The rAF callback reads `body` at flush time
-  // (not at effect-run time) so it always commits the latest text
-  // even when 5+ keystrokes fall inside one 16ms frame.
-  let bodyForPreview = $state('');
-  let previewBodyRaf = 0;
-  let previewBodyTimer: ReturnType<typeof setTimeout> | null = null;
-  // Adaptive throttle for the preview mirror. The MarkdownRenderer
-  // pipeline (marked.parse + synchronous DOMPurify + postprocess +
-  // {@html} swap) is the single largest synchronous block on the
-  // main thread, and it scales linearly with body size — DOMPurify
-  // alone is ~80–250 ms on a 100 KB body, 500–800 ms at 500 KB.
-  // The editor's textarea stays at full rAF responsiveness because
-  // CodeMirror never reads bodyForPreview; this only debounces the
-  // preview repaint a long-form writer pays for after each typing
-  // pause. Settling later on long notes is the standard UX for
-  // every long-form Markdown editor we know of.
-  //
-  // Three tiers picked to balance "feels fresh" against "stops
-  // freezing on pause":
-  //   • < 32 KB        — rAF (≤16 ms): typing-rate updates feel live.
-  //   • 32 KB – 128 KB — 400 ms idle pause before reparse.
-  //   • 128 KB – 512 KB — 800 ms idle pause.
-  //   • ≥ 512 KB       — 1500 ms idle pause; DOMPurify alone may
-  //     take ≥500 ms here, so a shorter window queues a backlog
-  //     the main thread can't drain between keystrokes.
-  const PREVIEW_TIER_1 = 32 * 1024;
-  const PREVIEW_TIER_2 = 128 * 1024;
-  const PREVIEW_TIER_3 = 512 * 1024;
-  function previewDebounceFor(bytes: number): number {
-    if (bytes >= PREVIEW_TIER_3) return 1500;
-    if (bytes >= PREVIEW_TIER_2) return 800;
-    if (bytes >= PREVIEW_TIER_1) return 400;
-    return 0; // signals "use rAF path"
-  }
+  // Adaptive rAF / debounce mirror of `body` that drives the
+  // MarkdownRenderer, status-bar counters, summary card, etc. Lives
+  // in $lib/notes/previewBodyMirror — see there for the tier table
+  // and the first-paint fast path. The page reads bodyForPreview via
+  // a $derived alias and schedules from a $effect that tracks body;
+  // the controller owns the rAF + timer lifecycle.
+  const previewMirror = createPreviewBodyMirror();
+  let bodyForPreview = $derived(previewMirror.bodyForPreview);
   $effect(() => {
-    // First-paint fast path: when bodyForPreview is still empty but
-    // body has loaded, sync synchronously instead of waiting for the
-    // next rAF. Without this, opening a note flashes an empty
-    // preview for ~16ms while the throttle's first frame is
-    // pending — visible as a brief blank on every load and tab
-    // switch. After init, bodyForPreview tracks body via the rAF
-    // path, so this branch fires at most once per mount + once per
-    // explicit clear-then-type cycle.
-    if (bodyForPreview === '' && body !== '') {
-      bodyForPreview = body;
-      return;
-    }
-    const debounceMs = previewDebounceFor(body.length);
-    if (debounceMs > 0) {
-      if (previewBodyRaf) {
-        cancelAnimationFrame(previewBodyRaf);
-        previewBodyRaf = 0;
-      }
-      if (previewBodyTimer) clearTimeout(previewBodyTimer);
-      previewBodyTimer = setTimeout(() => {
-        previewBodyTimer = null;
-        bodyForPreview = body;
-      }, debounceMs);
-      return;
-    }
-    if (previewBodyTimer) {
-      clearTimeout(previewBodyTimer);
-      previewBodyTimer = null;
-    }
-    if (previewBodyRaf) return;
-    previewBodyRaf = requestAnimationFrame(() => {
-      previewBodyRaf = 0;
-      bodyForPreview = body;
-    });
+    previewMirror.schedule(body);
     // Note: NO cleanup return here. $effect cleanup fires on every
     // dep change, not just unmount — cancelling the pending rAF on
     // each body keystroke would defeat the coalescer (every
@@ -189,16 +124,7 @@
     // separately via onDestroy below so the pending frame is
     // killed exactly once, when the component goes away.
   });
-  onDestroy(() => {
-    if (previewBodyRaf) {
-      cancelAnimationFrame(previewBodyRaf);
-      previewBodyRaf = 0;
-    }
-    if (previewBodyTimer) {
-      clearTimeout(previewBodyTimer);
-      previewBodyTimer = null;
-    }
-  });
+  onDestroy(() => previewMirror.destroy());
   let saving = $state(false);
   let dirty = $state(false);
   let error = $state('');
