@@ -36,7 +36,6 @@ export interface NoteSaveStatusOpts {
 }
 
 export interface NoteSaveStatusController {
-  readonly nowTick: number;
   readonly saveStatus: string;
   readonly lastSavedDisplay: string;
   readonly saveFlash: boolean;
@@ -90,7 +89,6 @@ export function createNoteSaveStatusCtl(
   }
 
   return {
-    get nowTick() { return nowTick; },
     get saveStatus() { return saveStatus; },
     get lastSavedDisplay() { return lastSavedDisplay; },
     get saveFlash() { return saveFlash; },

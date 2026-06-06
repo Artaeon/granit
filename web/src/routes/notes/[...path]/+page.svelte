@@ -21,6 +21,7 @@
   import { noteCrumbs, visibleCrumbs as visibleCrumbsFn, crumbsCollapsed as crumbsCollapsedFn } from '$lib/notes/noteBreadcrumbs';
   import { createNoteSaveStatusCtl } from '$lib/notes/noteSaveStatusCtl.svelte';
   import { createNoteVersionCount } from '$lib/notes/noteVersionCount.svelte';
+  import { createNotePipelineState } from '$lib/notes/notePipelineState.svelte';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
@@ -101,8 +102,16 @@
   // last keystroke when the picker isn't open.
   const AUTOSAVE_DEBOUNCE_MS = 2000;
 
-  let note = $state<Note | null>(null);
-  let body = $state('');
+  // The 17 $state slots the save / load / autosave / wsReload /
+  // frontmatter helpers all touch live in notePipelineState — see
+  // there for the SaveState / SaveFrontmatterState contract. The
+  // controller IS the proxy; the route reads via `pipe.X` getters
+  // (re-aliased to local names below so existing template + script
+  // references stay), writes via `pipe.X = …`, and the helpers
+  // accept `pipe` as their state argument.
+  const pipe = createNotePipelineState();
+  let note = $derived(pipe.note);
+  let body = $derived(pipe.body);
   // Adaptive rAF / debounce mirror of `body` that drives the
   // MarkdownRenderer, status-bar counters, summary card, etc. Lives
   // in $lib/notes/previewBodyMirror — see there for the tier table
@@ -122,17 +131,11 @@
     // killed exactly once, when the component goes away.
   });
   onDestroy(() => previewMirror.destroy());
-  let saving = $state(false);
-  let dirty = $state(false);
-  let error = $state('');
-  // True when the requested path 404s on load. Distinct from `error`
-  // so we can render a "create this note?" affordance instead of an
-  // error banner — a 404 on this surface is almost always the user
-  // following an unresolved wikilink or typing a URL for a note
-  // they're about to create.
-  let notFound = $state(false);
+  let saving = $derived(pipe.saving);
+  let dirty = $derived(pipe.dirty);
+  let error = $derived(pipe.error);
+  let notFound = $derived(pipe.notFound);
   let creatingNote = $state(false);
-  let lastLoadedPath = $state('');
 
   // Inline AI menu — populated by the inline-ai-trigger extension when
   // the user hits Cmd-K or types "/ai". Cleared when the menu closes.
@@ -290,14 +293,14 @@
     });
   });
 
-  let draftRestored = $state(false);
+  let draftRestored = $derived(pipe.draftRestored);
 
   // Load now lives in $lib/notes/loadNote — see there for the
   // draft-reconciliation contract, the "always prefer the draft"
   // rule on divergence, and the 404 / network-error fallbacks.
   async function load(p: string, opts: { force?: boolean } = {}) {
-    return loadNoteFn(p, opts, noteState, {
-      getLiveBody: () => editor?.getContent?.() ?? body,
+    return loadNoteFn(p, opts, pipe, {
+      getLiveBody: () => editor?.getContent?.() ?? pipe.body,
       getEditorView: () => editor?.getView?.(),
       scrollToLine: (n) => editor?.scrollToLine?.(n),
       setScrollTop: (top) => editor?.setScrollTop?.(top),
@@ -325,8 +328,8 @@
     creatingNote = true;
     try {
       await api.createNote({ path: cleanPath, body: '' });
-      notFound = false;
-      lastLoadedPath = '';
+      pipe.notFound = false;
+      pipe.lastLoadedPath = '';
       await load(cleanPath, { force: true });
     } catch (e) {
       toast.error(`Couldn't create note: ${e instanceof Error ? e.message : String(e)}`);
@@ -335,35 +338,12 @@
     }
   }
 
-  let lastSavedAt = $state<number | null>(null);
-  // ETag from the most recent successful load / save. Sent as `If-Match`
-  // on every PUT so a concurrent edit from another tab / TUI / sync
-  // surfaces as a 412 instead of being silently overwritten. Reset to
-  // null whenever the active note changes — a fresh load() will refill
-  // it from the response. Bumped on every successful save() so a long
-  // edit session stays anchored to the latest server state.
-  let noteEtag = $state<string | null>(null);
-  // When the user has chosen to overwrite a detected conflict, the next
-  // save skips the If-Match header. The flag clears after one save so
-  // a subsequent edit is again guarded.
-  let forceNextSave = $state(false);
-  // Frontmatter that hit 412 — held verbatim so the conflict banner's
-  // Overwrite button can re-run saveFrontmatter() with the original
-  // payload + forceNextSave. Without this, an Overwrite after a tag-
-  // chip conflict ran the body-save path and silently dropped the
-  // pending frontmatter edit.
-  let pendingFrontmatter = $state<Record<string, unknown> | null>(null);
-  // Derived from the last save error — drives the conflict banner.
-  // The 412 catch branch in save() sets lastSaveError to a string
-  // starting with "Conflict:"; nothing else uses that prefix.
-  let conflictDetected = $derived(saveFailed && lastSaveError.startsWith('Conflict'));
-  let saveFailed = $state(false);
-  // Consecutive save-failure counter. Resets to 0 on any success.
-  // Used by the in-page banner below to show a sticky, dismiss-only-
-  // by-fixing surface so the user always knows when their edits
-  // aren't reaching the server.
-  let saveFailCount = $state(0);
-  let lastSaveError = $state('');
+  let lastSavedAt = $derived(pipe.lastSavedAt);
+  let pendingFrontmatter = $derived(pipe.pendingFrontmatter);
+  let conflictDetected = $derived(pipe.conflictDetected);
+  let saveFailed = $derived(pipe.saveFailed);
+  let saveFailCount = $derived(pipe.saveFailCount);
+  let lastSaveError = $derived(pipe.lastSaveError);
 
   // Save-status presentation surface (nowTick + saveStatus +
   // lastSavedDisplay + saveFlash) lives in noteSaveStatusCtl. The
@@ -375,68 +355,36 @@
     getSaveFailed: () => saveFailed,
     getLastSavedAt: () => lastSavedAt
   });
-  let nowTick = $derived(saveStatusCtl.nowTick);
   let saveFlash = $derived(saveStatusCtl.saveFlash);
   $effect(() => saveStatusCtl.install());
 
   // Body+frontmatter save now lives in $lib/notes/saveNote — see
   // there for the conflict / draft / surgical-mutation contract.
-  // Thin wrapper just plumbs in the shared state proxy and clears
+  // Thin wrapper just plumbs in the shared pipe proxy and clears
   // the draftRestored badge on success.
   async function save(opts: { silent?: boolean } = {}): Promise<boolean> {
-    if (saving) return !dirty;
-    return saveNoteFn(opts, noteState, saveCtx, () => { draftRestored = false; });
+    if (pipe.saving) return !pipe.dirty;
+    return saveNoteFn(opts, pipe, saveCtx, () => { pipe.draftRestored = false; });
   }
 
-  // dirty + prev are declared here so the noteState proxy below can
-  // reference them. The actual tracker effect, the autosave debounce,
-  // the rAF-coalesced draft write, the tab-hide / unload flush, and
-  // the online-retry effect are all installed by installNoteAutosave
-  // further down — see $lib/notes/noteAutosave for the contract.
-  let prev = $state('');
-  let lastDraftedBody: string | null = null;
-
-  // Single mutable view onto the page's note-pipeline $state.
-  // Every save/load/frontmatter helper in $lib/notes accepts this
-  // proxy so they can read and write each field reactively without
-  // re-spelling the same getter/setter pairs at every call site.
-  const noteState = {
-    get note() { return note; }, set note(v) { note = v; },
-    get body() { return body; }, set body(v) { body = v; },
-    get prev() { return prev; }, set prev(v) { prev = v; },
-    get saving() { return saving; }, set saving(v) { saving = v; },
-    get dirty() { return dirty; }, set dirty(v) { dirty = v; },
-    get error() { return error; }, set error(v) { error = v; },
-    get lastSavedAt() { return lastSavedAt; }, set lastSavedAt(v) { lastSavedAt = v; },
-    get noteEtag() { return noteEtag; }, set noteEtag(v) { noteEtag = v; },
-    get forceNextSave() { return forceNextSave; }, set forceNextSave(v) { forceNextSave = v; },
-    get pendingFrontmatter() { return pendingFrontmatter; }, set pendingFrontmatter(v) { pendingFrontmatter = v; },
-    get saveFailed() { return saveFailed; }, set saveFailed(v) { saveFailed = v; },
-    get saveFailCount() { return saveFailCount; }, set saveFailCount(v) { saveFailCount = v; },
-    get lastSaveError() { return lastSaveError; }, set lastSaveError(v) { lastSaveError = v; },
-    get lastDraftedBody() { return lastDraftedBody; }, set lastDraftedBody(v) { lastDraftedBody = v; },
-    get notFound() { return notFound; }, set notFound(v) { notFound = v; },
-    get lastLoadedPath() { return lastLoadedPath; }, set lastLoadedPath(v) { lastLoadedPath = v; },
-    get draftRestored() { return draftRestored; }, set draftRestored(v) { draftRestored = v; }
-  };
-  const saveCtx = { getLiveBody: () => editor?.getContent?.() ?? body };
+  const saveCtx = { getLiveBody: () => editor?.getContent?.() ?? pipe.body };
 
   // Install dirty + autosave + draft-rAF + tab-hide flush + online
   // retry — six effects worth of plumbing live in noteAutosave so
   // this surface keeps the deps wiring at one glance.
   installNoteAutosave({
-    getNote: () => note,
-    getBody: () => body,
-    getLiveBody: () => editor?.getContent?.() ?? body,
-    getDirty: () => dirty,
-    getSaving: () => saving,
-    getSaveFailed: () => saveFailed,
-    getConflictDetected: () => conflictDetected,
-    getPrev: () => prev,
-    setDirty: (v) => { dirty = v; },
-    setPrev: (v) => { prev = v; },
-    getLastDraftedBody: () => lastDraftedBody,
-    setLastDraftedBody: (v) => { lastDraftedBody = v; },
+    getNote: () => pipe.note,
+    getBody: () => pipe.body,
+    getLiveBody: () => editor?.getContent?.() ?? pipe.body,
+    getDirty: () => pipe.dirty,
+    getSaving: () => pipe.saving,
+    getSaveFailed: () => pipe.saveFailed,
+    getConflictDetected: () => pipe.conflictDetected,
+    getPrev: () => pipe.prev,
+    setDirty: (v) => { pipe.dirty = v; },
+    setPrev: (v) => { pipe.prev = v; },
+    getLastDraftedBody: () => pipe.lastDraftedBody,
+    setLastDraftedBody: (v) => { pipe.lastDraftedBody = v; },
     getEditorView: () => editor?.getView?.(),
     isCompletionActive: () => editor?.isCompletionActive?.() ?? false,
     save: (o) => save(o),
@@ -563,11 +511,11 @@
   // See $lib/notes/wsReload for the contract.
   onMount(() =>
     installWsReload({
-      getActivePath: () => note?.path ?? null,
-      getLiveBody: () => editor?.getContent?.() ?? body,
-      getSavedBody: () => prev,
-      isSaving: () => saving,
-      getLastSavedAt: () => lastSavedAt,
+      getActivePath: () => pipe.note?.path ?? null,
+      getLiveBody: () => editor?.getContent?.() ?? pipe.body,
+      getSavedBody: () => pipe.prev,
+      isSaving: () => pipe.saving,
+      getLastSavedAt: () => pipe.lastSavedAt,
       reload: (p) => void load(p, { force: true }),
       ownSaveQuietMs: OWN_SAVE_QUIET_MS,
       coalesceMs: WS_RELOAD_COALESCE_MS
@@ -633,9 +581,9 @@
 
   // Frontmatter save lives in $lib/notes/saveFrontmatter — see
   // there for the conflict + draft + surgical-mutation contract.
-  // The page just plumbs its reactive state via noteState above.
+  // The page just plumbs its reactive state via the pipe proxy above.
   async function saveFrontmatter(next: Record<string, unknown>): Promise<boolean> {
-    return saveFrontmatterFn(next, noteState, saveCtx);
+    return saveFrontmatterFn(next, pipe, saveCtx);
   }
 
   // ----- Link-suggester glue -----
@@ -656,8 +604,8 @@
     insertSuggestedLink(markup, {
       insertAtCursor: editor?.insertAtCursor,
       appendToBody: (m) => {
-        body = body + (body.endsWith('\n') ? '' : '\n') + m + '\n';
-        dirty = true;
+        pipe.body = pipe.body + (pipe.body.endsWith('\n') ? '' : '\n') + m + '\n';
+        pipe.dirty = true;
       }
     });
   }
@@ -798,7 +746,7 @@
         </button>
         <h1 class="text-base font-semibold text-text flex-1 truncate">Couldn't open note</h1>
         <button
-          onclick={() => { lastLoadedPath = ''; load(decodeURIComponent($page.params.path ?? '')); }}
+          onclick={() => { pipe.lastLoadedPath = ''; load(decodeURIComponent($page.params.path ?? '')); }}
           class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded hover:border-primary text-text"
         >Retry</button>
       </header>
@@ -853,8 +801,8 @@
              above the quick-add bar so they're the first thing the
              user sees on the daily. Both collapse to a header line
              when the user wants the editor max-screen. -->
-        <DailyContext onChanged={async () => { lastLoadedPath = ''; await load(np); }} />
-        <DailyQuickAdd notePath={np} dailyDate={dailyDate} onAdded={async () => { lastLoadedPath = ''; await load(np); }} />
+        <DailyContext onChanged={async () => { pipe.lastLoadedPath = ''; await load(np); }} />
+        <DailyQuickAdd notePath={np} dailyDate={dailyDate} onAdded={async () => { pipe.lastLoadedPath = ''; await load(np); }} />
       {/if}
       <!-- Audio player strip — visible only when the user has
            toggled the audio button. Sits above the deadline strip
@@ -884,7 +832,7 @@
           </svg>
           <span class="flex-1">Editing a restored draft from this browser — saves on disk reflect what's typed here.</span>
           <button
-            onclick={() => (draftRestored = false)}
+            onclick={() => (pipe.draftRestored = false)}
             class="px-1.5 py-0.5 text-[10px] text-dim hover:text-text"
             aria-label="dismiss"
           >dismiss</button>
@@ -908,7 +856,7 @@
           </span>
           <button
             type="button"
-            onclick={() => { lastLoadedPath = ''; void load(note!.path, { force: true }); }}
+            onclick={() => { pipe.lastLoadedPath = ''; void load(note!.path, { force: true }); }}
             class="px-2.5 py-1 rounded bg-surface0 hover:bg-surface1 text-text font-medium flex-shrink-0"
           >
             Reload server version
@@ -916,7 +864,7 @@
           <button
             type="button"
             onclick={() => {
-              forceNextSave = true;
+              pipe.forceNextSave = true;
               // Route Overwrite back through the SAME save shape that
               // hit 412. If the conflict was a tag-chip / frontmatter
               // change, replaying through save() (body) would drop the
@@ -997,7 +945,7 @@
       {/snippet}
       <div class="flex-1 min-h-0 p-2 sm:p-3">
         {#if viewMode === 'edit'}
-          <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
+          <Editor bind:value={pipe.body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
         {:else if viewMode === 'preview'}
           <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4" bind:this={previewContainer}>
             <div class="max-w-3xl mx-auto">
@@ -1008,7 +956,7 @@
                   body={bodyForPreview}
                   frontmatter={(note.frontmatter ?? {}) as Record<string, unknown>}
                   onSaveFrontmatter={saveFrontmatter}
-                  onPrepend={(text) => { body = text + body; dirty = true; }}
+                  onPrepend={(text) => { pipe.body = text + pipe.body; pipe.dirty = true; }}
                 />
               {/if}
               {@render previewBody()}
@@ -1017,7 +965,7 @@
         {:else}
           <!-- split (desktop only) -->
           <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <Editor bind:value={body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
+            <Editor bind:value={pipe.body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
             <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block" bind:this={previewContainer}>
               {@render previewBody()}
             </div>
@@ -1103,8 +1051,8 @@
     notePath={note.path}
     currentBody={bodyForPreview}
     onRestore={(restoredBody: string) => {
-      body = restoredBody;
-      dirty = true;
+      pipe.body = restoredBody;
+      pipe.dirty = true;
     }}
   />
 {/if}
