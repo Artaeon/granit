@@ -1,13 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { auth } from '$lib/stores/auth';
   import { api, type HubItem } from '$lib/api';
-  import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import HubImportDialog from '$lib/notes/HubImportDialog.svelte';
   import HubToolsSection from './HubToolsSection.svelte';
   import { focusOnMount } from '$lib/util/focusOnMount';
+  import { createHubData, installHubDataLive } from '$lib/hub/hubData.svelte';
 
   // Two tabs: 'links' (the existing launcher) and 'tools' (the new
   // setup-command catalogue). Default to links because the existing
@@ -31,8 +30,14 @@
   // Storage at .granit/hub.json (file-system perms only, no
   // encryption — see the package comment in internal/hub).
 
-  let items = $state<HubItem[]>([]);
-  let loading = $state(false);
+  // Data loader — items + loading + load() + WS-driven live refresh.
+  // Extracted to $lib/hub/hubData so this page stays focused on UI
+  // state (filters, modal, drag, reveal) instead of fetch plumbing.
+  const dataCtl = createHubData();
+  const items = $derived(dataCtl.items);
+  const loading = $derived(dataCtl.loading);
+  const load = dataCtl.load;
+
   let q = $state('');
   let categoryFilter = $state('');
 
@@ -67,24 +72,9 @@
   let dragId = $state<string | null>(null);
   let dragOverId = $state<string | null>(null);
 
-  async function load() {
-    if (!$auth) return;
-    loading = true;
-    try {
-      const r = await api.listHubItems();
-      items = r.items;
-    } catch (e) {
-      toast.error('failed to load hub: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      loading = false;
-    }
-  }
-
   onMount(() => {
     load();
-    return onWsEvent((ev) => {
-      if (ev.type === 'state.changed' && ev.path === '.granit/hub.json') load();
-    });
+    return installHubDataLive({ reload: load });
   });
 
   // Categories with counts, sorted by frequency desc — the most-
