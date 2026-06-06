@@ -19,6 +19,7 @@
 -->
 <script lang="ts">
   import type { WorkspaceStoreController } from './workspaceStore.svelte';
+  import WorkspaceNewMenu from './WorkspaceNewMenu.svelte';
 
   type Props = {
     store: WorkspaceStoreController;
@@ -112,10 +113,4 @@
     </span>
   {/if}
 {/each}
-<button
-  type="button"
-  onclick={() => store.create()}
-  title="New workspace"
-  aria-label="New workspace"
-  class="px-2 h-full text-xs text-dim hover:text-primary hover:bg-surface0 border-l border-surface1 flex-shrink-0"
->+</button>
+<WorkspaceNewMenu {store} onCreated={() => onSwitch?.(store.activeId)} />
