@@ -72,11 +72,22 @@ export function createProjectDetailData(deps: ProjectDetailDataDeps): ProjectDet
 
   const projectVisionKey = $derived(`project:${slugifyTitle(deps.getProject().name)}`);
 
+  // Gen counters guard each loader against stale-response: when the
+  // parent swaps project mid-fetch (master/detail list-click), the
+  // OLD project's fetch must NOT overwrite the NEW project's slice.
+  // Each loader stamps its in-flight fetch with the current gen;
+  // only the latest gen is allowed to write back.
+  let tasksGen = 0;
+  let goalsGen = 0;
+  let visionGen = 0;
+
   async function loadTasks() {
     const project = deps.getProject();
+    const my = ++tasksGen;
     loadingTasks = true;
     try {
       const r = await api.listTasks({});
+      if (my !== tasksGen) return;
       const folder = (project.folder ?? '').replace(/\/$/, '');
       projectTasks = r.tasks.filter((t) => {
         if (t.projectId === project.name) return true;
@@ -87,14 +98,16 @@ export function createProjectDetailData(deps: ProjectDetailDataDeps): ProjectDet
       // eslint-disable-next-line no-console
       console.error(e);
     } finally {
-      loadingTasks = false;
+      if (my === tasksGen) loadingTasks = false;
     }
   }
 
   async function loadLinkedGoals() {
     const project = deps.getProject();
+    const my = ++goalsGen;
     try {
       const r = await api.listGoals();
+      if (my !== goalsGen) return;
       linkedGoals = r.goals.filter((g) => g.project === project.name);
     } catch (e) {
       // Non-fatal — goals endpoint failure shouldn't break the
@@ -105,13 +118,17 @@ export function createProjectDetailData(deps: ProjectDetailDataDeps): ProjectDet
   }
 
   async function loadProjectVision() {
+    const my = ++visionGen;
     projectVisionLoading = true;
     try {
-      projectVision = await api.getVisionDoc(projectVisionKey);
+      const doc = await api.getVisionDoc(projectVisionKey);
+      if (my !== visionGen) return;
+      projectVision = doc;
     } catch {
+      if (my !== visionGen) return;
       projectVision = null;
     } finally {
-      projectVisionLoading = false;
+      if (my === visionGen) projectVisionLoading = false;
     }
   }
 

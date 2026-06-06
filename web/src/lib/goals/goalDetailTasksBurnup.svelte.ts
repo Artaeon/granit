@@ -36,13 +36,20 @@ export function createGoalDetailTasksBurnup(
 ): GoalDetailTasksBurnupController {
   let goalTasks = $state<Task[]>([]);
 
+  // Gen counter — when the parent swaps goal mid-fetch, the OLD
+  // goal's task list must NOT overwrite the NEW goal's slice.
+  let fetchGen = 0;
+
   async function loadGoalTasks() {
     const goal = deps.getGoal();
     if (!goal) return;
+    const my = ++fetchGen;
     try {
       const r = await api.listTasks({});
+      if (my !== fetchGen) return;
       goalTasks = r.tasks.filter((t) => t.goalId === goal.id);
     } catch {
+      if (my !== fetchGen) return;
       goalTasks = [];
     }
   }

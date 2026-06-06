@@ -78,8 +78,13 @@ export function createGoalDetailVerses(deps: GoalDetailVersesDeps): GoalDetailVe
     return null;
   });
 
-  // Fetch verses when the resolved topic changes. Ignored if no topic
-  // resolves; verses array stays empty and the section hides.
+  // Fetch verses when the resolved topic changes. Ignored if no
+  // topic resolves; verses array stays empty and the section hides.
+  // The gen counter guards against stale-response: switch goals fast
+  // (e.g. master/detail list-click) and a slow first fetch must NOT
+  // overwrite the second goal's verses. Each fetch stamps itself
+  // with its gen; only the latest gen is allowed to write back.
+  let fetchGen = 0;
   $effect(() => {
     const topic = goalTopic;
     if (!topic) {
@@ -92,14 +97,18 @@ export function createGoalDetailVerses(deps: GoalDetailVersesDeps): GoalDetailVe
     verseLoading = true;
     verseTopic = topic;
     verseCursor = 0;
+    const my = ++fetchGen;
     api.listScriptures(topic)
       .then((r) => {
+        if (my !== fetchGen) return;
         verses = r.scriptures;
       })
       .catch(() => {
+        if (my !== fetchGen) return;
         verses = [];
       })
       .finally(() => {
+        if (my !== fetchGen) return;
         verseLoading = false;
       });
   });
