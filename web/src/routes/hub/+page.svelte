@@ -9,6 +9,7 @@
   import { createHubData, installHubDataLive } from '$lib/hub/hubData.svelte';
   import { createHubView } from '$lib/hub/hubView.svelte';
   import { createHubForm } from '$lib/hub/hubForm.svelte';
+  import { createHubDrag } from '$lib/hub/hubDrag.svelte';
 
   // Two tabs: 'links' (the existing launcher) and 'tools' (the new
   // setup-command catalogue). Default to links because the existing
@@ -64,12 +65,12 @@
   // expanding one credential doesn't reveal others.
   let revealed = $state<Set<string>>(new Set());
 
-  // Drag-to-reorder state. Cards are draggable WITHIN a category
-  // section only — cross-category moves require editing the card
-  // (the category is a free-text field, not an enum, so a drag
-  // metaphor doesn't map cleanly to it).
-  let dragId = $state<string | null>(null);
-  let dragOverId = $state<string | null>(null);
+  // Drag-to-reorder controller. Native HTML5 d&d, scoped to within
+  // a category section — cross-category moves require editing the
+  // card (category is free-text, not an enum). Extracted to
+  // $lib/hub/hubDrag so the five handlers + the two transient
+  // ids live in one place.
+  const dragCtl = createHubDrag({ reload: load });
 
   onMount(() => {
     load();
@@ -147,56 +148,6 @@
     // any "open external" flow).
     window.open(it.url, '_blank', 'noopener,noreferrer');
     void api.visitHubItem(it.id).catch(() => {});
-  }
-
-  // Drag handlers — HTML5 native drag-and-drop. Native because:
-  //   - No new dependency
-  //   - Pointer-perfect on every browser
-  //   - Plays nicely with the existing card hover state
-  // Setting data-transfer is required on Firefox or the drag
-  // never starts; we put the item ID there even though our state
-  // tracking via dragId is what actually drives the reorder.
-  function onDragStart(id: string, ev: DragEvent) {
-    dragId = id;
-    if (ev.dataTransfer) {
-      ev.dataTransfer.effectAllowed = 'move';
-      try { ev.dataTransfer.setData('text/plain', id); } catch {}
-    }
-  }
-  function onDragOver(id: string, ev: DragEvent) {
-    if (!dragId || dragId === id) return;
-    ev.preventDefault();
-    if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
-    dragOverId = id;
-  }
-  function onDragLeave(id: string) {
-    if (dragOverId === id) dragOverId = null;
-  }
-  async function onDrop(targetId: string, categoryItems: HubItem[], ev: DragEvent) {
-    ev.preventDefault();
-    const from = dragId;
-    dragId = null;
-    dragOverId = null;
-    if (!from || from === targetId) return;
-    // Reorder WITHIN the dropped-on card's category. The drag
-    // handlers are scoped to category sections in the template,
-    // so categoryItems is the right slice already.
-    const ids = categoryItems.map((x) => x.id);
-    const fromIdx = ids.indexOf(from);
-    const toIdx = ids.indexOf(targetId);
-    if (fromIdx < 0 || toIdx < 0) return;
-    const [moved] = ids.splice(fromIdx, 1);
-    ids.splice(toIdx, 0, moved);
-    try {
-      await api.reorderHubItems(ids);
-      await load();
-    } catch (e) {
-      toast.error('reorder failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-  function onDragEnd() {
-    dragId = null;
-    dragOverId = null;
   }
 
   // Hostname extraction for the secondary line on link cards.
@@ -311,15 +262,15 @@
                 {@const isRevealed = revealed.has(it.id)}
                 {@const fav = faviconUrl(it)}
                 {@const visited = visitedAgo(it.last_visited_at)}
-                {@const isDragSource = dragId === it.id}
-                {@const isDragTarget = dragOverId === it.id && dragId !== it.id}
+                {@const isDragSource = dragCtl.dragId === it.id}
+                {@const isDragTarget = dragCtl.dragOverId === it.id && dragCtl.dragId !== it.id}
                 <li
                   draggable="true"
-                  ondragstart={(e) => onDragStart(it.id, e)}
-                  ondragover={(e) => onDragOver(it.id, e)}
-                  ondragleave={() => onDragLeave(it.id)}
-                  ondrop={(e) => onDrop(it.id, g.items, e)}
-                  ondragend={onDragEnd}
+                  ondragstart={(e) => dragCtl.onDragStart(it.id, e)}
+                  ondragover={(e) => dragCtl.onDragOver(it.id, e)}
+                  ondragleave={() => dragCtl.onDragLeave(it.id)}
+                  ondrop={(e) => dragCtl.onDrop(it.id, g.items, e)}
+                  ondragend={dragCtl.onDragEnd}
                   class="bg-surface0 border rounded-lg overflow-hidden transition-colors group
                     {isDragSource ? 'opacity-40 border-surface1' : ''}
                     {isDragTarget ? 'border-primary ring-1 ring-primary' : 'border-surface1 hover:border-primary'}"
