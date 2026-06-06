@@ -15,23 +15,22 @@
   import { createHabitsTargetsEdit } from '$lib/habits/habitsTargetsEdit.svelte';
   import { bestDay, weekDays, shortDow, shortDate } from '$lib/habits/habitsDerives';
 
-  // /habits — three view modes for the same data:
-  //   • Today: large quick-tick cards, the morning/evening rhythm view
-  //   • Week:  7-column grid showing the last seven days at a glance
-  //   • List:  full 90-day GitHub-style heatmap with streak stats
-  // Sort + insight (best day of week) work across all three views so
-  // the user's preference sticks regardless of which lens they pick.
+  // /habits — three view modes (Today / Week / List / Heatmap) over
+  // the same 90-day window. Sort + insight (best day of week) work
+  // across all three views so the preference sticks across lenses.
+  //
+  // The page module is now a wiring layer: every cluster of state +
+  // behaviour lives in a $lib/habits/* controller; the script body
+  // just instantiates them, threads the deps, and re-exposes the
+  // most-used reactive reads as locals for the template.
 
-  // Loaded HabitsResponse + the three toggle handlers (single-day,
-  // today, bulk tick-all) + the data-only derives (anchorsFor, today
-  // progress chip, undoneToday for the Tick-all button). See
-  // lib/habits/habitsData for the details.
-  const dataCtl = createHabitsData({
-    isAuthed: () => !!$auth,
-    onError: async (msg) => {
-      (await import('$lib/components/toast')).toast.error(msg);
-    }
-  });
+  // Shared toast hooks — every controller funnels through these.
+  const toastError = async (msg: string) =>
+    (await import('$lib/components/toast')).toast.error(msg);
+  const toastSuccess = async (msg: string) =>
+    (await import('$lib/components/toast')).toast.success(msg);
+
+  const dataCtl = createHabitsData({ isAuthed: () => !!$auth, onError: toastError });
   const data = $derived(dataCtl.data);
   const loading = $derived(dataCtl.loading);
   const busy = $derived(dataCtl.busy);
@@ -40,25 +39,20 @@
   const todayDone = $derived(dataCtl.todayDone);
   const todayTotal = $derived(dataCtl.todayTotal);
   const undoneToday = $derived(dataCtl.undoneToday);
+
   const viewCtl = createHabitsViewState({ getData: () => dataCtl.data });
   const sortedHabits = $derived(viewCtl.sortedHabits);
 
-  // Add-habit form: open/closed state + name buffer + submit handler
-  // that lands the new habit on today's daily note via a toggleHabit
-  // call with done=false. See lib/habits/habitsAdd for the details.
   const addCtl = createHabitsAdd({
     getToday: () => dataCtl.data?.today,
     reload: () => dataCtl.load(),
-    onError: async (msg) => {
-      (await import('$lib/components/toast')).toast.error(msg);
-    }
+    onError: toastError
   });
   const addBusy = $derived(addCtl.addBusy);
 
-  // AI surfaces: pattern insight (observations on existing data) and
-  // suggest-from-goals (generative — proposes new habits laddering
-  // toward active goals). Both stream through chatStream and share
-  // Stop/Close shape; see lib/habits/habitsAI for the details.
+  // aiCtl.adopt() pre-fills addCtl.addName and runs the add pipeline,
+  // so a "suggest from goals" pick routes through the same submit
+  // path as a manual add.
   const aiCtl = createHabitsAI({
     getData: () => dataCtl.data,
     adopt: async (name: string) => {
@@ -73,49 +67,30 @@
   const suggestBusy = $derived(aiCtl.suggestBusy);
   const suggestError = $derived(aiCtl.suggestError);
 
+  const targetsCtl = createHabitsTargetsEdit({ getTargets: () => $habitTargets });
+  const editingTarget = $derived(targetsCtl.editingTarget);
+
+  const stackCtl = createHabitsStackEdit({
+    setBusy: (key) => { dataCtl.busy = key; },
+    reload: () => dataCtl.load(),
+    onError: toastError
+  });
+  const editingStack = $derived(stackCtl.editingStack);
+
+  const renameCtl = createHabitsRename({
+    setBusy: (key) => { dataCtl.busy = key; },
+    reload: () => dataCtl.load(),
+    onSuccess: toastSuccess,
+    onError: toastError
+  });
+  const editingName = $derived(renameCtl.editingName);
+
   onMount(() => {
     dataCtl.load();
     return onWsEvent((ev) => {
       if (ev.type === 'note.changed' || ev.type === 'note.removed') dataCtl.load();
     });
   });
-
-  // Per-habit weekly-target edit popover — single open at a time,
-  // bump within [1, 7], clear drops the entry from localStorage.
-  // See lib/habits/habitsTargetsEdit for the details.
-  const targetsCtl = createHabitsTargetsEdit({ getTargets: () => $habitTargets });
-  const editingTarget = $derived(targetsCtl.editingTarget);
-
-  // Stack anchor ("after I do X, I do this") — inline-edit buffer
-  // + commit to .granit/habits-stacks.json. Behavioural-science
-  // staple. See lib/habits/habitsStackEdit for the details.
-  const stackCtl = createHabitsStackEdit({
-    setBusy: (key) => { dataCtl.busy = key; },
-    reload: () => dataCtl.load(),
-    onError: async (msg) => {
-      (await import('$lib/components/toast')).toast.error(msg);
-    }
-  });
-  const editingStack = $derived(stackCtl.editingStack);
-
-  // Rename + delete handlers: inline-edit buffer + confirm-then-call
-  // delete. Both write through to dataCtl.busy so the row-level
-  // disable still works, and trigger reload via dataCtl.load(). See
-  // lib/habits/habitsRename for the details.
-  const renameCtl = createHabitsRename({
-    setBusy: (key) => { dataCtl.busy = key; },
-    reload: () => dataCtl.load(),
-    onSuccess: async (msg) => {
-      (await import('$lib/components/toast')).toast.success(msg);
-    },
-    onError: async (msg) => {
-      (await import('$lib/components/toast')).toast.error(msg);
-    }
-  });
-  const editingName = $derived(renameCtl.editingName);
-  // renameDraft is two-way bound from the template; the binding reads
-  // and writes via renameCtl.renameDraft directly.
-
 </script>
 
 <div class="h-full overflow-y-auto">
