@@ -76,6 +76,7 @@
   import AIOverlayHeader from '$lib/components/aioverlay/AIOverlayHeader.svelte';
   import AIOverlayQuickActions from '$lib/components/aioverlay/AIOverlayQuickActions.svelte';
   import AIOverlayContextChips from '$lib/components/aioverlay/AIOverlayContextChips.svelte';
+  import AIOverlayComposerStrip from '$lib/components/aioverlay/AIOverlayComposerStrip.svelte';
   import { list as listSharedPrompts, type RecentPrompt } from '$lib/ai/recentPrompts';
 
   // AIOverlay — global AI panel. Slides in from the right on
@@ -1251,72 +1252,16 @@
       </div>
     {/if}
 
-    <!-- Inline mode + persona chips above the composer. The full
-         picker still lives in the header dropdown; these chips
-         expose the live state so the user reads "what mode am I in
-         and which persona is loaded" without opening a menu.
-         Click either chip to toggle the mode picker. The picker
-         already groups Modes + Personas so one entry-point is
-         enough — duplicating the picker would only add weight. -->
-    <div class="border-t border-surface1 px-3 pt-2 pb-1 flex items-center gap-1.5 flex-shrink-0 flex-wrap">
-      <button
-        type="button"
-        onclick={() => (modePickerOpen = !modePickerOpen)}
-        class="inline-flex items-center gap-1 text-[11px] text-dim hover:text-text px-1.5 py-0.5 rounded bg-surface0 hover:bg-surface1 transition-colors max-w-[10rem]"
-        title="Active mode — click to change ({aiCtx.mode.tagline})"
-        aria-haspopup="listbox"
-        aria-expanded={modePickerOpen}
-      >
-        <span class="{aiCtx.mode.kind === 'persona' ? 'text-secondary' : aiCtx.mode.kind === 'contextual' ? 'text-primary' : 'text-subtext'}">●</span>
-        <span class="truncate">{aiCtx.mode.label}</span>
-      </button>
-      {#if aiCtx.lastPersona}
-        <button
-          type="button"
-          onclick={() => (modePickerOpen = !modePickerOpen)}
-          class="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded transition-colors max-w-[10rem] {aiCtx.modeId === aiCtx.lastPersona.id ? 'bg-secondary text-on-primary' : 'text-dim hover:text-text bg-surface0 hover:bg-surface1'}"
-          title="Persona — {aiCtx.modeId === aiCtx.lastPersona.id ? 'active' : 'last used'}. Click to open picker."
-        >
-          <span class="text-[9px] font-mono">{aiCtx.lastPersona.glyph}</span>
-          <span class="truncate">{aiCtx.lastPersona.label}</span>
-        </button>
-      {/if}
-      <span class="flex-1"></span>
-      <!-- Quick-action strip — collapses the most-used slash commands
-           into one-tap chips so the user doesn't have to type
-           '/briefing' or remember /clear lives behind a slash.
-           These funnel into the same handlers (runBriefing,
-           runTriage, clearChat, startNewThread) the slash router
-           already calls, so behaviour stays consistent. -->
-      <button
-        type="button"
-        onclick={() => { void runBriefing(); }}
-        disabled={busy || $sabbath}
-        class="text-[11px] text-dim hover:text-text px-2 py-0.5 rounded hover:bg-surface1 transition-colors disabled:opacity-40"
-        title="Run daily briefing (/briefing)"
-      >Briefing</button>
-      <button
-        type="button"
-        onclick={() => { void runTriage(); }}
-        disabled={busy || $sabbath}
-        class="text-[11px] text-dim hover:text-text px-2 py-0.5 rounded hover:bg-surface1 transition-colors disabled:opacity-40"
-        title="Triage open tasks (/triage)"
-      >Triage</button>
-      <button
-        type="button"
-        onclick={() => { void runDeadlines(); }}
-        disabled={busy || $sabbath}
-        class="text-[11px] text-dim hover:text-text px-2 py-0.5 rounded hover:bg-surface1 transition-colors disabled:opacity-40"
-        title="Surface upcoming deadlines (/deadlines)"
-      >Deadlines</button>
-      <button
-        type="button"
-        onclick={() => { startNewThread(); }}
-        disabled={busy}
-        class="text-[11px] text-dim hover:text-error px-2 py-0.5 rounded hover:bg-surface1 transition-colors disabled:opacity-40"
-        title="Start a new thread (/new) — current thread is auto-saved to history"
-      >Clear</button>
-    </div>
+    <AIOverlayComposerStrip
+      {aiCtx}
+      bind:modePickerOpen
+      {busy}
+      sabbathActive={$sabbath}
+      onBriefing={() => { void runBriefing(); }}
+      onTriage={() => { void runTriage(); }}
+      onDeadlines={() => { void runDeadlines(); }}
+      onStartNewThread={startNewThread}
+    />
 
     <ChatComposer
       bind:input
