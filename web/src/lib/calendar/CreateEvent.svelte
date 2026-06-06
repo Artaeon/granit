@@ -4,6 +4,7 @@
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { findEventType } from './eventTypes';
+  import { colorOptions } from './eventDetailHelpers';
   import RecurrenceEditor from './RecurrenceEditor.svelte';
   import EventTypeChips from './EventTypeChips.svelte';
 
@@ -281,20 +282,6 @@
     }
   }
 
-  const colorOptions: { name: string; hex: string }[] = [
-    { name: 'red', hex: '#ff3b30' },
-    { name: 'orange', hex: '#ff9500' },
-    { name: 'yellow', hex: '#ffcc00' },
-    { name: 'green', hex: '#34c759' },
-    { name: 'mint', hex: '#00c7be' },
-    { name: 'teal', hex: '#5ac8fa' },
-    { name: 'blue', hex: '#007aff' },
-    { name: 'indigo', hex: '#5856d6' },
-    { name: 'purple', hex: '#af52de' },
-    { name: 'pink', hex: '#ff2d55' },
-    { name: 'brown', hex: '#a2845e' },
-    { name: 'gray', hex: '#8e8e93' }
-  ];
 
   // Reminder presets — same set the notification scheduler honors.
   // 0 means no reminder; the API call drops the field via undefined.
