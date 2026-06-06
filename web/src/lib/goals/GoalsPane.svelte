@@ -40,7 +40,7 @@
   import { createGoalsAiSuggest } from '$lib/goals/goalsAiSuggest.svelte';
   import { createGoalsCheckin } from '$lib/goals/goalsCheckin.svelte';
   import { createGoalsAudit } from '$lib/goals/goalsAudit.svelte';
-  import { workspaceContext } from '$lib/workspace/workspaceContext.svelte';
+  import { createGoalsDetail } from '$lib/goals/goalsDetail.svelte';
 
   // Loaded data (dataCtl.goals + dataCtl.openTasks/dataCtl.doneTasks/dataCtl.projects sidecars) +
   // dataCtl.loading flags + dataCtl.load() + per-goal dataCtl.rollups + stalled detection
@@ -58,8 +58,10 @@
   let agentOpen = $state(false);
 
   let createOpen = $state(false);
-  let detailOpen = $state(false);
-  let selectedId = $state<string | null>(null);
+  // Detail drawer state + selected derive lives in goalsDetail.
+  // The dashboard URL overlay (?dashboard=1) stays parent-owned
+  // because it's $page-driven via goto().
+  const detCtl = createGoalsDetail({ dataCtl });
 
   // "More" dropdown — collapsed AI surface launcher. Reflects the
   // open-state of either AI panel so the header tints the trigger.
@@ -139,27 +141,23 @@
     if (!focus) return;
     if (dataCtl.goals.length === 0) return; // wait until dataCtl.load() resolves
     const g = dataCtl.goals.find((x) => x.id === focus);
-    if (g && selectedId !== focus) {
-      selectedId = focus;
-      detailOpen = true;
+    if (g && detCtl.selectedId !== focus) {
+      detCtl.selectedId = focus;
+      detCtl.detailOpen = true;
     }
   });
-
-  // Selected goal — derived from id so live edits during a refetch find
-  // the new copy without reopening the drawer at a stale state.
-  let selected = $derived(dataCtl.goals.find((g) => g.id === selectedId) ?? null);
 
   // Dashboard overlay — full-screen GoalDashboardPanel for the focused
   // goal. State persists in the URL (?focus=X&dashboard=1) so a reload
   // or shared link keeps it open. Pure presentation flag — the panel
   // does its own data load.
   let dashboardOpen = $derived(
-    $page.url.searchParams.get('dashboard') === '1' && !!selected
+    $page.url.searchParams.get('dashboard') === '1' && !!detCtl.selected
   );
   function openDashboard() {
-    if (!selectedId) return;
+    if (!detCtl.selectedId) return;
     const params = new URLSearchParams($page.url.searchParams);
-    params.set('focus', selectedId);
+    params.set('focus', detCtl.selectedId);
     params.set('dashboard', '1');
     goto(`/goals?${params.toString()}`, { replaceState: true, keepFocus: true });
   }
@@ -169,20 +167,9 @@
     goto(`/goals?${params.toString()}`, { replaceState: true, keepFocus: true });
   }
 
-  function openDetail(g: Goal) {
-    selectedId = g.id;
-    detailOpen = true;
-    workspaceContext.publish({
-      paneKind: 'goals',
-      itemId: g.id,
-      label: g.title,
-      excerpt: g.description ?? undefined
-    });
-  }
-  function openDetailById(id: string) {
-    const g = dataCtl.goals.find((x) => x.id === id);
-    if (g) openDetail(g);
-  }
+  // openDetail / openDetailById live in detCtl — read via detCtl.X.
+  const openDetail = detCtl.openDetail;
+  const openDetailById = detCtl.openDetailById;
 
   // filterCtl.filtered moved into filterCtl.
 
@@ -351,16 +338,16 @@
     // dataCtl.load() below reconciles with the server (auth-stamped CreatedAt,
     // any defaults the server filled in).
     if (!dataCtl.goals.some((x) => x.id === g.id)) {
-      dataCtl.goals = [g, ...goals];
+      dataCtl.goals = [g, ...dataCtl.goals];
     }
-    selectedId = g.id;
-    detailOpen = true;
+    detCtl.selectedId = g.id;
+    detCtl.detailOpen = true;
     await dataCtl.load();
   }
 
   async function deleted(_id: string) {
-    detailOpen = false;
-    selectedId = null;
+    detCtl.detailOpen = false;
+    detCtl.selectedId = null;
     await dataCtl.load();
     toast.success('goal deleted');
   }
@@ -867,21 +854,21 @@
 
 <GoalCreate bind:open={createOpen} ventures={ventures} onCreated={created} />
 <GoalDetail
-  bind:open={detailOpen}
-  goal={selected}
+  bind:open={detCtl.detailOpen}
+  goal={detCtl.selected}
   onUpdated={() => dataCtl.load()}
   onDeleted={deleted}
   onOpenDashboard={openDashboard}
 />
 
-{#if dashboardOpen && selected}
+{#if dashboardOpen && detCtl.selected}
   <!-- Goal Dashboard overlay — full-screen visual operating
        picture for the focused goal. URL-persisted via
        ?focus=X&dashboard=1 so a reload keeps it open. Sits above
        the dataCtl.goals page chrome (list/cards/kanban + detail drawer)
        without unmounting them, so closing the dashboard lands the
        user back where they came from. -->
-  <GoalDashboardPanel goal={selected} onClose={closeDashboard} />
+  <GoalDashboardPanel goal={detCtl.selected} onClose={closeDashboard} />
 {/if}
 
 <!-- Goal Agent — operates on the filterCtl.filtered list (whatever the
