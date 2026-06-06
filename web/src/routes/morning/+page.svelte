@@ -19,7 +19,7 @@
 
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, todayISO, type Task, type Goal } from '$lib/api';
+  import { api, todayISO, type Goal } from '$lib/api';
   import { scriptures } from '$lib/morning/scriptures';
   import { createMorningScripture } from '$lib/morning/morningScripture.svelte';
   import { createMorningPicks } from '$lib/morning/morningPicks.svelte';
@@ -28,6 +28,12 @@
   import { createMorningFocus } from '$lib/morning/morningFocus.svelte';
   import { installMorningPersistence } from '$lib/morning/morningPersistence.svelte';
   import { createMorningLockIn } from '$lib/morning/morningLockIn.svelte';
+  import {
+    sortMorningTasks,
+    sortMorningIntentions,
+    pickUpcomingNear,
+    morningStats
+  } from '$lib/morning/morningDerived';
   import { inlineMd } from '$lib/util/inlineMd';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
 
@@ -125,43 +131,12 @@
     weekday: 'long', month: 'long', day: 'numeric'
   }));
 
-  // Tasks sorted by urgency. Same algorithm as the previous version —
-  // overdue+important → due today → quick wins → priority/date.
-  const sortedTasks = $derived.by(() => {
-    type Bucketed = { task: Task; bucket: number; rank: number };
-    const isOverdueImportant = (t: Task) =>
-      !!t.dueDate && t.dueDate < today && (t.priority === 1 || t.priority === 2);
-    const isDueToday = (t: Task) => t.dueDate === today;
-    const isQuickWin = (t: Task) =>
-      !t.scheduledStart &&
-      (!t.dueDate || t.dueDate >= today) &&
-      (((t.estimatedMinutes ?? 0) > 0 && (t.estimatedMinutes ?? 0) <= 30) ||
-        (t.text.length <= 60 && (t.priority === 0 || t.priority >= 3)));
-    const bucketed: Bucketed[] = openTasks.map((t) => {
-      let bucket = 9;
-      if (isOverdueImportant(t)) bucket = 0;
-      else if (isDueToday(t)) bucket = 1;
-      else if (isQuickWin(t)) bucket = 2;
-      const rank =
-        bucket === 0
-          ? -((today.localeCompare(t.dueDate ?? '~')) || 0)
-          : (t.priority || 99) * 100 + (t.dueDate ? Number(t.dueDate.replace(/-/g, '').slice(2)) : 999_999);
-      return { task: t, bucket, rank };
-    });
-    return bucketed
-      .sort((a, b) => (a.bucket !== b.bucket ? a.bucket - b.bucket : a.rank - b.rank))
-      .slice(0, 60)
-      .map((x) => x.task);
-  });
+  // Tasks sorted by urgency. Algorithm lives in morningDerived.
+  const sortedTasks = $derived(sortMorningTasks(openTasks, today));
   const taskPreview = $derived(sortedTasks.slice(0, 8));
   const taskOverflow = $derived(sortedTasks.length - taskPreview.length);
 
-  const sortedIntentions = $derived.by(() => {
-    const tied = activeIntentions.filter((p) => p.venture || p.project || p.goal);
-    const persons = activeIntentions.filter((p) => p.person && !(p.venture || p.project || p.goal));
-    const general = activeIntentions.filter((p) => !p.person && !(p.venture || p.project || p.goal));
-    return [...tied, ...persons, ...general];
-  });
+  const sortedIntentions = $derived(sortMorningIntentions(activeIntentions));
 
   const pickedTaskTexts = $derived.by(() => {
     const ts: string[] = [];
@@ -169,43 +144,19 @@
     return ts;
   });
 
-  function daysUntil(iso: string): number {
-    const [y, m, d] = iso.split('-').map(Number);
-    const due = new Date(y, m - 1, d);
-    const t = new Date();
-    t.setHours(0, 0, 0, 0);
-    return Math.round((due.getTime() - t.getTime()) / 86_400_000);
-  }
-  const upcomingNear = $derived.by(() => {
-    if (!upcomingDeadlines) return [];
-    return upcomingDeadlines
-      .filter((d) => d.status !== 'cancelled' && d.status !== 'met')
-      .map((d) => ({ d, days: daysUntil(d.date) }))
-      .filter((x) => x.days <= 7)
-      .sort((a, b) => a.days - b.days)
-      .slice(0, 3);
-  });
+  const upcomingNear = $derived(pickUpcomingNear(upcomingDeadlines));
 
   // ─── Actions ──────────────────────────────────────────────────────
   // Morning stat row — quick at-a-glance numbers the user sees
-  // before they decide what to plan. Derived from the same data
-  // arrays the rest of the page reads.
-  const stats = $derived.by(() => {
-    let overdue = 0;
-    let dueToday = 0;
-    for (const t of openTasks) {
-      if (!t.dueDate) continue;
-      if (t.dueDate < today) overdue++;
-      else if (t.dueDate === today) dueToday++;
-    }
-    return {
-      openTasks: openTasks.length,
-      overdue,
-      dueToday,
-      events: todayEvents.length,
-      deadlinesThisWeek: upcomingNear.length
-    };
-  });
+  // before they decide what to plan.
+  const stats = $derived(
+    morningStats({
+      openTasks,
+      todayEvents,
+      upcomingNear,
+      todayISO: today
+    })
+  );
   // Lock-in (save) controller. Wired after the derived sidecars
   // it reads (pickedTaskTexts) so the getter closures don't need to
   // dance around TDZ.
