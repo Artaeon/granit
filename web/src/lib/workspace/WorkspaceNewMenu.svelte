@@ -39,6 +39,13 @@
   // session reflects without a refresh. The list stays in component
   // state so removals are reactive.
   let userPresets = $state<UserPreset[]>([]);
+  // Inline rename input for "Save current layout as preset". When
+  // open, the bottom row swaps from a button to an input + check.
+  // The window.prompt() it replaces was jarring and broke flow on
+  // mobile (system dialog covered the menu).
+  let savingPreset = $state(false);
+  let savingName = $state('');
+  let savingInputEl: HTMLInputElement | null = $state(null);
 
   function refreshUserPresets() {
     userPresets = loadUserPresets();
@@ -69,15 +76,27 @@
     onCreated?.();
   }
 
-  function saveCurrent() {
-    if (typeof window === 'undefined') return;
-    const name = window.prompt(
-      'Save current layout as preset.\nName:',
-      store.active.name
-    );
-    if (!name) return;
+  function startSaveCurrent() {
+    savingPreset = true;
+    savingName = store.active.name;
+    // Focus the input on the next tick so the autofocus attribute
+    // takes effect after Svelte mounts the new node.
+    queueMicrotask(() => savingInputEl?.focus());
+  }
+  function commitSaveCurrent() {
+    const name = savingName.trim();
+    if (!name) {
+      cancelSaveCurrent();
+      return;
+    }
     saveUserPreset(name, store.active.layout);
+    savingPreset = false;
+    savingName = '';
     refreshUserPresets();
+  }
+  function cancelSaveCurrent() {
+    savingPreset = false;
+    savingName = '';
   }
 
   function removePreset(e: MouseEvent, id: string) {
@@ -95,6 +114,10 @@
     // Refresh user presets each time the menu opens so saves from
     // earlier in the session reflect without a page refresh.
     refreshUserPresets();
+    // Reset the inline-save row so it doesn't stay open across an
+    // outside-click + reopen cycle.
+    savingPreset = false;
+    savingName = '';
     const onDown = (e: MouseEvent) => {
       if (rootEl && !rootEl.contains(e.target as Node)) open = false;
     };
@@ -179,12 +202,42 @@
         {/each}
       {/if}
       <div class="border-t border-surface1 my-1"></div>
-      <button
-        type="button"
-        onclick={saveCurrent}
-        class="w-full text-left px-3 py-1.5 text-[11px] text-dim hover:text-primary hover:bg-surface0 transition-colors"
-        title="Save the current workspace layout as a reusable preset"
-      >+ Save current layout as preset</button>
+      {#if savingPreset}
+        <!-- Inline rename row — replaces the window.prompt() that
+             used to fire on save. Enter commits, Escape cancels,
+             blur commits (so tapping outside the input still saves).
+             Pre-filled with the active workspace's name so the user
+             only has to confirm or tweak. -->
+        <div class="flex items-center gap-1 px-2 py-1.5">
+          <input
+            bind:this={savingInputEl}
+            bind:value={savingName}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); commitSaveCurrent(); }
+              else if (e.key === 'Escape') { e.preventDefault(); cancelSaveCurrent(); }
+            }}
+            onblur={commitSaveCurrent}
+            type="text"
+            aria-label="Preset name"
+            placeholder="Preset name"
+            class="flex-1 min-w-0 px-2 py-1 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
+          />
+          <button
+            type="button"
+            onclick={cancelSaveCurrent}
+            aria-label="Cancel"
+            title="Cancel"
+            class="px-1.5 py-1 text-dim hover:text-text"
+          >×</button>
+        </div>
+      {:else}
+        <button
+          type="button"
+          onclick={startSaveCurrent}
+          class="w-full text-left px-3 py-1.5 text-[11px] text-dim hover:text-primary hover:bg-surface0 transition-colors"
+          title="Save the current workspace layout as a reusable preset"
+        >+ Save current layout as preset</button>
+      {/if}
     </div>
   {/if}
 </span>
