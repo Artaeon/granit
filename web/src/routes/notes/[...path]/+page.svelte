@@ -13,7 +13,7 @@
   import NoteDeadlinesStrip from '$lib/deadlines/NoteDeadlinesStrip.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
   import { toast } from '$lib/components/toast';
-  import { scheduleFlashcards } from '$lib/util/scheduleFlashcards';
+  import { createFlashcardsAction } from '$lib/notes/flashcardsAction.svelte';
   import { rememberScroll } from '$lib/notes/noteHistory';
   import { createPreviewScrollTracker } from '$lib/notes/previewScrollTracker.svelte';
   import { installNoteShortcuts } from '$lib/notes/noteKeyboardShortcuts.svelte';
@@ -143,34 +143,15 @@
   // the user hits Cmd-K or types "/ai". Cleared when the menu closes.
   let aiTriggerEvent = $state<InlineAITriggerEvent | null>(null);
 
-  // Schedule flashcard reviews on the calendar. Parses Q:/A: pairs
-  // out of the current body (the format the InlineAIMenu
-  // "flashcards" preset emits) and creates a 5-step spaced-rep
-  // series per card at 1/3/7/14/30 day offsets — same cadence as
-  // the scripture memory-verse drill. Busy flag keeps the overflow
-  // menu from queueing duplicate runs.
-  let schedulingFlashcards = $state(false);
-  async function runScheduleFlashcards() {
-    if (schedulingFlashcards) return;
-    schedulingFlashcards = true;
-    overflowOpen = false;
-    try {
-      const r = await scheduleFlashcards(body);
-      if (r.cards === 0) {
-        toast.info('No Q:/A: flashcards found in this note.');
-        return;
-      }
-      if (r.failed === 0) {
-        toast.success(`Scheduled ${r.cards} card${r.cards === 1 ? '' : 's'} × 5 reviews (1/3/7/14/30 days).`);
-      } else {
-        toast.info(`Scheduled ${r.scheduled} of ${r.cards * 5} reviews — ${r.failed} failed.`);
-      }
-    } catch (e) {
-      toast.error('Schedule failed: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      schedulingFlashcards = false;
-    }
-  }
+  // Flashcard-scheduling lives in flashcardsAction — same Q:/A: parse
+  // + 5-step (1/3/7/14/30 day) schedule + toast branches. The page
+  // hands the action a getBody + closeOverflow and fires .run() from
+  // the overflow menu.
+  const flashcards = createFlashcardsAction({
+    getBody: () => body,
+    closeOverflow: () => { overflowOpen = false; }
+  });
+  let schedulingFlashcards = $derived(flashcards.schedulingFlashcards);
 
   // Inline AI ghost state — observed by inlineAIObserver, drives the
   // floating <AIActionBar> that surfaces Keep / Try again / Discard /
@@ -442,8 +423,8 @@
   // help) behind a single ⋯ trigger. State + positioning + click-
   // outside / Esc / resize wiring live inside <NoteOverflowMenu>.
   // We keep `overflowOpen` and the trigger ref here so the header
-  // button still toggles the menu and `runScheduleFlashcards` can
-  // close it before the long-running async job.
+  // button still toggles the menu and flashcards.run() can close it
+  // before the long-running async job.
   let overflowOpen = $state(false);
   let overflowTriggerEl: HTMLButtonElement | undefined = $state();
 
@@ -1068,7 +1049,7 @@
     onToggleAudio={() => (audioOpen = !audioOpen)}
     onToggleReadingMode={viewModes.toggleReadingMode}
     onToggleFocusMode={viewModes.toggleFocusMode}
-    onScheduleFlashcards={runScheduleFlashcards}
+    onScheduleFlashcards={flashcards.run}
     onOpenHelp={() => (helpOpen = true)}
   />
 {/if}
