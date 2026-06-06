@@ -41,6 +41,7 @@
   import { createGoalsCheckin } from '$lib/goals/goalsCheckin.svelte';
   import { createGoalsAudit } from '$lib/goals/goalsAudit.svelte';
   import { createGoalsDetail } from '$lib/goals/goalsDetail.svelte';
+  import { createGoalsView, KANBAN_COLUMNS, type KanbanCol } from '$lib/goals/goalsView.svelte';
 
   // Loaded data (dataCtl.goals + dataCtl.openTasks/dataCtl.doneTasks/dataCtl.projects sidecars) +
   // dataCtl.loading flags + dataCtl.load() + per-goal dataCtl.rollups + stalled detection
@@ -214,124 +215,10 @@
   // whether to update the goal, log a milestone, or move it to
   // paused/archived.
   // staleness + recentCompletionForGoal + dataCtl.stalledGoals moved into
-  // dataCtl.
-  // When the user clicks the banner action, we filter the list
-  // down to just the stalled rows. Re-derive over `filterCtl.filtered` rather
-  // than mutating filters so the existing search/category/tag
-  // pickers aren't disturbed.
-  let stalledFilterOn = $state(false);
-  let visibleGoals = $derived.by(() => {
-    if (!stalledFilterOn) return filterCtl.filtered;
-    const stalledIds = new Set(dataCtl.stalledGoals.map((g) => g.id));
-    return filterCtl.filtered.filter((g) => stalledIds.has(g.id));
-  });
-
-  // Kanban grouping — same status order as the tabs so the column
-  // order matches the user's mental model. Filtering still applies
-  // (search / category / venture / tag); the status filter is only
-  // honoured when it isn't 'all', otherwise every column renders so
-  // the kanban surfaces the full pipeline. Sort within each column:
-  // imminent target_date first, then by title for stability.
-  type KanbanCol = 'active' | 'paused' | 'completed' | 'archived';
-  const kanbanColumns: KanbanCol[] = ['active', 'paused', 'completed', 'archived'];
-  let kanbanGroups = $derived.by((): Record<KanbanCol, Goal[]> => {
-    const out: Record<KanbanCol, Goal[]> = {
-      active: [], paused: [], completed: [], archived: []
-    };
-    for (const g of filterCtl.filtered) {
-      const s = (g.status ?? 'active') as KanbanCol;
-      if (out[s]) out[s].push(g);
-    }
-    const sortKey = (g: Goal): number => {
-      const d = daysUntilTarget(g.target_date);
-      // Goals with no parseable date sink to the bottom; among the
-      // dated, smaller (closer / overdue) days come first.
-      return d === null ? Number.POSITIVE_INFINITY : d;
-    };
-    for (const col of kanbanColumns) {
-      out[col].sort((a, b) => {
-        const sa = sortKey(a), sb = sortKey(b);
-        if (sa !== sb) return sa - sb;
-        return a.title.localeCompare(b.title);
-      });
-    }
-    return out;
-  });
-
-  // ----- Hero "next target" -----
-  // Picks the most-imminent active or paused goal with a parseable
-  // target_date and surfaces it as a hero card above the list. Skips
-  // dataCtl.goals whose status excludes them from the urgency treatment
-  // (completed / archived) and skips free-text target_dates that
-  // can't be compared to "today". Falls back to null when the user
-  // has no dated dataCtl.goals — the hero card simply doesn't render.
-  let goalHero = $derived.by((): { goal: Goal; days: number } | null => {
-    let best: Goal | null = null;
-    let bestDays = Infinity;
-    for (const g of dataCtl.goals) {
-      const status = g.status ?? 'active';
-      if (status !== 'active' && status !== 'paused') continue;
-      const days = daysUntilTarget(g.target_date);
-      if (days === null) continue;
-      // Earliest target wins; overdue dataCtl.goals (negative days) sort
-      // ahead of upcoming ones because they need attention more.
-      if (days < bestDays) {
-        bestDays = days;
-        best = g;
-      }
-    }
-    return best ? { goal: best, days: bestDays } : null;
-  });
-
-  // ----- Target-proximity stat strip -----
-  // Distribution of dated active+paused dataCtl.goals across urgency
-  // buckets, surfaced as a one-line summary below the status tabs.
-  // Complements the hero (single most-pressing goal) by showing the
-  // shape of the whole pipeline at a glance. Free-text target_dates
-  // and undated dataCtl.goals are excluded — they have no place on a
-  // proximity axis.
-  let targetStats = $derived.by(() => {
-    let pastTarget = 0, thisMonth = 0, thisQuarter = 0, later = 0;
-    for (const g of dataCtl.goals) {
-      const status = g.status ?? 'active';
-      if (status !== 'active' && status !== 'paused') continue;
-      const days = daysUntilTarget(g.target_date);
-      if (days === null) continue;
-      if (days < 0) pastTarget++;
-      else if (days <= 30) thisMonth++;
-      else if (days <= 90) thisQuarter++;
-      else later++;
-    }
-    return { pastTarget, thisMonth, thisQuarter, later };
-  });
-
-  // Distinct category + tag chips, sorted by frequency desc so the most
-  // common chip surfaces first.
-  let categories = $derived.by(() => {
-    const m = new Map<string, number>();
-    for (const g of dataCtl.goals) {
-      const c = (g.category ?? '').trim();
-      if (!c) continue;
-      m.set(c, (m.get(c) ?? 0) + 1);
-    }
-    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
-  });
-  let tags = $derived.by(() => {
-    const m = new Map<string, number>();
-    for (const g of dataCtl.goals) {
-      for (const t of g.tags ?? []) m.set(t, (m.get(t) ?? 0) + 1);
-    }
-    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
-  });
-  let ventures = $derived.by(() => {
-    const m = new Map<string, number>();
-    for (const g of dataCtl.goals) {
-      const v = (g.venture ?? '').trim();
-      if (!v) continue;
-      m.set(v, (m.get(v) ?? 0) + 1);
-    }
-    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([v]) => v);
-  });
+  // View-time derivations + viewCtl.stalledFilterOn live in goalsView.svelte —
+  // viewCtl.visibleGoals, viewCtl.kanbanGroups, viewCtl.goalHero, viewCtl.targetStats, categories,
+  // tags, ventures, viewCtl.activeGoalsCount. Read via viewCtl.X.
+  const viewCtl = createGoalsView({ dataCtl, filterCtl });
 
   async function created(g: Goal) {
     // Optimistic prepend so the new goal renders immediately. The
@@ -383,8 +270,7 @@
     else void auditCtl.run();
   }
 
-  // Active-dataCtl.goals count is reused by the audit panel header.
-  let activeGoalsCount = $derived(dataCtl.goals.filter((g) => (g.status ?? 'active') === 'active').length);
+  // Active-goals count now lives in viewCtl.viewCtl.activeGoalsCount.
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -394,7 +280,7 @@
   <GoalsPageHeader
     view={filterCtl.viewMode}
     totalCount={dataCtl.goals.length}
-    filteredCount={visibleGoals.length}
+    filteredCount={viewCtl.visibleGoals.length}
     checkinOpen={checkinCtl.checkinOpen}
     checkinBusy={checkinCtl.checkinBusy}
     auditOpen={auditCtl.auditOpen}
@@ -445,7 +331,7 @@
         orphanOpenCount={auditCtl.auditScope.orphanOpen.length}
         orphanDoneCount={auditCtl.auditScope.orphanDoneRecent.length}
         linkedCount={auditCtl.auditScope.linkedOpen + auditCtl.auditScope.linkedDone14}
-        activeGoalsCount={activeGoalsCount}
+        viewCtl.activeGoalsCount={viewCtl.activeGoalsCount}
         onAbort={auditCtl.stop}
         onRetry={() => void auditCtl.run()}
         onClose={auditCtl.close}
@@ -458,9 +344,9 @@
          on what's most pressing without scanning the list. Click jumps
          to the goal's detail drawer (same affordance as the cards
          below). Border tint = urgency, mirroring the deadlines hero. -->
-    {#if goalHero}
-      {@const h = goalHero.goal}
-      {@const days = goalHero.days}
+    {#if viewCtl.goalHero}
+      {@const h = viewCtl.goalHero.goal}
+      {@const days = viewCtl.goalHero.days}
       {@const p = progress(h)}
       <button
         type="button"
@@ -519,19 +405,19 @@
          showing the distribution of dated dataCtl.goals across urgency
          buckets. Hidden when no dated dataCtl.goals exist (the strip would
          just read "0 0 0 0"). -->
-    {#if targetStats.pastTarget + targetStats.thisMonth + targetStats.thisQuarter + targetStats.later > 0}
+    {#if viewCtl.targetStats.pastTarget + viewCtl.targetStats.thisMonth + viewCtl.targetStats.thisQuarter + viewCtl.targetStats.later > 0}
       <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4 text-xs">
-        {#if targetStats.pastTarget > 0}
-          <span class="text-error font-medium tabular-nums">{targetStats.pastTarget} past target</span>
+        {#if viewCtl.targetStats.pastTarget > 0}
+          <span class="text-error font-medium tabular-nums">{viewCtl.targetStats.pastTarget} past target</span>
         {/if}
-        {#if targetStats.thisMonth > 0}
-          <span class="text-warning tabular-nums">{targetStats.thisMonth} this month</span>
+        {#if viewCtl.targetStats.thisMonth > 0}
+          <span class="text-warning tabular-nums">{viewCtl.targetStats.thisMonth} this month</span>
         {/if}
-        {#if targetStats.thisQuarter > 0}
-          <span class="text-info tabular-nums">{targetStats.thisQuarter} this quarter</span>
+        {#if viewCtl.targetStats.thisQuarter > 0}
+          <span class="text-info tabular-nums">{viewCtl.targetStats.thisQuarter} this quarter</span>
         {/if}
-        {#if targetStats.later > 0}
-          <span class="text-dim tabular-nums">{targetStats.later} later</span>
+        {#if viewCtl.targetStats.later > 0}
+          <span class="text-dim tabular-nums">{viewCtl.targetStats.later} later</span>
         {/if}
       </div>
     {/if}
@@ -545,7 +431,7 @@
         placeholder="search title, description, notes…"
         class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
       />
-      {#if categories.length > 0 || tags.length > 0 || ventures.length > 0}
+      {#if viewCtl.categories.length > 0 || viewCtl.tags.length > 0 || viewCtl.ventures.length > 0}
         <div class="flex flex-wrap items-center gap-1.5 text-xs">
           {#if filterCtl.categoryFilter || filterCtl.tagFilter || filterCtl.ventureFilter}
             <button
@@ -553,20 +439,20 @@
               class="px-2 py-0.5 bg-surface1 text-dim rounded hover:text-text"
             >clear filters</button>
           {/if}
-          {#each ventures as v}
+          {#each viewCtl.ventures as v}
             <button
               onclick={() => (filterCtl.ventureFilter = filterCtl.ventureFilter === v ? '' : v)}
               class="px-2 py-0.5 rounded {filterCtl.ventureFilter === v ? 'bg-secondary text-on-primary' : 'bg-surface0 text-secondary hover:bg-surface1'}"
               title="filter to this venture"
             >🏢 {v}</button>
           {/each}
-          {#each categories as c}
+          {#each viewCtl.categories as c}
             <button
               onclick={() => (filterCtl.categoryFilter = filterCtl.categoryFilter === c ? '' : c)}
               class="px-2 py-0.5 rounded {filterCtl.categoryFilter === c ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
             >{c}</button>
           {/each}
-          {#each tags as t}
+          {#each viewCtl.tags as t}
             <button
               onclick={() => (filterCtl.tagFilter = filterCtl.tagFilter === t ? '' : t)}
               class="px-2 py-0.5 rounded {filterCtl.tagFilter === t ? 'bg-primary text-on-primary' : 'bg-surface0 text-subtext hover:bg-surface1'}"
@@ -585,8 +471,8 @@
     {#if dataCtl.firstLoaded && dataCtl.stalledGoals.length > 0}
       <button
         type="button"
-        onclick={() => (stalledFilterOn = !stalledFilterOn)}
-        class="w-full text-left mb-4 px-3 py-2.5 rounded-lg border flex items-center gap-3 transition-colors {stalledFilterOn ? 'bg-surface0 border-warning' : 'bg-surface0 border-warning hover:bg-surface1'}"
+        onclick={() => (viewCtl.stalledFilterOn = !viewCtl.stalledFilterOn)}
+        class="w-full text-left mb-4 px-3 py-2.5 rounded-lg border flex items-center gap-3 transition-colors {viewCtl.stalledFilterOn ? 'bg-surface0 border-warning' : 'bg-surface0 border-warning hover:bg-surface1'}"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 text-warning flex-shrink-0">
           <circle cx="12" cy="12" r="9"/>
@@ -603,7 +489,7 @@
           </span>
         </div>
         <span class="text-xs text-subtext flex-shrink-0">
-          {stalledFilterOn ? 'showing only stalled · click to clear' : 'click to focus'}
+          {viewCtl.stalledFilterOn ? 'showing only stalled · click to clear' : 'click to focus'}
         </span>
       </button>
     {/if}
@@ -628,7 +514,7 @@
           </div>
         {/each}
       </div>
-    {:else if visibleGoals.length === 0}
+    {:else if viewCtl.visibleGoals.length === 0}
       <!-- Empty state branches: real "no dataCtl.goals at all" vs "filter
            hides everything". The first nudges the user to create
            their first goal; the second offers a clear-filters
@@ -650,7 +536,7 @@
         <EmptyState
           icon="🔍"
           title="No goals match this filter"
-          description={stalledFilterOn ? "Stalled-only filter is on but every goal looks fresh — click the banner to clear it." : "Try a different status tab, clear the search, or drop your category / tag filters."}
+          description={viewCtl.stalledFilterOn ? "Stalled-only filter is on but every goal looks fresh — click the banner to clear it." : "Try a different status tab, clear the search, or drop your category / tag filters."}
         >
           {#snippet action()}
             <button
@@ -660,7 +546,7 @@
                 filterCtl.tagFilter = '';
                 filterCtl.ventureFilter = '';
                 filterCtl.q = '';
-                stalledFilterOn = false;
+                viewCtl.stalledFilterOn = false;
               }}
               class="px-3 py-1.5 bg-surface1 text-text rounded text-sm hover:bg-surface2"
             >Clear all filters</button>
@@ -669,7 +555,7 @@
       {/if}
     {:else if filterCtl.viewMode === 'cards'}
       <div class="space-y-4">
-        {#each visibleGoals as g (g.id)}
+        {#each viewCtl.visibleGoals as g (g.id)}
           {@const p = progress(g)}
           {@const tone = goalTargetTone(g.status, g.target_date)}
           {@const roll = dataCtl.rollupFor(g)}
@@ -760,7 +646,7 @@
            language stays consistent. Completed/archived rows dim
            to half-opacity so the eye stays on living work. -->
       <div class="bg-surface0 border border-surface1 rounded-lg overflow-hidden divide-y divide-surface1">
-        {#each visibleGoals as g (g.id)}
+        {#each viewCtl.visibleGoals as g (g.id)}
           {@const p = progress(g)}
           {@const sc = statusColor(g.status)}
           {@const tone = goalTargetTone(g.status, g.target_date)}
@@ -820,8 +706,8 @@
            their pipeline at a glance. Empty columns render a faint
            "—" placeholder so the column shape stays visible. -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {#each kanbanColumns as col (col)}
-          {@const colGoals = kanbanGroups[col]}
+        {#each KANBAN_COLUMNS as col (col)}
+          {@const colGoals = viewCtl.kanbanGroups[col]}
           {@const colColor = statusColor(col)}
           <section class="bg-surface0 border border-surface1 rounded-lg flex flex-col min-h-[120px]">
             <header class="flex items-center justify-between px-3 py-2 border-b border-surface1">
@@ -852,7 +738,7 @@
   </div>
 </div>
 
-<GoalCreate bind:open={createOpen} ventures={ventures} onCreated={created} />
+<GoalCreate bind:open={createOpen} ventures={viewCtl.ventures} onCreated={created} />
 <GoalDetail
   bind:open={detCtl.detailOpen}
   goal={detCtl.selected}
@@ -878,7 +764,7 @@
   open={agentOpen}
   goals={filterCtl.filtered}
   todayISO={todayISO()}
-  knownVentures={ventures}
+  knownVentures={viewCtl.ventures}
   onClose={() => (agentOpen = false)}
   onChanged={() => dataCtl.load()}
 />
