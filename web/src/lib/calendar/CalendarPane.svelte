@@ -5,7 +5,6 @@
   import CalendarAgent from '$lib/calendar/CalendarAgent.svelte';
   import { EVENT_TYPES } from '$lib/calendar/eventTypes';
   import { toast } from '$lib/components/toast';
-  import { mediaQuery } from '$lib/util/mediaQuery';
   import { loadStored, loadStoredString, saveStored, saveStoredString } from '$lib/util/storage';
   import {
     createCalendarViewState,
@@ -25,14 +24,8 @@
   import { createCalendarKeyboard, createCalendarSwipe } from '$lib/calendar/calendarKeyboard.svelte';
   import { createCalendarEventMutations } from '$lib/calendar/calendarEventMutations';
   import { applyCalendarUrlIntents } from '$lib/calendar/calendarUrlIntents';
-  import {
-    addDays,
-    endOfWeek,
-    fmtDateISO,
-    sourceColorToken,
-    startOfMonth,
-    startOfWeek
-  } from '$lib/calendar/utils';
+  import { createCalendarView } from '$lib/calendar/calendarView.svelte';
+  import { fmtDateISO, sourceColorToken } from '$lib/calendar/utils';
   import HourGrid from '$lib/calendar/HourGrid.svelte';
   import MonthView from '$lib/calendar/MonthView.svelte';
   import ContentPipelineOverlay from '$lib/calendar/ContentPipelineOverlay.svelte';
@@ -105,17 +98,10 @@
   const onFindTimePick = dlgCtl.onFindTimePick;
 
   // filterCtl.filterDrawerOpen moved into filterCtl.
-  // Reactive mobile flag via the shared mediaQuery store. Auto-cleans
-  // up on component destroy. The first-mount "force day viewCtl.view on
-  // mobile" rule still applies, see the $effect below.
-  const isMobile = mediaQuery('(max-width: 767px)');
-  let _mobileViewForced = $state(false);
-  $effect(() => {
-    if ($isMobile && !_mobileViewForced) {
-      viewCtl.view = 'day';
-      _mobileViewForced = true;
-    }
-  });
+  // Small view-time derivations + the one-shot "force day view on
+  // mobile" rule live in calendarView. Exposes headline /
+  // pipelineButtonAvailable / pipelineButtonLabel / isMobile.
+  const calView = createCalendarView({ viewCtl, filterCtl });
 
   // filterCtl.hidden / filterCtl.projectFilter / filterCtl.kindFilter + FILTER_CHIPS catalog +
   // their persistence + filterCtl.toggleType / filterCtl.toggleKindFilter / filterCtl.clearKindFilter
@@ -196,14 +182,8 @@
   // derivations stay here because they straddle viewCtl.view + filterCtl.typeCounts
   // (which lives in the upcoming filter controller). Auto-close
   // effect uses viewCtl.pipelineMode getter/setter.
-  let pipelineButtonAvailable = $derived(
-    (viewCtl.view === 'month' || viewCtl.view === 'week' || viewCtl.view === 'workweek') &&
-      (filterCtl.typeCounts['content_event'] ?? 0) > 0
-  );
-  $effect(() => {
-    if (viewCtl.pipelineMode && !pipelineButtonAvailable) viewCtl.pipelineMode = false;
-  });
-  let pipelineButtonLabel = $derived(viewCtl.view === 'month' ? 'Pipeline' : 'Channels');
+  // pipelineButtonAvailable + pipelineButtonLabel + auto-close effect
+  // live in calView.
 
   // viewCtl.viewDays moved into viewCtl.
 
@@ -263,29 +243,7 @@
   // Clear one meeting), which shares the same chatStream pipeline.
   // The 300-odd lines they used to take have been retired.
 
-  let headline = $derived.by(() => {
-    if (viewCtl.view === 'day') return viewCtl.cursor.toLocaleDateString(undefined, { weekday: $isMobile ? 'short' : 'long', month: 'short', day: 'numeric' });
-    if (viewCtl.view === 'week') {
-      const s = startOfWeek(viewCtl.cursor);
-      const e = endOfWeek(viewCtl.cursor);
-      if (s.getMonth() === e.getMonth()) {
-        return `${s.toLocaleDateString(undefined, { month: 'short' })} ${s.getDate()}–${e.getDate()}`;
-      }
-      return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
-    }
-    if (viewCtl.view === 'workweek') {
-      const s = addDays(startOfWeek(viewCtl.cursor), 1); // Mon
-      const e = addDays(s, 4); // Fri
-      if (s.getMonth() === e.getMonth()) {
-        return `${s.toLocaleDateString(undefined, { month: 'short' })} ${s.getDate()}–${e.getDate()} (Mon–Fri)`;
-      }
-      return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${e.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} (Mon–Fri)`;
-    }
-    if (viewCtl.view === 'month') return viewCtl.cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-    if (viewCtl.view === 'year') return String(viewCtl.cursor.getFullYear());
-    if (viewCtl.view === 'agenda') return 'Agenda · next 30 days';
-    return '';
-  });
+  // headline lives in calView.
 </script>
 
 {#snippet sidebarContent()}
@@ -499,7 +457,7 @@
     <HeaderToolbar
       bind:view={viewCtl.view}
       bind:cursor={viewCtl.cursor}
-      {headline}
+      {calView.headline}
       loading={dataCtl.loading}
       bind:monthDensity={viewCtl.monthDensity}
       bind:hourDensity={viewCtl.hourDensity}
@@ -579,7 +537,7 @@
       onClearAll={() => (filterCtl.hidden = new Set())}
     />
 
-    {#if pipelineButtonAvailable}
+    {#if calView.pipelineButtonAvailable}
       <!-- Pipeline toggle — month viewCtl.view gets kanban-by-status; week /
            workweek viewCtl.view gets swim-lanes-by-channel. Both surface the
            same content filterCtl.events grouped for the day-axis the user is
@@ -602,7 +560,7 @@
             style={viewCtl.pipelineMode ? 'background: rgba(0,0,0,0.18)' : 'background: color-mix(in srgb, var(--color-lavender) 18%, transparent); color: var(--color-lavender)'}
             aria-hidden="true"
           >C</span>
-          {pipelineButtonLabel}
+          {calView.pipelineButtonLabel}
           <span class="font-mono tabular-nums opacity-80">{filterCtl.typeCounts['content_event'] ?? 0}</span>
         </button>
         <span class="text-[11px] text-dim">{viewCtl.view === 'month' ? 'kanban by status' : 'swim lanes by channel'}</span>
