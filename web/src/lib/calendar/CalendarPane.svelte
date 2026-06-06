@@ -20,6 +20,7 @@
     type EventFilterKey
   } from '$lib/calendar/calendarFilterState.svelte';
   import { createCalendarData } from '$lib/calendar/calendarData.svelte';
+  import { createCalendarDetail } from '$lib/calendar/calendarDetail.svelte';
   import {
     addDays,
     endOfWeek,
@@ -50,7 +51,6 @@
   import { onWsEvent } from '$lib/ws';
   import { dragStore } from '$lib/calendar/dragStore';
   import { onDestroy } from 'svelte';
-  import { workspaceContext } from '$lib/workspace/workspaceContext.svelte';
 
   // View / display / navigation state lives in
   // $lib/calendar/calendarViewState. Read via viewCtl.X.
@@ -84,8 +84,11 @@
   // and the loadNativeEvents function moved into dataCtl.
   let agentOpen = $state(false);
 
-  let selected = $state<CalendarEvent | null>(null);
-  let detailOpen = $state(false);
+  // Detail drawer state + clickEvent router live in calendarDetail.
+  // clickEvent routes goal_target → /goals, meal_slot → toggle done,
+  // everything else → open the EventDetail drawer + publish to
+  // workspaceContext.
+  const detCtl = createCalendarDetail({ dataCtl });
 
   let createOpen = $state(false);
   let createDate = $state(new Date());
@@ -364,7 +367,7 @@
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     // Don't fight the create / detail drawers — they own their own
     // keyboard surface (Escape to close, Enter to submit).
-    if (createOpen || createEventOpen || unifiedOpen || detailOpen || findTimeOpen) return;
+    if (createOpen || createEventOpen || unifiedOpen || detCtl.detailOpen || findTimeOpen) return;
     switch (e.key) {
       case 't': viewCtl.gotoToday(); break;
       case 'j': case 'n': viewCtl.next(); break;
@@ -409,62 +412,10 @@
     if (dx > 0) viewCtl.prev(); else viewCtl.next();
   }
 
-  function clickEvent(ev: CalendarEvent) {
-    // Goal targets are anchors back to /goals — opening the calendar
-    // EventDetail for them would imply edit/reschedule semantics the
-    // backend doesn't support (a goal's target_date is a property of
-    // the goal, not a standalone event). Jump straight to the goal so
-    // the user can adjust it from the source of truth.
-    if (ev.type === 'goal_target' && ev.eventId) {
-      goto(`/goals?focus=${encodeURIComponent(ev.eventId)}`);
-      return;
-    }
-    // Meal slots are synthesized markers — no editable event exists
-    // server-side, so the detail modal would offer reschedule/delete
-    // that don't apply. Toggle done in-place instead; mirrors the
-    // dashboard widget's interaction so a tick anywhere syncs to
-    // both surfaces via the daily note.
-    if (ev.type === 'meal_slot' && ev.start) {
-      void toggleMealEvent(ev);
-      return;
-    }
-    selected = ev;
-    detailOpen = true;
-    // Publish to the workspace context bus so an AI pane in the
-    // adjacent slot can surface this event as context.
-    workspaceContext.publish({
-      paneKind: 'calendar',
-      itemId: ev.eventId ?? `${ev.date ?? ''}|${ev.title ?? ''}`,
-      label: ev.title ?? 'untitled event',
-      excerpt: ev.date ?? undefined
-    });
-  }
-
-  // toggleMealEvent flips the done state of a meal_slot event by
-  // patching the underlying daily-note row. The (time, date) tuple
-  // is enough to identify the slot — a day rarely has two meals at
-  // the same minute, and the API's ApplyPatch matches on time-alone
-  // when name is empty. We deliberately DON'T pass ev.title because
-  // it carries the rendered "Breakfast — Haferflocken" combined
-  // label which doesn't match the slot's bare Name field.
-  async function toggleMealEvent(ev: CalendarEvent) {
-    if (!ev.start) return;
-    const start = new Date(ev.start);
-    if (Number.isNaN(start.getTime())) return;
-    const hh = String(start.getHours()).padStart(2, '0');
-    const mm = String(start.getMinutes()).padStart(2, '0');
-    const dateISO = ev.date ?? fmtDateISO(start);
-    try {
-      await api.patchMeal({
-        time: `${hh}:${mm}`,
-        date: dateISO,
-        done: !ev.done
-      });
-      await dataCtl.load();
-    } catch (e) {
-      toast.error('Toggle meal failed: ' + errorMessage(e));
-    }
-  }
+  // clickEvent + toggleMealEvent live in detCtl. Bind the local
+  // alias so all existing call sites keep their one-word reference.
+  const clickEvent = detCtl.clickEvent;
+  const toggleMealEvent = detCtl.toggleMealEvent;
   function clickSlot(date: Date, hour: number, minute: number) {
     createDate = date;
     createHour = hour;
@@ -1360,7 +1311,7 @@
   </div>
 {/if}
 
-<EventDetail bind:open={detailOpen} event={selected} onChanged={() => dataCtl.load()} />
+<EventDetail bind:open={detCtl.detailOpen} event={detCtl.selected} onChanged={() => dataCtl.load()} />
 <QuickCreateScheduled
   bind:open={createOpen}
   date={createDate}
