@@ -27,13 +27,10 @@
 
 import { api, fmtDateISO, type Jot } from '$lib/api';
 import { rafThrottle } from '$lib/util/streamThrottle';
+import { isAbortError } from '$lib/util/aiErrors';
 
 export type AIMode = 'none' | 'themes' | 'ask' | 'digest';
 export type Theme = { label: string; query: string };
-
-function isAbortError(err: unknown): boolean {
-  return err instanceof DOMException && err.name === 'AbortError';
-}
 
 export interface JotsAIDeps {
   /** Reactive jots[] getter so prompts see the freshest loaded feed. */

@@ -19,12 +19,9 @@
 
 import { api } from '$lib/api';
 import { rafThrottle } from '$lib/util/streamThrottle';
+import { isAbortError } from '$lib/util/aiErrors';
 
 const EXPAND_KEY = 'granit.jots.composerExpand';
-
-function isAbortError(err: unknown): boolean {
-  return err instanceof DOMException && err.name === 'AbortError';
-}
 
 export interface JotsComposerDeps {
   /** Schedule a per-date debounced refetch after a save commit so
