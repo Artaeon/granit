@@ -18,7 +18,6 @@
   // along in the thoughts block under a `Praying for:` heading.
 
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
   import { api, todayISO, type Task, type Goal } from '$lib/api';
   import { scriptures } from '$lib/morning/scriptures';
@@ -28,9 +27,8 @@
   import { createMorningBriefing } from '$lib/morning/morningBriefing.svelte';
   import { createMorningFocus } from '$lib/morning/morningFocus.svelte';
   import { installMorningPersistence } from '$lib/morning/morningPersistence.svelte';
+  import { createMorningLockIn } from '$lib/morning/morningLockIn.svelte';
   import { inlineMd } from '$lib/util/inlineMd';
-  import { toast } from '$lib/components/toast';
-  import { errorMessage } from '$lib/util/errorMessage';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
 
   // ─── Persistence key (today) ──────────────────────────────────────
@@ -70,11 +68,6 @@
   });
   let thoughts = $state('');
 
-  let saving = $state(false);
-  // Local save-path error. Load errors live on dataCtl.error and are
-  // merged into the banner via the `error` derived below.
-  let saveError = $state('');
-  const error = $derived(saveError || dataCtl.error);
 
   // AI morning briefing — a 60-100 word read of "what today looks
   // like and where to focus". Distinct from the single-sentence
@@ -213,56 +206,30 @@
       deadlinesThisWeek: upcomingNear.length
     };
   });
-  async function lockIn() {
-    saving = true;
-    saveError = '';
-    try {
-      const linked = activeGoals.find((g) => g.id === focusCtl.linkedGoalId);
-      const goalText = focusCtl.goal.trim();
-      const goalForSave = goalText
-        ? linked ? `${goalText} — contributes to: ${linked.title}` : goalText
-        : undefined;
-
-      // Prayer intentions ride along in the thoughts block under
-      // 'Praying for:' (server has no dedicated prayer field — keeps
-      // the daily note self-contained without a schema change).
-      const prayerLines: string[] = [];
-      for (const id of picksCtl.pickedIntentions) {
-        const intent = activeIntentions.find((x) => x.id === id);
-        if (!intent) continue;
-        let line = `- ${intent.text}`;
-        if (intent.venture) line += ` (🏢 ${intent.venture})`;
-        else if (intent.project) line += ` (📁 ${intent.project})`;
-        else if (intent.person) line += ` (👤 ${intent.person})`;
-        if (intent.passage_ref) line += ` — ${intent.passage_ref}`;
-        prayerLines.push(line);
-      }
-      const prayerBlock = prayerLines.length > 0 ? `Praying for:\n${prayerLines.join('\n')}` : '';
-      const winLine = focusCtl.winSentence.trim();
-      const winPart = winLine ? `Today's win: ${winLine}` : '';
-      const thoughtsRaw = thoughts.trim();
-      const thoughtsBody = [winPart, prayerBlock, thoughtsRaw]
-        .filter((s) => s.length > 0)
-        .join('\n\n') || undefined;
-
-      await api.saveMorning({
-        scripture: activeScripture.text ? activeScripture : undefined,
-        goal: goalForSave,
-        tasks: pickedTaskTexts,
-        habits: Array.from(picksCtl.pickedHabits),
-        thoughts: thoughtsBody
-      });
-      persistenceCtl.clear();
-      toast.success('today is locked in');
-      goto('/');
-    } catch (e) {
-      const msg = errorMessage(e);
-      saveError = msg;
-      toast.error(`save failed: ${msg}`);
-    } finally {
-      saving = false;
-    }
-  }
+  // Lock-in (save) controller. Wired after the derived sidecars
+  // it reads (pickedTaskTexts) so the getter closures don't need to
+  // dance around TDZ.
+  const lockInCtl = createMorningLockIn({
+    getActiveScripture: () => scriptureCtl.active,
+    getActiveGoals: () => dataCtl.activeGoals,
+    getActiveIntentions: () => dataCtl.activeIntentions,
+    getFocus: () => ({
+      winSentence: focusCtl.winSentence,
+      goal: focusCtl.goal,
+      linkedGoalId: focusCtl.linkedGoalId
+    }),
+    getPicks: () => ({
+      pickedTaskTexts,
+      pickedHabits: picksCtl.pickedHabits,
+      pickedIntentions: picksCtl.pickedIntentions
+    }),
+    getThoughts: () => thoughts,
+    clearPersisted: () => persistenceCtl.clear(),
+    saveMorning: (body) => api.saveMorning(body)
+  });
+  // Single error banner — surfaces either the data-loader's load
+  // error or the lockIn save error, whichever is set.
+  const error = $derived(lockInCtl.error || dataCtl.error);
 
   // Counts the user can see on the lock-in button.
   const filledCount = $derived.by(() => {
@@ -722,11 +689,11 @@
         {/if}
       </span>
       <button
-        onclick={lockIn}
-        disabled={saving || filledCount === 0}
+        onclick={lockInCtl.lockIn}
+        disabled={lockInCtl.saving || filledCount === 0}
         class="px-5 py-2 rounded text-sm font-semibold bg-primary text-on-primary disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {saving ? 'saving…' : 'Lock in →'}
+        {lockInCtl.saving ? 'saving…' : 'Lock in →'}
       </button>
     </div>
   </footer>
