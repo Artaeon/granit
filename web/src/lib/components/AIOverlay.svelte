@@ -44,7 +44,7 @@
     createSaveNoteService,
     type SaveNoteRefs
   } from '$lib/chat/saveNoteService.svelte';
-  import { suggestedModeForPath } from '$lib/chat/contextDefaults';
+  import { installAIContextDefaults } from '$lib/chat/aiOverlayContextDefaults.svelte';
   import {
     loadActiveThreadId,
     persistActiveThreadId
@@ -772,34 +772,15 @@
   // mode that fits the page so the user doesn't have to flip the
   // mode picker themselves. Skipped if the user has explicitly
   // chosen a non-'general' mode this session (don't undo intent).
-  let contextDefaultsApplied = $state(false);
-  function applyContextDefaults() {
-    if (contextDefaultsApplied) return;
-    if (typeof window === 'undefined') return;
-    // Path → mode mapping lives in $lib/chat/contextDefaults; we only
-    // override the user's pick when they're parked on the default
-    // 'general' mode so a deliberate choice never gets clobbered.
-    const suggested = suggestedModeForPath($page.url.pathname);
-    if (suggested && aiCtx.mode.id === 'general') {
-      const target = AGENT_MODES.find((m) => m.id === suggested);
-      if (target) {
-        aiCtx.selectMode(target.id);
-      }
-    }
-    contextDefaultsApplied = true;
-  }
-  // Apply on every fresh open so the user navigating /tasks → open
-  // chat → /goals → open chat gets the right mode each time. The
-  // flag resets via the open-effect chain.
-  $effect(() => {
-    if ($aiOverlayOpen) {
-      // tick() lets the open transition settle before we possibly
-      // flip the mode (avoids a single-frame flash of the wrong
-      // header label).
-      tick().then(() => applyContextDefaults());
-    } else {
-      contextDefaultsApplied = false;
-    }
+  // Path → mode auto-suggestion lives in
+  // $lib/chat/aiOverlayContextDefaults — the installer owns its
+  // applied-this-open gate + reset-on-close, so the parent just
+  // wires the four getters/setter.
+  installAIContextDefaults({
+    isOpen: () => $aiOverlayOpen,
+    getPathname: () => $page.url.pathname,
+    isOnGeneralMode: () => aiCtx.mode.id === 'general',
+    selectMode: (id) => aiCtx.selectMode(id)
   });
 
   // ── Chat session — send / cancel / clear lives here ────────────
