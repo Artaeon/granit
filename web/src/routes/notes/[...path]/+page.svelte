@@ -59,6 +59,7 @@
   import NoteEmptyState from '$lib/notes/NoteEmptyState.svelte';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
   import { createNotePinAction } from '$lib/notes/notePinAction.svelte';
+  import { createEditorCallbacks } from '$lib/notes/editorCallbacks.svelte';
 
   // viewMode + focusMode + readingMode now live in a single
   // controller. See $lib/notes/viewModes for the contract; the
@@ -156,12 +157,15 @@
   // Stop buttons next to the ghost text. Null when no ghost is active.
   let aiGhostState = $state<InlineAIState | null>(null);
 
-  // Reading progress 0..1 — driven by the editor's onScroll callback
-  // (rAF-throttled there). When the doc fits in viewport the
-  // denominator is 0 and we clamp to 0; once the user scrolls down a
-  // long doc, we tint a 2px line at the top of the editor pane to
-  // surface 'how far through am I'. Cheap, no polling.
-  let readProgress = $state(0);
+  // Cursor (line/col/selLen) + scroll-progress for the editor.
+  // Controller exposes ready-made onCursor / onScroll callbacks the
+  // Editor wires to, so the page template no longer has to allocate
+  // inline closures on every render.
+  const editorCb = createEditorCallbacks();
+  let cursorLine = $derived(editorCb.cursorLine);
+  let cursorCol = $derived(editorCb.cursorCol);
+  let cursorSelLen = $derived(editorCb.cursorSelLen);
+  let readProgress = $derived(editorCb.readProgress);
 
   // Preview-pane scroll container. Bound via bind:this below — must
   // stay an lvalue here. Outline uses it as the IntersectionObserver
@@ -451,14 +455,6 @@
   let wordGoal = $derived(wordStats.wordGoal);
   let wordGoalPct = $derived(wordStats.wordGoalPct);
 
-  // Cursor position state — populated by the Editor's onCursor
-  // callback. line:col is 1-indexed (matches what every editor
-  // status bar shows). selLen > 0 means the user has a selection;
-  // we surface a "{N} selected" badge in that case so the user
-  // knows how much they're about to act on.
-  let cursorLine = $state(1);
-  let cursorCol = $state(1);
-  let cursorSelLen = $state(0);
 
   let lastSavedDisplay = $derived(saveStatusCtl.lastSavedDisplay);
 
@@ -741,7 +737,7 @@
       {/snippet}
       <div class="flex-1 min-h-0 p-2 sm:p-3">
         {#if viewMode === 'edit'}
-          <Editor bind:value={pipe.body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
+          <Editor bind:value={pipe.body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={editorCb.onCursor} onScroll={editorCb.onScroll} extraExtensions={editorAIExtensions} />
         {:else if viewMode === 'preview'}
           <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4" bind:this={previewContainer}>
             <div class="max-w-3xl mx-auto">
@@ -761,7 +757,7 @@
         {:else}
           <!-- split (desktop only) -->
           <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <Editor bind:value={pipe.body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={(c) => { cursorLine = c.line; cursorCol = c.col; cursorSelLen = c.selLen; }} onScroll={(s) => { const denom = Math.max(1, s.height - s.viewport); readProgress = Math.max(0, Math.min(1, s.top / denom)); }} extraExtensions={editorAIExtensions} />
+            <Editor bind:value={pipe.body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={editorCb.onCursor} onScroll={editorCb.onScroll} extraExtensions={editorAIExtensions} />
             <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block" bind:this={previewContainer}>
               {@render previewBody()}
             </div>
