@@ -17,6 +17,7 @@
   } from '$lib/shopping/shoppingHelpers';
   import { createShoppingViewState, type ShoppingView } from '$lib/shopping/shoppingViewState.svelte';
   import { createShoppingData } from '$lib/shopping/shoppingData.svelte';
+  import { createShoppingItemActions } from '$lib/shopping/shoppingItemActions.svelte';
 
   // /shopping — three-view page over a single Item collection:
   //   Plan: status=planned items, grouped by category (the active
@@ -49,16 +50,15 @@
   const grouped = $derived(dataCtl.grouped);
   const viewTotal = $derived(dataCtl.viewTotal);
 
-  // Quick-add form. The full edit surface (description, notes,
-  // category override) lives in the inline edit on each row to
-  // keep the add-flow as fast as a single line of typing.
-  let nName = $state('');
-  let nCategory = $state('groceries');
-  let nPrice = $state<number | ''>('');
-  let nQuantity = $state<number | ''>('');
-  let nUrl = $state('');
-  let nStandard = $state(false);
-  let saving = $state(false);
+  // Quick-add form + per-row mutations. The full edit surface
+  // (description, notes, category override) lives in the inline edit
+  // on each row to keep the add-flow as fast as a single line of
+  // typing.
+  const actionsCtl = createShoppingItemActions({
+    data: dataCtl,
+    onError: (m) => toast.error(m)
+  });
+  const saving = $derived(actionsCtl.saving);
 
   // Per-row edit state. When the user clicks "edit" on a row we
   // populate these buffers; saving commits a PATCH, cancel discards.
@@ -90,76 +90,6 @@
       window.removeEventListener('focus', onVisible);
     };
   });
-
-  // ----- Quick-add -----
-
-  function resetCreate() {
-    nName = '';
-    nPrice = '';
-    nQuantity = '';
-    nUrl = '';
-    nStandard = false;
-    // Keep the category sticky — the user adding 5 groceries shouldn't
-    // re-pick "groceries" each time.
-  }
-
-  async function addItem(e?: SubmitEvent) {
-    e?.preventDefault();
-    if (!nName.trim()) return;
-    saving = true;
-    try {
-      const it = await api.createShoppingItem({
-        name: nName.trim(),
-        category: nCategory.trim() || undefined,
-        price: typeof nPrice === 'number' ? nPrice : undefined,
-        quantity: typeof nQuantity === 'number' ? nQuantity : undefined,
-        url: nUrl.trim() || undefined,
-        standard: nStandard,
-        status: 'planned'
-      });
-      // Optimistic prepend; load() reconciles ordering + totals.
-      dataCtl.items = [it, ...dataCtl.items];
-      resetCreate();
-      await dataCtl.load();
-    } catch (err) {
-      toast.error('add failed: ' + (errorMessage(err)));
-    } finally {
-      saving = false;
-    }
-  }
-
-  // ----- Status transitions -----
-
-  async function setStatus(it: ShoppingItem, status: 'planned' | 'bought' | 'skipped') {
-    try {
-      const updated = await api.patchShoppingItem(it.id, { status });
-      dataCtl.items = dataCtl.items.map((x) => (x.id === it.id ? updated : x));
-      // Refresh totals — the rollup may have changed.
-      await dataCtl.refreshTotals();
-    } catch (e) {
-      toast.error('save failed: ' + (errorMessage(e)));
-    }
-  }
-
-  async function toggleStandard(it: ShoppingItem) {
-    try {
-      const updated = await api.patchShoppingItem(it.id, { standard: !it.standard });
-      dataCtl.items = dataCtl.items.map((x) => (x.id === it.id ? updated : x));
-    } catch (e) {
-      toast.error('save failed: ' + (errorMessage(e)));
-    }
-  }
-
-  async function removeItem(it: ShoppingItem) {
-    if (!confirm(`Delete "${it.name}"?`)) return;
-    try {
-      await api.deleteShoppingItem(it.id);
-      dataCtl.items = dataCtl.items.filter((x) => x.id !== it.id);
-      await dataCtl.refreshTotals();
-    } catch (e) {
-      toast.error('delete failed: ' + (errorMessage(e)));
-    }
-  }
 
   // ----- Inline edit -----
 
@@ -257,16 +187,16 @@
          category + price + qty + add on row 1; url + standard on row 2.
          Avoids flex-wrap reflowing into a tower of half-empty rows on
          narrow phones. -->
-    <form onsubmit={addItem} class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4 mb-5 space-y-2.5">
+    <form onsubmit={actionsCtl.addItem} class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4 mb-5 space-y-2.5">
       <div class="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-stretch">
         <input
-          bind:value={nName}
+          bind:value={actionsCtl.nName}
           required
           placeholder="add to plan…"
           class="col-span-3 sm:flex-1 sm:min-w-[14rem] px-3 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
         />
         <select
-          bind:value={nCategory}
+          bind:value={actionsCtl.nCategory}
           class="col-span-3 sm:col-auto sm:w-auto px-2 py-2 bg-mantle border border-surface1 rounded text-sm text-text"
           aria-label="category"
         >
@@ -274,7 +204,7 @@
         </select>
         <input
           type="number"
-          bind:value={nPrice}
+          bind:value={actionsCtl.nPrice}
           step="0.01"
           min="0"
           placeholder="€"
@@ -283,7 +213,7 @@
         />
         <input
           type="number"
-          bind:value={nQuantity}
+          bind:value={actionsCtl.nQuantity}
           step="1"
           min="1"
           placeholder="qty"
@@ -292,19 +222,19 @@
         />
         <button
           type="submit"
-          disabled={!nName.trim() || saving}
+          disabled={!actionsCtl.nName.trim() || saving}
           class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
         >{saving ? '…' : '+ add'}</button>
       </div>
       <div class="flex flex-wrap items-center gap-2 text-xs">
         <input
-          bind:value={nUrl}
+          bind:value={actionsCtl.nUrl}
           type="url"
           placeholder="product link (optional)"
           class="flex-1 min-w-[10rem] px-2 py-1.5 bg-mantle border border-surface1 rounded text-xs text-text font-mono placeholder-dim focus:outline-none focus:border-primary"
         />
         <label class="flex items-center gap-1.5 text-dim cursor-pointer flex-shrink-0">
-          <input type="checkbox" bind:checked={nStandard} class="accent-primary" />
+          <input type="checkbox" bind:checked={actionsCtl.nStandard} class="accent-primary" />
           standard (recurring need)
         </label>
       </div>
@@ -377,7 +307,7 @@
               <span class="text-[11px] text-dim font-mono">{it.bought_at ?? '—'}</span>
               <button
                 type="button"
-                onclick={() => setStatus(it, 'planned')}
+                onclick={() => actionsCtl.setStatus(it, 'planned')}
                 title="re-plan (move back to plan)"
                 class="text-[11px] text-secondary hover:underline"
               >re-plan</button>
@@ -503,7 +433,7 @@
                     <div class="flex items-start gap-2.5">
                       <button
                         type="button"
-                        onclick={() => setStatus(it, it.status === 'bought' ? 'planned' : 'bought')}
+                        onclick={() => actionsCtl.setStatus(it, it.status === 'bought' ? 'planned' : 'bought')}
                         title={it.status === 'bought' ? 'mark not bought' : 'mark bought'}
                         aria-label="toggle bought"
                         class="w-6 h-6 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors
@@ -549,7 +479,7 @@
                       <div class="flex items-center gap-0.5 flex-shrink-0 -mr-1">
                         <button
                           type="button"
-                          onclick={() => toggleStandard(it)}
+                          onclick={() => actionsCtl.toggleStandard(it)}
                           aria-label={it.standard ? 'unmark standard' : 'mark standard'}
                           title={it.standard ? 'unmark standard' : 'mark as recurring need'}
                           class="w-8 h-8 flex items-center justify-center rounded text-base transition-colors
@@ -569,7 +499,7 @@
                         </button>
                         <button
                           type="button"
-                          onclick={() => setStatus(it, 'skipped')}
+                          onclick={() => actionsCtl.setStatus(it, 'skipped')}
                           aria-label="skip"
                           title="skip — won't buy this cycle"
                           class="w-8 h-8 flex items-center justify-center rounded text-dim hover:text-warning hover:bg-surface1"
@@ -580,7 +510,7 @@
                         </button>
                         <button
                           type="button"
-                          onclick={() => removeItem(it)}
+                          onclick={() => actionsCtl.removeItem(it)}
                           aria-label="delete"
                           title="delete"
                           class="w-8 h-8 flex items-center justify-center rounded text-dim hover:text-error hover:bg-surface1"
