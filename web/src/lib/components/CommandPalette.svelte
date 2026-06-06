@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { goto } from '$app/navigation';
   import { workspaceCommands } from '$lib/workspace/workspaceCommands';
   import NavIcon from './NavIcon.svelte';
   import type { CmdItem } from './commandPalette/paletteTypes';
@@ -8,6 +7,7 @@
   import { PAGES, AGENTS } from './commandPalette/paletteCatalog';
   import { createPaletteData } from './commandPalette/paletteData.svelte';
   import { buildItems, groupItems } from './commandPalette/paletteItems';
+  import { installPaletteKeyboard } from './commandPalette/installPaletteKeyboard';
 
   // ── Surface name & history ──────────────────────────────────────────
   // Originally a notes-only quick switcher. As of this iteration the
@@ -77,98 +77,22 @@
   }
 
   // ── Keybinds ───────────────────────────────────────────────────────
-  // Mod-K and Mod-P both open the switcher in universal mode. Mod-P
-  // historically meant "notes-only quick switcher"; we collapsed the
-  // two surfaces because the new switcher is fast enough on the
-  // notes-only case (subsequence match on 30 titles is instant) that
-  // a dedicated mode-toggle no longer earns its complexity. Power
-  // users keep their muscle memory: Mod-P, type a few chars, Enter.
-  //
-  // Mod-Shift-F still escapes to the dedicated /search page for
-  // full-text deep dives; the switcher's Content section is the
-  // inline preview, but it caps at 12 hits — go to /search for more.
-  onMount(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const meta = e.metaKey || e.ctrlKey;
-      if (meta && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
-        e.preventDefault();
-        if (open) close();
-        else show();
-        return;
-      }
-      // Mod-P → same surface as Mod-K. Preempts the browser print
-      // dialog globally; PrintPreview's own Mod-P handler runs in
-      // the capture phase + stopImmediatePropagation so the print
-      // overlay still wins when it's the focused surface.
-      if (meta && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
-        e.preventDefault();
-        if (open) close();
-        else show();
-        return;
-      }
-      // Mod-Shift-F → full-text search. Skip when typing into an
-      // input so the user can still type 'F' or use the browser's
-      // Cmd-Shift-F if they want it.
-      if (meta && e.shiftKey && (e.key === 'f' || e.key === 'F')) {
-        const el = document.activeElement as HTMLElement | null;
-        const tag = el?.tagName?.toLowerCase();
-        if (tag === 'input' || tag === 'textarea' || el?.isContentEditable) return;
-        e.preventDefault();
-        void goto('/search');
-        return;
-      }
-      if (!open) return;
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        close();
-        return;
-      }
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        selected = Math.min(items.length - 1, selected + 1);
-        scrollSelectedIntoView();
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        selected = Math.max(0, selected - 1);
-        scrollSelectedIntoView();
-        return;
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        invoke(items[selected]);
-        return;
-      }
-      // Tab / Shift-Tab — jump to the first item of the next /
-      // previous group. Power gesture for hopping past a long
-      // Pages list into Tasks or Content without arrow-spamming.
-      // Without modifiers so it never collides with browser tab-
-      // navigation (the palette swallows focus while open).
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        if (grouped.length === 0) return;
-        // Find the current group index from `selected`.
-        let acc = 0;
-        let curGroup = 0;
-        for (let i = 0; i < grouped.length; i++) {
-          const end = acc + grouped[i].items.length;
-          if (selected < end) { curGroup = i; break; }
-          acc = end;
-        }
-        const dir = e.shiftKey ? -1 : 1;
-        const nextGroup = (curGroup + dir + grouped.length) % grouped.length;
-        // Flat index of the first item in `nextGroup`.
-        let offset = 0;
-        for (let i = 0; i < nextGroup; i++) offset += grouped[i].items.length;
-        selected = offset;
-        scrollSelectedIntoView();
-        return;
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
+  // Global Mod-K / Mod-P toggle, Mod-Shift-F escape to /search, and
+  // the in-palette arrow / Tab / Enter / Esc handlers all live in
+  // installPaletteKeyboard. See its header for the priority rules.
+  onMount(() =>
+    installPaletteKeyboard({
+      isOpen: () => open,
+      getSelected: () => selected,
+      setSelected: (n) => { selected = n; },
+      getItems: () => items,
+      getGrouped: () => grouped,
+      open: show,
+      close,
+      invoke,
+      scrollSelectedIntoView
+    })
+  );
 
   // Live-refresh every indexed slice on WS events — controller-owned
   // (see paletteData.installRefresh for the per-event-type slice
