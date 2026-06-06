@@ -14,6 +14,7 @@
 
 import { api, fmtDateISO, type Goal } from '$lib/api';
 import { errorMessage } from '$lib/util/errorMessage';
+import { isAbortError } from '$lib/util/aiErrors';
 import { toast } from '$lib/components/toast';
 
 export interface TaskProposal {
@@ -120,10 +121,16 @@ export function createGoalDetailAITasks(
         undefined,
         {
           onChunk: (c) => { acc += c; },
-          onError: (err) => { error = err.message; }
+          onError: (err) => {
+            if (isAbortError(err)) return;
+            error = err.message;
+          }
         },
         abort.signal
       );
+      // Bail without parsing on user-stop — partial JSON would
+      // surface as "Couldn't parse tasks" red text.
+      if (abort.signal.aborted) return;
       let cleaned = acc.trim();
       if (cleaned.startsWith('```')) {
         cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();

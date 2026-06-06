@@ -11,6 +11,25 @@
 // found". The model-not-found branch comes after so a key error on a
 // hosted provider doesn't get misread as an Ollama pull problem.
 
+/** True when this Error is an AbortError — fired by AbortController
+ *  when the user stops an in-flight AI stream. chatStream's onError
+ *  is invoked with both real errors AND AbortErrors; controllers
+ *  should filter aborts so the "Stop" button doesn't pollute the
+ *  error surface with "aborted" red text after the user's own
+ *  action. */
+export function isAbortError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { name?: unknown; message?: unknown };
+  if (e.name === 'AbortError') return true;
+  // Some fetch implementations surface the abort as a DOMException
+  // with no .name set or as an Error whose message contains "abort".
+  // Belt + braces.
+  if (typeof e.message === 'string' && /\babort(ed)?\b/i.test(e.message)) {
+    return true;
+  }
+  return false;
+}
+
 export interface AiErrorHint {
   /** One-line user-facing summary. Safe to render in a toast. */
   headline: string;

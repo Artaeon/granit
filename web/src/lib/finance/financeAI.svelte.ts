@@ -25,7 +25,7 @@ import type {
   FinGoal
 } from '$lib/api';
 import { rafThrottle } from '$lib/util/streamThrottle';
-import { classifyAiError } from '$lib/util/aiErrors';
+import { classifyAiError, isAbortError } from '$lib/util/aiErrors';
 import { errorMessage } from '$lib/util/errorMessage';
 
 type ChatStreamHandlers = {
@@ -135,6 +135,7 @@ export function createFinanceAI(deps: FinanceAIDeps): FinanceAIController {
             t.flush();
             snapshotBusy = false;
             snapshotAbort = null;
+            if (isAbortError(err)) return;
             snapshotError = classifyAiError(err.message).headline;
           }
         },
@@ -191,6 +192,7 @@ export function createFinanceAI(deps: FinanceAIDeps): FinanceAIController {
             t.flush();
             auditBusy = false;
             auditAbort = null;
+            if (isAbortError(err)) return;
             auditError = classifyAiError(err.message).headline;
           }
         },

@@ -14,6 +14,7 @@
 
 import { api, type Goal, type Task } from '$lib/api';
 import { errorMessage } from '$lib/util/errorMessage';
+import { isAbortError } from '$lib/util/aiErrors';
 import { toast } from '$lib/components/toast';
 import type { GoalsDataController } from './goalsData.svelte';
 import type { AuditFinding } from './GoalsAIAuditPanel.svelte';
@@ -183,6 +184,7 @@ export function createGoalsAudit(deps: GoalsAuditDeps): GoalsAuditController {
           onError: (err) => {
             auditBusy = false;
             auditAbort = null;
+            if (isAbortError(err)) return;
             auditError = err.message;
           }
         },

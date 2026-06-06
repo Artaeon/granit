@@ -11,6 +11,7 @@
 
 import { api, type Goal } from '$lib/api';
 import { errorMessage } from '$lib/util/errorMessage';
+import { isAbortError } from '$lib/util/aiErrors';
 import { toast } from '$lib/components/toast';
 
 export interface MilestoneProposal {
@@ -78,10 +79,17 @@ export function createGoalDetailAIMilestones(
         undefined,
         {
           onChunk: (c) => { acc += c; },
-          onError: (err) => { error = err.message; }
+          onError: (err) => {
+            if (isAbortError(err)) return;
+            error = err.message;
+          }
         },
         abort.signal
       );
+      // If the user stopped the stream, don't try to JSON.parse the
+      // partial accumulator — that would surface as a misleading
+      // "Couldn't parse suggestions" message in the error pane.
+      if (abort.signal.aborted) return;
       let cleaned = acc.trim();
       if (cleaned.startsWith('```')) {
         cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();

@@ -28,6 +28,7 @@
 
 import { api, type Goal, type HabitsResponse } from '$lib/api';
 import { rafThrottle } from '$lib/util/streamThrottle';
+import { isAbortError } from '$lib/util/aiErrors';
 
 export interface HabitsAIDeps {
   /** Reactive getter for the loaded habits payload — read at runtime
@@ -116,7 +117,11 @@ export function createHabitsAI(deps: HabitsAIDeps): HabitsAIController {
           return {
             onChunk: habitT.onChunk,
             onDone: () => { habitT.flush(); },
-            onError: (err: Error) => { habitT.flush(); insightError = err.message; }
+            onError: (err: Error) => {
+              habitT.flush();
+              if (isAbortError(err)) return;
+              insightError = err.message;
+            }
           };
         })(),
         insightAbort.signal
@@ -233,6 +238,7 @@ export function createHabitsAI(deps: HabitsAIDeps): HabitsAIController {
           },
           onError: (err) => {
             throttle.flush();
+            if (isAbortError(err)) return;
             suggestError = err.message;
           }
         },

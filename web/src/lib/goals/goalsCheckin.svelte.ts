@@ -16,6 +16,7 @@
 
 import { api, todayISO, type Goal } from '$lib/api';
 import { errorMessage } from '$lib/util/errorMessage';
+import { isAbortError } from '$lib/util/aiErrors';
 import { toast } from '$lib/components/toast';
 import { daysUntilTarget } from './util';
 import type { GoalsDataController } from './goalsData.svelte';
@@ -204,6 +205,7 @@ export function createGoalsCheckin(deps: GoalsCheckinDeps): GoalsCheckinControll
           onError: (err) => {
             checkinBusy = false;
             checkinAbort = null;
+            if (isAbortError(err)) return;
             checkinError = err.message;
           }
         },

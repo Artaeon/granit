@@ -23,6 +23,7 @@
 import { api, type Task } from '$lib/api';
 import { toast } from '$lib/components/toast';
 import { rafThrottle } from '$lib/util/streamThrottle';
+import { isAbortError } from '$lib/util/aiErrors';
 
 export type DecomposeSubtask = {
   text: string;
@@ -166,7 +167,11 @@ export function createTaskDetailAIDecompose(deps: TaskDetailAIDecomposeDeps): Ta
         {
           onChunk: decompT.onChunk,
           onDone: () => { decompT.flush(); },
-          onError: (err) => { decompT.flush(); error = err.message; }
+          onError: (err) => {
+            decompT.flush();
+            if (isAbortError(err)) return;
+            error = err.message;
+          }
         },
         abort.signal
       );

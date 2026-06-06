@@ -28,6 +28,7 @@ import {
   type PrayerIntention
 } from '$lib/api';
 import { daysUntil } from '$lib/deadlines/util';
+import { isAbortError } from '$lib/util/aiErrors';
 
 export interface VenturesDetailAISummaryDeps {
   /** Returns the venture currently displayed, or null while loading
@@ -158,6 +159,7 @@ export function createVenturesDetailAISummary(
           },
           onDone: () => {},
           onError: (err) => {
+            if (isAbortError(err)) return;
             error = err.message;
           }
         },

@@ -17,6 +17,7 @@
 
 import { api, type Goal, type Project, type Task } from '$lib/api';
 import { rafThrottle } from '$lib/util/streamThrottle';
+import { isAbortError } from '$lib/util/aiErrors';
 
 export type HealthMomentum = 'alive' | 'slowing' | 'stalled' | 'dead';
 
@@ -184,7 +185,13 @@ export function createProjectAIHealth(deps: ProjectAIHealthDeps): ProjectAIHealt
         {
           onChunk: healthT.onChunk,
           onDone: () => { healthT.flush(); },
-          onError: (err) => { healthT.flush(); aiHealthError = err.message; }
+          onError: (err) => {
+            healthT.flush();
+            // AbortError is the user's own Stop click — don't
+            // overwrite the partial output with "aborted" red text.
+            if (isAbortError(err)) return;
+            aiHealthError = err.message;
+          }
         },
         aiHealthAbort.signal
       );

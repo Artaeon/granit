@@ -24,6 +24,7 @@
 import { api, type Goal } from '$lib/api';
 import { rafThrottle } from '$lib/util/streamThrottle';
 import { errorMessage } from '$lib/util/errorMessage';
+import { isAbortError } from '$lib/util/aiErrors';
 import { toast } from '$lib/components/toast';
 import type { GoalsDataController } from './goalsData.svelte';
 
@@ -146,6 +147,7 @@ export function createGoalsAiSuggest(deps: GoalsAiSuggestDeps): GoalsAiSuggestCo
             goalT.flush();
             aiBusy = false;
             aiAbort = null;
+            if (isAbortError(err)) return;
             aiError = err.message;
           }
         },

@@ -15,6 +15,7 @@
 
 import { api, type Goal, type Project, type Task } from '$lib/api';
 import { rafThrottle } from '$lib/util/streamThrottle';
+import { isAbortError } from '$lib/util/aiErrors';
 
 export interface ProjectAIBriefController {
   readonly aiBrief: string;
@@ -117,7 +118,11 @@ export function createProjectAIBrief(deps: ProjectAIBriefDeps): ProjectAIBriefCo
         {
           onChunk: briefT.onChunk,
           onDone: () => { briefT.flush(); },
-          onError: (err) => { briefT.flush(); aiBriefError = err.message; }
+          onError: (err) => {
+            briefT.flush();
+            if (isAbortError(err)) return;
+            aiBriefError = err.message;
+          }
         },
         aiBriefAbort.signal
       );
