@@ -24,6 +24,7 @@
   import { createCalendarCreateDialogs } from '$lib/calendar/calendarCreateDialogs.svelte';
   import { createCalendarRecurringScope } from '$lib/calendar/calendarRecurringScope.svelte';
   import { createCalendarQuickEvent } from '$lib/calendar/calendarQuickEvent.svelte';
+  import { installCalendarLifecycle } from '$lib/calendar/calendarLifecycle';
   import {
     addDays,
     endOfWeek,
@@ -50,7 +51,6 @@
   import RecurringScopePicker from '$lib/calendar/RecurringScopePicker.svelte';
   import TaskBacklog from '$lib/calendar/TaskBacklog.svelte';
   import Drawer from '$lib/components/Drawer.svelte';
-  import { onWsEvent } from '$lib/ws';
   import { dragStore } from '$lib/calendar/dragStore';
   import { onDestroy } from 'svelte';
 
@@ -156,57 +156,8 @@
     }
   });
 
-  // load + loadHabits moved into dataCtl.
-
-  onMount(() => dataCtl.load());
-  onMount(() => dataCtl.loadSources());
-  onMount(() => dataCtl.loadHabits());
-  onMount(() => dataCtl.loadAllProjects());
-  onMount(() => dataCtl.loadNativeEvents());
-  onMount(() =>
-    onWsEvent((ev) => {
-      if (
-        ev.type === 'note.changed' ||
-        ev.type === 'note.removed' ||
-        ev.type === 'event.changed' ||
-        ev.type === 'event.removed' ||
-        // task.changed fires from handlers_tasks.go on create / patch /
-        // schedule / delete. Without it, dropping a task on the grid
-        // or creating one via UnifiedCreate wouldn't repaint until the
-        // user reloaded — the file-watcher's note.changed often races
-        // the same-process write debounce and skips it.
-        ev.type === 'task.changed'
-      ) {
-        dataCtl.load();
-        // Habits live inside daily notes — a note change might mean a
-        // habit was ticked. Refetch alongside the event dataCtl.feed.
-        dataCtl.loadHabits();
-      }
-      // Refresh native event entries on any event change so the
-      // Calendar Agent's scope reflects current state.
-      if (ev.type === 'event.changed' || ev.type === 'event.removed') {
-        dataCtl.loadNativeEvents();
-      }
-      // Deadlines are an overlay on the dataCtl.feed — refetch when the
-      // server signals .granit/deadlines.json changed (TUI edit, web
-      // edit in another tab, or anything else that calls SaveAll).
-      if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') dataCtl.load();
-      // ICS mutations (create/edit/delete a new event in a subscribed
-      // .ics file) broadcast as state.changed with a calendar path —
-      // e.g. "calendars/personal.ics" or "merged.ics". Match the
-      // path-shape rather than enumerate sources so new calendars added
-      // mid-session refresh automatically.
-      if (ev.type === 'state.changed' && ev.path && /\.ics$/.test(ev.path)) dataCtl.load();
-      // Project metadata changed (rename, colour, status) — refresh
-      // the picker so the filter dropdown stays in sync. We don't
-      // touch the event dataCtl.feed here; project_id on filterCtl.events is captured
-      // at write time, so a project rename doesn't transitively
-      // re-key past filterCtl.events (matches the deliberate Task.Project shape).
-      if (ev.type === 'project.changed' || ev.type === 'project.removed') {
-        dataCtl.loadAllProjects();
-      }
-    })
-  );
+  // Initial loads + WS subscription live in calendarLifecycle.
+  onMount(() => installCalendarLifecycle({ dataCtl }));
 
   // dataCtl.load() reads dataCtl.fetchFrom/dataCtl.fetchTo synchronously and may reassign them
   // when viewCtl.cursor walks outside the prefetch window. Without untrack, the
