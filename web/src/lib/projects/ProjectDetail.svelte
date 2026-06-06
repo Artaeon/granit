@@ -18,6 +18,10 @@
   import { onWsEvent } from '$lib/ws';
   import { errorMessage } from '$lib/util/errorMessage';
   import { loadDraft, clearDraft, makeDraftWriter } from '$lib/util/draftAutosave';
+  import {
+    createProjectAIHealth,
+    type HealthMomentum
+  } from './projectAIHealth.svelte';
 
   let { project, onClose, onUpdated, onDeleted, onOpenDashboard }: {
     project: Project;
@@ -446,172 +450,19 @@
   //
   // Goes through chatStream → /chat/stream so this remains audit/
   // Sabbath/redaction-gated — no side channel around the AI gate.
-  type HealthMomentum = 'alive' | 'slowing' | 'stalled' | 'dead';
-  type HealthVerdict = {
-    momentum: HealthMomentum;
-    momentum_reason: string;
-    blockers: string[];
-    next_action: string;
-  };
-
-  let aiHealth = $state<HealthVerdict | null>(null);
-  let aiHealthRaw = $state('');
-  let aiHealthBusy = $state(false);
-  let aiHealthError = $state('');
-  let aiHealthAbort: AbortController | null = null;
-  // Context the model actually saw — surfaced above the result so
-  // the user understands what the verdict is grounded in. Without
-  // this the response feels like a black box; a "saw 12 tasks +
-  // 2 goals, last completion 4d ago" line keeps the AI legible.
-  let aiHealthContextLine = $state('');
-
-  function daysSinceLastCompletion(): number | null {
-    let mostRecent: Date | null = null;
-    for (const t of doneTasks) {
-      if (!t.completedAt) continue;
-      const d = new Date(t.completedAt);
-      if (Number.isNaN(d.getTime())) continue;
-      if (!mostRecent || d > mostRecent) mostRecent = d;
-    }
-    if (!mostRecent) return null;
-    return Math.floor((Date.now() - mostRecent.getTime()) / 86400000);
-  }
-
-  async function runAIHealth() {
-    if (aiHealthBusy) return;
-    aiHealthBusy = true;
-    aiHealthError = '';
-    aiHealthRaw = '';
-    aiHealth = null;
-    aiHealthAbort = new AbortController();
-
-    const sinceLast = daysSinceLastCompletion();
-    const dueOpen = openTasks.filter((t) => t.dueDate);
-    const overdueOpen = dueOpen.filter((t) => {
-      const d = new Date(t.dueDate as string);
-      return !Number.isNaN(d.getTime()) && d.getTime() < Date.now();
-    });
-    aiHealthContextLine =
-      `AI saw ${openTasks.length} open + ${doneTasks.length} done task${
-        projectTasks.length === 1 ? '' : 's'
-      }` +
-      (linkedGoals.length > 0 ? ` · ${linkedGoals.length} goal${linkedGoals.length === 1 ? '' : 's'}` : '') +
-      (sinceLast === null ? ' · no completions yet' : ` · last completion ${sinceLast}d ago`) +
-      (overdueOpen.length > 0 ? ` · ${overdueOpen.length} overdue` : '');
-
-    // Compact, token-stingy context. Recent completions go newest-
-    // first so the model anchors on momentum signal rather than
-    // ancient history. Cap at 12 of each kind — beyond that the
-    // model just paraphrases noise.
-    const ctx = [
-      `Project: ${project.name}`,
-      project.status ? `Status: ${project.status}` : '',
-      project.description ? `Description: ${project.description}` : '(no description)',
-      project.next_action ? `Stated next action: ${project.next_action}` : '',
-      project.due_date ? `Due: ${project.due_date}` : '',
-      project.created_at ? `Created: ${project.created_at}` : '',
-      sinceLast === null ? 'No completions on record yet.' : `Last completion: ${sinceLast} day(s) ago.`,
-      `Tasks: ${openTasks.length} open / ${doneTasks.length} done` +
-        (overdueOpen.length > 0 ? ` (${overdueOpen.length} overdue)` : ''),
-      openTasks.length > 0
-        ? `Open tasks (top ${Math.min(12, openTasks.length)}):\n${openTasks
-            .slice(0, 12)
-            .map((t) => `- ${t.text}${t.dueDate ? ` (due ${t.dueDate})` : ''}${t.scheduledStart ? ` [scheduled]` : ''}`)
-            .join('\n')}`
-        : '',
-      doneTasks.length > 0
-        ? `Recent completions (newest first):\n${[...doneTasks]
-            .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
-            .slice(0, 8)
-            .map((t) => `- ${t.text}${t.completedAt ? ` (${t.completedAt.slice(0, 10)})` : ''}`)
-            .join('\n')}`
-        : '',
-      linkedGoals.length > 0
-        ? `Linked goals:\n${linkedGoals.map((g) => `- ${g.title}${g.status ? ` [${g.status}]` : ''}`).join('\n')}`
-        : ''
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-
-    // The system prompt is the load-bearing part. Keep it sharp,
-    // declarative, and explicit about the JSON schema — a vague
-    // ask gets a vague answer. Outlawing puffery ("synergy", "let's
-    // align", "leverage") tightens the voice considerably.
-    const system =
-      'You are a senior project manager who reads project state and renders an honest verdict in seconds. ' +
-      'Output STRICT JSON only — no preamble, no code fence, no commentary. Schema:\n' +
-      '{\n' +
-      '  "momentum": "alive" | "slowing" | "stalled" | "dead",\n' +
-      '  "momentum_reason": string  // one sentence, evidence-based, name specific signals\n' +
-      '  "blockers": string[]       // 0-3 concrete blockers; [] if nothing is stuck\n' +
-      '  "next_action": string      // ONE concrete action the user could do today, ≤14 words\n' +
-      '}\n\n' +
-      'Rules:\n' +
-      '- "alive": work shipped in the last 7 days AND no overdue stack.\n' +
-      '- "slowing": last completion 8-21 days ago, or open list growing without closes.\n' +
-      '- "stalled": last completion 22+ days ago, or status=paused with overdue tasks.\n' +
-      '- "dead": no completions ever or last completion 60+ days ago and status=active.\n' +
-      '- Blockers must be SPECIFIC. Bad: "needs prioritization". Good: "3 tasks all blocked on client review".\n' +
-      '- The next_action must be a verb-led concrete step, not a category. Bad: "review tasks". Good: "draft the onboarding email and send to Sara".\n' +
-      '- No corporate sludge: no "synergy", "leverage", "let\'s align", "circle back", "actionable insights".\n' +
-      '- If the project has zero tasks, momentum is "dead" and next_action is "write down what done looks like, or archive this".';
-
-    const user = `Project context:\n\n${ctx}\n\nReturn the JSON verdict.`;
-
-    // rAF throttle so the pre-rendered raw stream doesn't
-    // re-render the card per token.
-    const healthT = rafThrottle((full) => { aiHealthRaw = full; });
-    try {
-      await api.chatStream(
-        [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ],
-        undefined,
-        {
-          onChunk: healthT.onChunk,
-          onDone: () => { healthT.flush(); },
-          onError: (err) => { healthT.flush(); aiHealthError = err.message; }
-        },
-        aiHealthAbort.signal
-      );
-      // Parse on completion. Streaming-parse JSON would render
-      // garbage half-objects to the user; far cleaner to wait for
-      // the whole payload then parse once.
-      const trimmed = aiHealthRaw.trim();
-      if (trimmed) {
-        try {
-          // Strip ``` fences if the model ignored the no-fence rule.
-          const cleaned = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-          const parsed = JSON.parse(cleaned) as HealthVerdict;
-          if (
-            parsed &&
-            typeof parsed.momentum === 'string' &&
-            typeof parsed.next_action === 'string' &&
-            Array.isArray(parsed.blockers)
-          ) {
-            aiHealth = parsed;
-          } else {
-            aiHealthError = 'AI returned unexpected shape — see raw output below.';
-          }
-        } catch {
-          aiHealthError = 'AI did not return valid JSON — see raw output below.';
-        }
-      }
-    } finally {
-      aiHealthBusy = false;
-      aiHealthAbort = null;
-    }
-  }
-  function cancelAIHealth() {
-    aiHealthAbort?.abort();
-  }
-  function clearAIHealth() {
-    aiHealth = null;
-    aiHealthRaw = '';
-    aiHealthError = '';
-    aiHealthContextLine = '';
-  }
+  // AI "project health verdict" controller. See projectAIHealth for
+  // the prompt + JSON-schema details. The controller owns the state
+  // + the streamed JSON parse; the parent reads aiHealthCtl.X.
+  const aiHealthCtl = createProjectAIHealth({
+    getProject: () => project,
+    getOpenTasks: () => openTasks,
+    getDoneTasks: () => doneTasks,
+    getLinkedGoals: () => linkedGoals,
+    getAllTasks: () => projectTasks
+  });
+  const runAIHealth = aiHealthCtl.run;
+  const cancelAIHealth = aiHealthCtl.cancel;
+  const clearAIHealth = aiHealthCtl.clear;
 
   function momentumTone(m: HealthMomentum): string {
     if (m === 'alive') return 'success';
@@ -956,9 +807,9 @@
       <section>
         <div class="flex items-baseline gap-2 mb-1.5">
           <h3 class="text-xs uppercase tracking-wider text-dim font-medium flex-1">AI health check</h3>
-          {#if aiHealthBusy}
+          {#if aiHealthCtl.aiHealthBusy}
             <button onclick={cancelAIHealth} class="text-[11px] text-warning hover:underline">cancel</button>
-          {:else if aiHealth || aiHealthRaw || aiHealthError}
+          {:else if aiHealthCtl.aiHealth || aiHealthCtl.aiHealthRaw || aiHealthCtl.aiHealthError}
             <button
               onclick={clearAIHealth}
               class="text-[11px] text-dim hover:text-error"
@@ -966,37 +817,37 @@
           {/if}
           <button
             onclick={() => void runAIHealth()}
-            disabled={aiHealthBusy || projectTasks.length === 0}
+            disabled={aiHealthCtl.aiHealthBusy || projectTasks.length === 0}
             class="text-[11px] px-2 py-0.5 rounded bg-surface0 border border-surface1 text-subtext hover:border-primary disabled:opacity-50"
             title="Ask the AI for a momentum / blockers / next-move verdict on this project"
-          >{aiHealthBusy ? '✨ analysing…' : (aiHealth || aiHealthRaw) ? '✨ rerun' : '✨ check health'}</button>
+          >{aiHealthCtl.aiHealthBusy ? '✨ analysing…' : (aiHealthCtl.aiHealth || aiHealthCtl.aiHealthRaw) ? '✨ rerun' : '✨ check health'}</button>
         </div>
 
-        {#if aiHealthContextLine && (aiHealthBusy || aiHealth || aiHealthRaw || aiHealthError)}
-          <p class="text-[10px] text-dim mb-1.5 font-mono">{aiHealthContextLine}</p>
+        {#if aiHealthCtl.aiHealthContextLine && (aiHealthCtl.aiHealthBusy || aiHealthCtl.aiHealth || aiHealthCtl.aiHealthRaw || aiHealthCtl.aiHealthError)}
+          <p class="text-[10px] text-dim mb-1.5 font-mono">{aiHealthCtl.aiHealthContextLine}</p>
         {/if}
 
-        {#if aiHealth}
-          {@const tone = momentumTone(aiHealth.momentum)}
+        {#if aiHealthCtl.aiHealth}
+          {@const tone = momentumTone(aiHealthCtl.aiHealth.momentum)}
           <div class="bg-surface0 border border-surface1 rounded px-3 py-3 text-sm text-text space-y-3">
             <!-- Momentum pill + reason -->
             <div class="flex items-baseline gap-2">
               <span
                 class="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-medium flex-shrink-0"
                 style="background: var(--color-{tone}); color: var(--color-base);"
-              >{momentumLabel(aiHealth.momentum)}</span>
-              <span class="text-text/90 text-xs leading-snug">{aiHealth.momentum_reason}</span>
+              >{momentumLabel(aiHealthCtl.aiHealth.momentum)}</span>
+              <span class="text-text/90 text-xs leading-snug">{aiHealthCtl.aiHealth.momentum_reason}</span>
             </div>
 
             <!-- Blockers — listed individually so each is scannable
                  instead of buried in a paragraph. -->
             <div>
               <div class="text-[10px] uppercase tracking-wider text-dim mb-1">Blockers</div>
-              {#if aiHealth.blockers.length === 0}
+              {#if aiHealthCtl.aiHealth.blockers.length === 0}
                 <p class="text-xs text-success">Nothing flagged as stuck.</p>
               {:else}
                 <ul class="space-y-1">
-                  {#each aiHealth.blockers as b, i (i)}
+                  {#each aiHealthCtl.aiHealth.blockers as b, i (i)}
                     <li class="text-xs text-text/90 flex gap-1.5">
                       <span class="text-error flex-shrink-0">•</span>
                       <span>{b}</span>
@@ -1013,22 +864,22 @@
               <div class="flex items-baseline gap-2 mb-1">
                 <span class="text-[10px] uppercase tracking-wider text-dim flex-1">Next concrete action</span>
                 <button
-                  onclick={() => patch({ next_action: aiHealth!.next_action })}
+                  onclick={() => patch({ next_action: aiHealthCtl.aiHealth!.next_action })}
                   class="text-[10px] text-secondary hover:underline"
                   title="copy this into the project's Next action field"
                 >use as next action →</button>
               </div>
-              <p class="text-sm text-warning font-medium">→ {aiHealth.next_action}</p>
+              <p class="text-sm text-warning font-medium">→ {aiHealthCtl.aiHealth.next_action}</p>
             </div>
           </div>
-        {:else if aiHealthError}
+        {:else if aiHealthCtl.aiHealthError}
           <div class="text-xs text-error border border-error bg-surface0 rounded px-3 py-2">
-            <div class="font-medium mb-1">{aiHealthError}</div>
-            {#if aiHealthRaw}
-              <pre class="text-[10px] text-dim font-mono whitespace-pre-wrap mt-1">{aiHealthRaw}</pre>
+            <div class="font-medium mb-1">{aiHealthCtl.aiHealthError}</div>
+            {#if aiHealthCtl.aiHealthRaw}
+              <pre class="text-[10px] text-dim font-mono whitespace-pre-wrap mt-1">{aiHealthCtl.aiHealthRaw}</pre>
             {/if}
           </div>
-        {:else if aiHealthBusy}
+        {:else if aiHealthCtl.aiHealthBusy}
           <div class="bg-surface0 border border-surface1 rounded px-3 py-2 text-xs text-dim italic">analysing project state…</div>
         {/if}
       </section>
