@@ -173,8 +173,13 @@ export function createProjectInlineEdit(deps: ProjectInlineEditDeps): ProjectInl
     editingName = false;
     cancellingDesc = false;
     cancellingNextAction = false;
-    descDraftWriter.cancel();
-    nextActionDraftWriter.cancel();
+    // flushNow (not cancel) — when the user switches projects mid-
+    // typing (within the 400ms debounce), the last keystrokes are
+    // still pending. cancel() would silently discard them; flushNow
+    // commits them to localStorage so re-opening the old project
+    // restores the same buffer.
+    descDraftWriter.flushNow();
+    nextActionDraftWriter.flushNow();
   }
 
   return {

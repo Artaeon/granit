@@ -254,8 +254,14 @@ export function createTaskDetailAIDecompose(deps: TaskDetailAIDecomposeDeps): Ta
 
   async function acceptAll() {
     // Always accept index 0 — the array shrinks as each call resolves.
+    // Bail-on-failure guard: if accept() catches its error WITHOUT
+    // shrinking the array (network failure, server reject), this
+    // loop would spin forever and freeze the drawer. Snapshot the
+    // length before each iteration and break if it didn't decrease.
     while (subtasks.length > 0) {
+      const before = subtasks.length;
       await accept(0);
+      if (subtasks.length >= before) break;
     }
   }
 

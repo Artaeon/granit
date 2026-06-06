@@ -180,9 +180,15 @@ export function createGoalDetailInlineEdit(
     cancellingTitle = false;
     cancellingDesc = false;
     cancellingNotes = false;
-    titleDraftWriter.cancel();
-    descDraftWriter.cancel();
-    notesDraftWriter.cancel();
+    // flushNow (not cancel) — when the user switches goals mid-
+    // typing (within the 400ms debounce), the last keystrokes are
+    // still pending. cancel() would silently discard them; flushNow
+    // commits them to localStorage so re-opening the old goal
+    // restores the same buffer. Notes is the highest-loss-risk
+    // field, where this matters most.
+    titleDraftWriter.flushNow();
+    descDraftWriter.flushNow();
+    notesDraftWriter.flushNow();
   }
 
   return {
