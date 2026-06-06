@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
-  import { fuzzyScoreMulti } from '$lib/util/fuzzy';
   import { workspaceCommands } from '$lib/workspace/workspaceCommands';
   import NavIcon from './NavIcon.svelte';
-  import type { Group, CmdItem } from './commandPalette/paletteTypes';
+  import type { CmdItem } from './commandPalette/paletteTypes';
   import { createPaletteRecents } from './commandPalette/paletteRecents.svelte';
   import { PAGES, AGENTS } from './commandPalette/paletteCatalog';
   import { createPaletteData } from './commandPalette/paletteData.svelte';
+  import { buildItems, groupItems } from './commandPalette/paletteItems';
 
   // ── Surface name & history ──────────────────────────────────────────
   // Originally a notes-only quick switcher. As of this iteration the
@@ -186,291 +186,39 @@
   }
 
   // ── Item building ──────────────────────────────────────────────────
-  // Each section produces CmdItems independently, then merges into a
-  // single list. Sorting is: group-rank (Content > Pages > Projects >
-  // Goals > Notes > Agents) for empty/short queries, fuzzy-score within
-  // a group. Recents get an additive bump within their section (see
-  // recents.recencyBoost) so the user's last-touched project floats
+  // Each section produces CmdItems independently in the pure builder
+  // (see paletteItems.buildItems) and they merge into a single list.
+  // Sorting is: group-rank (Content > Pages > Tasks > Events >
+  // Deadlines > Projects > Goals > Notes > Habits > Agents/Workspace)
+  // and fuzzy-score within a group. Recents get an additive bump
+  // within their section so the user's last-touched project floats
   // above one they haven't opened in a year — but exact-matches on
   // fresh items still beat stale recents.
+  //
+  // The $derived.by wrapper keeps the data slice + workspaceCommands()
+  // reads inside Svelte's tracking so the list rebuilds whenever any
+  // input mutates.
+  let items = $derived.by<CmdItem[]>(() =>
+    buildItems({
+      query: q,
+      workspaceCmds: workspaceCommands(),
+      pages: PAGES,
+      agents: AGENTS,
+      projects,
+      goals,
+      notes,
+      tasks,
+      events,
+      deadlines,
+      habits,
+      searchHits,
+      recencyBoost: (id) => recents.recencyBoost(id),
+      isRecent: (id) => recents.includes(id)
+    })
+  );
 
-  let items = $derived.by((): CmdItem[] => {
-    const needle = q.trim();
-    const out: CmdItem[] = [];
-
-    // Pages — always indexed, even before data loads (they're static).
-    for (const p of PAGES) {
-      const sc = fuzzyScoreMulti(needle, [p.label, p.path]);
-      if (sc === null) continue;
-      const id = 'page:' + p.path;
-      out.push({
-        id,
-        label: p.label,
-        detail: p.path,
-        icon: p.icon,
-        group: 'Pages',
-        run: () => goto(p.path)
-      });
-      // Stash the score on the item via a parallel map below — we
-      // need it for sort but don't want it on the public shape.
-      scoreMap.set(id, sc + recents.recencyBoost(id));
-    }
-
-    // Workspace commands — split / close / swap focused pane. Each
-    // command's run is a thunk; reading workspaceCommands() inside
-    // this $derived.by tracks the workspace store reactively so the
-    // command list refreshes when focus / pane kind change.
-    for (const wc of workspaceCommands()) {
-      const sc = fuzzyScoreMulti(needle, [wc.label, wc.detail]);
-      if (sc === null) continue;
-      out.push({
-        id: wc.id,
-        label: wc.label,
-        detail: wc.detail,
-        icon: wc.icon,
-        group: 'Workspace',
-        run: wc.run
-      });
-      scoreMap.set(wc.id, sc + recents.recencyBoost(wc.id));
-    }
-
-    // Projects
-    for (const pr of projects) {
-      const sc = fuzzyScoreMulti(needle, [pr.name, pr.description ?? '']);
-      if (sc === null) continue;
-      const id = 'project:' + pr.name;
-      out.push({
-        id,
-        label: pr.name,
-        detail: pr.description?.slice(0, 80),
-        icon: 'projects',
-        group: 'Projects',
-        run: () => goto('/projects/' + encodeURIComponent(pr.name))
-      });
-      scoreMap.set(id, sc + recents.recencyBoost(id));
-    }
-
-    // Goals
-    for (const g of goals) {
-      const sc = fuzzyScoreMulti(needle, [g.title, g.category ?? '']);
-      if (sc === null) continue;
-      const id = 'goal:' + g.id;
-      out.push({
-        id,
-        label: g.title,
-        detail: g.category ?? g.status,
-        icon: 'goals',
-        group: 'Goals',
-        run: () => goto('/goals?focus=' + encodeURIComponent(g.id))
-      });
-      scoreMap.set(id, sc + recents.recencyBoost(id));
-    }
-
-    // Notes (cap 30 from listNotes — already mod-time-desc on the
-    // server, so for empty queries the freshest leads).
-    for (let i = 0; i < notes.length; i++) {
-      const n = notes[i];
-      const sc = fuzzyScoreMulti(needle, [n.title, n.path]);
-      if (sc === null) continue;
-      const id = 'note:' + n.path;
-      out.push({
-        id,
-        label: n.title,
-        detail: n.path,
-        icon: 'notes',
-        group: 'Notes',
-        run: () => goto('/notes/' + encodeURIComponent(n.path))
-      });
-      // Empty-needle: rank by mod-time (server-order). Push the
-      // recency-bump on top so a freshly-touched note still leads.
-      const empty = !needle;
-      scoreMap.set(id, (empty ? 100 - i : sc) + recents.recencyBoost(id));
-    }
-
-    // Tasks — open ones, indexed by text + project. Empty needle:
-    // hide everything except recents so an empty palette doesn't dump
-    // 100 task rows in the user's face (the /tasks page is for that).
-    // With a needle: show every fuzzy match.
-    for (const t of tasks) {
-      const sc = fuzzyScoreMulti(needle, [t.text, t.projectId ?? '']);
-      if (sc === null) continue;
-      const id = 'task:' + t.id;
-      const isRecent = recents.includes(id);
-      if (!needle && !isRecent) continue;
-      // Detail line: project (if any) + due date hint so the user
-      // can pick the right task when the text alone is ambiguous.
-      const bits: string[] = [];
-      if (t.projectId) bits.push(t.projectId);
-      if (t.dueDate) bits.push('due ' + t.dueDate);
-      else if (t.scheduledStart) bits.push('at ' + t.scheduledStart.slice(11, 16));
-      out.push({
-        id,
-        label: t.text,
-        detail: bits.join(' · '),
-        icon: 'tasks',
-        group: 'Tasks',
-        run: () => goto('/tasks?focus=' + encodeURIComponent(t.id))
-      });
-      scoreMap.set(id, sc + recents.recencyBoost(id));
-    }
-
-    // Calendar events — next 14 days. Detail line carries the
-    // start time + a one-glance type glyph so two events with the
-    // same title (recurring stand-up) read distinguishably.
-    for (const ev of events) {
-      const sc = fuzzyScoreMulti(needle, [ev.title, ev.location ?? '']);
-      if (sc === null) continue;
-      // Each event already carries either start (RFC3339) or date
-      // (YYYY-MM-DD all-day). Compose a stable id from the strongest
-      // available identifier.
-      const stableId = ev.eventId || ev.taskId || `${ev.title}@${ev.start || ev.date}`;
-      const id = 'event:' + stableId;
-      const dateStr = (ev.start || ev.date || '').slice(0, 10);
-      const timeStr = ev.start ? ev.start.slice(11, 16) : 'all-day';
-      out.push({
-        id,
-        label: ev.title,
-        detail: `${dateStr} · ${timeStr}${ev.location ? ' · ' + ev.location : ''}`,
-        icon: 'calendar',
-        group: 'Events',
-        // /calendar doesn't yet read a `?date=` query param, so we
-        // jump to the calendar page and let the user land on the
-        // event from the visible day. Future v2: add date routing.
-        run: () => goto('/calendar')
-      });
-      scoreMap.set(id, sc + recents.recencyBoost(id));
-    }
-
-    // Deadlines — active only (filtered at load time). Date proximity
-    // matters more than fuzzy score for sort, so we lean on the date
-    // string as a tiebreaker via score adjustment.
-    for (const d of deadlines) {
-      const sc = fuzzyScoreMulti(needle, [d.title, d.project ?? '', d.venture ?? '']);
-      if (sc === null) continue;
-      const id = 'deadline:' + d.id;
-      const bits: string[] = [d.date];
-      if (d.importance && d.importance !== 'normal') bits.push(d.importance);
-      if (d.project) bits.push(d.project);
-      out.push({
-        id,
-        label: d.title,
-        detail: bits.join(' · '),
-        icon: 'deadline',
-        group: 'Deadlines',
-        // /deadlines doesn't yet read ?focus — navigate to the page
-        // and let the user scan. The detail line already shows the
-        // distinguishing fields (date + importance + project).
-        run: () => goto('/deadlines')
-      });
-      scoreMap.set(id, sc + recents.recencyBoost(id));
-    }
-
-    // Habits — usually a small set (<20). All show on empty needle so
-    // the user can jump to the habits page with one keystroke.
-    for (const h of habits) {
-      const sc = fuzzyScoreMulti(needle, [h.name]);
-      if (sc === null) continue;
-      const id = 'habit:' + h.name;
-      out.push({
-        id,
-        label: h.name,
-        detail: h.doneToday ? 'done today' : `${h.currentStreak}d streak`,
-        icon: 'habits',
-        group: 'Habits',
-        run: () => goto('/habits')
-      });
-      scoreMap.set(id, sc + recents.recencyBoost(id));
-    }
-
-    // Agent commands
-    for (const a of AGENTS) {
-      const sc = fuzzyScoreMulti(needle, [a.label, a.detail]);
-      if (sc === null) continue;
-      const id = 'agent:' + a.slug;
-      out.push({
-        id,
-        label: a.label,
-        detail: a.detail,
-        icon: a.icon,
-        group: 'Agents',
-        hint: a.hint,
-        run: a.run
-      });
-      scoreMap.set(id, sc + recents.recencyBoost(id));
-    }
-
-    // Content (full-text) — query-driven, no recents bump, scored by
-    // result-list order (the API already ranks).
-    for (let i = 0; i < searchHits.length; i++) {
-      const h = searchHits[i];
-      // Skip content hits whose path already appears as a Note title
-      // hit — the title row is the better destination.
-      const dupId = 'note:' + h.path;
-      if (out.some((x) => x.id === dupId)) continue;
-      const id = 'content:' + h.path + ':' + h.line;
-      out.push({
-        id,
-        label: h.title,
-        detail: h.matchLine,
-        icon: 'search',
-        group: 'Content',
-        run: () => goto('/notes/' + encodeURIComponent(h.path))
-      });
-      scoreMap.set(id, 700 - i); // sits above mid-tier matches; trumps recents in its own section
-    }
-
-    out.sort((a, b) => {
-      const ra = groupRank(a.group);
-      const rb = groupRank(b.group);
-      if (ra !== rb) return ra - rb;
-      return (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0);
-    });
-    // Cap to a sensible upper bound. 80 items is more than fits on
-    // any screen — the user is going to type, not scroll past 80.
-    return out.slice(0, 80);
-  });
-
-  // Side-table for derived scores, populated inside the derived. Kept
-  // out of the CmdItem shape because consumers (templates) don't need
-  // it — sort is the only reader. Map cleared implicitly each derive
-  // because we never read entries we didn't write in this pass (and a
-  // stale entry from a prior derive is harmless: it'd be overwritten
-  // before being read, or never read at all if the item dropped out).
-  const scoreMap = new Map<string, number>();
-
-  function groupRank(g: Group): number {
-    // Ordering encodes "what does the user most often want when they
-    // type something into this palette". Content body hits win
-    // because they're the most specific (the user typed enough to
-    // get a body match). Pages next — keystroke-to-jump is the
-    // headline use. Tasks above other entities because action items
-    // are the highest-frequency navigation target. Then Events /
-    // Deadlines (time-pressure surfaces), Projects + Goals
-    // (structural anchors), Notes (the long tail), Habits +
-    // Agents (lowest because their pages are reachable by keyboard
-    // already; the palette rows are reach-from-anywhere fallbacks).
-    if (g === 'Content') return 0;
-    if (g === 'Pages') return 1;
-    if (g === 'Tasks') return 2;
-    if (g === 'Events') return 3;
-    if (g === 'Deadlines') return 4;
-    if (g === 'Projects') return 5;
-    if (g === 'Goals') return 6;
-    if (g === 'Notes') return 7;
-    if (g === 'Habits') return 8;
-    return 9; // Agents
-  }
-
-  // Group for visual headers
-  let grouped = $derived.by(() => {
-    const m: { group: Group; items: CmdItem[] }[] = [];
-    for (const it of items) {
-      const last = m[m.length - 1];
-      if (last && last.group === it.group) last.items.push(it);
-      else m.push({ group: it.group, items: [it] });
-    }
-    return m;
-  });
+  // Group for visual headers.
+  let grouped = $derived(groupItems(items));
 
   // Reset selection when query changes
   $effect(() => {
