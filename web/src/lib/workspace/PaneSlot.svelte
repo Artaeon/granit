@@ -60,12 +60,26 @@
     <PaneTypePicker {pane} {onChange} />
     <span class="flex-1"></span>
     {#if onSplitH}
+      <!-- Mobile: single "+" that always horizontal-splits, since
+           mobile shows one leaf at a time and the user doesn't see
+           the axis anyway. Desktop keeps the two axes so a user
+           designing a layout can pick. -->
+      <button
+        type="button"
+        onclick={() => onSplitH?.(nextPaneCandidate)}
+        title="Add a pane"
+        aria-label="Add a pane"
+        class="md:hidden tap-target px-2 py-1 text-dim hover:text-primary border border-surface1 hover:border-primary rounded text-[11px] leading-none font-medium inline-flex items-center gap-1"
+      >
+        <span aria-hidden="true">+</span>
+        <span>pane</span>
+      </button>
       <button
         type="button"
         onclick={() => onSplitH?.(nextPaneCandidate)}
         title="Split horizontally — new pane appears to the right"
         aria-label="Split horizontally"
-        class="px-1.5 py-0.5 text-dim hover:text-primary border border-surface1 hover:border-primary rounded font-mono text-[11px] leading-none"
+        class="hidden md:inline-block px-1.5 py-0.5 text-dim hover:text-primary border border-surface1 hover:border-primary rounded font-mono text-[11px] leading-none"
       >|</button>
     {/if}
     {#if onSplitV}
@@ -74,7 +88,7 @@
         onclick={() => onSplitV?.(nextPaneCandidate)}
         title="Split vertically — new pane appears below"
         aria-label="Split vertically"
-        class="px-1.5 py-0.5 text-dim hover:text-primary border border-surface1 hover:border-primary rounded font-mono text-[11px] leading-none"
+        class="hidden md:inline-block px-1.5 py-0.5 text-dim hover:text-primary border border-surface1 hover:border-primary rounded font-mono text-[11px] leading-none"
       >_</button>
     {/if}
     {#if closable && onClose}
@@ -83,7 +97,7 @@
         onclick={onClose}
         title="Close this pane"
         aria-label="Close this pane"
-        class="text-dim hover:text-error text-base leading-none px-1"
+        class="tap-target text-dim hover:text-error text-base leading-none px-2 md:px-1"
       >×</button>
     {/if}
   </header>
