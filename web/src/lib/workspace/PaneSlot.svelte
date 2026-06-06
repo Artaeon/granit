@@ -13,6 +13,7 @@
 <script lang="ts">
   import { PANES, findPane, type PaneKind } from './paneRegistry';
   import PaneTypePicker from './PaneTypePicker.svelte';
+  import AddPaneMenu from './AddPaneMenu.svelte';
 
   let {
     pane,
@@ -60,20 +61,19 @@
     <PaneTypePicker {pane} {onChange} />
     <span class="flex-1"></span>
     {#if onSplitH}
-      <!-- Mobile: single "+" that always horizontal-splits, since
-           mobile shows one leaf at a time and the user doesn't see
-           the axis anyway. Desktop keeps the two axes so a user
-           designing a layout can pick. -->
-      <button
-        type="button"
-        onclick={() => onSplitH?.(nextPaneCandidate)}
-        title="Add a pane"
-        aria-label="Add a pane"
-        class="md:hidden tap-target px-2 py-1 text-dim hover:text-primary border border-surface1 hover:border-primary rounded text-[11px] leading-none font-medium inline-flex items-center gap-1"
-      >
-        <span aria-hidden="true">+</span>
-        <span>pane</span>
-      </button>
+      <!-- Mobile: tap "+ pane" → pick a pane type from the popover →
+           that becomes the new leaf. Mobile shows one leaf at a time,
+           so a silent default-split was a footgun — user kept getting
+           an unrelated pane and having to swap it. Now the menu makes
+           the choice explicit. -->
+      <span class="md:hidden">
+        <AddPaneMenu
+          excludePane={pane}
+          onPick={(p) => onSplitH?.(p)}
+        />
+      </span>
+      <!-- Desktop keeps the two axes so a user designing a side-by-
+           side layout can pick where the new pane lands. -->
       <button
         type="button"
         onclick={() => onSplitH?.(nextPaneCandidate)}
