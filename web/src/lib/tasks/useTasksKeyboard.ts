@@ -163,3 +163,45 @@ export function installTasksKeyboard(refs: TasksKeyboardRefs): () => void {
   window.addEventListener('keydown', onKey);
   return () => window.removeEventListener('keydown', onKey);
 }
+
+// Convenience wrapper: most callers already have a viewCtl / filterCtl
+// / selCtl trio matching the established controller pattern, so the
+// 20-line refs object collapses to one of these calls. The underlying
+// refs shape stays as-is so callers with non-standard bindings can
+// still use installTasksKeyboard directly.
+import type { TasksFilterStateController } from './tasksFilterState.svelte';
+import type { TasksViewStateController } from './tasksViewState.svelte';
+import type { TasksSelectionController } from './tasksSelection.svelte';
+
+export function installTasksKeyboardForCtls(args: {
+  filterCtl: TasksFilterStateController;
+  viewCtl: TasksViewStateController;
+  selCtl: TasksSelectionController;
+  setAgentOpen: (v: boolean) => void;
+  toggleDoneFor: (t: Task) => void;
+  openDetailFor: (t: Task) => void;
+  cyclePriorityFor: (t: Task) => void;
+}): () => void {
+  const { filterCtl, viewCtl, selCtl } = args;
+  return installTasksKeyboard({
+    getView: () => viewCtl.view,
+    getFiltered: () => filterCtl.filtered,
+    getCursorIdx: () => selCtl.cursorIdx,
+    getSelectionSize: () => selCtl.selectedIds.size,
+    isHelpOpen: () => viewCtl.helpOpen,
+    setHelpOpen: (v) => (viewCtl.helpOpen = v),
+    isFilterPanelOpen: () => viewCtl.filterPanelOpen,
+    setFilterPanelOpen: (v) => (viewCtl.filterPanelOpen = v),
+    cycleView: (dir) => viewCtl.cycleView(dir),
+    setView: (v) => (viewCtl.view = v),
+    setAgentOpen: args.setAgentOpen,
+    focusCursor: selCtl.focusCursor,
+    selectAllOrClear: selCtl.selectAllOrClear,
+    toggleSelectedFor: selCtl.toggleSelected,
+    toggleDoneFor: args.toggleDoneFor,
+    openDetailFor: args.openDetailFor,
+    cyclePriorityFor: args.cyclePriorityFor,
+    openSnoozeForCursor: selCtl.openSnoozePickerForCursor,
+    clearSelection: selCtl.clear
+  });
+}

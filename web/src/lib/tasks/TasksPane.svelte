@@ -35,7 +35,7 @@
   import TasksEmptyStates from '$lib/tasks/TasksEmptyStates.svelte';
   import TasksPresetsBar from '$lib/tasks/TasksPresetsBar.svelte';
   import TasksActiveFilterChips from '$lib/tasks/TasksActiveFilterChips.svelte';
-  import { installTasksKeyboard } from '$lib/tasks/useTasksKeyboard';
+  import { installTasksKeyboardForCtls } from '$lib/tasks/useTasksKeyboard';
   import { createTasksUrlSync } from '$lib/tasks/tasksUrlSync';
   import { createTasksGroupAdd } from '$lib/tasks/tasksGroupAdd.svelte';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
@@ -290,35 +290,18 @@
   // vocabulary shared with the future workspace shell so the chord
   // walks the same tab order whether tasks lives as a route or a pane.
 
-  // Page-scoped keyboard handler lives in useTasksKeyboard. The refs
-  // object exposes the parent's controllers + action callbacks; the
-  // handler reads through them so this file owns the j/k cursor and
-  // selection state without inlining the dispatch tree.
+  // Page-scoped keyboard handler — the convenience factory wires the
+  // controller trio directly; only the page-local actions go through
+  // explicit callbacks.
   onMount(() =>
-    installTasksKeyboard({
-      getView: () => viewCtl.view,
-      getFiltered: () => filterCtl.filtered,
-      getCursorIdx: () => selCtl.cursorIdx,
-      getSelectionSize: () => selCtl.selectedIds.size,
-      isHelpOpen: () => viewCtl.helpOpen,
-      setHelpOpen: (v) => (viewCtl.helpOpen = v),
-      isFilterPanelOpen: () => viewCtl.filterPanelOpen,
-      setFilterPanelOpen: (v) => (viewCtl.filterPanelOpen = v),
-      cycleView: (dir) => viewCtl.cycleView(dir),
-      setView: (v) => (viewCtl.view = v),
+    installTasksKeyboardForCtls({
+      filterCtl,
+      viewCtl,
+      selCtl,
       setAgentOpen: (v) => (agentOpen = v),
-      focusCursor: selCtl.focusCursor,
-      selectAllOrClear: selCtl.selectAllOrClear,
-      toggleSelectedFor: selCtl.toggleSelected,
-      toggleDoneFor: (t) => {
-        toggleDoneOf(t).catch(() => {});
-      },
+      toggleDoneFor: (t) => { toggleDoneOf(t).catch(() => {}); },
       openDetailFor: openDetail,
-      cyclePriorityFor: (t) => {
-        void cyclePriorityOf(t);
-      },
-      openSnoozeForCursor: selCtl.openSnoozePickerForCursor,
-      clearSelection: selCtl.clear
+      cyclePriorityFor: (t) => { void cyclePriorityOf(t); }
     })
   );
 
