@@ -9,9 +9,12 @@
     installProjectsListLive
   } from '$lib/projects/projectsListData.svelte';
   import { createProjectsListFilter } from '$lib/projects/projectsListFilter.svelte';
+  import {
+    SPARK_WEEKS,
+    buildSparkWeekOrder,
+    computeMomentumByProject
+  } from '$lib/projects/projectsListMomentum';
   import { colorVar, statusTone } from '$lib/util/colors';
-  import { isoWeekString, startOfIsoWeek } from '$lib/util/isoWeek';
-  import { fmtDateISO as ymd } from '$lib/util/date';
   import ProjectDetail from '$lib/projects/ProjectDetail.svelte';
   import ProjectCreate from '$lib/projects/ProjectCreate.svelte';
   import ProjectTimeline from '$lib/projects/ProjectTimeline.svelte';
@@ -42,67 +45,14 @@
   // showed momentum — users browsing the list saw only a flat
   // milestone-progress bar. The data is already loaded for the
   // detail panel; surfacing it on the cards costs zero extra wire
-  // calls and answers "which projects are alive" at a glance.
-  const SPARK_WEEKS = 4;
-  const isoWeekKey = isoWeekString;
-  // Pre-compute the order of week keys for the sparkline so each
-  // card doesn't redo this work.
-  const sparkWeekOrder = $derived.by(() => {
-    const start = startOfIsoWeek(new Date());
-    const order: string[] = [];
-    for (let i = SPARK_WEEKS - 1; i >= 0; i--) {
-      const d = new Date(start);
-      d.setDate(d.getDate() - i * 7);
-      order.push(isoWeekKey(d));
-    }
-    return order;
-  });
-  // Map: projectName -> { spark: number[], scheduledThisWeek: number }
-  const momentumByProject = $derived.by(() => {
-    const out = new Map<string, { spark: number[]; scheduledThisWeek: number }>();
-    const today = ymd(new Date());
-    const monStart = ymd(startOfIsoWeek(new Date()));
-    for (const p of projects) {
-      out.set(p.name, { spark: new Array(SPARK_WEEKS).fill(0), scheduledThisWeek: 0 });
-    }
-    for (const t of tasks) {
-      // Project membership: explicit projectId OR notePath under a
-      // project's folder. Mirrors the matching ProjectDetail uses
-      // so the sparkline + the panel's burn-up agree exactly.
-      const matched: Project[] = [];
-      for (const p of projects) {
-        if (t.projectId === p.name) {
-          matched.push(p);
-          continue;
-        }
-        const folder = (p.folder ?? '').replace(/\/$/, '');
-        if (folder && t.notePath.startsWith(folder + '/')) matched.push(p);
-      }
-      if (matched.length === 0) continue;
-      // Completion → bump the matching week bucket.
-      if (t.done && t.completedAt) {
-        const k = isoWeekKey(new Date(t.completedAt));
-        const idx = sparkWeekOrder.indexOf(k);
-        if (idx >= 0) {
-          for (const p of matched) {
-            const m = out.get(p.name);
-            if (m) m.spark[idx]++;
-          }
-        }
-      }
-      // Scheduled in current week → bump the count.
-      if (!t.done && t.scheduledStart) {
-        const day = t.scheduledStart.slice(0, 10);
-        if (day >= monStart && day <= today) {
-          for (const p of matched) {
-            const m = out.get(p.name);
-            if (m) m.scheduledThisWeek++;
-          }
-        }
-      }
-    }
-    return out;
-  });
+  // calls and answers "which projects are alive" at a glance. The
+  // math lives in projectsListMomentum.ts as pure stateless helpers
+  // so it round-trips through unit tests; we only wrap it in
+  // $derived here to pick up project/task reactivity.
+  const sparkWeekOrder = $derived.by(() => buildSparkWeekOrder(new Date()));
+  const momentumByProject = $derived.by(() =>
+    computeMomentumByProject(projects, tasks, sparkWeekOrder, new Date())
+  );
   const filterCtl = createProjectsListFilter({
     getProjects: () => projects,
     getVentureFilter: () => ventureFilter
