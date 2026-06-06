@@ -21,6 +21,7 @@
   } from '$lib/calendar/calendarFilterState.svelte';
   import { createCalendarData } from '$lib/calendar/calendarData.svelte';
   import { createCalendarDetail } from '$lib/calendar/calendarDetail.svelte';
+  import { createCalendarCreateDialogs } from '$lib/calendar/calendarCreateDialogs.svelte';
   import {
     addDays,
     endOfWeek,
@@ -90,23 +91,9 @@
   // workspaceContext.
   const detCtl = createCalendarDetail({ dataCtl });
 
-  let createOpen = $state(false);
-  let createDate = $state(new Date());
-  let createHour = $state(9);
-  let createMinute = $state(0);
-
-  let createEventOpen = $state(false);
-  let createEventDate = $state(new Date());
-
-  let unifiedOpen = $state(false);
-  let unifiedStart = $state(new Date());
-  let unifiedEnd = $state(new Date());
-  let unifiedKind = $state<'task' | 'event'>('task');
-
-  // Find-time modal — surfaces free gaps in the active calendar dataCtl.feed
-  // for a chosen duration. Picking a gap seeds UnifiedCreate so the
-  // user can lock in a title without re-typing the time.
-  let findTimeOpen = $state(false);
+  // Four create-dialog state slots + their openers (clickSlot,
+  // onSlotRange, onFindTimePick) live in calendarCreateDialogs.
+  const dlgCtl = createCalendarCreateDialogs();
 
   // Recurring-scope prompt — replaces the stacked native confirm()
   // dialogs the drag-move + resize flows used to fire. The prompt is
@@ -148,12 +135,8 @@
       };
     });
   }
-  function onFindTimePick(start: Date, durationMinutes: number) {
-    unifiedStart = start;
-    unifiedEnd = new Date(start.getTime() + durationMinutes * 60_000);
-    unifiedKind = 'event';
-    unifiedOpen = true;
-  }
+  // onFindTimePick lives in dlgCtl; alias for the prop callback below.
+  const onFindTimePick = dlgCtl.onFindTimePick;
 
   // filterCtl.filterDrawerOpen moved into filterCtl.
   // Reactive mobile flag via the shared mediaQuery store. Auto-cleans
@@ -367,7 +350,7 @@
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     // Don't fight the create / detail drawers — they own their own
     // keyboard surface (Escape to close, Enter to submit).
-    if (createOpen || createEventOpen || unifiedOpen || detCtl.detailOpen || findTimeOpen) return;
+    if (dlgCtl.createOpen || dlgCtl.createEventOpen || dlgCtl.unifiedOpen || detCtl.detailOpen || dlgCtl.findTimeOpen) return;
     switch (e.key) {
       case 't': viewCtl.gotoToday(); break;
       case 'j': case 'n': viewCtl.next(); break;
@@ -381,7 +364,7 @@
                                         // Google Calendar). Shift+A
                                         // opens the calendar agent.
       case 'A': agentOpen = true; break;
-      case 'f': findTimeOpen = true; break; // 'f' = find a free slot
+      case 'f': dlgCtl.findTimeOpen = true; break; // 'f' = find a free slot
       case '?': showShortcutHelp = !showShortcutHelp; break;
       default: return;
     }
@@ -416,19 +399,8 @@
   // alias so all existing call sites keep their one-word reference.
   const clickEvent = detCtl.clickEvent;
   const toggleMealEvent = detCtl.toggleMealEvent;
-  function clickSlot(date: Date, hour: number, minute: number) {
-    createDate = date;
-    createHour = hour;
-    createMinute = minute;
-    createOpen = true;
-  }
-
-  function onSlotRange(start: Date, end: Date) {
-    unifiedStart = start;
-    unifiedEnd = end;
-    unifiedKind = 'task';
-    unifiedOpen = true;
-  }
+  const clickSlot = dlgCtl.clickSlot;
+  const onSlotRange = dlgCtl.onSlotRange;
   async function reschedule(taskId: string, newStart: Date) {
     const fmt = (d: Date) =>
       `${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -815,7 +787,7 @@
         s.setMinutes(0, 0, 0);
         s.setHours(s.getHours() + 1);
         const e = new Date(s.getTime() + 60 * 60 * 1000);
-        unifiedStart = s; unifiedEnd = e; unifiedKind = 'task'; unifiedOpen = true;
+        dlgCtl.unifiedStart = s; dlgCtl.unifiedEnd = e; dlgCtl.unifiedKind = 'task'; dlgCtl.unifiedOpen = true;
         filterCtl.filterDrawerOpen = false;
       }}
       class="w-full px-3 py-2.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
@@ -1024,7 +996,7 @@
       onNext={viewCtl.next}
       onGotoToday={viewCtl.gotoToday}
       onTogglePlanMode={viewCtl.togglePlanMode}
-      onFindTime={() => (findTimeOpen = true)}
+      onFindTime={() => (dlgCtl.findTimeOpen = true)}
       onShowShortcuts={() => (showShortcutHelp = true)}
       onOpenFilterDrawer={() => (filterCtl.filterDrawerOpen = true)}
       onCapture={() => {
@@ -1035,10 +1007,10 @@
         s.setMinutes(0, 0, 0);
         s.setHours(s.getHours() + 1);
         const e = new Date(s.getTime() + 60 * 60 * 1000);
-        unifiedStart = s;
-        unifiedEnd = e;
-        unifiedKind = 'event';
-        unifiedOpen = true;
+        dlgCtl.unifiedStart = s;
+        dlgCtl.unifiedEnd = e;
+        dlgCtl.unifiedKind = 'event';
+        dlgCtl.unifiedOpen = true;
       }}
     />
 
@@ -1215,10 +1187,10 @@
               s.setMinutes(0, 0, 0);
               s.setHours(s.getHours() + 1);
               const e = new Date(s.getTime() + 60 * 60 * 1000);
-              unifiedStart = s;
-              unifiedEnd = e;
-              unifiedKind = 'event';
-              unifiedOpen = true;
+              dlgCtl.unifiedStart = s;
+              dlgCtl.unifiedEnd = e;
+              dlgCtl.unifiedKind = 'event';
+              dlgCtl.unifiedOpen = true;
             }}
           />
         </div>
@@ -1313,29 +1285,29 @@
 
 <EventDetail bind:open={detCtl.detailOpen} event={detCtl.selected} onChanged={() => dataCtl.load()} />
 <QuickCreateScheduled
-  bind:open={createOpen}
-  date={createDate}
-  hour={createHour}
-  minute={createMinute}
-  defaultNotePath={`Jots/${fmtDateISO(createDate)}.md`}
+  bind:open={dlgCtl.createOpen}
+  date={dlgCtl.createDate}
+  hour={dlgCtl.createHour}
+  minute={dlgCtl.createMinute}
+  defaultNotePath={`Jots/${fmtDateISO(dlgCtl.createDate)}.md`}
   onCreated={() => dataCtl.load()}
 />
 <CreateEvent
-  bind:open={createEventOpen}
-  date={createEventDate}
+  bind:open={dlgCtl.createEventOpen}
+  date={dlgCtl.createEventDate}
   existingEvents={filterCtl.events}
   defaultProjectId={filterCtl.projectFilter}
   onCreated={() => dataCtl.load()}
 />
 <UnifiedCreate
-  bind:open={unifiedOpen}
-  start={unifiedStart}
-  end={unifiedEnd}
-  defaultKind={unifiedKind}
-  defaultNotePath={`Jots/${fmtDateISO(unifiedStart)}.md`}
+  bind:open={dlgCtl.unifiedOpen}
+  start={dlgCtl.unifiedStart}
+  end={dlgCtl.unifiedEnd}
+  defaultKind={dlgCtl.unifiedKind}
+  defaultNotePath={`Jots/${fmtDateISO(dlgCtl.unifiedStart)}.md`}
   onCreated={() => dataCtl.load()}
 />
-<FindTime bind:open={findTimeOpen} events={filterCtl.events} onPick={onFindTimePick} />
+<FindTime bind:open={dlgCtl.findTimeOpen} events={filterCtl.events} onPick={onFindTimePick} />
 
 <!-- Calendar Agent — scoped to the currently-visible fetch
      window AND the active project filter so the agent sees
