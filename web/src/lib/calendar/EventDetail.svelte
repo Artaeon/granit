@@ -1,10 +1,11 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { api, type CalendarEvent, type EventStatus, todayISO } from '$lib/api';
+  import { api, type CalendarEvent, type EventStatus } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { eventStartDate, eventEndDate, fmtTime, eventTypeColor } from './utils';
   import { createEventDetailLoaders } from './eventDetailLoaders.svelte';
+  import { duplicateEventPlusOneWeek, createMeetingNoteForEvent } from './calendarEventMutations';
   import { findEventType } from './eventTypes';
   import TimeInput from './TimeInput.svelte';
   import RecurrenceEditor from './RecurrenceEditor.svelte';
@@ -498,170 +499,32 @@
     open = false;
   }
 
-  // Duplicate the event one week later. Common workflow: "repeat
-  // last Monday's standup format for next Monday" without setting
-  // up a full recurring series. Drops the rrule + override key
-  // so the duplicate is a fresh standalone event; keeps title /
-  // time / location / kind / project_id.
-  //
-  // Native events (events.json) → POST /events. ICS events
-  // (writable source) → POST /calendars/{source}/events. Read-only
-  // ICS sources can't be duplicated through this path; the chip
-  // hides for those.
+  // Duplicate +1 week — thin wrapper that owns busy/close/onChanged
+  // around the pure dispatcher in calendarEventMutations.
   async function duplicateEvent() {
-    if (!event) return;
+    if (!event || busy) return;
     busy = true;
     try {
-      if (event.type === 'ics_event' && event.source) {
-        // Shift the start/end by exactly 7 days. Use the floating
-        // wire shape we already accept (RFC3339 or YYYY-MM-DD per
-        // parseClientTime); add 7d in UTC ms.
-        const advance = 7 * 24 * 60 * 60 * 1000;
-        let start: string | undefined;
-        let end: string | undefined;
-        let allDay: boolean | undefined;
-        if (event.start) {
-          const s = new Date(event.start);
-          s.setTime(s.getTime() + advance);
-          start = s.toISOString();
-        }
-        if (event.end) {
-          const e = new Date(event.end);
-          e.setTime(e.getTime() + advance);
-          end = e.toISOString();
-        }
-        if (event.date && !event.start) {
-          // All-day shape: shift the date string by 7 days. parse
-          // YYYY-MM-DD locally so DST doesn't introduce drift.
-          const [y, m, d] = event.date.split('-').map(Number);
-          const shifted = new Date(y, m - 1, d);
-          shifted.setDate(shifted.getDate() + 7);
-          const yy = shifted.getFullYear();
-          const mm = String(shifted.getMonth() + 1).padStart(2, '0');
-          const dd = String(shifted.getDate()).padStart(2, '0');
-          start = `${yy}-${mm}-${dd}`;
-          allDay = true;
-        }
-        if (!start) {
-          toast.error('Could not derive a start date for the duplicate.');
-          return;
-        }
-        await api.createICSEvent(event.source, {
-          summary: event.title,
-          start,
-          end,
-          allDay,
-          location: event.location,
-          kind: event.kind || undefined
-        });
+      const ok = await duplicateEventPlusOneWeek(event);
+      if (ok) {
         onChanged?.();
         close();
-        toast.success('Duplicated +1 week.');
-        return;
       }
-      if (event.type === 'event' && event.eventId) {
-        if (!event.date) {
-          toast.error('Event has no date — cannot duplicate.');
-          return;
-        }
-        const [y, m, d] = event.date.split('-').map(Number);
-        const shifted = new Date(y, m - 1, d);
-        shifted.setDate(shifted.getDate() + 7);
-        const yy = shifted.getFullYear();
-        const mm = String(shifted.getMonth() + 1).padStart(2, '0');
-        const dd = String(shifted.getDate()).padStart(2, '0');
-        const newDate = `${yy}-${mm}-${dd}`;
-        await api.createEvent({
-          title: event.title,
-          date: newDate,
-          // The feed surfaces ICS-style start/end on `start`/`end`,
-          // but events.json events carry the rendered HH:MM via the
-          // feed too — derive from the existing start string when
-          // present. For all-day events both stay empty.
-          start_time: event.start ? new Date(event.start).toTimeString().slice(0, 5) : undefined,
-          end_time: event.end ? new Date(event.end).toTimeString().slice(0, 5) : undefined,
-          location: event.location,
-          color: event.color,
-          kind: event.kind,
-          project_id: event.project_id
-          // Intentionally drops: rrule (the duplicate is one-off),
-          // override_key (the original's per-instance state), reminder
-          // (let the user re-set if they want it).
-        });
-        onChanged?.();
-        close();
-        toast.success('Duplicated +1 week.');
-        return;
-      }
-      toast.info('This event type cannot be duplicated.');
-    } catch (e) {
-      toast.error('Duplicate failed: ' + errorMessage(e));
     } finally {
       busy = false;
     }
   }
 
-  // Create a meeting note for this event and navigate to it. The
-  // note lands at Meetings/<YYYY-MM-DD> · <slug-of-title>.md with
-  // frontmatter that captures the event metadata so the note is
-  // searchable + tag-filterable + later linkable from the daily.
-  // If today's daily exists we also append a backlink line so the
-  // user has a one-click trail from "what did I do today" to the
-  // meeting note. Failures fall back to a toast.
+  // Meeting-note creation — same wrapping pattern. The dispatcher
+  // navigates on success; we still need to close the modal so the
+  // notes route renders cleanly without the dialog overlay.
   let creatingMeetingNote = $state(false);
   async function createMeetingNote() {
     if (!event || creatingMeetingNote) return;
     creatingMeetingNote = true;
     try {
-      const date = (event.start ?? event.date ?? new Date().toISOString()).slice(0, 10);
-      const slug = (event.title || 'meeting')
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .slice(0, 60);
-      const path = `Meetings/${date} · ${slug}.md`;
-      const startTimeStr = event.start ? new Date(event.start).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-      const endTimeStr = event.end ? new Date(event.end).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-      const fm: Record<string, unknown> = {
-        type: 'meeting',
-        date,
-        title: event.title,
-        tags: ['meeting'],
-        // Round-trips so a future feature can link the note back to
-        // the source event without a fuzzy search.
-        sourceEvent: event.eventId ?? undefined,
-        sourceCalendar: event.source ?? undefined
-      };
-      if (event.location) fm.location = event.location;
-      if (startTimeStr) fm.start = startTimeStr;
-      if (endTimeStr) fm.end = endTimeStr;
-      // Strip undefined keys so the YAML serializer doesn't emit
-      // `key: ~` lines for nothing.
-      for (const k of Object.keys(fm)) if (fm[k] === undefined) delete fm[k];
-
-      const body =
-        `# ${event.title}\n\n` +
-        (event.location ? `**Location:** ${event.location}\n` : '') +
-        (startTimeStr || endTimeStr ? `**Time:** ${startTimeStr}${endTimeStr ? '–' + endTimeStr : ''}\n` : '') +
-        `\n## Attendees\n- \n\n## Agenda\n- \n\n## Notes\n\n\n## Action items\n- [ ] \n`;
-
-      await api.createNote({ path, frontmatter: fm, body });
-
-      // Append a backlink to today's daily — best-effort.
-      try {
-        const today = todayISO();
-        if (date === today) {
-          const daily = await api.daily('today');
-          const dailyBody = (daily.body ?? '') + `\n- [[${path}|${event.title}]] (meeting)\n`;
-          await api.putNote(daily.path, { frontmatter: daily.frontmatter ?? {}, body: dailyBody });
-        }
-      } catch {}
-
-      toast.success('Meeting note created');
-      goto(`/notes/${encodeURIComponent(path)}`);
-      open = false;
-    } catch (err) {
-      toast.error('Failed to create meeting note: ' + (errorMessage(err)));
+      const ok = await createMeetingNoteForEvent(event);
+      if (ok) open = false;
     } finally {
       creatingMeetingNote = false;
     }
