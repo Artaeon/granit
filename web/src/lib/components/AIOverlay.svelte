@@ -75,6 +75,7 @@
   import ChatMessageList from '$lib/components/aioverlay/ChatMessageList.svelte';
   import AIOverlayHeader from '$lib/components/aioverlay/AIOverlayHeader.svelte';
   import AIOverlayQuickActions from '$lib/components/aioverlay/AIOverlayQuickActions.svelte';
+  import AIOverlayContextChips from '$lib/components/aioverlay/AIOverlayContextChips.svelte';
   import { list as listSharedPrompts, type RecentPrompt } from '$lib/ai/recentPrompts';
 
   // AIOverlay — global AI panel. Slides in from the right on
@@ -1196,80 +1197,16 @@
       </div>
     {/if}
 
-    {#if currentNotePath}
-      <!-- Note-context chip. Lets the user toggle whether the
-           current note is attached to the next chat message. The
-           server-side notePath expander on /chat/stream injects
-           the note's body into the system prompt; we only show
-           the path here so the user knows what we're sending. -->
-      <div class="border-t border-surface1 px-4 py-2 flex items-center gap-2 flex-shrink-0 text-[11px] flex-wrap">
-        <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-[10rem]">
-          <input
-            type="checkbox"
-            bind:checked={attachNote}
-            class="w-3.5 h-3.5 accent-primary cursor-pointer flex-shrink-0"
-          />
-          <span class="text-dim flex-shrink-0">attach</span>
-          <span class="text-subtext font-mono truncate" title={currentNotePath}>{currentNotePath}</span>
-        </label>
-        <label class="flex items-center gap-1.5 cursor-pointer flex-shrink-0" title="Search the vault for relevant notes and include their excerpts as grounding context">
-          <input
-            type="checkbox"
-            checked={aiCtx.rag}
-            onchange={(e) => aiCtx.setRag(e.currentTarget.checked)}
-            class="w-3.5 h-3.5 accent-primary cursor-pointer flex-shrink-0"
-          />
-          <span class="text-dim">RAG</span>
-        </label>
-      </div>
-    {:else}
-      <!-- Snapshot-context chip. On non-note routes the AI gets
-           the Context Engine's snapshot — events, tasks, recent
-           notes, goals, deadlines — so freeform questions like
-           "what should I do next?" have actual data to lean on
-           rather than guesses. Only injected on the first turn
-           of a thread (subsequent turns lean on the model's own
-           reply context to avoid burning tokens). RAG is the
-           sibling toggle: search the full vault per turn and
-           prepend the top matching notes' excerpts so cross-vault
-           questions get grounded answers. -->
-      <div class="border-t border-surface1 px-4 py-2 flex items-center gap-3 flex-shrink-0 text-[11px] flex-wrap">
-        <label class="flex items-center gap-1.5 cursor-pointer flex-1 min-w-[10rem]">
-          <input
-            type="checkbox"
-            bind:checked={attachSnapshot}
-            disabled={snapshotLoading}
-            class="w-3.5 h-3.5 accent-primary cursor-pointer flex-shrink-0 disabled:opacity-50"
-          />
-          <span class="text-dim flex-shrink-0">snapshot</span>
-          <span class="text-subtext font-mono truncate">
-            {#if snapshotLoading}
-              loading…
-            {:else if snapshotData}
-              today's vault
-            {:else}
-              unavailable
-            {/if}
-          </span>
-          {#if !snapshotLoading && !snapshotData}
-            <button
-              type="button"
-              onclick={(e) => { e.preventDefault(); void loadSnapshot(); }}
-              class="text-secondary hover:underline ml-1"
-            >retry</button>
-          {/if}
-        </label>
-        <label class="flex items-center gap-1.5 cursor-pointer flex-shrink-0" title="Search the vault for relevant notes per question and include their excerpts as grounding context">
-          <input
-            type="checkbox"
-            checked={aiCtx.rag}
-            onchange={(e) => aiCtx.setRag(e.currentTarget.checked)}
-            class="w-3.5 h-3.5 accent-primary cursor-pointer flex-shrink-0"
-          />
-          <span class="text-dim">RAG</span>
-        </label>
-      </div>
-    {/if}
+    <AIOverlayContextChips
+      {currentNotePath}
+      bind:attachNote
+      bind:attachSnapshot
+      {snapshotLoading}
+      {snapshotData}
+      rag={aiCtx.rag}
+      onSetRag={aiCtx.setRag}
+      onLoadSnapshot={() => void loadSnapshot()}
+    />
 
     {#if mentionedRefs.length > 0}
       <!-- Mentioned-entities chip strip. Surfaces above the composer
