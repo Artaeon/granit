@@ -29,7 +29,7 @@ import type {
   Deadline
 } from '$lib/api';
 import { rafThrottle } from '$lib/util/streamThrottle';
-import { classifyAiError } from '$lib/util/aiErrors';
+import { classifyAiError, isAbortError } from '$lib/util/aiErrors';
 import { errorMessage } from '$lib/util/errorMessage';
 import {
   BRIEFING_SYSTEM_PROMPT,
@@ -41,14 +41,6 @@ type ChatStreamHandlers = {
   onDone?: () => void;
   onError?: (err: Error) => void;
 };
-
-// AbortError detection is tricky cross-engine: Chromium fetches
-// occasionally surface "BodyStreamBuffer was aborted" instead of
-// the canonical DOMException name. Centralised inline because the
-// shared util doesn't exist yet — matches the aiAgentStore copy.
-function isAbortError(err: unknown): boolean {
-  return err instanceof DOMException && err.name === 'AbortError';
-}
 
 export interface MorningBriefingDeps {
   /** ISO date the brief is being generated for. Goes into the
