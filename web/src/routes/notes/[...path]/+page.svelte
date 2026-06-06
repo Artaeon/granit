@@ -29,6 +29,7 @@
   import { loadNote as loadNoteFn } from '$lib/notes/loadNote';
   import { installNoteAutosave } from '$lib/notes/noteAutosave.svelte';
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
+  import { createViewportBreakpoints } from '$lib/notes/viewportBreakpoints.svelte';
   import {
     parseDailyDate,
     shiftDate,
@@ -73,47 +74,20 @@
   let focusMode = $derived(viewModes.focusMode);
   let readingMode = $derived(viewModes.readingMode);
 
-  // Viewport tracking for the rail/tree mount strategy. Tailwind's
-  // lg breakpoint is 1024px (left tree threshold) and xl is 1280px
-  // (right info-rail threshold). Previously each rail was rendered
-  // TWICE — once in a desktop `<aside class="hidden md:flex">` and
-  // once in a `<Drawer>` wrapped by `md:hidden contents`. Both DOM
-  // trees were always mounted; CSS just hid one. That meant every
-  // panel's $derived/$effect ran twice, doubling the per-keystroke
-  // cost of body-derived recomputation in the rail panels — a
-  // meaningful chunk of the save-time freeze on long notes. We
-  // track each breakpoint here and render the rail / tree to ONLY
-  // one location at a time.
-  // Initial values from synchronous matchMedia. SvelteKit hydrates
-  // this component on the client only after the bundle loads, so
-  // window is always defined here — but the typeof guard keeps SSR
-  // (if it ever happens) from throwing. The onMount block below
-  // wires up live updates; this initializer just avoids a one-frame
-  // flash where the wrong layout renders before the listener fires.
-  let isLg = $state(
-    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
-  );
-  let isXl = $state(
-    typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches
-  );
+  // Viewport tracking for the rail/tree mount strategy. Lives in
+  // $lib/notes/viewportBreakpoints — see there for the full story
+  // on why we mount each rail to ONLY one location at a time. The
+  // page reads `isLg` / `isXl` via reactive getter aliases and lets
+  // onMount install the live MQL listeners.
+  const breakpoints = createViewportBreakpoints();
+  let isLg = $derived(breakpoints.isLg);
+  let isXl = $derived(breakpoints.isXl);
   onMount(() => {
     // Boot the pinned-notes store so the toolbar's pin star (and any
     // other pin-aware surface mounted after this) reflects the
     // server-authoritative list without each component re-fetching.
     ensurePinnedLoaded();
-    // MQL listeners for the lg + xl breakpoints.
-    const lgMql = window.matchMedia('(min-width: 1024px)');
-    const xlMql = window.matchMedia('(min-width: 1280px)');
-    isLg = lgMql.matches;
-    isXl = xlMql.matches;
-    const onLg = (e: MediaQueryListEvent) => { isLg = e.matches; };
-    const onXl = (e: MediaQueryListEvent) => { isXl = e.matches; };
-    lgMql.addEventListener('change', onLg);
-    xlMql.addEventListener('change', onXl);
-    return () => {
-      lgMql.removeEventListener('change', onLg);
-      xlMql.removeEventListener('change', onXl);
-    };
+    return breakpoints.install();
   });
 
   // Window after our own save during which an inbound `note.changed`
