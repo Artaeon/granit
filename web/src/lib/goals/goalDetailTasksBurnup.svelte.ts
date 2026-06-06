@@ -6,6 +6,7 @@
 // up with the dashboard TaskVelocityWidget and the project pages.
 
 import { api, type Goal, type Task } from '$lib/api';
+import { isoWeekString, startOfIsoWeek } from '$lib/util/isoWeek';
 
 export type BurnupWeek = {
   label: string;
@@ -30,23 +31,6 @@ export interface GoalDetailTasksBurnupDeps {
 
 const BURNUP_WEEKS = 8;
 
-function weekKey(d: Date): string {
-  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = (t.getUTCDay() + 6) % 7;
-  t.setUTCDate(t.getUTCDate() - day + 3);
-  const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
-  const week = 1 + Math.round((t.getTime() - firstThu.getTime()) / (7 * 24 * 60 * 60 * 1000));
-  return `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
-}
-
-function startOfIsoWeek(d: Date): Date {
-  const t = new Date(d);
-  const day = (t.getDay() + 6) % 7;
-  t.setDate(t.getDate() - day);
-  t.setHours(0, 0, 0, 0);
-  return t;
-}
-
 export function createGoalDetailTasksBurnup(
   deps: GoalDetailTasksBurnupDeps
 ): GoalDetailTasksBurnupController {
@@ -66,13 +50,13 @@ export function createGoalDetailTasksBurnup(
   const burnup = $derived.by<BurnupWeek[]>(() => {
     const now = new Date();
     const weekStart = startOfIsoWeek(now);
-    const thisKey = weekKey(now);
+    const thisKey = isoWeekString(now);
     const order: string[] = [];
     const labels = new Map<string, string>();
     for (let i = BURNUP_WEEKS - 1; i >= 0; i--) {
       const d = new Date(weekStart);
       d.setDate(d.getDate() - i * 7);
-      const k = weekKey(d);
+      const k = isoWeekString(d);
       order.push(k);
       labels.set(k, k === thisKey ? 'Now' : k.split('W')[1]);
     }
@@ -81,7 +65,7 @@ export function createGoalDetailTasksBurnup(
       if (!t.done || !t.completedAt) continue;
       const d = new Date(t.completedAt);
       if (Number.isNaN(d.getTime())) continue;
-      const k = weekKey(d);
+      const k = isoWeekString(d);
       if (!order.includes(k)) continue;
       counts.set(k, (counts.get(k) ?? 0) + 1);
     }
