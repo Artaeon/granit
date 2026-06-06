@@ -116,7 +116,10 @@ export function createJotsComposer(deps: JotsComposerDeps): JotsComposerControll
       'Aim for 2-4 short paragraphs or a bullet list, depending on what fits. No preamble.';
     const user = 'Terse note:\n```\n' + raw + '\n```';
     try {
-      const t = rafThrottle((full) => { expandedText = full; });
+      const t = rafThrottle((full) => {
+        if (expandAbort?.signal.aborted) return;
+        expandedText = full;
+      });
       await api.chatStream(
         [{ role: 'system', content: system }, { role: 'user', content: user }],
         undefined,

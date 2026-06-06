@@ -269,8 +269,15 @@ export function createProjectsListStallRadar(
     }
   }
 
+  // Stop — abort + flip busy + null abort synchronously so the
+  // "Stop" button swaps back to "Rerun" instantly. Without these
+  // the UI lags until chatStream's finally settles (which can
+  // take a tick when the abort fires mid-await). Same shape as
+  // projectAIHealth/projectAIBrief/etc.
   function cancelRadar() {
     abort?.abort();
+    abort = null;
+    busy = false;
   }
 
   function openAndScan() {

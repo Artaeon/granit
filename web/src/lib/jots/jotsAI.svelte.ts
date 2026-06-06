@@ -135,7 +135,10 @@ export function createJotsAI(deps: JotsAIDeps): JotsAIController {
     const system = 'You analyse recent daily-note entries and surface 3-5 recurring themes. A theme is a topic, person, project, struggle, or joy that shows up across multiple entries. Return STRICTLY a JSON array, no fences, no prose: [{"label": "<short title, 1-3 words, lowercase>", "query": "<single-word search term that finds the theme>"}]. Pick search terms that actually appear in the entries (a hashtag, a name, a recurring word) — not synonyms.';
     const user = `Recent jots:\n\`\`\`json\n${seed}\n\`\`\`\n\nGive me 3-5 themes.`;
     try {
-      const t = rafThrottle((full) => { raw = full; });
+      const t = rafThrottle((full) => {
+        if (abort?.signal.aborted) return;
+        raw = full;
+      });
       await api.chatStream(
         [{ role: 'system', content: system }, { role: 'user', content: user }],
         undefined,
@@ -200,7 +203,10 @@ export function createJotsAI(deps: JotsAIDeps): JotsAIController {
       'Recent journal entries (JSON, newest first):\n```json\n' + seed + '\n```\n\n' +
       'Question: ' + q;
     try {
-      const t = rafThrottle((full) => { askAnswer = full; });
+      const t = rafThrottle((full) => {
+        if (abort?.signal.aborted) return;
+        askAnswer = full;
+      });
       await api.chatStream(
         [{ role: 'system', content: system }, { role: 'user', content: user }],
         undefined,
@@ -258,7 +264,10 @@ export function createJotsAI(deps: JotsAIDeps): JotsAIController {
       'Skip sections that don\'t apply rather than padding them with generic prose.';
     const user = 'Past 7 days of dailies:\n```json\n' + seed + '\n```';
     try {
-      const t = rafThrottle((full) => { digestAnswer = full; });
+      const t = rafThrottle((full) => {
+        if (abort?.signal.aborted) return;
+        digestAnswer = full;
+      });
       await api.chatStream(
         [{ role: 'system', content: system }, { role: 'user', content: user }],
         undefined,

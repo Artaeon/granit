@@ -129,6 +129,9 @@ export function createMorningBriefing(
     // rAF throttle so a fast model doesn't repaint the rendered brief
     // per token — same shape as the other AI dialogs.
     const t = rafThrottle((full) => {
+      // Gate on abort — dismiss/cancel paths flip text; a queued
+      // rAF frame would repopulate after the wipe.
+      if (abort?.signal.aborted) return;
       text = full;
     });
     try {
