@@ -15,6 +15,13 @@
 -->
 <script lang="ts">
   import { WORKSPACE_PRESETS } from './workspacePresets';
+  import {
+    loadUserPresets,
+    saveUserPreset,
+    removeUserPreset,
+    cloneWithNewIds,
+    type UserPreset
+  } from './userPresets';
   import type { WorkspaceStoreController } from './workspaceStore.svelte';
 
   type Props = {
@@ -28,6 +35,14 @@
 
   let open = $state(false);
   let rootEl: HTMLElement | null = $state(null);
+  // User presets are loaded on every open so a save inside one
+  // session reflects without a refresh. The list stays in component
+  // state so removals are reactive.
+  let userPresets = $state<UserPreset[]>([]);
+
+  function refreshUserPresets() {
+    userPresets = loadUserPresets();
+  }
 
   function pickBlank() {
     open = false;
@@ -43,8 +58,43 @@
     onCreated?.();
   }
 
+  function pickUserPreset(id: string) {
+    open = false;
+    const preset = userPresets.find((p) => p.id === id);
+    if (!preset) return;
+    // Clone the saved layout with fresh IDs so re-applying the same
+    // preset twice doesn't leak duplicate node IDs into the new
+    // workspace.
+    store.createWithLayout(preset.name, cloneWithNewIds(preset.layout));
+    onCreated?.();
+  }
+
+  function saveCurrent() {
+    if (typeof window === 'undefined') return;
+    const name = window.prompt(
+      'Save current layout as preset.\nName:',
+      store.active.name
+    );
+    if (!name) return;
+    saveUserPreset(name, store.active.layout);
+    refreshUserPresets();
+  }
+
+  function removePreset(e: MouseEvent, id: string) {
+    e.stopPropagation();
+    if (typeof window === 'undefined') return;
+    const target = userPresets.find((p) => p.id === id);
+    if (!target) return;
+    if (!window.confirm(`Delete preset "${target.name}"?`)) return;
+    removeUserPreset(id);
+    refreshUserPresets();
+  }
+
   $effect(() => {
     if (!open) return;
+    // Refresh user presets each time the menu opens so saves from
+    // earlier in the session reflect without a page refresh.
+    refreshUserPresets();
     const onDown = (e: MouseEvent) => {
       if (rootEl && !rootEl.contains(e.target as Node)) open = false;
     };
@@ -104,6 +154,37 @@
           </button>
         {/if}
       {/each}
+      {#if userPresets.length > 0}
+        <div class="border-t border-surface1 my-1"></div>
+        <div class="px-3 pb-1 text-[10px] uppercase tracking-wider text-dim font-mono">Your presets</div>
+        {#each userPresets as p (p.id)}
+          <div class="group flex items-center hover:bg-surface0 transition-colors">
+            <button
+              type="button"
+              role="menuitem"
+              onclick={() => pickUserPreset(p.id)}
+              class="flex-1 text-left px-3 py-1.5 text-text"
+            >
+              <div class="font-medium truncate">{p.name}</div>
+              <div class="text-[11px] text-dim">custom layout</div>
+            </button>
+            <button
+              type="button"
+              onclick={(e) => removePreset(e, p.id)}
+              title="Delete this preset"
+              aria-label={`Delete preset ${p.name}`}
+              class="px-2 py-1 text-dim hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
+            >×</button>
+          </div>
+        {/each}
+      {/if}
+      <div class="border-t border-surface1 my-1"></div>
+      <button
+        type="button"
+        onclick={saveCurrent}
+        class="w-full text-left px-3 py-1.5 text-[11px] text-dim hover:text-primary hover:bg-surface0 transition-colors"
+        title="Save the current workspace layout as a reusable preset"
+      >+ Save current layout as preset</button>
     </div>
   {/if}
 </span>
