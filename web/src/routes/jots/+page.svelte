@@ -17,6 +17,7 @@
   import JotsShortcutsOverlay from '$lib/jots/JotsShortcutsOverlay.svelte';
   import { createJotsFeedData } from '$lib/jots/jotsFeedData.svelte';
   import { createJotsFilters } from '$lib/jots/jotsFilters.svelte';
+  import { createJotsAI } from '$lib/jots/jotsAI.svelte';
 
   // Amplenote-style infinite-scroll feed of every daily note. The page
   // talks to /api/v1/jots which paginates server-side — fetching N
@@ -68,229 +69,20 @@
   let observer: IntersectionObserver | null = null;
 
   // ─── AI: multi-mode panel ────────────────────────────────────────
-  // One AI panel below the toolbar that switches between three modes
-  // depending on which toolbar button the user clicked. Only one mode
-  // can run at a time — switching dismisses the previous result and
-  // aborts any in-flight stream so we never end up with two writers
-  // racing into the same panel.
-  //
-  //   themes  — surface 3-5 recurring topics/people/projects across
-  //             the loaded jots. Each becomes a clickable search chip.
-  //   ask     — free-form question answered using the loaded jots as
-  //             context. Renders streaming markdown.
-  //   digest  — synthesis of the last 7 days of dailies into a
-  //             structured weekly summary card.
-  type AIMode = 'none' | 'themes' | 'ask' | 'digest';
-  type Theme = { label: string; query: string };
-  let aiMode = $state<AIMode>('none');
-  let aiBusy = $state(false);
-  let aiAbort: AbortController | null = null;
-  let aiRaw = $state('');
-  let aiError = $state('');
-
-  // Themes mode
-  let aiThemes = $state<Theme[]>([]);
-
-  // Ask mode
-  let askQuestion = $state('');
-  let askAnswer = $state('');
-  let askInputEl = $state<HTMLInputElement | undefined>();
-
-  // Digest mode
-  let digestAnswer = $state('');
-
-  function buildJotsSeed(limit = 30): string {
-    // Cap at N jots × ~1200 chars each. The model needs enough signal
-    // to spot recurrence without blowing the prompt out.
-    const slice = jots.slice(0, limit).map((j) => ({
-      date: j.date,
-      body: (j.body ?? '').slice(0, 1200)
-    }));
-    return JSON.stringify(slice, null, 2);
-  }
-
-  function dismissAI() {
-    aiAbort?.abort();
-    aiAbort = null;
-    aiBusy = false;
-    aiMode = 'none';
-    aiRaw = '';
-    aiError = '';
-    aiThemes = [];
-    askAnswer = '';
-    askQuestion = '';
-    digestAnswer = '';
-  }
-
-  // ── themes ──────────────────────────────────────────────────────
-  async function detectThemes() {
-    if (jots.length < 5) {
-      toast.info('Load a few more jots first.');
-      return;
-    }
-    dismissAI();
-    aiMode = 'themes';
-    aiAbort = new AbortController();
-    aiBusy = true;
-    const seed = buildJotsSeed();
-    const system = 'You analyse recent daily-note entries and surface 3-5 recurring themes. A theme is a topic, person, project, struggle, or joy that shows up across multiple entries. Return STRICTLY a JSON array, no fences, no prose: [{"label": "<short title, 1-3 words, lowercase>", "query": "<single-word search term that finds the theme>"}]. Pick search terms that actually appear in the entries (a hashtag, a name, a recurring word) — not synonyms.';
-    const user = `Recent jots:\n\`\`\`json\n${seed}\n\`\`\`\n\nGive me 3-5 themes.`;
-    try {
-      const t = rafThrottle((full) => { aiRaw = full; });
-      await api.chatStream(
-        [{ role: 'system', content: system }, { role: 'user', content: user }],
-        undefined,
-        {
-          onChunk: t.onChunk,
-          onDone: () => {
-            t.flush();
-            let cleaned = aiRaw.trim();
-            if (cleaned.startsWith('```')) {
-              cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
-            }
-            try {
-              const arr = JSON.parse(cleaned) as Theme[];
-              if (Array.isArray(arr)) aiThemes = arr.filter((x) => x.label && x.query);
-            } catch {
-              aiError = "Model didn't return parseable JSON.";
-            }
-          },
-          onError: (err) => { t.flush(); aiError = err.message; }
-        },
-        aiAbort.signal
-      );
-    } finally {
-      aiBusy = false;
-      aiAbort = null;
-    }
-  }
-  function applyTheme(t: Theme) {
-    searchText = t.query;
-    runSearch();
-  }
-
-  // ── ask jots ────────────────────────────────────────────────────
-  function startAsk() {
-    if (jots.length === 0) {
-      toast.info('No jots loaded yet.');
-      return;
-    }
-    dismissAI();
-    aiMode = 'ask';
-    // Focus the input on next tick so the user can type immediately.
-    queueMicrotask(() => askInputEl?.focus());
-  }
-  async function submitAsk() {
-    const q = askQuestion.trim();
-    if (!q || aiBusy) return;
-    aiAbort = new AbortController();
-    aiBusy = true;
-    aiError = '';
-    askAnswer = '';
-    const seed = buildJotsSeed(40);
-    const system =
-      'You answer the user\'s questions about their own journal entries (daily notes). ' +
-      'Be specific — cite dates and quote phrases the user actually wrote when relevant. ' +
-      'If the answer isn\'t supported by the entries, say so honestly. Return markdown ' +
-      'with concise paragraphs and bullet lists where helpful. No preamble.';
-    const user =
-      'Recent journal entries (JSON, newest first):\n```json\n' + seed + '\n```\n\n' +
-      'Question: ' + q;
-    try {
-      const t = rafThrottle((full) => { askAnswer = full; });
-      await api.chatStream(
-        [{ role: 'system', content: system }, { role: 'user', content: user }],
-        undefined,
-        {
-          onChunk: t.onChunk,
-          onDone: () => { t.flush(); },
-          onError: (err) => { t.flush(); aiError = err.message; }
-        },
-        aiAbort.signal
-      );
-    } finally {
-      aiBusy = false;
-      aiAbort = null;
-    }
-  }
-
-  // ── weekly digest ───────────────────────────────────────────────
-  async function buildDigest() {
-    if (jots.length === 0) {
-      toast.info('No jots loaded yet.');
-      return;
-    }
-    dismissAI();
-    aiMode = 'digest';
-    aiAbort = new AbortController();
-    aiBusy = true;
-    // Build a 7-day window from the most recent jot backwards.
-    const cutoff = new Date(today);
-    cutoff.setDate(cutoff.getDate() - 6);
-    const cutoffISO = fmtDateISO(cutoff);
-    const slice = jots
-      .filter((j) => j.date >= cutoffISO)
-      .map((j) => ({ date: j.date, body: (j.body ?? '').slice(0, 2000) }));
-    if (slice.length === 0) {
-      aiError = 'No jots in the last 7 days.';
-      aiBusy = false;
-      return;
-    }
-    const seed = JSON.stringify(slice, null, 2);
-    const system =
-      'You write a weekly digest of the user\'s journal entries. Structure the output as ' +
-      'markdown with these sections:\n\n' +
-      '## Themes\n  3-5 bullets — the topics that recurred across the week.\n' +
-      '## Wins\n  Concrete accomplishments or moments worth keeping. Quote when useful.\n' +
-      '## Struggles\n  Friction, blockers, or unresolved tensions the user wrote about.\n' +
-      '## Open threads\n  Things that started but didn\'t finish — questions, plans, follow-ups.\n' +
-      '## Suggested focus\n  One sentence: what would be most valuable to focus on next week, ' +
-      'based on what the user wrote.\n\n' +
-      'Be specific. Cite dates inline (e.g., "on 2026-05-12") when grounding a claim. ' +
-      'Skip sections that don\'t apply rather than padding them with generic prose.';
-    const user = 'Past 7 days of dailies:\n```json\n' + seed + '\n```';
-    try {
-      const t = rafThrottle((full) => { digestAnswer = full; });
-      await api.chatStream(
-        [{ role: 'system', content: system }, { role: 'user', content: user }],
-        undefined,
-        {
-          onChunk: t.onChunk,
-          onDone: () => { t.flush(); },
-          onError: (err) => { t.flush(); aiError = err.message; }
-        },
-        aiAbort.signal
-      );
-    } finally {
-      aiBusy = false;
-      aiAbort = null;
-    }
-  }
-
-  async function saveDigestAsNote() {
-    if (!digestAnswer.trim()) return;
-    const ds = fmtDateISO(new Date(today));
-    const path = (dailyFolder ? `${dailyFolder}/` : '') + `digest-${ds}.md`;
-    try {
-      await api.putNote(path, {
-        frontmatter: { title: `Weekly digest — ${ds}`, type: 'digest', generatedBy: 'ai' },
-        body: digestAnswer
-      });
-      toast.success('digest saved as note');
-      goto(`/notes/${encodeURIComponent(path)}`);
-    } catch (e) {
-      toast.error('failed to save: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-
-  async function copyToClipboard(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success('copied');
-    } catch {
-      toast.error('clipboard blocked');
-    }
-  }
+  // One panel below the toolbar that switches between three modes
+  // (themes / ask / digest). The controller guarantees only one
+  // stream runs at a time — switching mode dismisses the previous
+  // result and aborts the in-flight stream.
+  const aiCtl = createJotsAI({
+    getJots: () => feed.jots,
+    getToday: () => today,
+    getDailyFolder: () => feed.dailyFolder,
+    applyThemeSearch: (q) => { searchText = q; runSearch(); },
+    toastInfo: (m) => toast.info(m),
+    toastSuccess: (m) => toast.success(m),
+    toastError: (m) => toast.error(m),
+    navigate: (p) => goto(p)
+  });
 
   // Midnight today, recomputed reactively via $derived.by — used as the
   // anchor for relative-date labels ("Today" / "Yesterday" / etc).
@@ -673,36 +465,36 @@
       bind:searchText
       searching={searching}
       searchResults={searchResults}
-      aiMode={aiMode}
-      aiBusy={aiBusy}
+      aiMode={aiCtl.mode}
+      aiBusy={aiCtl.busy}
       jotsCount={jots.length}
       onJumpToDate={jumpToDate}
       onSearchEnter={runSearch}
       onClearSearch={clearSearch}
-      onDetectThemes={detectThemes}
-      onStartAsk={startAsk}
-      onBuildDigest={buildDigest}
+      onDetectThemes={aiCtl.detectThemes}
+      onStartAsk={aiCtl.startAsk}
+      onBuildDigest={aiCtl.buildDigest}
       onOpenToday={openToday}
     >
       {#snippet aiPanel()}
-        {#if aiMode !== 'none'}
+        {#if aiCtl.mode !== 'none'}
           <JotsAIPanel
-            mode={aiMode}
-            busy={aiBusy}
-            error={aiError}
-            themes={aiThemes}
-            bind:askQuestion
-            askAnswer={askAnswer}
-            bind:askInputEl
-            digestAnswer={digestAnswer}
-            onStop={() => aiAbort?.abort()}
-            onRegenerateThemes={detectThemes}
-            onApplyTheme={applyTheme}
-            onSubmitAsk={submitAsk}
-            onCopy={copyToClipboard}
-            onRegenerateDigest={buildDigest}
-            onSaveDigestAsNote={saveDigestAsNote}
-            onDismiss={dismissAI}
+            mode={aiCtl.mode}
+            busy={aiCtl.busy}
+            error={aiCtl.error}
+            themes={aiCtl.themes}
+            bind:askQuestion={aiCtl.askQuestion}
+            askAnswer={aiCtl.askAnswer}
+            bind:askInputEl={aiCtl.askInputEl}
+            digestAnswer={aiCtl.digestAnswer}
+            onStop={aiCtl.cancel}
+            onRegenerateThemes={aiCtl.detectThemes}
+            onApplyTheme={aiCtl.applyTheme}
+            onSubmitAsk={aiCtl.submitAsk}
+            onCopy={aiCtl.copyToClipboard}
+            onRegenerateDigest={aiCtl.buildDigest}
+            onSaveDigestAsNote={aiCtl.saveDigestAsNote}
+            onDismiss={aiCtl.dismiss}
             onWikilink={handleWikilink}
           />
         {/if}
