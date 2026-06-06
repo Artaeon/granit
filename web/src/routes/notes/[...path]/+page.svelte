@@ -11,7 +11,7 @@
   import { toast } from '$lib/components/toast';
   import { createFlashcardsAction } from '$lib/notes/flashcardsAction.svelte';
   import { installNoteLifecycleEffects } from '$lib/notes/noteLifecycleEffects.svelte';
-  import { createPreviewScrollTracker } from '$lib/notes/previewScrollTracker.svelte';
+  import { installPreviewScrollWiring } from '$lib/notes/previewScrollWiring.svelte';
   import { installNoteShortcuts } from '$lib/notes/noteKeyboardShortcuts.svelte';
   import { openResearchMode as openResearchModeFor } from '$lib/notes/researchMode';
   import { createNoteBreadcrumbsCtl } from '$lib/notes/noteBreadcrumbsCtl.svelte';
@@ -165,25 +165,17 @@
   // it for the heading-checkpoint walk + progress bar.
   let previewContainer = $state<HTMLElement | null>(null);
 
-  // Scroll-side state (visited headings + preview progress) lives
-  // in the tracker. See $lib/notes/previewScrollTracker for the
-  // attach() + loadFor() contract. We wire two thin effects: load
-  // the visited set when the active note path changes, attach the
-  // scroll listener while a container ref exists.
-  const previewScroll = createPreviewScrollTracker();
+  // Visited-headings tracker + scroll-progress (visited set + scroll
+  // 0..1) — controller in previewScrollTracker; wiring (loadFor on
+  // path swap, attach while container ref exists, resetVisited) lives
+  // in installPreviewScrollWiring.
+  const previewScroll = installPreviewScrollWiring({
+    getNotePath: () => note?.path ?? null,
+    getContainer: () => previewContainer
+  });
   let visitedHeadings = $derived(previewScroll.visitedHeadings);
   let previewProgress = $derived(previewScroll.previewProgress);
-  function resetVisited() {
-    previewScroll.resetVisited(note?.path ?? null);
-  }
-  $effect(() => {
-    previewScroll.loadFor(note?.path ?? null);
-  });
-  $effect(() => {
-    const c = previewContainer;
-    if (!c) return;
-    return previewScroll.attach(c, () => note?.path ?? null);
-  });
+  const resetVisited = previewScroll.resetVisited;
   let editor = $state<EditorHandle | undefined>();
   // Re-derived after every render so the SelectionToolbar can scope
   // its selection detection to the editor's contentDOM specifically.
