@@ -1,15 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type ShoppingItem } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
-  import { errorMessage } from '$lib/util/errorMessage';
   import {
-    type Cadence,
     CADENCE_OPTIONS,
     CATEGORY_SUGGESTIONS,
-    normalizeCadence,
     cadenceMonthlyFactor,
     fmtMoney,
     lineTotal,
@@ -18,6 +14,7 @@
   import { createShoppingViewState, type ShoppingView } from '$lib/shopping/shoppingViewState.svelte';
   import { createShoppingData } from '$lib/shopping/shoppingData.svelte';
   import { createShoppingItemActions } from '$lib/shopping/shoppingItemActions.svelte';
+  import { createShoppingEdit } from '$lib/shopping/shoppingEdit.svelte';
 
   // /shopping — three-view page over a single Item collection:
   //   Plan: status=planned items, grouped by category (the active
@@ -60,17 +57,13 @@
   });
   const saving = $derived(actionsCtl.saving);
 
-  // Per-row edit state. When the user clicks "edit" on a row we
-  // populate these buffers; saving commits a PATCH, cancel discards.
-  let editingId = $state<string | null>(null);
-  let eName = $state('');
-  let eCategory = $state('');
-  let ePrice = $state<number | ''>('');
-  let eQuantity = $state<number | ''>('');
-  let eUrl = $state('');
-  let eStandard = $state(false);
-  let eCadence = $state<Cadence>('');
-  let eNotes = $state('');
+  // Per-row inline edit. When the user clicks "edit" on a row the
+  // controller seeds its 9-field buffer; commitEdit() PATCHes, cancel
+  // discards.
+  const editCtl = createShoppingEdit({
+    data: dataCtl,
+    onError: (m) => toast.error(m)
+  });
 
   // ----- Sync -----
 
@@ -90,49 +83,6 @@
       window.removeEventListener('focus', onVisible);
     };
   });
-
-  // ----- Inline edit -----
-
-  function startEdit(it: ShoppingItem) {
-    editingId = it.id;
-    eName = it.name;
-    eCategory = it.category ?? '';
-    ePrice = it.price ?? '';
-    eQuantity = it.quantity ?? '';
-    eUrl = it.url ?? '';
-    eStandard = !!it.standard;
-    // Server may return any string but the picker only honours
-    // canonical values; everything else round-trips as "no schedule"
-    // via NormalizeCadence on save.
-    eCadence = normalizeCadence(it.cadence);
-    eNotes = it.notes ?? '';
-  }
-  function cancelEdit() {
-    editingId = null;
-  }
-  async function commitEdit() {
-    if (!editingId) return;
-    try {
-      const updated = await api.patchShoppingItem(editingId, {
-        name: eName.trim(),
-        category: eCategory.trim() || undefined,
-        price: typeof ePrice === 'number' ? ePrice : undefined,
-        quantity: typeof eQuantity === 'number' ? eQuantity : undefined,
-        url: eUrl.trim() || undefined,
-        standard: eStandard,
-        // Cadence only meaningful when standard=true; we still send
-        // it on non-standard items so a later "mark standard" picks
-        // up an existing user intent without re-asking.
-        cadence: eCadence,
-        notes: eNotes.trim() || undefined
-      });
-      dataCtl.items = dataCtl.items.map((x) => (x.id === updated.id ? updated : x));
-      editingId = null;
-      await dataCtl.refreshTotals();
-    } catch (e) {
-      toast.error('save failed: ' + (errorMessage(e)));
-    }
-  }
 
 </script>
 
@@ -330,7 +280,7 @@
             <ul class="space-y-1.5">
               {#each g.items as it (it.id)}
                 {@const total = lineTotal(it)}
-                {@const editing = editingId === it.id}
+                {@const editing = editCtl.isEditing(it)}
                 <li class="bg-surface0 border border-surface1 rounded p-3">
                   {#if editing}
                     <!-- Edit form: same mobile-first grid as quick-add.
@@ -340,13 +290,13 @@
                     <div class="space-y-2">
                       <div class="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-stretch">
                         <input
-                          bind:value={eName}
+                          bind:value={editCtl.eName}
                           required
                           placeholder="name"
                           class="col-span-3 sm:flex-1 sm:min-w-[12rem] px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm text-text"
                         />
                         <input
-                          bind:value={eCategory}
+                          bind:value={editCtl.eCategory}
                           list="cat-suggestions"
                           placeholder="category"
                           class="col-span-3 sm:col-auto sm:w-32 px-2 py-1.5 bg-mantle border border-surface1 rounded text-sm text-text"
@@ -356,7 +306,7 @@
                         </datalist>
                         <input
                           type="number"
-                          bind:value={ePrice}
+                          bind:value={editCtl.ePrice}
                           step="0.01"
                           min="0"
                           placeholder="€"
@@ -364,7 +314,7 @@
                         />
                         <input
                           type="number"
-                          bind:value={eQuantity}
+                          bind:value={editCtl.eQuantity}
                           step="1"
                           min="1"
                           placeholder="qty"
@@ -372,13 +322,13 @@
                         />
                       </div>
                       <input
-                        bind:value={eUrl}
+                        bind:value={editCtl.eUrl}
                         type="url"
                         placeholder="product link (optional)"
                         class="w-full px-2 py-1.5 bg-mantle border border-surface1 rounded text-xs text-text font-mono"
                       />
                       <textarea
-                        bind:value={eNotes}
+                        bind:value={editCtl.eNotes}
                         rows="2"
                         placeholder="notes (optional)"
                         class="w-full px-2 py-1.5 bg-mantle border border-surface1 rounded text-xs text-text"
@@ -389,38 +339,38 @@
                            already in place. Hidden when neither
                            standard nor an existing cadence is set so
                            the form stays compact for simple items. -->
-                      {#if eStandard || eCadence}
+                      {#if editCtl.eStandard || editCtl.eCadence}
                         <div class="flex items-center gap-2 flex-wrap">
                           <label class="text-xs text-dim flex items-center gap-1.5 flex-shrink-0">
                             recurs
                             <select
-                              bind:value={eCadence}
+                              bind:value={editCtl.eCadence}
                               class="px-2 py-1 bg-mantle border border-surface1 rounded text-xs text-text"
                             >
                               {#each CADENCE_OPTIONS as o}<option value={o.value}>{o.label}</option>{/each}
                             </select>
                           </label>
-                          {#if eStandard && eCadence && typeof ePrice === 'number' && ePrice > 0}
-                            {@const qty = typeof eQuantity === 'number' && eQuantity > 0 ? eQuantity : 1}
-                            {@const monthly = ePrice * qty * cadenceMonthlyFactor(eCadence)}
+                          {#if editCtl.eStandard && editCtl.eCadence && typeof editCtl.ePrice === 'number' && editCtl.ePrice > 0}
+                            {@const qty = typeof editCtl.eQuantity === 'number' && editCtl.eQuantity > 0 ? editCtl.eQuantity : 1}
+                            {@const monthly = editCtl.ePrice * qty * cadenceMonthlyFactor(editCtl.eCadence)}
                             <span class="text-[11px] text-secondary">≈ {fmtMoney(monthly)}/month</span>
                           {/if}
                         </div>
                       {/if}
                       <div class="flex items-center gap-3 flex-wrap">
                         <label class="flex items-center gap-1.5 text-xs text-dim cursor-pointer">
-                          <input type="checkbox" bind:checked={eStandard} class="accent-primary" />
+                          <input type="checkbox" bind:checked={editCtl.eStandard} class="accent-primary" />
                           standard
                         </label>
                         <span class="flex-1"></span>
                         <button
                           type="button"
-                          onclick={cancelEdit}
+                          onclick={editCtl.cancelEdit}
                           class="px-3 py-1.5 text-sm text-subtext hover:text-text"
                         >cancel</button>
                         <button
                           type="button"
-                          onclick={commitEdit}
+                          onclick={editCtl.commitEdit}
                           class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium"
                         >save</button>
                       </div>
@@ -487,7 +437,7 @@
                         >{it.standard ? '★' : '☆'}</button>
                         <button
                           type="button"
-                          onclick={() => startEdit(it)}
+                          onclick={() => editCtl.startEdit(it)}
                           aria-label="edit"
                           title="edit"
                           class="w-8 h-8 flex items-center justify-center rounded text-dim hover:text-text hover:bg-surface1"
