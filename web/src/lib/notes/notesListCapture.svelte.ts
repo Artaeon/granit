@@ -21,6 +21,7 @@ import { goto } from '$app/navigation';
 import { api, type Note } from '$lib/api';
 import { toast } from '$lib/components/toast';
 import { rafThrottle } from '$lib/util/streamThrottle';
+import { isAbortError } from '$lib/util/aiErrors';
 
 export type CaptureMode = 'capture' | 'staging' | 'manual';
 
@@ -234,6 +235,10 @@ export function createNotesListCapture(
           },
           onError: (err) => {
             throttle.flush();
+            // AbortError = user clicked Cancel on the capture stream.
+            // Don't toast + don't force-flip to manual; the dismiss
+            // path owns the wipe.
+            if (isAbortError(err)) return;
             toast.error('AI failed: ' + err.message + ' — switching to manual.');
             const first = text.split(/\n/)[0]?.trim() ?? '';
             createTitle = first.slice(0, 80);
