@@ -25,7 +25,7 @@
   import { createNoteLinkSuggester } from '$lib/notes/noteLinkSuggester.svelte';
   import { saveFrontmatter as saveFrontmatterFn } from '$lib/notes/saveFrontmatter';
   import { saveNote as saveNoteFn } from '$lib/notes/saveNote';
-  import { loadNote as loadNoteFn } from '$lib/notes/loadNote';
+  import { createLoadNoteWrapper } from '$lib/notes/loadNoteWrapper.svelte';
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
   import { createViewportBreakpoints } from '$lib/notes/viewportBreakpoints.svelte';
   import { createPreviewBodyMirror } from '$lib/notes/previewBodyMirror.svelte';
@@ -190,29 +190,26 @@
   let pinBusy = $derived(pinAction.pinBusy);
   const togglePin = pinAction.togglePin;
 
+  let draftRestored = $derived(pipe.draftRestored);
+
+  // Route-side adapter around loadNote — closes over the editor +
+  // drawer state + breadcrumbs + URL accessors. See loadNoteWrapper
+  // for the deps wiring; loadNote.ts owns the actual draft +
+  // 404 + scroll-restore contract.
+  const load = createLoadNoteWrapper({
+    pipe,
+    overlays,
+    breadcrumbs,
+    getEditor: () => editor,
+    getLineParam: () => $page.url.searchParams.get('line'),
+    getRawHash: () => $page.url.hash ? decodeURIComponent($page.url.hash.slice(1)) : '',
+    save: (o) => save(o)
+  });
+
   $effect(() => {
     const path = $page.params.path;
     if (path) load(decodeURIComponent(path));
   });
-
-  let draftRestored = $derived(pipe.draftRestored);
-
-  // Load now lives in $lib/notes/loadNote — see there for the
-  // draft-reconciliation contract, the "always prefer the draft"
-  // rule on divergence, and the 404 / network-error fallbacks.
-  async function load(p: string, opts: { force?: boolean } = {}) {
-    return loadNoteFn(p, opts, pipe, {
-      getLiveBody: () => editor?.getContent?.() ?? pipe.body,
-      getEditorView: () => editor?.getView?.(),
-      scrollToLine: (n) => editor?.scrollToLine?.(n),
-      setScrollTop: (top) => editor?.setScrollTop?.(top),
-      closeDrawers: () => { overlays.treeDrawerOpen = false; overlays.infoDrawerOpen = false; },
-      setBreadcrumbExpanded: (v) => { if (v) breadcrumbs.expand(); else breadcrumbs.reset(); },
-      getLineParam: () => $page.url.searchParams.get('line'),
-      getRawHash: () => $page.url.hash ? decodeURIComponent($page.url.hash.slice(1)) : '',
-      save: (o) => save(o)
-    });
-  }
 
   // "Create note" action for the not-found state + the derived
   // header title. Lives in createMissingNote — owns the busy gate,
