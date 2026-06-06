@@ -31,6 +31,7 @@
   import TasksShortcutsOverlay from '$lib/tasks/TasksShortcutsOverlay.svelte';
   import TasksCardList from '$lib/tasks/TasksCardList.svelte';
   import TasksQuickAddBar from '$lib/tasks/TasksQuickAddBar.svelte';
+  import TasksSwipeHint from '$lib/tasks/TasksSwipeHint.svelte';
   import TasksEmptyStates from '$lib/tasks/TasksEmptyStates.svelte';
   import TasksPresetsBar from '$lib/tasks/TasksPresetsBar.svelte';
   import TasksActiveFilterChips from '$lib/tasks/TasksActiveFilterChips.svelte';
@@ -201,44 +202,11 @@
   let detailTask = $state<Task | null>(null);
   let detailOpen = $state(false);
 
-  // Swipe-hint dismissal. The first time a touch-device user lands
-  // on the list view, show a small "‹ swipe ›" banner above the first
-  // card so they know snooze (left) / done (right) gestures exist.
-  // Dismiss on tap or after 8 seconds — pick the simpler path rather
-  // than wiring "swipe detected" back from TaskCard. Once dismissed,
-  // localStorage holds the flag so the hint never reappears.
-  const SWIPE_HINT_KEY = 'granit.tasks.swipe-hint-dismissed';
-  let swipeHintDismissed = $state(
-    typeof window !== 'undefined' && window.localStorage.getItem(SWIPE_HINT_KEY) === '1'
-  );
-  // Only show on touch devices. The matchMedia probe is best-effort —
-  // if the API isn't available (very old browser) we err on the side
-  // of NOT showing the hint, which is the conservative path.
-  let isTouchDevice = $state(false);
-  onMount(() => {
-    try {
-      isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-    } catch {
-      isTouchDevice = false;
-    }
-    // Auto-dismiss after 8 seconds — the hint is meant as a one-time
-    // nudge, not a permanent fixture. Saves a write to localStorage so
-    // the dismissal sticks across the next refresh too.
-    if (!swipeHintDismissed && isTouchDevice) {
-      const handle = setTimeout(() => dismissSwipeHint(), 8000);
-      return () => clearTimeout(handle);
-    }
-  });
-  function dismissSwipeHint() {
-    swipeHintDismissed = true;
-    try { window.localStorage.setItem(SWIPE_HINT_KEY, '1'); } catch {}
-  }
-  // The `showSwipeHint` derived value reads `filterCtl.filtered`, which is
-  // declared later in the file (the page's main filter pipeline).
-  // Hoisting THAT declaration up is invasive; we instead lazy-evaluate
-  // the gate by declaring `showSwipeHint` after `filterCtl.filtered` near the
-  // bottom of the script. See the matching $derived below the
-  // `filterCtl.filtered` derivation.
+  // Swipe-hint banner + dismissal lives in $lib/tasks/TasksSwipeHint —
+  // owns its own localStorage flag + touch-device probe + 8-second
+  // auto-dismiss timer. The parent decides `applicable` (list view
+  // with at least one card visible) at the render site.
+
   // Context menu state — driven by TaskCard's onContextMenu hook.
   // The menu mounts at the click position with {ctxTask, ctxX, ctxY}.
   let ctxTask = $state<Task | null>(null);
@@ -451,10 +419,12 @@
   // The `filterCtl.filtered` derivation lives in $lib/tasks/tasksFilterState —
   // read it via filterCtl.filtered everywhere below.
 
-  // Swipe-hint visibility. State (dismissed flag + touch probe) lives
-  // near the top of the script with the other UI state.
-  let showSwipeHint = $derived(
-    isTouchDevice && !swipeHintDismissed && viewCtl.view === 'list' && filterCtl.filtered.length > 0
+  // Swipe-hint applicability — the parent's local share. The
+  // component owns the dismissed/touch-device flags + visibility
+  // derive; this is the "is the surrounding view one where swipe
+  // gestures even apply?" gate.
+  let swipeHintApplicable = $derived(
+    viewCtl.view === 'list' && filterCtl.filtered.length > 0
   );
 
   // viewCtl.weekColumns moved into $lib/tasks/tasksViewState — read via
@@ -795,21 +765,7 @@
              on the loudest two. Collapse state per section persists.
              SectionList owns rendering; this page owns the data + the
              callbacks. -->
-        {#if showSwipeHint}
-          <button
-            type="button"
-            onclick={dismissSwipeHint}
-            class="w-full max-w-3xl text-center text-[11px] text-dim bg-surface0 border border-surface1 rounded py-2 px-3 flex items-center justify-center gap-2 active:bg-surface1 mb-3"
-            aria-label="Dismiss swipe hint"
-          >
-            <span class="text-warning" aria-hidden="true">‹</span>
-            <span>swipe left to snooze</span>
-            <span class="text-dim">·</span>
-            <span>swipe right for done</span>
-            <span class="text-success" aria-hidden="true">›</span>
-            <span class="text-dim ml-1">(tap to dismiss)</span>
-          </button>
-        {/if}
+        <TasksSwipeHint applicable={swipeHintApplicable} />
         <SectionList
           groups={viewCtl.listGroups}
           filtered={filterCtl.filtered}
