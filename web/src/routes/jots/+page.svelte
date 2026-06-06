@@ -4,7 +4,6 @@
   import { auth } from '$lib/stores/auth';
   import { api, fmtDateISO, type Note } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
-  import { rafThrottle } from '$lib/util/streamThrottle';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import { toast } from '$lib/components/toast';
@@ -18,6 +17,7 @@
   import { createJotsFeedData } from '$lib/jots/jotsFeedData.svelte';
   import { createJotsFilters } from '$lib/jots/jotsFilters.svelte';
   import { createJotsAI } from '$lib/jots/jotsAI.svelte';
+  import { createJotsComposer } from '$lib/jots/jotsComposer.svelte';
 
   // Amplenote-style infinite-scroll feed of every daily note. The page
   // talks to /api/v1/jots which paginates server-side — fetching N
@@ -180,146 +180,14 @@
   }
 
   // Quick-jot composer — Amplenote-style "fire a thought into today"
-  // without leaving the feed. Appends a timestamped line under a
-  // `## Jots` section in today's daily, creating the section on first
-  // use. The WS note.changed event then re-fetches today's jot in
-  // the feed automatically.
-  let composerText = $state('');
-  let composerBusy = $state(false);
-  let composerEl = $state<HTMLTextAreaElement | undefined>();
-
-  function appendUnderJotsSection(body: string, line: string): string {
-    // Find the `## Jots` heading; if present, splice the line in just
-    // below it (after any existing list items the user has there). If
-    // missing, append the section to the end of the document.
-    const lines = body.split('\n');
-    const idx = lines.findIndex((l) => /^##\s+Jots\b/i.test(l.trim()));
-    if (idx === -1) {
-      const sep = body.endsWith('\n') ? '' : '\n';
-      return body + `${sep}\n## Jots\n${line}\n`;
-    }
-    // Walk past the heading to the end of the section (next `## ` or EOF).
-    let end = lines.length;
-    for (let i = idx + 1; i < lines.length; i++) {
-      if (/^##\s+/.test(lines[i].trim())) {
-        end = i;
-        break;
-      }
-    }
-    // Insert before `end`, trimming trailing empty lines so the new
-    // line sits flush with the section content.
-    let insertAt = end;
-    while (insertAt > idx + 1 && lines[insertAt - 1].trim() === '') insertAt--;
-    lines.splice(insertAt, 0, line);
-    return lines.join('\n');
-  }
-
-  // ── composer AI-expand ──────────────────────────────────────────
-  // Toggle next to the Add button. When ON, hitting Enter doesn't
-  // save directly — it routes through the AI to expand a terse note
-  // into a fuller entry, with a streaming preview + Keep/Discard
-  // before commitment. Persisted to localStorage so the user's
-  // preference survives reloads.
-  const EXPAND_KEY = 'granit.jots.composerExpand';
-  let composerExpand = $state<boolean>(
-    typeof window !== 'undefined' && window.localStorage.getItem(EXPAND_KEY) === '1'
-  );
-  let expanding = $state(false);
-  let expandedText = $state('');
-  let expandAbort: AbortController | null = null;
-  $effect(() => {
-    if (typeof window === 'undefined') return;
-    try { window.localStorage.setItem(EXPAND_KEY, composerExpand ? '1' : '0'); } catch {}
+  // without leaving the feed. The controller appends a timestamped
+  // line under a `## Jots` section in today's daily and schedules a
+  // feed refetch so the new entry shows up immediately.
+  const composerCtl = createJotsComposer({
+    scheduleRefetch: (d) => feed.scheduleRefetch(d),
+    toastSuccess: (m) => toast.success(m),
+    toastError: (m) => toast.error(m)
   });
-
-  async function runExpand() {
-    const raw = composerText.trim();
-    if (!raw || expanding) return;
-    expandAbort?.abort();
-    expandAbort = new AbortController();
-    expanding = true;
-    expandedText = '';
-    const system =
-      'You expand a user\'s terse journal note into a richer entry suitable for a daily ' +
-      'log. Preserve every fact and feeling the user wrote — don\'t invent details or ' +
-      'embellish. Add gentle scaffolding: link related ideas the user mentioned, expand ' +
-      'shorthand, write in the user\'s voice. Return the expanded entry as markdown. ' +
-      'Aim for 2-4 short paragraphs or a bullet list, depending on what fits. No preamble.';
-    const user = 'Terse note:\n```\n' + raw + '\n```';
-    try {
-      const t = rafThrottle((full) => { expandedText = full; });
-      await api.chatStream(
-        [{ role: 'system', content: system }, { role: 'user', content: user }],
-        undefined,
-        {
-          onChunk: t.onChunk,
-          onDone: () => { t.flush(); },
-          onError: (err) => { t.flush(); toast.error('expand failed: ' + err.message); expandedText = ''; }
-        },
-        expandAbort.signal
-      );
-    } finally {
-      expanding = false;
-      expandAbort = null;
-    }
-  }
-
-  function discardExpand() {
-    expandAbort?.abort();
-    expandAbort = null;
-    expanding = false;
-    expandedText = '';
-    composerEl?.focus();
-  }
-
-  async function keepExpand() {
-    if (!expandedText.trim()) return;
-    // Replace the raw composer text with the expanded version and
-    // commit through the normal submit path. Saves us from duplicating
-    // the appendUnderJotsSection / putNote / WS-refetch logic.
-    composerText = expandedText.trim();
-    expandedText = '';
-    await submitJot({ skipExpand: true });
-  }
-
-  async function submitJot(opts: { skipExpand?: boolean } = {}) {
-    const text = composerText.trim();
-    if (!text || composerBusy) return;
-    // If expand is on and we haven't yet expanded this draft, kick off
-    // the AI and STOP — the user gets a preview to review before any
-    // save hits the daily note.
-    if (composerExpand && !opts.skipExpand) {
-      runExpand();
-      return;
-    }
-    composerBusy = true;
-    try {
-      const note = await api.daily('today');
-      const t = new Date();
-      const hh = String(t.getHours()).padStart(2, '0');
-      const mm = String(t.getMinutes()).padStart(2, '0');
-      // Multi-line input collapses to "; " separators so the appended
-      // line stays a single bullet. Original line breaks are preserved
-      // by markdown viewers since the line ends with a bullet.
-      const flat = text.replace(/\n+/g, '; ');
-      const newBody = appendUnderJotsSection(note.body ?? '', `- ${hh}:${mm} — ${flat}`);
-      await api.putNote(note.path, {
-        frontmatter: note.frontmatter ?? undefined,
-        body: newBody
-      });
-      composerText = '';
-      toast.success('jot saved');
-      // WS will re-fetch; queue an immediate optimistic refetch too in
-      // case the WS round-trip lags.
-      const today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
-      feed.scheduleRefetch(today);
-      composerEl?.focus();
-    } catch (e) {
-      toast.error('failed to add jot: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      composerBusy = false;
-    }
-  }
 
   // ── keyboard shortcuts ────────────────────────────────────────────
   // Amplenote-style single-key navigation. Active only when no input
@@ -380,7 +248,7 @@
         return;
       case 'c':
         e.preventDefault();
-        composerEl?.focus();
+        composerCtl.focusComposer();
         return;
       case 'j':
         e.preventDefault();
@@ -517,17 +385,17 @@
     </JotsToolbar>
 
     <JotsComposer
-      bind:text={composerText}
-      bind:composerEl
-      busy={composerBusy}
-      expand={composerExpand}
-      expanding={expanding}
-      expandedText={expandedText}
-      onSubmit={() => submitJot()}
-      onToggleExpand={() => (composerExpand = !composerExpand)}
-      onDiscardExpand={discardExpand}
-      onKeepExpand={keepExpand}
-      onRunExpand={runExpand}
+      bind:text={composerCtl.text}
+      bind:composerEl={composerCtl.composerEl}
+      busy={composerCtl.busy}
+      expand={composerCtl.expand}
+      expanding={composerCtl.expanding}
+      expandedText={composerCtl.expandedText}
+      onSubmit={() => composerCtl.submit()}
+      onToggleExpand={() => (composerCtl.expand = !composerCtl.expand)}
+      onDiscardExpand={composerCtl.discardExpand}
+      onKeepExpand={composerCtl.keepExpand}
+      onRunExpand={composerCtl.runExpand}
       onWikilink={handleWikilink}
     />
 
