@@ -57,6 +57,7 @@
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
   import { createNotePinAction } from '$lib/notes/notePinAction.svelte';
   import { createEditorCallbacks } from '$lib/notes/editorCallbacks.svelte';
+  import { createNoteEditorOverlays } from '$lib/notes/noteEditorOverlays.svelte';
 
   // viewMode + focusMode + readingMode now live in a single
   // controller. See $lib/notes/viewModes for the contract; the
@@ -145,7 +146,7 @@
   // the overflow menu.
   const flashcards = createFlashcardsAction({
     getBody: () => body,
-    closeOverflow: () => { overflowOpen = false; }
+    closeOverflow: () => { overlays.overflowOpen = false; }
   });
   let schedulingFlashcards = $derived(flashcards.schedulingFlashcards);
 
@@ -202,14 +203,12 @@
   // pixels survive reflow because we restore on the same note (same
   // width, same font) only.
 
-  let treeDrawerOpen = $state(false);
-  let infoDrawerOpen = $state(false);
-  // Margin-note count for the active note. Surfaced via the
-  // section header badge so the user sees at a glance how many
-  // annotations the current note carries without scrolling. The
-  // AnnotationsPanel owns the load + WS refresh; we receive
-  // updates via its onCountChange prop.
-  let annotationCount = $state(0);
+  // Overlay / drawer / annotation-count cluster lives in
+  // noteEditorOverlays — eight one-line slots previously declared
+  // independently at the top of the route, now exposed via a single
+  // controller. Template binds use `bind:open={overlays.X}`;
+  // imperative opens use `overlays.X = true`.
+  const overlays = createNoteEditorOverlays();
 
   // Pin / unpin lives in notePinAction — the controller subscribes
   // to the shared pinnedNotes store + owns the busy flag. The page
@@ -235,7 +234,7 @@
       getEditorView: () => editor?.getView?.(),
       scrollToLine: (n) => editor?.scrollToLine?.(n),
       setScrollTop: (top) => editor?.setScrollTop?.(top),
-      closeDrawers: () => { treeDrawerOpen = false; infoDrawerOpen = false; },
+      closeDrawers: () => { overlays.treeDrawerOpen = false; overlays.infoDrawerOpen = false; },
       setBreadcrumbExpanded: (v) => { breadcrumbExpanded = v; },
       getLineParam: () => $page.url.searchParams.get('line'),
       getRawHash: () => $page.url.hash ? decodeURIComponent($page.url.hash.slice(1)) : '',
@@ -346,32 +345,15 @@
     save: (o) => save(o)
   });
 
-  let printOpen = $state(false);
-  let historyOpen = $state(false);
-  let helpOpen = $state(false);
-
   // Snapshot-count fetcher lives in noteVersionCount — refreshes on
   // note swap and every save (modTime tick), with a generation guard
   // so stale fetches can't write into the current note's chip.
   const versionCountCtl = createNoteVersionCount({ getNote: () => note });
   let versionCount = $derived(versionCountCtl.versionCount);
-  // Audio mode — read-aloud player for the current note. Browser
-  // SpeechSynthesis only, no backend. Closed by default; opens via
-  // the toolbar button.
-  let audioOpen = $state(false);
-  // Slideshow / presentation mode — fullscreen deck view of the
-  // note, split on H2 boundaries. Closed by default; opens via the
-  // toolbar button or Mod-Shift-P.
-  let presentationOpen = $state(false);
-
-  // Overflow menu — collapses the secondary header actions (find,
-  // history, PDF, slideshow, audio, reading, focus, flashcards,
-  // help) behind a single ⋯ trigger. State + positioning + click-
-  // outside / Esc / resize wiring live inside <NoteOverflowMenu>.
-  // We keep `overflowOpen` and the trigger ref here so the header
-  // button still toggles the menu and flashcards.run() can close it
-  // before the long-running async job.
-  let overflowOpen = $state(false);
+  // Overflow trigger ref — the menu needs the button's DOMRect to
+  // compute its viewport-clamped position. Lives here (not in the
+  // overlays controller) because it's bound via `bind:overflowTriggerEl`
+  // on the NoteHeader and the parent has to own the lvalue.
   let overflowTriggerEl: HTMLButtonElement | undefined = $state();
 
   // ── Editor extra extensions ─────────────────────────────────────
@@ -456,14 +438,14 @@
       hasNote: () => note !== null,
       shiftDate,
       gotoDaily,
-      openHelp: () => { helpOpen = true; },
-      openPresentation: () => { presentationOpen = true; }
+      openHelp: () => { overlays.helpOpen = true; },
+      openPresentation: () => { overlays.presentationOpen = true; }
     })
   );
 
   function jumpToLine(lineNum: number) {
     editor?.scrollToLine(lineNum);
-    infoDrawerOpen = false;
+    overlays.infoDrawerOpen = false;
   }
 
   // Research Mode — see $lib/notes/researchMode for the AI overlay
@@ -533,7 +515,7 @@
 
 {#snippet treeContent()}
   <div class="px-2 pt-2 pb-1 text-xs uppercase tracking-wider text-dim flex-shrink-0">Vault</div>
-  <NotesTree currentPath={note?.path} onSelect={() => (treeDrawerOpen = false)} />
+  <NotesTree currentPath={note?.path} onSelect={() => (overlays.treeDrawerOpen = false)} />
 {/snippet}
 
 {#snippet infoContent()}
@@ -548,7 +530,7 @@
     {previewContainer}
     {visitedHeadings}
     {cursorLine}
-    bind:annotationCount
+    bind:annotationCount={overlays.annotationCount}
     {existingTagList}
     onJumpToLine={jumpToLine}
     onNavigateWikilink={navigateWikilink}
@@ -570,7 +552,7 @@
       {@render treeContent()}
     </aside>
   {:else}
-    <Drawer bind:open={treeDrawerOpen} side="left" responsive width="w-72 sm:w-80">
+    <Drawer bind:open={overlays.treeDrawerOpen} side="left" responsive width="w-72 sm:w-80">
       <div class="h-full flex flex-col">
         {@render treeContent()}
       </div>
@@ -591,7 +573,7 @@
       rawPath={decodeURIComponent($page.params.path ?? '')}
       {creatingNote}
       onCreate={createMissingNote}
-      onOpenTreeDrawer={() => (treeDrawerOpen = true)}
+      onOpenTreeDrawer={() => (overlays.treeDrawerOpen = true)}
       onRetry={() => { pipe.lastLoadedPath = ''; load(decodeURIComponent($page.params.path ?? '')); }}
     />
     {#if note}
@@ -619,10 +601,10 @@
         {dirty}
         {saveFailed}
         {saveFlash}
-        {overflowOpen}
+        overflowOpen={overlays.overflowOpen}
         bind:overflowTriggerEl
-        onOpenTreeDrawer={() => (treeDrawerOpen = true)}
-        onOpenInfoDrawer={() => (infoDrawerOpen = true)}
+        onOpenTreeDrawer={() => (overlays.treeDrawerOpen = true)}
+        onOpenInfoDrawer={() => (overlays.infoDrawerOpen = true)}
         onExpandBreadcrumbs={() => (breadcrumbExpanded = true)}
         onSetViewMode={viewModes.setViewMode}
         onTogglePin={togglePin}
@@ -630,10 +612,10 @@
         onShiftDate={shiftDate}
         onDispatchAI={() => editor?.dispatchChord('Mod-/')}
         onOpenResearchMode={openResearchMode}
-        onToggleOverflow={() => (overflowOpen = !overflowOpen)}
+        onToggleOverflow={() => (overlays.overflowOpen = !overlays.overflowOpen)}
         onSave={() => save()}
         {versionCount}
-        onOpenHistory={() => (historyOpen = true)}
+        onOpenHistory={() => (overlays.historyOpen = true)}
       />
       {#if isDaily && note}
         {@const np = note.path}
@@ -650,11 +632,11 @@
            the natural place to find a transport bar. The player
            cleans up on unmount, so flipping the toggle off stops
            any in-flight reading. -->
-      {#if audioOpen}
+      {#if overlays.audioOpen}
         <NoteAudioPlayer
           body={bodyForPreview}
           title={note.title || note.path}
-          onClose={() => (audioOpen = false)}
+          onClose={() => (overlays.audioOpen = false)}
         />
       {/if}
       <!-- Deadline strip — surfaces project/goal-linked deadlines for
@@ -769,7 +751,7 @@
       {@render infoContent()}
     </aside>
   {:else}
-    <Drawer bind:open={infoDrawerOpen} side="right" responsive width="w-80 sm:w-96">
+    <Drawer bind:open={overlays.infoDrawerOpen} side="right" responsive width="w-80 sm:w-96">
       {@render infoContent()}
     </Drawer>
   {/if}
@@ -791,11 +773,11 @@
      reliably hides everything else. -->
 {#if note}
   <PrintPreview
-    bind:open={printOpen}
+    bind:open={overlays.printOpen}
     title={note.title || note.path}
     body={bodyForPreview}
     sourcePath={note.path}
-    onClose={() => (printOpen = false)}
+    onClose={() => (overlays.printOpen = false)}
   />
 {/if}
 
@@ -806,7 +788,7 @@
      pre-restore content was itself snapshotted server-side). -->
 {#if note}
   <HistoryPanel
-    bind:open={historyOpen}
+    bind:open={overlays.historyOpen}
     notePath={note.path}
     currentBody={bodyForPreview}
     onRestore={(restoredBody: string) => {
@@ -819,8 +801,8 @@
 <!-- Keyboard cheat sheet. Triggered by "?" anywhere outside an
      editable surface, or via the toolbar help button. -->
 <ShortcutsHelpOverlay
-  bind:open={helpOpen}
-  onClose={() => (helpOpen = false)}
+  bind:open={overlays.helpOpen}
+  onClose={() => (overlays.helpOpen = false)}
 />
 
 <!-- Slideshow / presentation mode — fullscreen deck view. Mounted
@@ -830,8 +812,8 @@
   <NotePresentation
     body={bodyForPreview}
     title={note.title || note.path}
-    open={presentationOpen}
-    onClose={() => (presentationOpen = false)}
+    open={overlays.presentationOpen}
+    onClose={() => (overlays.presentationOpen = false)}
   />
 {/if}
 
@@ -886,21 +868,21 @@
      since the 2026-05-28 extraction. -->
 {#if note}
   <NoteOverflowMenu
-    bind:open={overflowOpen}
+    bind:open={overlays.overflowOpen}
     triggerEl={overflowTriggerEl}
-    {audioOpen}
+    audioOpen={overlays.audioOpen}
     {readingMode}
     {focusMode}
     {schedulingFlashcards}
     onOpenFind={() => editor?.openFind()}
-    onOpenHistory={() => (historyOpen = true)}
-    onOpenPrint={() => (printOpen = true)}
-    onOpenPresentation={() => (presentationOpen = true)}
-    onToggleAudio={() => (audioOpen = !audioOpen)}
+    onOpenHistory={() => (overlays.historyOpen = true)}
+    onOpenPrint={() => (overlays.printOpen = true)}
+    onOpenPresentation={() => (overlays.presentationOpen = true)}
+    onToggleAudio={() => (overlays.audioOpen = !overlays.audioOpen)}
     onToggleReadingMode={viewModes.toggleReadingMode}
     onToggleFocusMode={viewModes.toggleFocusMode}
     onScheduleFlashcards={flashcards.run}
-    onOpenHelp={() => (helpOpen = true)}
+    onOpenHelp={() => (overlays.helpOpen = true)}
   />
 {/if}
 
