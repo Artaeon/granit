@@ -683,12 +683,12 @@
         <dt class="font-mono text-primary">t</dt><dd class="text-subtext">jump to today</dd>
         <dt class="font-mono text-primary">j / n</dt><dd class="text-subtext">next period</dd>
         <dt class="font-mono text-primary">k / p</dt><dd class="text-subtext">previous period</dd>
-        <dt class="font-mono text-primary">d</dt><dd class="text-subtext">day viewCtl.view</dd>
-        <dt class="font-mono text-primary">w</dt><dd class="text-subtext">week viewCtl.view</dd>
+        <dt class="font-mono text-primary">d</dt><dd class="text-subtext">day view</dd>
+        <dt class="font-mono text-primary">w</dt><dd class="text-subtext">week view</dd>
         <dt class="font-mono text-primary">Shift+W</dt><dd class="text-subtext">workweek (Mon–Fri only)</dd>
-        <dt class="font-mono text-primary">m</dt><dd class="text-subtext">month viewCtl.view</dd>
-        <dt class="font-mono text-primary">y</dt><dd class="text-subtext">year viewCtl.view</dd>
-        <dt class="font-mono text-primary">a</dt><dd class="text-subtext">agenda viewCtl.view (next 30 days)</dd>
+        <dt class="font-mono text-primary">m</dt><dd class="text-subtext">month view</dd>
+        <dt class="font-mono text-primary">y</dt><dd class="text-subtext">year view</dd>
+        <dt class="font-mono text-primary">a</dt><dd class="text-subtext">agenda view (next 30 days)</dd>
         <dt class="font-mono text-primary">f</dt><dd class="text-subtext">find time (open free-slot finder)</dd>
         <dt class="font-mono text-primary">Shift+A</dt><dd class="text-subtext">open AI agent (scoped to visible window + project filter)</dd>
         <dt class="font-mono text-primary">?</dt><dd class="text-subtext">toggle this help</dd>

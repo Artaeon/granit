@@ -595,7 +595,7 @@
 
     {:else if viewCtl.tab === 'goals'}
       <div class="flex justify-between items-center mb-3">
-        <p class="text-xs text-dim">{dataCtl.goals.length} financial dataCtl.goals</p>
+        <p class="text-xs text-dim">{dataCtl.goals.length} financial goals</p>
         <button onclick={() => goalForm.openModal()} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New goal</button>
       </div>
       {#if dataCtl.goals.length === 0}
