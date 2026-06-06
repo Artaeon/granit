@@ -18,6 +18,7 @@
   import { createJotsFilters } from '$lib/jots/jotsFilters.svelte';
   import { createJotsAI } from '$lib/jots/jotsAI.svelte';
   import { createJotsComposer } from '$lib/jots/jotsComposer.svelte';
+  import { installJotsKeyboard } from '$lib/jots/useJotsKeyboard';
 
   // Amplenote-style infinite-scroll feed of every daily note. The page
   // talks to /api/v1/jots which paginates server-side — fetching N
@@ -189,94 +190,6 @@
     toastError: (m) => toast.error(m)
   });
 
-  // ── keyboard shortcuts ────────────────────────────────────────────
-  // Amplenote-style single-key navigation. Active only when no input
-  // has focus (otherwise typing "j" into the composer would scroll
-  // instead of insert). Esc remains active inside inputs as a way out.
-  function isTypingTarget(t: EventTarget | null): boolean {
-    if (!t) return false;
-    const el = t as HTMLElement;
-    const tag = el.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-    return el.isContentEditable;
-  }
-
-  function scrollToJot(idx: number) {
-    if (typeof document === 'undefined') return;
-    const cards = document.querySelectorAll<HTMLElement>('[data-jot-date]');
-    if (!cards.length) return;
-    const clamped = Math.max(0, Math.min(idx, cards.length - 1));
-    currentJotIdx = clamped;
-    // block:start lands the header just under the sticky toolbar; the
-    // browser's smooth scroll handles the rest. Card's data-jot-date
-    // attribute is set in the template above so this lookup stays
-    // independent of class names.
-    cards[clamped].scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  function onShortcutKey(e: KeyboardEvent) {
-    // Esc always honored, even inside inputs — it's the universal "back out".
-    if (e.key === 'Escape') {
-      if (showShortcuts) {
-        showShortcuts = false;
-        e.preventDefault();
-        return;
-      }
-      if (isTypingTarget(e.target)) {
-        (e.target as HTMLElement).blur();
-        return;
-      }
-      if (hasAnyFilter) {
-        clearAllFilters();
-        e.preventDefault();
-      } else if (searchText) {
-        clearSearch();
-        e.preventDefault();
-      }
-      return;
-    }
-    if (isTypingTarget(e.target)) return;
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    switch (e.key) {
-      case '?':
-        e.preventDefault();
-        showShortcuts = !showShortcuts;
-        return;
-      case '/':
-        e.preventDefault();
-        searchEl?.focus();
-        return;
-      case 'c':
-        e.preventDefault();
-        composerCtl.focusComposer();
-        return;
-      case 'j':
-        e.preventDefault();
-        scrollToJot(currentJotIdx + 1);
-        return;
-      case 'k':
-        e.preventDefault();
-        scrollToJot(Math.max(0, currentJotIdx - 1));
-        return;
-      case 'g':
-        e.preventDefault();
-        currentJotIdx = -1;
-        document.getElementById('jots-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      case 'G':
-        e.preventDefault();
-        // End-of-feed: load another page first so the user sees motion
-        // instead of an abrupt stop, then scroll to the bottom of
-        // what's currently rendered.
-        feed.loadMore();
-        document.getElementById('jots-scroll')?.scrollTo({
-          top: document.getElementById('jots-scroll')?.scrollHeight ?? 0,
-          behavior: 'smooth'
-        });
-        return;
-    }
-  }
-
   // ── lifecycle ─────────────────────────────────────────────────────
 
   onMount(() => {
@@ -307,12 +220,24 @@
       feed.scheduleRefetch(m.date);
     });
 
-    window.addEventListener('keydown', onShortcutKey);
+    const offKeys = installJotsKeyboard({
+      getCursorIdx: () => currentJotIdx,
+      setCursorIdx: (i) => { currentJotIdx = i; },
+      isHelpOpen: () => showShortcuts,
+      setHelpOpen: (v) => { showShortcuts = v; },
+      hasAnyFilter: () => filtersCtl.hasAnyFilter,
+      hasSearchText: () => searchText.length > 0,
+      clearAllFilters: () => filtersCtl.clearAllFilters(),
+      clearSearch: () => clearSearch(),
+      focusSearch: () => searchEl?.focus(),
+      focusComposer: () => composerCtl.focusComposer(),
+      loadMore: () => feed.loadMore()
+    });
 
     return () => {
       observer?.disconnect();
       offWs();
-      window.removeEventListener('keydown', onShortcutKey);
+      offKeys();
       feed.dispose();
     };
   });
