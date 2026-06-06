@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, fmtDateISO, type Goal, type Milestone, type Task } from '$lib/api';
+  import { api, fmtDateISO, type Goal, type Milestone } from '$lib/api';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -17,6 +17,7 @@
     type TaskProposal
   } from './goalDetailAITasks.svelte';
   import { createGoalDetailVerses } from './goalDetailVerses.svelte';
+  import { createGoalDetailTasksBurnup } from './goalDetailTasksBurnup.svelte';
 
   // Detail-and-edit drawer for a single goal. Mirrors ProjectDetail's
   // approach: every field commits via PATCH on blur / explicit toggle so
@@ -75,16 +76,11 @@
   // client-side. Same pattern ProjectDetail uses for project tasks.
   // Burn-up bucketed by ISO week so a "W19" tally on the goal lines
   // up with the dashboard TaskVelocityWidget and the project pages.
-  let goalTasks = $state<Task[]>([]);
-  async function loadGoalTasks() {
-    if (!goal) return;
-    try {
-      const r = await api.listTasks({});
-      goalTasks = r.tasks.filter((t) => t.goalId === goal!.id);
-    } catch {
-      goalTasks = [];
-    }
-  }
+  // Linked tasks + 8-week burnup live in goalDetailTasksBurnup. Same
+  // ISO-week scheme as the dashboard so a "W19" tally matches across
+  // surfaces. Parent reads tasksCtl.X.
+  const tasksCtl = createGoalDetailTasksBurnup({ getGoal: () => goal });
+  const loadGoalTasks = tasksCtl.loadGoalTasks;
   // Last goal id we initialised buffers for. Parent swaps the goal
   // prop on list-click without unmounting, so we need to close any
   // open inline editors — titleBuf/descBuf/notesBuf still hold the
@@ -105,54 +101,14 @@
     if (goal) lastGoalId = goal.id;
   });
 
-  const BURNUP_WEEKS = 8;
-  function weekKey(d: Date): string {
-    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    const day = (t.getUTCDay() + 6) % 7;
-    t.setUTCDate(t.getUTCDate() - day + 3);
-    const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
-    const week = 1 + Math.round((t.getTime() - firstThu.getTime()) / (7 * 24 * 60 * 60 * 1000));
-    return `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
-  }
-  function startOfIsoWeek(d: Date): Date {
-    const t = new Date(d);
-    const day = (t.getDay() + 6) % 7;
-    t.setDate(t.getDate() - day);
-    t.setHours(0, 0, 0, 0);
-    return t;
-  }
-  const burnup = $derived.by(() => {
-    const now = new Date();
-    const weekStart = startOfIsoWeek(now);
-    const thisKey = weekKey(now);
-    const order: string[] = [];
-    const labels = new Map<string, string>();
-    for (let i = BURNUP_WEEKS - 1; i >= 0; i--) {
-      const d = new Date(weekStart);
-      d.setDate(d.getDate() - i * 7);
-      const k = weekKey(d);
-      order.push(k);
-      labels.set(k, k === thisKey ? 'Now' : k.split('W')[1]);
-    }
-    const counts = new Map<string, number>();
-    for (const t of goalTasks) {
-      if (!t.done || !t.completedAt) continue;
-      const d = new Date(t.completedAt);
-      if (Number.isNaN(d.getTime())) continue;
-      const k = weekKey(d);
-      if (!order.includes(k)) continue;
-      counts.set(k, (counts.get(k) ?? 0) + 1);
-    }
-    return order.map((k) => ({
-      label: labels.get(k) ?? k,
-      count: counts.get(k) ?? 0,
-      isThisWeek: k === thisKey
-    }));
-  });
-  const burnupMax = $derived(burnup.reduce((m, b) => Math.max(m, b.count), 0));
-  const burnupTotal = $derived(burnup.reduce((s, b) => s + b.count, 0));
-  const openTaskCount = $derived(goalTasks.filter((t) => !t.done).length);
-  const doneTaskCount = $derived(goalTasks.filter((t) => t.done).length);
+  // Local $derived aliases for the template — writes go through
+  // tasksCtl.loadGoalTasks().
+  const goalTasks = $derived(tasksCtl.goalTasks);
+  const burnup = $derived(tasksCtl.burnup);
+  const burnupMax = $derived(tasksCtl.burnupMax);
+  const burnupTotal = $derived(tasksCtl.burnupTotal);
+  const openTaskCount = $derived(tasksCtl.openTaskCount);
+  const doneTaskCount = $derived(tasksCtl.doneTaskCount);
 
   // ── AI-suggested milestones ──────────────────────────────────────
   // Fires /chat with the goal's context (title, description,
