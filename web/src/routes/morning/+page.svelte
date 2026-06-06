@@ -26,10 +26,10 @@
   import { createMorningPicks } from '$lib/morning/morningPicks.svelte';
   import { createMorningData } from '$lib/morning/morningData.svelte';
   import { createMorningBriefing } from '$lib/morning/morningBriefing.svelte';
+  import { createMorningFocus } from '$lib/morning/morningFocus.svelte';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
-  import { classifyAiError } from '$lib/util/aiErrors';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
   import { loadStored, saveStored } from '$lib/util/storage';
 
@@ -58,9 +58,11 @@
   // ─── Form state ───────────────────────────────────────────────────
   const scriptureCtl = createMorningScripture();
 
-  let winSentence = $state('');
-  let goal = $state('');
-  let linkedGoalId = $state<string>('');
+  const focusCtl = createMorningFocus({
+    todayISO: today,
+    getSortedTasks: () => sortedTasks,
+    chat: (m) => api.chat(m)
+  });
   const picksCtl = createMorningPicks({
     appendKnownHabit: (h) => dataCtl.appendKnownHabit(h),
     prependActiveIntention: (p) => dataCtl.prependActiveIntention(p),
@@ -69,8 +71,6 @@
   let thoughts = $state('');
 
   let saving = $state(false);
-  let suggesting = $state(false);
-  let suggestion = $state('');
   // Local save-path error. Load errors live on dataCtl.error and are
   // merged into the banner via the `error` derived below.
   let saveError = $state('');
@@ -113,9 +113,9 @@
       scriptureSource: scriptureCtl.scripture.source,
       customScripture: scriptureCtl.customScripture,
       customSource: scriptureCtl.customSource,
-      winSentence,
-      goal,
-      linkedGoalId,
+      winSentence: focusCtl.winSentence,
+      goal: focusCtl.goal,
+      linkedGoalId: focusCtl.linkedGoalId,
       pickedTasks: [...picksCtl.pickedTasks],
       pickedHabits: [...picksCtl.pickedHabits],
       pickedIntentions: [...picksCtl.pickedIntentions],
@@ -132,9 +132,11 @@
       customScripture: s.customScripture,
       customSource: s.customSource
     });
-    winSentence = s.winSentence ?? '';
-    goal = s.goal ?? '';
-    linkedGoalId = s.linkedGoalId ?? '';
+    focusCtl.restore({
+      winSentence: s.winSentence,
+      goal: s.goal,
+      linkedGoalId: s.linkedGoalId
+    });
     picksCtl.restore({
       pickedTasks: s.pickedTasks,
       pickedHabits: s.pickedHabits,
@@ -147,7 +149,7 @@
   function clearPersisted() { saveStored<Snapshot>(STORAGE_KEY, undefined); }
   $effect(() => {
     void scriptureCtl.scripture; void scriptureCtl.customScripture; void scriptureCtl.customSource;
-    void winSentence; void goal; void linkedGoalId;
+    void focusCtl.winSentence; void focusCtl.goal; void focusCtl.linkedGoalId;
     void picksCtl.pickedTasks; void picksCtl.pickedHabits; void picksCtl.pickedIntentions;
     void thoughts; void picksCtl.newHabit;
     persist();
@@ -244,14 +246,6 @@
   });
 
   // ─── Actions ──────────────────────────────────────────────────────
-  function focusContext(): string {
-    return sortedTasks.slice(0, 12).map((t) => {
-      const p = t.priority > 0 ? `P${t.priority} ` : '';
-      const due = t.dueDate ? ` (due ${t.dueDate})` : '';
-      return `- ${p}${t.text}${due}`;
-    }).join('\n');
-  }
-
   // Morning stat row — quick at-a-glance numbers the user sees
   // before they decide what to plan. Derived from the same data
   // arrays the rest of the page reads.
@@ -271,43 +265,12 @@
       deadlinesThisWeek: upcomingNear.length
     };
   });
-  async function suggestFocus() {
-    suggesting = true;
-    suggestion = '';
-    try {
-      const ctx = focusContext();
-      const userMsg = ctx
-        ? `It's ${today}. My open tasks (top by priority + due date):\n\n${ctx}\n\nIf I only got ONE thing done today, what should it be? Reply with a single, action-oriented sentence (8–14 words). No preamble, no list, no quotes — just the sentence. Pick something concrete from the tasks above or, if nothing fits, propose a focused outcome.`
-        : `It's ${today}. I haven't logged any open tasks. Suggest one focused outcome for today as a single action-oriented sentence (8–14 words). No preamble, no quotes.`;
-      const r = await api.chat([{ role: 'user', content: userMsg }]);
-      suggestion = r.message.content.trim().replace(/^["'`]+|["'`]+$/g, '').trim();
-    } catch (e) {
-      const raw = errorMessage(e);
-      const hint = classifyAiError(raw);
-      toast.error(hint.headline, { action: hint.cta, details: hint.raw });
-    } finally {
-      suggesting = false;
-    }
-  }
-  function acceptSuggestion() {
-    if (suggestion) goal = suggestion;
-    suggestion = '';
-  }
-  function pickGoalLink(g: Goal) {
-    if (linkedGoalId === g.id) {
-      linkedGoalId = '';
-    } else {
-      linkedGoalId = g.id;
-      if (!goal.trim()) goal = g.title;
-    }
-  }
-
   async function lockIn() {
     saving = true;
     saveError = '';
     try {
-      const linked = activeGoals.find((g) => g.id === linkedGoalId);
-      const goalText = goal.trim();
+      const linked = activeGoals.find((g) => g.id === focusCtl.linkedGoalId);
+      const goalText = focusCtl.goal.trim();
       const goalForSave = goalText
         ? linked ? `${goalText} — contributes to: ${linked.title}` : goalText
         : undefined;
@@ -327,7 +290,7 @@
         prayerLines.push(line);
       }
       const prayerBlock = prayerLines.length > 0 ? `Praying for:\n${prayerLines.join('\n')}` : '';
-      const winLine = winSentence.trim();
+      const winLine = focusCtl.winSentence.trim();
       const winPart = winLine ? `Today's win: ${winLine}` : '';
       const thoughtsRaw = thoughts.trim();
       const thoughtsBody = [winPart, prayerBlock, thoughtsRaw]
@@ -356,8 +319,8 @@
   // Counts the user can see on the lock-in button.
   const filledCount = $derived.by(() => {
     let n = 0;
-    if (winSentence.trim()) n++;
-    if (goal.trim()) n++;
+    if (focusCtl.winSentence.trim()) n++;
+    if (focusCtl.goal.trim()) n++;
     if (picksCtl.pickedTasks.size > 0) n++;
     if (picksCtl.pickedHabits.size > 0) n++;
     if (thoughts.trim() || picksCtl.pickedIntentions.size > 0) n++;
@@ -568,10 +531,10 @@
     <section class="mb-7">
       <div class="flex items-baseline justify-between mb-2">
         <h2 class="text-sm font-semibold text-text uppercase tracking-wider">What would make today a win?</h2>
-        {#if winSentence.trim()}<span class="text-[10px] text-success">✓</span>{/if}
+        {#if focusCtl.winSentence.trim()}<span class="text-[10px] text-success">✓</span>{/if}
       </div>
       <input
-        bind:value={winSentence}
+        bind:value={focusCtl.winSentence}
         placeholder="one concrete sentence — finishable today"
         class="w-full px-3 py-3 text-base bg-surface0 border border-surface1 rounded-lg text-text placeholder-dim focus:outline-none focus:border-primary"
       />
@@ -583,28 +546,28 @@
         <h2 class="text-sm font-semibold text-text uppercase tracking-wider">Today's #1 focus</h2>
         <button
           type="button"
-          onclick={suggestFocus}
-          disabled={suggesting}
+          onclick={focusCtl.suggestFocus}
+          disabled={focusCtl.suggesting}
           class="text-[11px] text-primary hover:underline disabled:opacity-50 inline-flex items-center gap-1"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3 h-3">
             <path d="M12 3l1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8L12 3z" stroke-linejoin="round"/>
           </svg>
-          {suggesting ? 'thinking…' : 'suggest from tasks'}
+          {focusCtl.suggesting ? 'thinking…' : 'suggest from tasks'}
         </button>
       </div>
       <input
-        bind:value={goal}
+        bind:value={focusCtl.goal}
         placeholder="if you got one thing done…"
         class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded text-text placeholder-dim focus:outline-none focus:border-primary"
       />
-      {#if suggestion}
+      {#if focusCtl.suggestion}
         <div class="mt-2 p-2.5 bg-surface1 border-l-2 border-primary rounded text-sm">
-          <div class="text-text mb-1.5">{suggestion}</div>
+          <div class="text-text mb-1.5">{focusCtl.suggestion}</div>
           <div class="flex items-center gap-2">
-            <button onclick={acceptSuggestion} class="px-2 py-0.5 text-[11px] rounded bg-primary text-on-primary font-medium">use this</button>
-            <button onclick={() => (suggestion = '')} class="px-2 py-0.5 text-[11px] text-dim hover:text-text">dismiss</button>
-            <button onclick={suggestFocus} disabled={suggesting} class="ml-auto text-[11px] text-secondary hover:underline disabled:opacity-50">try again</button>
+            <button onclick={focusCtl.acceptSuggestion} class="px-2 py-0.5 text-[11px] rounded bg-primary text-on-primary font-medium">use this</button>
+            <button onclick={focusCtl.dismissSuggestion} class="px-2 py-0.5 text-[11px] text-dim hover:text-text">dismiss</button>
+            <button onclick={focusCtl.suggestFocus} disabled={focusCtl.suggesting} class="ml-auto text-[11px] text-secondary hover:underline disabled:opacity-50">try again</button>
           </div>
         </div>
       {/if}
@@ -612,18 +575,18 @@
         <div class="flex flex-wrap items-center gap-1.5 mt-2.5">
           <span class="text-[11px] text-dim">contributes to:</span>
           {#each activeGoals as g (g.id)}
-            {@const sel = linkedGoalId === g.id}
+            {@const sel = focusCtl.linkedGoalId === g.id}
             <button
               type="button"
-              onclick={() => pickGoalLink(g)}
+              onclick={() => focusCtl.pickGoalLink(g)}
               class="px-2 py-0.5 text-[11px] rounded-full border transition-colors
                 {sel ? 'bg-surface1 border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary'}"
             >
               {sel ? '✓ ' : ''}{g.title}
             </button>
           {/each}
-          {#if linkedGoalId}
-            <button onclick={() => (linkedGoalId = '')} class="text-[11px] text-dim hover:text-text">clear</button>
+          {#if focusCtl.linkedGoalId}
+            <button onclick={focusCtl.clearGoalLink} class="text-[11px] text-dim hover:text-text">clear</button>
           {/if}
         </div>
       {/if}
