@@ -22,6 +22,7 @@
   import { createCalendarData } from '$lib/calendar/calendarData.svelte';
   import { createCalendarDetail } from '$lib/calendar/calendarDetail.svelte';
   import { createCalendarCreateDialogs } from '$lib/calendar/calendarCreateDialogs.svelte';
+  import { createCalendarRecurringScope } from '$lib/calendar/calendarRecurringScope.svelte';
   import {
     addDays,
     endOfWeek,
@@ -95,46 +96,11 @@
   // onSlotRange, onFindTimePick) live in calendarCreateDialogs.
   const dlgCtl = createCalendarCreateDialogs();
 
-  // Recurring-scope prompt — replaces the stacked native confirm()
-  // dialogs the drag-move + resize flows used to fire. The prompt is
-  // a presentational pill row (RecurringScopePicker) instead of a
-  // browser modal, so it doesn't block the event loop and obeys our
-  // theme. Wrapped in a Promise (askRecurringScope) so the calling
-  // flow can `await` a user choice. null = cancel; the caller is
-  // responsible for reverting the visual drag state.
-  let recurringScopePrompt = $state<{
-    open: boolean;
-    title: string;
-    action: 'move' | 'resize';
-    seriesTone: 'error' | 'warning' | 'subtext';
-    onChoose: (scope: 'this' | 'series') => void;
-    onCancel: () => void;
-  } | null>(null);
-
-  function askRecurringScope(
-    title: string,
-    action: 'move' | 'resize'
-  ): Promise<'this' | 'series' | null> {
-    return new Promise((resolve) => {
-      recurringScopePrompt = {
-        open: true,
-        title,
-        action,
-        // Move/resize are less destructive than delete — the series
-        // button stays warning (orange) not error (red). The picker
-        // already special-cases this via the seriesTone prop.
-        seriesTone: 'warning',
-        onChoose: (s) => {
-          recurringScopePrompt = null;
-          resolve(s);
-        },
-        onCancel: () => {
-          recurringScopePrompt = null;
-          resolve(null);
-        }
-      };
-    });
-  }
+  // Recurring-scope prompt — lives in calendarRecurringScope. The
+  // pill-row UI hooks into recurCtl.prompt; await recurCtl.ask(title,
+  // action) from the move / resize flows to get the user's choice.
+  const recurCtl = createCalendarRecurringScope();
+  const askRecurringScope = recurCtl.ask;
   // onFindTimePick lives in dlgCtl; alias for the prop callback below.
   const onFindTimePick = dlgCtl.onFindTimePick;
 
@@ -1245,39 +1211,39 @@
      native confirm() chain that previously blocked the event loop
      and ignored our theme. The picker resolves the async
      askRecurringScope() Promise via its onChoose / onCancel hooks. -->
-{#if recurringScopePrompt?.open}
+{#if recurCtl.prompt?.open}
   <div
     role="dialog"
     aria-modal="true"
     aria-labelledby="recurring-scope-title"
     class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
     onclick={(e) => {
-      if (e.target === e.currentTarget && recurringScopePrompt) recurringScopePrompt.onCancel();
+      if (e.target === e.currentTarget && recurCtl.prompt) recurCtl.prompt.onCancel();
     }}
     onkeydown={(e) => {
-      if (e.key === 'Escape' && recurringScopePrompt) recurringScopePrompt.onCancel();
+      if (e.key === 'Escape' && recurCtl.prompt) recurCtl.prompt.onCancel();
     }}
     tabindex="-1"
   >
     <div class="bg-mantle border border-surface1 rounded-lg p-4 max-w-md w-full shadow-xl">
       <h3 id="recurring-scope-title" class="text-sm font-semibold text-text mb-1">
-        {recurringScopePrompt.action === 'move' ? 'Move' : 'Resize'} recurring event
+        {recurCtl.prompt.action === 'move' ? 'Move' : 'Resize'} recurring event
       </h3>
       <p class="text-xs text-dim italic mb-2">
         Pick a scope. "Just this occurrence" keeps the rest of the series in place.
       </p>
       <RecurringScopePicker
-        eventTitle={recurringScopePrompt.title}
-        action={recurringScopePrompt.action}
-        seriesTone={recurringScopePrompt.seriesTone}
+        eventTitle={recurCtl.prompt.title}
+        action={recurCtl.prompt.action}
+        seriesTone={recurCtl.prompt.seriesTone}
         onChoose={(s) => {
           // The picker emits 'this' | 'future' | 'series'. We only
           // surface this / series for move + resize; future is not
           // a supported recurring-edit semantic for drag yet.
           if (s === 'future') return;
-          recurringScopePrompt?.onChoose(s);
+          recurCtl.prompt?.onChoose(s);
         }}
-        onCancel={() => recurringScopePrompt?.onCancel()}
+        onCancel={() => recurCtl.prompt?.onCancel()}
       />
     </div>
   </div>
