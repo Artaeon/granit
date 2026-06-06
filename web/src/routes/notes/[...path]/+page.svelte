@@ -56,6 +56,7 @@
   import NoteInfoRail from '$lib/notes/NoteInfoRail.svelte';
   import NoteHeader from '$lib/notes/NoteHeader.svelte';
   import NoteEditorBanners from '$lib/notes/NoteEditorBanners.svelte';
+  import NoteEmptyState from '$lib/notes/NoteEmptyState.svelte';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
   import { createNotePinAction } from '$lib/notes/notePinAction.svelte';
 
@@ -598,75 +599,21 @@
 
   <!-- Center: editor -->
   <div class="flex-1 flex flex-col min-w-0">
-    {#if notFound && !note}
-      <!-- Empty / not-found state. Shows the would-be title with a
-           one-click "Create" affordance — far better than the
-           previous bare "loading…" or the error banner that fired
-           when getNote 404'd. The clean-tree drawer link gives the
-           user an escape if they didn't actually mean to create. -->
-      <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle sticky top-0 z-20">
-        <a
-          href="/notes"
-          aria-label="back to notes"
-          class="w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0"
-        >
-          <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </a>
-        <h1 class="text-base font-semibold text-text flex-1 truncate">{notFoundTitle || 'New note'}</h1>
-      </header>
-      <div class="flex-1 flex items-center justify-center p-8">
-        <div class="max-w-md text-center">
-          <div class="text-base text-text mb-1">This note doesn't exist yet</div>
-          <div class="text-sm text-dim mb-5">
-            Create <code class="text-subtext">{decodeURIComponent($page.params.path ?? '')}</code>
-            with an empty body and start writing.
-          </div>
-          <button
-            onclick={createMissingNote}
-            disabled={creatingNote}
-            class="px-4 py-2 rounded bg-primary text-on-primary text-sm font-medium hover:opacity-90 disabled:opacity-60"
-          >
-            {creatingNote ? 'Creating…' : 'Create note'}
-          </button>
-        </div>
-      </div>
-    {:else if error && !note}
-      <!-- Stuck-on-error escape header. When the load failed and we
-           have no note to render, the normal header below is hidden
-           too — without this the user has no UI to navigate away
-           except a full page reload. Keep it minimal: just a back
-           link and the error message. -->
-      <header class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle sticky top-0 z-20">
-        <a
-          href="/notes"
-          aria-label="back to notes"
-          class="w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0"
-        >
-          <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </a>
-        <button
-          onclick={() => (treeDrawerOpen = true)}
-          aria-label="vault tree"
-          class="lg:hidden w-9 h-9 flex items-center justify-center text-subtext hover:bg-surface0 rounded flex-shrink-0"
-        >
-          <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 6h18M3 12h18M3 18h18" stroke-linecap="round" />
-          </svg>
-        </button>
-        <h1 class="text-base font-semibold text-text flex-1 truncate">Couldn't open note</h1>
-        <button
-          onclick={() => { pipe.lastLoadedPath = ''; load(decodeURIComponent($page.params.path ?? '')); }}
-          class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded hover:border-primary text-text"
-        >Retry</button>
-      </header>
-      <div class="p-6 text-sm text-error">{error}</div>
-    {:else if error}
-      <div class="px-4 py-2 text-sm text-error border-b border-error bg-surface0 flex-shrink-0">{error}</div>
-    {/if}
+    <!-- Empty / not-found / error states extracted to <NoteEmptyState>.
+         Renders the three load-failure branches (404 → create
+         affordance, error-stuck → retry header, transient error →
+         strip) or nothing when a note is loaded. -->
+    <NoteEmptyState
+      notFound={notFound}
+      error={error}
+      hasNote={note !== null}
+      {notFoundTitle}
+      rawPath={decodeURIComponent($page.params.path ?? '')}
+      {creatingNote}
+      onCreate={createMissingNote}
+      onOpenTreeDrawer={() => (treeDrawerOpen = true)}
+      onRetry={() => { pipe.lastLoadedPath = ''; load(decodeURIComponent($page.params.path ?? '')); }}
+    />
     {#if note}
       <!-- Header chrome extracted to <NoteHeader> 2026-05-28. The page
            still owns every piece of state behind the header (note,
