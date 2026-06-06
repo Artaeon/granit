@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type HabitInfo, type HabitsResponse , todayISO } from '$lib/api';
+  import { api, type HabitInfo, todayISO } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import Heatmap from '$lib/components/Heatmap.svelte';
@@ -9,6 +9,7 @@
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { createHabitsViewState, type HabitsView } from '$lib/habits/habitsViewState.svelte';
   import { createHabitsAI } from '$lib/habits/habitsAI.svelte';
+  import { createHabitsData } from '$lib/habits/habitsData.svelte';
 
   // /habits — three view modes for the same data:
   //   • Today: large quick-tick cards, the morning/evening rhythm view
@@ -17,18 +18,33 @@
   // Sort + insight (best day of week) work across all three views so
   // the user's preference sticks regardless of which lens they pick.
 
-  let data = $state<HabitsResponse | null>(null);
-  const viewCtl = createHabitsViewState({ getData: () => data });
+  // Loaded HabitsResponse + the three toggle handlers (single-day,
+  // today, bulk tick-all) + the data-only derives (anchorsFor, today
+  // progress chip, undoneToday for the Tick-all button). See
+  // lib/habits/habitsData for the details.
+  const dataCtl = createHabitsData({
+    isAuthed: () => !!$auth,
+    onError: async (msg) => {
+      (await import('$lib/components/toast')).toast.error(msg);
+    }
+  });
+  const data = $derived(dataCtl.data);
+  const loading = $derived(dataCtl.loading);
+  const busy = $derived(dataCtl.busy);
+  const bulkBusy = $derived(dataCtl.bulkBusy);
+  const anchorsFor = $derived(dataCtl.anchorsFor);
+  const todayDone = $derived(dataCtl.todayDone);
+  const todayTotal = $derived(dataCtl.todayTotal);
+  const undoneToday = $derived(dataCtl.undoneToday);
+  const viewCtl = createHabitsViewState({ getData: () => dataCtl.data });
   const sortedHabits = $derived(viewCtl.sortedHabits);
-  let loading = $state(false);
-  let busy = $state<string | null>(null);
 
   // AI surfaces: pattern insight (observations on existing data) and
   // suggest-from-goals (generative — proposes new habits laddering
   // toward active goals). Both stream through chatStream and share
   // Stop/Close shape; see lib/habits/habitsAI for the details.
   const aiCtl = createHabitsAI({
-    getData: () => data,
+    getData: () => dataCtl.data,
     adopt: async (name: string) => {
       addName = name;
       await addHabit();
@@ -62,7 +78,7 @@
       await api.toggleHabit(name, data?.today ?? todayISO(), false);
       addName = '';
       addOpen = false;
-      await load();
+      await dataCtl.load();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       (await import('$lib/components/toast')).toast.error(`couldn't add habit: ${msg}`);
@@ -71,50 +87,12 @@
     }
   }
 
-  async function load() {
-    if (!$auth) return;
-    loading = true;
-    try {
-      data = await api.listHabits();
-    } finally {
-      loading = false;
-    }
-  }
   onMount(() => {
-    load();
+    dataCtl.load();
     return onWsEvent((ev) => {
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
+      if (ev.type === 'note.changed' || ev.type === 'note.removed') dataCtl.load();
     });
   });
-
-  async function toggleToday(h: HabitInfo) {
-    await toggleOnDate(h, data?.today ?? todayISO(), !h.doneToday);
-  }
-
-  // Click-on-dot retro-toggle. Works for any date, including future
-  // ones (so the user can plan-log) — server creates the daily file
-  // for that date if it doesn't exist yet. The optimistic flip keeps
-  // the UI snappy on a slow link; load() at the end reconciles.
-  async function toggleOnDate(h: HabitInfo, date: string, want: boolean) {
-    busy = `${h.name}|${date}`;
-    if (data) {
-      const habit = data.habits.find((x) => x.name === h.name);
-      const day = habit?.days.find((d) => d.date === date);
-      if (day) day.done = want;
-      if (habit && date === data.today) habit.doneToday = want;
-      data = { ...data };
-    }
-    try {
-      await api.toggleHabit(h.name, date, want);
-      await load();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      (await import('$lib/components/toast')).toast.error(`couldn't toggle: ${msg}`);
-      await load(); // restore truth
-    } finally {
-      busy = null;
-    }
-  }
 
   // ----- Insight: best day of week -----
   // Group the 90-day window by weekday and compute per-day completion
@@ -146,79 +124,6 @@
     }
     if (bestDow === -1 || bestPct === 0) return null;
     return { label: DOW_LABELS[bestDow], pct: Math.round(bestPct * 100) };
-  }
-
-  // Habits remaining today — the Today header surfaces "X / Y done"
-  // so the user reads progress at a glance.
-  // Reverse-lookup index: habitName → list of OTHER habits that
-  // anchor to it. Lets the UI surface chains in both directions —
-  // when a habit IS an anchor for others, the page shows "triggers:
-  // Y, Z" alongside the existing "after X" badge so the user sees
-  // the full chain without scrolling through every row to find
-  // forward references.
-  //
-  // Empty entries are intentionally absent (rather than `: []`) so
-  // template `{#if anchorsFor[name]?.length}` reads cleanly.
-  let anchorsFor = $derived.by<Record<string, string[]>>(() => {
-    const out: Record<string, string[]> = {};
-    if (!data) return out;
-    for (const h of data.habits) {
-      const anchor = h.stackAfter;
-      if (!anchor) continue;
-      if (!out[anchor]) out[anchor] = [];
-      out[anchor].push(h.name);
-    }
-    // Stable ordering — alphabetical, so a 2-tab user doesn't see
-    // the list reshuffle when something unrelated changes.
-    for (const k of Object.keys(out)) {
-      out[k].sort();
-    }
-    return out;
-  });
-
-  let todayDone = $derived(data ? data.habits.filter((h) => h.doneToday).length : 0);
-  let todayTotal = $derived(data ? data.habits.length : 0);
-  let undoneToday = $derived(data ? data.habits.filter((h) => !h.doneToday && h.taskIdToday) : []);
-
-  // ----- Bulk tick all -----
-  // Power-user shortcut for the morning rhythm: a single click ticks
-  // every habit not yet done today. Only enabled when at least one
-  // habit can be toggled (some require the daily note's `## Habits`
-  // section to exist first — those are skipped). Optimistic flip on
-  // each, then a single load() reconciles. Errors are toasted but
-  // we keep going for the rest so a single bad row doesn't block the
-  // bulk action.
-  let bulkBusy = $state(false);
-  async function tickAllToday() {
-    if (!data || bulkBusy) return;
-    const targets = data.habits.filter((h) => !h.doneToday && h.taskIdToday);
-    if (targets.length === 0) return;
-    bulkBusy = true;
-    const today = data.today;
-    // Optimistic: flip everything in one pass before the network round-trips
-    for (const h of targets) {
-      const habit = data.habits.find((x) => x.name === h.name);
-      const day = habit?.days.find((d) => d.date === today);
-      if (day) day.done = true;
-      if (habit) habit.doneToday = true;
-    }
-    data = { ...data };
-    const failed: string[] = [];
-    await Promise.all(
-      targets.map(async (h) => {
-        try {
-          await api.toggleHabit(h.name, today, true);
-        } catch {
-          failed.push(h.name);
-        }
-      })
-    );
-    bulkBusy = false;
-    await load();
-    if (failed.length > 0) {
-      const { toast } = await import('$lib/components/toast');
-      toast.error(`couldn't tick: ${failed.join(', ')}`);
-    }
   }
 
   // ----- Per-habit weekly target -----
@@ -264,17 +169,17 @@
   }
   async function submitStackEdit(name: string) {
     const next = stackDraft.trim();
-    busy = name;
+    dataCtl.busy = name;
     try {
       await api.setHabitStack(name, next);
       editingStack = null;
       stackDraft = '';
-      await load();
+      await dataCtl.load();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       (await import('$lib/components/toast')).toast.error(`stack update failed: ${msg}`);
     } finally {
-      busy = null;
+      dataCtl.busy = null;
     }
   }
 
@@ -299,7 +204,7 @@
       cancelRename();
       return;
     }
-    busy = oldName;
+    dataCtl.busy = oldName;
     try {
       const res = await api.renameHabit(oldName, next);
       cancelRename();
@@ -309,7 +214,7 @@
         setHabitTarget(next, tgt);
         setHabitTarget(oldName, null);
       }
-      await load();
+      await dataCtl.load();
       (await import('$lib/components/toast')).toast.success(
         `renamed · ${res.filesTouched} ${res.filesTouched === 1 ? 'daily' : 'dailies'} updated`
       );
@@ -317,19 +222,19 @@
       const msg = e instanceof Error ? e.message : String(e);
       (await import('$lib/components/toast')).toast.error(`rename failed: ${msg}`);
     } finally {
-      busy = null;
+      dataCtl.busy = null;
     }
   }
   async function deleteHabit(name: string) {
     if (!confirm(
       `Delete habit "${name}"?\n\nThis strips every checkbox line under ## Habits across every daily note in your vault — past streak data for this habit is gone. The daily notes themselves stay; only the matching lines are removed.`
     )) return;
-    busy = name;
+    dataCtl.busy = name;
     try {
       const res = await api.deleteHabit(name);
       // Drop any persisted target — it's now orphaned.
       setHabitTarget(name, null);
-      await load();
+      await dataCtl.load();
       (await import('$lib/components/toast')).toast.success(
         `deleted · ${res.filesTouched} ${res.filesTouched === 1 ? 'daily' : 'dailies'} cleaned`
       );
@@ -337,7 +242,7 @@
       const msg = e instanceof Error ? e.message : String(e);
       (await import('$lib/components/toast')).toast.error(`delete failed: ${msg}`);
     } finally {
-      busy = null;
+      dataCtl.busy = null;
     }
   }
 
@@ -373,7 +278,7 @@
         {#if undoneToday.length > 0}
           <button
             type="button"
-            onclick={tickAllToday}
+            onclick={() => dataCtl.tickAllToday()}
             disabled={bulkBusy}
             title="mark every undone habit as done today"
             class="px-3 py-1.5 bg-surface0 text-success border border-success rounded text-sm font-medium hover:bg-surface1 disabled:opacity-50"
@@ -599,7 +504,7 @@
           >
             <button
               type="button"
-              onclick={() => toggleToday(h)}
+              onclick={() => dataCtl.toggleToday(h)}
               disabled={busy === h.name || !h.taskIdToday}
               title={h.taskIdToday ? '' : 'add this habit to today\'s daily note first'}
               class="w-10 h-10 rounded flex-shrink-0 flex items-center justify-center transition-colors disabled:opacity-50
@@ -731,7 +636,7 @@
                   <td class="p-0">
                     <button
                       type="button"
-                      onclick={() => toggleOnDate(h, d.date, !d.done)}
+                      onclick={() => dataCtl.toggleOnDate(h, d.date, !d.done)}
                       disabled={cellBusy}
                       class="w-full aspect-square min-h-9 rounded transition-colors hover:opacity-80 disabled:opacity-40
                         {d.done ? 'bg-success' : 'bg-surface1 hover:bg-surface2'}"
@@ -756,7 +661,7 @@
           <article class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-start gap-3 mb-3">
               <button
-                onclick={() => toggleToday(h)}
+                onclick={() => dataCtl.toggleToday(h)}
                 disabled={busy === h.name || !h.taskIdToday}
                 title={h.taskIdToday ? (h.doneToday ? 'mark not done today' : 'mark done today') : 'open daily note to add this habit'}
                 class="w-6 h-6 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors disabled:opacity-50
@@ -911,7 +816,7 @@
                 {@const cellBusy = busy === `${h.name}|${d.date}`}
                 <button
                   type="button"
-                  onclick={() => toggleOnDate(h, d.date, !d.done)}
+                  onclick={() => dataCtl.toggleOnDate(h, d.date, !d.done)}
                   disabled={cellBusy}
                   class="aspect-square rounded-[2px] transition-colors hover:opacity-70 disabled:opacity-40
                     {d.done ? 'bg-success' : 'bg-surface1 hover:bg-surface2'}"
