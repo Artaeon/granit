@@ -187,7 +187,12 @@ export function createNotesListCapture(
     captureAbort = new AbortController();
     // rAF coalescer — keeps "AI is thinking…" hint fluid without
     // spamming reactive writes.
-    const throttle = rafThrottle((acc) => { captureRaw = acc; });
+    // Gate on abort — closeCapture()/dismiss wipes captureRaw, but a
+    // queued rAF can still fire one frame later and repopulate it.
+    const throttle = rafThrottle((acc) => {
+      if (captureAbort?.signal.aborted) return;
+      captureRaw = acc;
+    });
 
     const topTags = deps.getTopTags();
     const tagsHint = topTags.length > 0 ? topTags.join(', ') : '(none yet)';
