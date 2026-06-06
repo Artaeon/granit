@@ -154,6 +154,12 @@ export function createFinanceAI(deps: FinanceAIDeps): FinanceAIController {
     snapshotBusy = false;
   }
   function dismissSnapshot() {
+    // Abort first — without this, the in-flight rAF apply lambda's
+    // `snapshotAbort?.signal.aborted` gate stays false, and a queued
+    // frame will re-write snapshotText right after this wipe.
+    snapshotAbort?.abort();
+    snapshotAbort = null;
+    snapshotBusy = false;
     snapshotText = '';
     snapshotError = '';
   }
@@ -212,6 +218,12 @@ export function createFinanceAI(deps: FinanceAIDeps): FinanceAIController {
     auditBusy = false;
   }
   function dismissSubAudit() {
+    // Abort first — without this, the in-flight rAF apply lambda's
+    // `auditAbort?.signal.aborted` gate stays false, and a queued
+    // frame will re-write auditText right after this wipe.
+    auditAbort?.abort();
+    auditAbort = null;
+    auditBusy = false;
     auditText = '';
     auditError = '';
   }

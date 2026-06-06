@@ -132,7 +132,12 @@ export function createGoalsAiSuggest(deps: GoalsAiSuggestDeps): GoalsAiSuggestCo
 
     // rAF throttle — aiText is rendered live so the user sees
     // streaming progress instead of a frozen panel.
-    const goalT = rafThrottle((full) => { aiText = full; });
+    const goalT = rafThrottle((full) => {
+      // Gate on abort — close()/stop() aborts + wipes aiText, but a
+      // queued rAF frame would repopulate it one frame later.
+      if (aiAbort?.signal.aborted) return;
+      aiText = full;
+    });
     try {
       await api.chatStream(
         [{ role: 'user', content: userMessage }],

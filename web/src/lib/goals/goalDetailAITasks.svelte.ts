@@ -129,8 +129,10 @@ export function createGoalDetailAITasks(
         abort.signal
       );
       // Bail without parsing on user-stop — partial JSON would
-      // surface as "Couldn't parse tasks" red text.
-      if (abort.signal.aborted) return;
+      // surface as "Couldn't parse tasks" red text. cancel() nulls
+      // `abort`, so guard with `!abort` before `.signal` to avoid
+      // a TypeError.
+      if (!abort || abort.signal.aborted) return;
       let cleaned = acc.trim();
       if (cleaned.startsWith('```')) {
         cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();

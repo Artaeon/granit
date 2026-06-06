@@ -243,8 +243,9 @@ export function createProjectsListStallRadar(
       );
       // After user-stop, don't parse partial buf — it would surface
       // as "unexpected shape" red text and overwrite rows with no
-      // unblock copy.
-      if (abort.signal.aborted) return;
+      // unblock copy. Note: cancel() nulls `abort`, so guard with
+      // `!abort` before reaching for `.signal` to avoid a TypeError.
+      if (!abort || abort.signal.aborted) return;
       const trimmed = buf.trim();
       if (trimmed) {
         try {

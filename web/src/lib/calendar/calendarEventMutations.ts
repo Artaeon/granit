@@ -417,21 +417,24 @@ export async function duplicateEventPlusOneWeek(event: CalendarEvent | null): Pr
   if (!event) return false;
   try {
     if (event.type === 'ics_event' && event.source) {
-      // Shift the start/end by exactly 7 days. Use the floating
-      // wire shape we already accept (RFC3339 or YYYY-MM-DD per
-      // parseClientTime); add 7d in UTC ms.
-      const advance = 7 * 24 * 60 * 60 * 1000;
+      // Shift the start/end by exactly 7 calendar days. Use local
+      // setDate (NOT +ms) so a duplicate across a DST boundary
+      // lands at the same wall-clock time the user expects — adding
+      // 7×86400000ms shifts the wall clock by ±1h whenever the
+      // interval crosses spring-forward or fall-back. The native-
+      // events branch below already does this correctly; this is
+      // the matching fix for the ICS branch.
       let start: string | undefined;
       let end: string | undefined;
       let allDay: boolean | undefined;
       if (event.start) {
         const s = new Date(event.start);
-        s.setTime(s.getTime() + advance);
+        s.setDate(s.getDate() + 7);
         start = s.toISOString();
       }
       if (event.end) {
         const e = new Date(event.end);
-        e.setTime(e.getTime() + advance);
+        e.setDate(e.getDate() + 7);
         end = e.toISOString();
       }
       if (event.date && !event.start) {

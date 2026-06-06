@@ -88,8 +88,10 @@ export function createGoalDetailAIMilestones(
       );
       // If the user stopped the stream, don't try to JSON.parse the
       // partial accumulator — that would surface as a misleading
-      // "Couldn't parse suggestions" message in the error pane.
-      if (abort.signal.aborted) return;
+      // "Couldn't parse suggestions" message. cancel() nulls
+      // `abort`, so guard with `!abort` before `.signal` to avoid
+      // a TypeError.
+      if (!abort || abort.signal.aborted) return;
       let cleaned = acc.trim();
       if (cleaned.startsWith('```')) {
         cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();

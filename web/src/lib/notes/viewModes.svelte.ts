@@ -104,8 +104,15 @@ export function createViewModeController(): ViewModeController {
       priorFocus = focusMode;
       setViewMode('preview');
       setFocusMode(true);
-    } else if (priorView !== null) {
-      setViewMode(priorView);
+    } else {
+      // Toggle-off path. When the user enters with readingMode
+      // restored from localStorage on page load, prior* is null
+      // because they came in already-reading; we never snapshotted
+      // anything. In that case, fall back to a sensible default
+      // (edit + no-focus) so they aren't stuck in preview+focus.
+      // Without this branch, the page silently stays in
+      // preview+focus and the toggle does nothing visible.
+      setViewMode(priorView ?? 'edit');
       setFocusMode(priorFocus ?? false);
       priorView = null;
       priorFocus = null;
