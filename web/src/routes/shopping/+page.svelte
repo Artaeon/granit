@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, type ShoppingItem, type ShoppingTotals } from '$lib/api';
+  import { api, type ShoppingItem } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -16,6 +16,7 @@
     categoryLabel
   } from '$lib/shopping/shoppingHelpers';
   import { createShoppingViewState, type ShoppingView } from '$lib/shopping/shoppingViewState.svelte';
+  import { createShoppingData } from '$lib/shopping/shoppingData.svelte';
 
   // /shopping — three-view page over a single Item collection:
   //   Plan: status=planned items, grouped by category (the active
@@ -36,9 +37,17 @@
   const viewCtl = createShoppingViewState();
   const view = $derived(viewCtl.view);
 
-  let items = $state<ShoppingItem[]>([]);
-  let totals = $state<ShoppingTotals | null>(null);
-  let loading = $state(false);
+  const dataCtl = createShoppingData({
+    isAuthed: () => !!$auth,
+    getView: () => viewCtl.view,
+    onError: (m) => toast.error(m)
+  });
+  const items = $derived(dataCtl.items);
+  const totals = $derived(dataCtl.totals);
+  const loading = $derived(dataCtl.loading);
+  const viewItems = $derived(dataCtl.viewItems);
+  const grouped = $derived(dataCtl.grouped);
+  const viewTotal = $derived(dataCtl.viewTotal);
 
   // Quick-add form. The full edit surface (description, notes,
   // category override) lives in the inline edit on each row to
@@ -63,32 +72,15 @@
   let eCadence = $state<Cadence>('');
   let eNotes = $state('');
 
-  // ----- Load / sync -----
-
-  async function load() {
-    if (!$auth) return;
-    loading = true;
-    try {
-      const [r, t] = await Promise.all([
-        api.listShopping(),
-        api.shoppingTotals().catch(() => null)
-      ]);
-      items = r.items;
-      totals = t;
-    } catch (e) {
-      toast.error('failed to load shopping: ' + (errorMessage(e)));
-    } finally {
-      loading = false;
-    }
-  }
+  // ----- Sync -----
 
   onMount(() => {
-    load();
+    dataCtl.load();
     const unsub = onWsEvent((ev) => {
-      if (ev.type === 'state.changed' && ev.path === '.granit/shopping.json') load();
+      if (ev.type === 'state.changed' && ev.path === '.granit/shopping.json') dataCtl.load();
     });
     const onVisible = () => {
-      if (document.visibilityState === 'visible') load();
+      if (document.visibilityState === 'visible') dataCtl.load();
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
@@ -97,53 +89,6 @@
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
     };
-  });
-
-  // ----- Filtering by view -----
-
-  let viewItems = $derived.by(() => {
-    if (view === 'plan') return items.filter((i) => i.status === 'planned');
-    if (view === 'standards') return items.filter((i) => i.standard);
-    return items.filter((i) => i.status === 'bought');
-  });
-
-  // Group by category for the Plan view. Items without a category
-  // land in an explicit "uncategorised" bucket so the user can spot
-  // (and fix) the gap. For Standards view we group the same way.
-  // Bought view is flat (chronological).
-  let grouped = $derived.by(() => {
-    if (view === 'bought') return null;
-    const map = new Map<string, ShoppingItem[]>();
-    for (const it of viewItems) {
-      const k = (it.category ?? '').trim() || '—';
-      const arr = map.get(k) ?? [];
-      arr.push(it);
-      map.set(k, arr);
-    }
-    // Sort categories: canonical order first (matching server
-    // CategorySuggestions), then any custom categories alphabetically,
-    // and the "uncategorised" bucket last.
-    const known = new Map<string, number>();
-    CATEGORY_SUGGESTIONS.forEach((c, i) => known.set(c, i));
-    const keys = [...map.keys()].sort((a, b) => {
-      if (a === '—') return 1;
-      if (b === '—') return -1;
-      const ka = known.has(a) ? known.get(a)! : 100 + a.charCodeAt(0);
-      const kb = known.has(b) ? known.get(b)! : 100 + b.charCodeAt(0);
-      return ka - kb;
-    });
-    return keys.map((k) => ({ category: k, items: map.get(k)! }));
-  });
-
-  // Totals for the active view. Plan view shows planned-sum; bought
-  // view shows this-month spend. Standards view shows count only —
-  // a price total there is misleading because most standards are
-  // ongoing not one-shot purchases.
-  let viewTotal = $derived.by(() => {
-    if (!totals) return null;
-    if (view === 'plan') return totals.planned_sum;
-    if (view === 'bought') return totals.bought_month_sum;
-    return null;
   });
 
   // ----- Quick-add -----
@@ -173,9 +118,9 @@
         status: 'planned'
       });
       // Optimistic prepend; load() reconciles ordering + totals.
-      items = [it, ...items];
+      dataCtl.items = [it, ...dataCtl.items];
       resetCreate();
-      await load();
+      await dataCtl.load();
     } catch (err) {
       toast.error('add failed: ' + (errorMessage(err)));
     } finally {
@@ -188,9 +133,9 @@
   async function setStatus(it: ShoppingItem, status: 'planned' | 'bought' | 'skipped') {
     try {
       const updated = await api.patchShoppingItem(it.id, { status });
-      items = items.map((x) => (x.id === it.id ? updated : x));
+      dataCtl.items = dataCtl.items.map((x) => (x.id === it.id ? updated : x));
       // Refresh totals — the rollup may have changed.
-      totals = await api.shoppingTotals().catch(() => totals);
+      await dataCtl.refreshTotals();
     } catch (e) {
       toast.error('save failed: ' + (errorMessage(e)));
     }
@@ -199,7 +144,7 @@
   async function toggleStandard(it: ShoppingItem) {
     try {
       const updated = await api.patchShoppingItem(it.id, { standard: !it.standard });
-      items = items.map((x) => (x.id === it.id ? updated : x));
+      dataCtl.items = dataCtl.items.map((x) => (x.id === it.id ? updated : x));
     } catch (e) {
       toast.error('save failed: ' + (errorMessage(e)));
     }
@@ -209,8 +154,8 @@
     if (!confirm(`Delete "${it.name}"?`)) return;
     try {
       await api.deleteShoppingItem(it.id);
-      items = items.filter((x) => x.id !== it.id);
-      totals = await api.shoppingTotals().catch(() => totals);
+      dataCtl.items = dataCtl.items.filter((x) => x.id !== it.id);
+      await dataCtl.refreshTotals();
     } catch (e) {
       toast.error('delete failed: ' + (errorMessage(e)));
     }
@@ -251,9 +196,9 @@
         cadence: eCadence,
         notes: eNotes.trim() || undefined
       });
-      items = items.map((x) => (x.id === updated.id ? updated : x));
+      dataCtl.items = dataCtl.items.map((x) => (x.id === updated.id ? updated : x));
       editingId = null;
-      totals = await api.shoppingTotals().catch(() => totals);
+      await dataCtl.refreshTotals();
     } catch (e) {
       toast.error('save failed: ' + (errorMessage(e)));
     }
@@ -368,9 +313,9 @@
     <!-- View tabs -->
     <div class="flex bg-surface0 border border-surface1 rounded overflow-hidden text-sm mb-4">
       {#each [
-        { v: 'plan', label: 'Plan', count: items.filter((i) => i.status === 'planned').length },
-        { v: 'standards', label: 'Standards', count: items.filter((i) => i.standard).length },
-        { v: 'bought', label: 'Bought', count: items.filter((i) => i.status === 'bought').length }
+        { v: 'plan', label: 'Plan', count: dataCtl.countPlanned },
+        { v: 'standards', label: 'Standards', count: dataCtl.countStandards },
+        { v: 'bought', label: 'Bought', count: dataCtl.countBought }
       ] as o}
         <button
           type="button"
