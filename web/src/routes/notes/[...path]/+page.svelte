@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { goto, beforeNavigate } from '$app/navigation';
+  import { beforeNavigate } from '$app/navigation';
   import { page } from '$app/stores';
-  import { api, ApiError, type Note } from '$lib/api';
+  import { api, type Note } from '$lib/api';
   import { installWsReload } from '$lib/notes/wsReload.svelte';
   import Editor from '$lib/editor/Editor.svelte';
   import NotesTree from '$lib/notes/NotesTree.svelte';
@@ -32,13 +32,8 @@
   import { createViewportBreakpoints } from '$lib/notes/viewportBreakpoints.svelte';
   import { createPreviewBodyMirror } from '$lib/notes/previewBodyMirror.svelte';
   import { createNoteWordStats } from '$lib/notes/noteWordStats.svelte';
-  import {
-    parseDailyDate,
-    shiftDate,
-    splitDayActivity,
-    formatRelativeDailyLabel,
-    todayLocalISO
-  } from '$lib/notes/dailyNote';
+  import { shiftDate } from '$lib/notes/dailyNote';
+  import { createDailyNoteNav } from '$lib/notes/dailyNoteNav.svelte';
   import PrintPreview from '$lib/notes/PrintPreview.svelte';
   import HistoryPanel from '$lib/notes/HistoryPanel.svelte';
   import ShortcutsHelpOverlay from '$lib/notes/ShortcutsHelpOverlay.svelte';
@@ -711,31 +706,20 @@
   }
 
   // ----- Daily-note navigation -----
-  // A note is "daily" when its basename is YYYY-MM-DD.md OR its
-  // frontmatter has type=daily. The detection + date math live in
-  // $lib/notes/dailyNote — here we just thread the derived values
-  // through the reactive graph. dayActivitySegments derives from
-  // bodyForPreview (the rAF-throttled mirror) so a fast typist on
-  // a daily note doesn't pay for indexOf + slice per keystroke.
-  let dailyDate = $derived(parseDailyDate(note));
-  let isDaily = $derived(dailyDate !== null);
-  let dayActivitySegments = $derived(
-    isDaily ? splitDayActivity(bodyForPreview) : null
-  );
-
-  async function gotoDaily(date: string) {
-    if (dirty) void save({ silent: true });
-    try {
-      // /api/v1/daily/<date> creates today's note if missing; for past/future
-      // dates it just returns the existing note (we won't auto-materialize
-      // an empty file for arbitrary historical dates).
-      const n = await api.daily(date);
-      goto(`/notes/${encodeURIComponent(n.path)}`);
-    } catch {
-      // If no existing daily for that date, just try the canonical path.
-      goto(`/notes/${encodeURIComponent(date + '.md')}`);
-    }
-  }
+  // Detection + date math + gotoDaily live in $lib/notes/dailyNoteNav.
+  // The page reads dailyDate / isDaily / dayActivitySegments /
+  // dailyLabel via $derived aliases and calls dailyNav.gotoDaily()
+  // from the daily-quick-add + the Mod-Shift-←/→ shortcut.
+  const dailyNav = createDailyNoteNav({
+    getNote: () => note,
+    getBodyForPreview: () => bodyForPreview,
+    getDirty: () => dirty,
+    save: (o) => save(o)
+  });
+  let dailyDate = $derived(dailyNav.dailyDate);
+  let isDaily = $derived(dailyNav.isDaily);
+  let dayActivitySegments = $derived(dailyNav.dayActivitySegments);
+  const gotoDaily = dailyNav.gotoDaily;
 
   // Folder breadcrumbs. Reset on real navigation is folded into
   // load() since it's the only path that swaps note identity; the
@@ -745,10 +729,7 @@
   let visibleCrumbs = $derived(visibleCrumbsFn(allCrumbs, breadcrumbExpanded));
   let crumbsCollapsed = $derived(crumbsCollapsedFn(allCrumbs, breadcrumbExpanded));
 
-  let dailyLabel = $derived.by(() => {
-    if (!dailyDate) return '';
-    return formatRelativeDailyLabel(dailyDate, todayLocalISO());
-  });
+  let dailyLabel = $derived(dailyNav.dailyLabel);
 </script>
 
 {#snippet treeContent()}
