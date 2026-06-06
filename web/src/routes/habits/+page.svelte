@@ -1,11 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { type HabitInfo } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import Heatmap from '$lib/components/Heatmap.svelte';
-  import { habitTargets, setHabitTarget } from '$lib/habits/targets';
+  import { habitTargets } from '$lib/habits/targets';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { createHabitsViewState, type HabitsView } from '$lib/habits/habitsViewState.svelte';
   import { createHabitsAI } from '$lib/habits/habitsAI.svelte';
@@ -13,6 +12,8 @@
   import { createHabitsRename } from '$lib/habits/habitsRename.svelte';
   import { createHabitsStackEdit } from '$lib/habits/habitsStackEdit.svelte';
   import { createHabitsAdd } from '$lib/habits/habitsAdd.svelte';
+  import { createHabitsTargetsEdit } from '$lib/habits/habitsTargetsEdit.svelte';
+  import { bestDay, weekDays, shortDow, shortDate } from '$lib/habits/habitsDerives';
 
   // /habits — three view modes for the same data:
   //   • Today: large quick-tick cards, the morning/evening rhythm view
@@ -79,62 +80,11 @@
     });
   });
 
-  // ----- Insight: best day of week -----
-  // Group the 90-day window by weekday and compute per-day completion
-  // percent. Returns the day-of-week with the highest pct, or null
-  // when no day has any logged occurrences (a fresh habit). Pure
-  // derivation — no extra API surface.
-  const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  function bestDay(h: HabitInfo): { label: string; pct: number } | null {
-    const buckets = [0, 0, 0, 0, 0, 0, 0];
-    const counts = [0, 0, 0, 0, 0, 0, 0];
-    for (const d of h.days) {
-      // YYYY-MM-DD parsed in local time. Using new Date(s) directly
-      // would parse as UTC and shift the weekday by one for users
-      // east of UTC; explicit local construction avoids that.
-      const [y, m, day] = d.date.split('-').map(Number);
-      const dow = new Date(y, m - 1, day).getDay();
-      counts[dow]++;
-      if (d.done) buckets[dow]++;
-    }
-    let bestDow = -1;
-    let bestPct = 0;
-    for (let i = 0; i < 7; i++) {
-      if (counts[i] === 0) continue;
-      const pct = buckets[i] / counts[i];
-      if (pct > bestPct) {
-        bestPct = pct;
-        bestDow = i;
-      }
-    }
-    if (bestDow === -1 || bestPct === 0) return null;
-    return { label: DOW_LABELS[bestDow], pct: Math.round(bestPct * 100) };
-  }
-
-  // ----- Per-habit weekly target -----
-  // last 7 days done count; mapped against the user's target for a
-  // simple "3/5 this week" chip. Targets live in localStorage so
-  // changing one doesn't round-trip the server. Pure derivation.
-  function last7Done(h: HabitInfo): number {
-    return h.days.slice(-7).filter((d) => d.done).length;
-  }
-  function targetState(h: HabitInfo): { target: number; done: number; pct: number } | null {
-    const target = $habitTargets[h.name];
-    if (!target) return null;
-    const done = last7Done(h);
-    return { target, done, pct: Math.min(1, done / target) };
-  }
-  // Edit-target popover — single open at a time, name keys it.
-  let editingTarget = $state<string | null>(null);
-  function bumpTarget(name: string, delta: number) {
-    const cur = $habitTargets[name] ?? 7;
-    const next = Math.max(1, Math.min(7, cur + delta));
-    setHabitTarget(name, next);
-  }
-  function clearTarget(name: string) {
-    setHabitTarget(name, null);
-    editingTarget = null;
-  }
+  // Per-habit weekly-target edit popover — single open at a time,
+  // bump within [1, 7], clear drops the entry from localStorage.
+  // See lib/habits/habitsTargetsEdit for the details.
+  const targetsCtl = createHabitsTargetsEdit({ getTargets: () => $habitTargets });
+  const editingTarget = $derived(targetsCtl.editingTarget);
 
   // Stack anchor ("after I do X, I do this") — inline-edit buffer
   // + commit to .granit/habits-stacks.json. Behavioural-science
@@ -166,20 +116,6 @@
   // renameDraft is two-way bound from the template; the binding reads
   // and writes via renameCtl.renameDraft directly.
 
-  // ----- Week view helpers -----
-  // The server returns 90 days oldest→newest. We want the last 7 in
-  // chronological order so columns read left=oldest right=today.
-  function weekDays(h: HabitInfo): HabitInfo['days'] {
-    return h.days.slice(-7);
-  }
-  function shortDow(date: string): string {
-    const [y, m, d] = date.split('-').map(Number);
-    return DOW_LABELS[new Date(y, m - 1, d).getDay()];
-  }
-  function shortDate(date: string): string {
-    const [, m, d] = date.split('-').map(Number);
-    return `${m}/${d}`;
-  }
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -415,7 +351,7 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {#each sortedHabits as h (h.name)}
           {@const insight = bestDay(h)}
-          {@const tgt = targetState(h)}
+          {@const tgt = targetsCtl.targetState(h)}
           <div
             class="relative text-left p-4 bg-surface0 border rounded-lg transition-colors flex items-start gap-3
               {h.doneToday
@@ -485,7 +421,7 @@
                   {@const hit = tgt.done >= tgt.target}
                   <button
                     type="button"
-                    onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
+                    onclick={() => targetsCtl.editingTarget = editingTarget === h.name ? null : h.name}
                     class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border transition-colors
                       {hit
                         ? 'bg-surface0 text-success border-success hover:bg-surface1'
@@ -495,7 +431,7 @@
                 {:else}
                   <button
                     type="button"
-                    onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
+                    onclick={() => targetsCtl.editingTarget = editingTarget === h.name ? null : h.name}
                     class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1 text-dim border-surface2 hover:text-text"
                     title="set a weekly target"
                   >+ target</button>
@@ -504,11 +440,11 @@
               {#if editingTarget === h.name}
                 <div class="mt-2 flex items-center gap-1.5 text-[11px]">
                   <span class="text-dim">target / week:</span>
-                  <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => bumpTarget(h.name, -1)}>−</button>
+                  <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => targetsCtl.bumpTarget(h.name, -1)}>−</button>
                   <span class="font-mono text-text w-4 text-center">{$habitTargets[h.name] ?? 5}</span>
-                  <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => bumpTarget(h.name, 1)}>+</button>
-                  <button class="ml-1 px-1.5 py-0.5 text-dim hover:text-text underline" onclick={() => clearTarget(h.name)}>clear</button>
-                  <button class="ml-auto px-1.5 py-0.5 text-dim hover:text-text" onclick={() => (editingTarget = null)}>done</button>
+                  <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => targetsCtl.bumpTarget(h.name, 1)}>+</button>
+                  <button class="ml-1 px-1.5 py-0.5 text-dim hover:text-text underline" onclick={() => targetsCtl.clearTarget(h.name)}>clear</button>
+                  <button class="ml-auto px-1.5 py-0.5 text-dim hover:text-text" onclick={() => (targetsCtl.editingTarget = null)}>done</button>
                 </div>
               {/if}
             </div>
@@ -577,7 +513,7 @@
       <div class="space-y-4">
         {#each sortedHabits as h (h.name)}
           {@const insight = bestDay(h)}
-          {@const tgt = targetState(h)}
+          {@const tgt = targetsCtl.targetState(h)}
           <article class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-start gap-3 mb-3">
               <button
@@ -643,7 +579,7 @@
                     {@const hit = tgt.done >= tgt.target}
                     <button
                       type="button"
-                      onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
+                      onclick={() => targetsCtl.editingTarget = editingTarget === h.name ? null : h.name}
                       class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border transition-colors
                         {hit
                           ? 'bg-surface0 text-success border-success hover:bg-surface1'
@@ -653,7 +589,7 @@
                   {:else}
                     <button
                       type="button"
-                      onclick={() => editingTarget = editingTarget === h.name ? null : h.name}
+                      onclick={() => targetsCtl.editingTarget = editingTarget === h.name ? null : h.name}
                       class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1 text-dim border-surface2 hover:text-text"
                     >+ target</button>
                   {/if}
@@ -661,11 +597,11 @@
                 {#if editingTarget === h.name}
                   <div class="mt-1.5 flex items-center gap-1.5 text-[11px]">
                     <span class="text-dim">target / week:</span>
-                    <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => bumpTarget(h.name, -1)}>−</button>
+                    <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => targetsCtl.bumpTarget(h.name, -1)}>−</button>
                     <span class="font-mono text-text w-4 text-center">{$habitTargets[h.name] ?? 5}</span>
-                    <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => bumpTarget(h.name, 1)}>+</button>
-                    <button class="ml-1 px-1.5 py-0.5 text-dim hover:text-text underline" onclick={() => clearTarget(h.name)}>clear</button>
-                    <button class="ml-auto px-1.5 py-0.5 text-dim hover:text-text" onclick={() => (editingTarget = null)}>done</button>
+                    <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => targetsCtl.bumpTarget(h.name, 1)}>+</button>
+                    <button class="ml-1 px-1.5 py-0.5 text-dim hover:text-text underline" onclick={() => targetsCtl.clearTarget(h.name)}>clear</button>
+                    <button class="ml-auto px-1.5 py-0.5 text-dim hover:text-text" onclick={() => (targetsCtl.editingTarget = null)}>done</button>
                   </div>
                 {/if}
                 <!-- Stack anchor — chain badge when set, "+ stack"
