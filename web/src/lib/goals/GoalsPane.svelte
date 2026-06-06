@@ -41,7 +41,7 @@
   import { createGoalsCheckin } from '$lib/goals/goalsCheckin.svelte';
   import { createGoalsAudit } from '$lib/goals/goalsAudit.svelte';
   import { createGoalsDetail } from '$lib/goals/goalsDetail.svelte';
-  import { createGoalsView, KANBAN_COLUMNS, type KanbanCol } from '$lib/goals/goalsView.svelte';
+  import { createGoalsView, KANBAN_COLUMNS } from '$lib/goals/goalsView.svelte';
 
   // Loaded data (dataCtl.goals + dataCtl.openTasks/dataCtl.doneTasks/dataCtl.projects sidecars) +
   // dataCtl.loading flags + dataCtl.load() + per-goal dataCtl.rollups + stalled detection
