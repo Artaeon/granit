@@ -25,14 +25,13 @@
   import { createMorningScripture } from '$lib/morning/morningScripture.svelte';
   import { createMorningPicks } from '$lib/morning/morningPicks.svelte';
   import { createMorningData } from '$lib/morning/morningData.svelte';
+  import { createMorningBriefing } from '$lib/morning/morningBriefing.svelte';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { classifyAiError } from '$lib/util/aiErrors';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
   import { loadStored, saveStored } from '$lib/util/storage';
-  import { rafThrottle } from '$lib/util/streamThrottle';
-  import { BRIEFING_SYSTEM_PROMPT, buildBriefingUserPrompt } from '$lib/morning/briefingPrompt';
 
   // ─── Persistence key (today) ──────────────────────────────────────
   // Hoisted above the controller construction so dataCtl can read it.
@@ -84,17 +83,14 @@
   // analogous to a personal-assistant note dropped on the desk.
   // Pulls calendar events for today + upcoming deadlines + a slice
   // of urgent open tasks + active goals.
-  let briefingText = $state('');
-  // Snapshot of the previous brief while a regenerate is in flight, so
-  // the panel keeps showing useful text (dimmed) instead of going
-  // blank during the round-trip. Cleared on done/error/cancel.
-  let briefingPrev = $state('');
-  let briefingBusy = $state(false);
-  let briefingError = $state('');
-  let briefingAbort: AbortController | null = null;
-  // briefingDismissed key gets initialised after `today` is set,
-  // below — kept as a let so the load() block can populate.
-  let briefingDismissed = $state(false);
+  const briefingCtl = createMorningBriefing({
+    todayISO: today,
+    getEvents: () => dataCtl.todayEvents,
+    getTasks: () => sortedTasks,
+    getGoals: () => dataCtl.activeGoals,
+    getDeadlines: () => upcomingNear,
+    chatStream: (m, n, h, s) => api.chatStream(m, n, h, s)
+  });
 
   // ─── Persistence ──────────────────────────────────────────────────
   // Per-day localStorage so a closed tab doesn't lose progress, but
@@ -161,10 +157,8 @@
   async function load() {
     if (!$auth) return;
     await dataCtl.load();
-    // Restore the per-day dismissed flag now that `today` is set.
-    briefingDismissed =
-      typeof localStorage !== 'undefined' &&
-      localStorage.getItem(`granit.morning.briefDismissed.${today}`) === '1';
+    // Restore the per-day brief-dismissed flag.
+    briefingCtl.hydrateDismissed();
     // Pre-tick today's habits (only if no restored snapshot — don't
     // clobber the user's deliberate choices).
     const hadSnapshot = !!localStorage.getItem(STORAGE_KEY);
@@ -256,93 +250,6 @@
       const due = t.dueDate ? ` (due ${t.dueDate})` : '';
       return `- ${p}${t.text}${due}`;
     }).join('\n');
-  }
-
-  async function runBriefing() {
-    if (briefingBusy) return;
-    briefingError = '';
-    // Snapshot whatever's currently on screen — the UI will keep it
-    // visible (dimmed) until the first streamed token lands. This is
-    // the regenerate-keep-context affordance.
-    briefingPrev = briefingText;
-    briefingText = '';
-    briefingBusy = true;
-    briefingAbort?.abort();
-    briefingAbort = new AbortController();
-    const system = BRIEFING_SYSTEM_PROMPT;
-    const user = buildBriefingUserPrompt({
-      todayISO: today,
-      events: todayEvents,
-      tasks: sortedTasks,
-      goals: activeGoals,
-      deadlines: upcomingNear
-    });
-    // rAF throttle so a fast model doesn't repaint the rendered brief
-    // per token — same shape as the other AI dialogs.
-    const t = rafThrottle((full) => {
-      briefingText = full;
-    });
-    try {
-      await api.chatStream(
-        [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ],
-        undefined,
-        {
-          onChunk: t.onChunk,
-          onDone: () => {
-            t.flush();
-            briefingBusy = false;
-            briefingAbort = null;
-            briefingPrev = '';
-            if (!briefingText.trim()) briefingError = 'AI returned an empty brief.';
-          },
-          onError: (err) => {
-            t.flush();
-            briefingBusy = false;
-            briefingAbort = null;
-            // Restore the previous brief on failure so the user
-            // isn't left with an empty panel + just an error.
-            if (briefingPrev && !briefingText.trim()) {
-              briefingText = briefingPrev;
-            }
-            briefingPrev = '';
-            const hint = classifyAiError(err.message);
-            briefingError = hint.headline;
-          }
-        },
-        briefingAbort.signal
-      );
-    } catch (e) {
-      briefingBusy = false;
-      briefingAbort = null;
-      if (briefingPrev && !briefingText.trim()) {
-        briefingText = briefingPrev;
-      }
-      briefingPrev = '';
-      briefingError = errorMessage(e);
-    }
-  }
-  function cancelBriefing() {
-    briefingAbort?.abort();
-    briefingAbort = null;
-    briefingBusy = false;
-    // Cancel restores the previous brief — the user usually cancels
-    // because they decided the old one was fine after all.
-    if (briefingPrev && !briefingText.trim()) {
-      briefingText = briefingPrev;
-    }
-    briefingPrev = '';
-  }
-  function dismissBriefing() {
-    briefingDismissed = true;
-    try {
-      localStorage.setItem(`granit.morning.briefDismissed.${today}`, '1');
-    } catch {
-      // private mode / quota — ignore; brief stays dismissed in
-      // memory until reload, which is the right fallback.
-    }
   }
 
   // Morning stat row — quick at-a-glance numbers the user sees
@@ -558,67 +465,67 @@
          api.chatStream + rafThrottle so a fast model doesn't choke
          the page. Sabbath / consent gates fire server-side; the
          error toast surfaces classifyAiError's headline. -->
-    {#if !briefingDismissed}
+    {#if !briefingCtl.dismissed}
       <section class="mb-7 p-3 sm:p-4 bg-mantle border border-surface1 rounded">
         <div class="flex items-baseline gap-2 mb-2">
           <span class="text-[10px] uppercase tracking-wider text-dim">AI brief</span>
-          {#if briefingBusy}
+          {#if briefingCtl.busy}
             <span class="text-[10px] text-secondary">streaming…</span>
           {/if}
           <span class="flex-1"></span>
-          {#if briefingBusy}
+          {#if briefingCtl.busy}
             <button
               type="button"
-              onclick={cancelBriefing}
+              onclick={briefingCtl.cancel}
               class="text-[11px] text-warning hover:text-error"
             >cancel</button>
-          {:else if briefingText.trim()}
+          {:else if briefingCtl.text.trim()}
             <button
               type="button"
-              onclick={runBriefing}
+              onclick={briefingCtl.run}
               class="text-[11px] text-secondary hover:underline"
               title="Re-run the brief with fresh context"
             >↻ regenerate</button>
             <button
               type="button"
-              onclick={dismissBriefing}
+              onclick={briefingCtl.dismiss}
               class="text-[11px] text-dim hover:text-error"
               title="Hide for the rest of today"
             >dismiss</button>
           {/if}
         </div>
-        {#if briefingError}
-          <div class="text-sm text-error">{briefingError}</div>
-        {:else if briefingText.trim()}
+        {#if briefingCtl.error}
+          <div class="text-sm text-error">{briefingCtl.error}</div>
+        {:else if briefingCtl.text.trim()}
           <!-- Render as paragraph-split prose so the three-paragraph
                structure the prompt asks for reads correctly. -->
           <div class="text-sm text-text leading-relaxed space-y-2">
-            {#each briefingText.trim().split(/\n{2,}/) as para}
+            {#each briefingCtl.text.trim().split(/\n{2,}/) as para}
               {#if para.trim()}<p>{para.trim()}</p>{/if}
             {/each}
           </div>
-        {:else if briefingBusy && briefingPrev.trim()}
+        {:else if briefingCtl.busy && briefingCtl.prev.trim()}
           <!-- Regenerate in flight — keep the previous brief on screen
                (dimmed) so the user has something to read until the new
                one streams in. -->
           <div class="text-sm text-dim leading-relaxed space-y-2 opacity-60">
-            {#each briefingPrev.trim().split(/\n{2,}/) as para}
+            {#each briefingCtl.prev.trim().split(/\n{2,}/) as para}
               {#if para.trim()}<p>{para.trim()}</p>{/if}
             {/each}
           </div>
-        {:else if briefingBusy}
+        {:else if briefingCtl.busy}
           <p class="text-sm text-dim italic">Reading the calendar + tasks…</p>
         {:else}
           <p class="text-sm text-dim mb-2">A 60-110 word read of how today looks and where to focus, grounded in your calendar + open tasks.</p>
           <button
             type="button"
-            onclick={runBriefing}
+            onclick={briefingCtl.run}
             class="text-xs px-2 py-1 bg-surface0 hover:bg-surface1 text-secondary border border-secondary"
             title="Generate a morning brief"
           >Generate brief</button>
           <button
             type="button"
-            onclick={dismissBriefing}
+            onclick={briefingCtl.dismiss}
             class="ml-1 text-[11px] text-dim hover:text-text px-1.5 py-1"
             title="Hide the brief section for today"
           >not today</button>
