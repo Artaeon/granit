@@ -7,6 +7,13 @@
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { rafThrottle } from '$lib/util/streamThrottle';
   import { loadDraft, clearDraft, makeDraftWriter } from '$lib/util/draftAutosave';
+  import {
+    recurrenceOptions,
+    triageStates,
+    fmtDate,
+    snoozeOffset,
+    buildAskAIPrompt
+  } from './taskDetailHelpers';
 
   // TaskDetail is the side-drawer that pops open when the user clicks
   // a task card. Editable fields not already inline-editable on the card:
@@ -23,25 +30,13 @@
     onChanged?: () => void | Promise<void>;
   } = $props();
 
-  // Build the seed prompt that opens the AI overlay with this task's
-  // context pre-loaded. Pre-fills the composer (send=false) so the
-  // user can edit before submitting — the model has enough context
-  // to answer "help me break this down" or "draft a plan" without
-  // the user having to re-state the task.
+  // Opens the AIOverlay with this task's context pre-loaded. send=false
+  // so the user can edit the composer before submitting — the model
+  // already has enough context to answer "help me break this down" or
+  // "draft a plan" without the user re-stating the task.
   function askAIAboutThisTask(): void {
     if (!task) return;
-    const t = task;
-    const lines = [`I'm working on this task:`, '', `- ${cleanTaskText(t.text)}`];
-    if (t.dueDate) lines.push(`- due ${t.dueDate}`);
-    if (t.priority) lines.push(`- priority P${t.priority}`);
-    if (t.scheduledStart) lines.push(`- scheduled ${t.scheduledStart}`);
-    if (t.estimatedMinutes) lines.push(`- estimate ${t.estimatedMinutes}m`);
-    if (t.tags && t.tags.length > 0) lines.push(`- tags: ${t.tags.join(', ')}`);
-    if (t.notes && t.notes.trim() !== '') {
-      lines.push('', `My notes on it:`, t.notes.trim());
-    }
-    lines.push('', `What would help me move it forward?`);
-    openAIOverlay({ text: lines.join('\n'), send: false });
+    openAIOverlay({ text: buildAskAIPrompt(task), send: false });
   }
 
   let notesBuf = $state('');
@@ -532,21 +527,10 @@
     await patch({ scheduledStart: '' });
   }
 
-  // Snooze quick-actions. Sets snoozedUntil to the given local-time
-  // YYYY-MM-DDTHH:MM string + flips triage to 'snoozed'. Uses local
-  // wall-clock so the timing matches the user's intent without TZ
-  // arithmetic.
-  function snoozeOffset(days: number, hour = 9): string {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    d.setHours(hour, 0, 0, 0);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mi = String(d.getMinutes()).padStart(2, '0');
-    return `${y}-${m}-${dd}T${hh}:${mi}`;
-  }
+  // Snooze quick-actions. Sets snoozedUntil to a YYYY-MM-DDTHH:MM
+  // local-time string (built by snoozeOffset) + flips triage to
+  // 'snoozed'. Wall-clock semantics so the timing matches the user's
+  // intent without TZ arithmetic.
   async function snoozeUntil(days: number) {
     await patch({ snoozedUntil: snoozeOffset(days), triage: 'snoozed' });
   }
@@ -566,20 +550,6 @@
     close();
   }
 
-  function fmtDate(s?: string): string {
-    if (!s) return '—';
-    const d = new Date(s);
-    return d.toLocaleString();
-  }
-
-  const recurrenceOptions: { value: string; label: string }[] = [
-    { value: '', label: 'none' },
-    { value: 'daily', label: 'daily' },
-    { value: 'weekly', label: 'weekly' },
-    { value: 'monthly', label: 'monthly' },
-    { value: '3x-week', label: '3× / week' }
-  ];
-  const triageStates: NonNullable<Task['triage']>[] = ['inbox', 'triaged', 'scheduled', 'done', 'dropped', 'snoozed'];
 </script>
 
 <div class="task-detail-shell">
