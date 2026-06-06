@@ -45,6 +45,7 @@
   import { createDeadlinesData } from '$lib/deadlines/deadlinesData.svelte';
   import { createDeadlinesViewState } from '$lib/deadlines/deadlinesViewState.svelte';
   import { createDeadlinesFilterState } from '$lib/deadlines/deadlinesFilterState.svelte';
+  import { createDeadlinesShortcuts } from '$lib/deadlines/deadlinesShortcuts';
 
   // Deadlines page — top-level "this matters by date X" markers backed
   // by .granit/deadlines.json. Distinct from Tasks (no checkbox / not
@@ -356,68 +357,24 @@
   // users don't read tooltips, but a "?" chip in the toolbar is a
   // well-established affordance (Linear, GitHub, Notion all use it).
   let shortcutsOpen = $state(false);
-  function onPageKey(e: KeyboardEvent) {
-    if (drawerOpen) return;
-    const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) {
-      return;
-    }
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    switch (e.key) {
-      case '?':
-        e.preventDefault();
-        shortcutsOpen = !shortcutsOpen;
-        break;
-      case 'n':
-        e.preventDefault();
-        openCreate();
-        break;
-      case '/':
-        e.preventDefault();
-        searchInput?.focus();
-        searchInput?.select();
-        break;
-      case '1':
-        e.preventDefault();
-        setFilter('critical');
-        break;
-      case '2':
-        e.preventDefault();
-        setFilter('high');
-        break;
-      case '3':
-        e.preventDefault();
-        setFilter('normal');
-        break;
-      case 'v':
-        e.preventDefault();
-        viewCtl.cycleView();
-        break;
-      case 'g':
-        e.preventDefault();
-        viewCtl.cycleGroup();
-        break;
-      case 'Escape':
-        if (shortcutsOpen) {
-          e.preventDefault();
-          shortcutsOpen = false;
-        } else if (importanceFilter || q) {
-          e.preventDefault();
-          filterCtl.clearAll();
-        }
-        break;
-    }
-  }
-
-  // Search box keydown — intercepts Escape to blur + clear before the
-  // global handler sees it (so Esc-in-search means "leave search" not
-  // "clear filters and bring me out").
-  function onSearchKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      (e.target as HTMLInputElement).blur();
-      filterCtl.q = '';
-    }
-  }
+  // onPageKey + onSearchKey live in deadlinesShortcuts. The factory
+  // takes deps as callbacks so reactivity flows from $state /
+  // $derived without the handler having to import any controller.
+  const shortcuts = createDeadlinesShortcuts({
+    isDrawerOpen: () => drawerOpen,
+    hasActiveFilter: () => !!importanceFilter || !!q,
+    getShortcutsOpen: () => shortcutsOpen,
+    setShortcutsOpen: (v) => (shortcutsOpen = v),
+    getSearchEl: () => searchInput,
+    openCreate,
+    setFilter,
+    cycleView: viewCtl.cycleView,
+    cycleGroup: viewCtl.cycleGroup,
+    clearFilters: () => filterCtl.clearAll(),
+    clearSearch: () => (filterCtl.q = '')
+  });
+  const onPageKey = shortcuts.onPageKey;
+  const onSearchKey = shortcuts.onSearchKey;
 </script>
 
 <svelte:window on:keydown={onPageKey} />
