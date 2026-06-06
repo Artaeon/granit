@@ -30,7 +30,7 @@
   import { streamInlineAI } from '$lib/editor/inline-ai';
   import type { InlineAITriggerEvent } from '$lib/editor/inline-ai-trigger';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
-  import { record as recordSharedPrompt, list as listSharedPrompts } from '$lib/ai/recentPrompts';
+  import { createPromptHistoryController } from './inlineAIPromptHistory.svelte';
   import {
     type Preset,
     type PresetCategory,
@@ -60,50 +60,15 @@
   let highlightedIdx = $state(0);
   let busy = $state(false);
 
-  // Prompt history — last 20 free-form prompts the user has sent for
-  // THIS note, scoped by note path. Up/Down arrows in the input cycle
-  // through history (most-recent first). Persisted to localStorage so
-  // a tab reload doesn't lose history; localStorage scope is the right
-  // grain here (per-device, not per-vault) because what the user asks
-  // about a note is intimately tied to their current train of thought.
-  //
-  // historyKey is $derived from notePath so a parent reusing this
-  // component across notes (without remount) gets the right per-note
-  // storage bucket. The previous form was `const historyKey = …` which
-  // froze the original notePath value forever — pushHistory would
-  // then write to the OLD bucket even after the prop changed. svelte-
-  // check rightly flagged this as state_referenced_locally; the
-  // practical risk was low (menu is transient per-trigger) but the
-  // fix is one line.
-  const HISTORY_LIMIT = 20;
-  let historyKey = $derived(`granit.ai.history.${notePath}`);
-  let history = $state<string[]>(loadHistory());
-  let historyIdx = $state(-1); // -1 = live input; 0 = most recent
-  // Keep `history` in sync with `historyKey` if the parent passes a new
-  // notePath without remounting the menu. Without this, the displayed
-  // recents would be note A's while pushHistory writes to note B's
-  // bucket (loadHistory re-reads historyKey on every call). Cheap —
-  // the menu's lifecycle is short and historyKey only changes when
-  // the parent navigates between notes while the menu is open, which
-  // is rare but real.
-  $effect(() => {
-    void historyKey;
-    history = loadHistory();
-    historyIdx = -1;
+  // Prompt history controller — per-note recents (Up/Down cycles),
+  // cross-source recents (chat overlay prompts), and the pushHistory
+  // de-dupe + shared-log mirror. Lives in inlineAIPromptHistory.svelte.ts
+  // so this component stays focused on layout + streaming.
+  const historyCtl = createPromptHistoryController({
+    getNotePath: () => notePath
   });
-
-  // Cross-source recents — prompts the user wrote in the global chat
-  // overlay that this note's per-note history hasn't already seen.
-  // Filtered to source=chat so we don't show the user their own
-  // inline prompts twice. Computed once on mount; not reactive
-  // because the menu lifecycle is short — opening it again rebuilds.
-  let crossRecents = $state<{ prompt: string }[]>([]);
-  function refreshCrossRecents() {
-    const seen = new Set(history.map((h) => h.toLowerCase()));
-    crossRecents = listSharedPrompts({ source: 'chat', limit: 6 })
-      .filter((r) => !seen.has(r.prompt.toLowerCase()))
-      .slice(0, 2);
-  }
+  let history = $derived(historyCtl.history);
+  let crossRecents = $derived(historyCtl.crossRecents);
 
   // ── Prompt library — user-curated saved prompts ─────────────────
   // Fetched once on mount; filtered to entries that match the current
@@ -151,35 +116,6 @@
     runCustomPrompt();
   }
 
-  function loadHistory(): string[] {
-    if (typeof window === 'undefined') return [];
-    try {
-      const raw = window.localStorage.getItem(historyKey);
-      if (!raw) return [];
-      const arr = JSON.parse(raw);
-      return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string').slice(0, HISTORY_LIMIT) : [];
-    } catch {
-      return [];
-    }
-  }
-  function pushHistory(prompt: string) {
-    const p = prompt.trim();
-    if (!p) return;
-    // De-dupe — push to front, drop existing copies elsewhere in
-    // the list. Keeps the most-recent-first ordering monotonic.
-    history = [p, ...history.filter((x) => x !== p)].slice(0, HISTORY_LIMIT);
-    try {
-      window.localStorage.setItem(historyKey, JSON.stringify(history));
-    } catch {
-      // localStorage can throw in private mode or when full; we drop
-      // the persistence and keep the in-memory list usable.
-    }
-    // Also write to the shared recent-prompts log so the chat
-    // overlay can offer this prompt as a recent. Non-fatal if the
-    // log write fails for any reason — per-note history above is the
-    // primary record for this surface.
-    recordSharedPrompt({ prompt: p, source: 'inline', notePath });
-  }
 
   // Context toggles.
   //
@@ -500,7 +436,7 @@
   async function runCustomPrompt() {
     const p = promptInput.trim();
     if (!p || busy) return;
-    pushHistory(p);
+    historyCtl.pushHistory(p);
     busy = true;
     try {
       const view = event.view;
@@ -621,15 +557,15 @@
     // the list (so power users who don't care about history get the
     // expected behaviour). Mod-modified arrows always go to the list.
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && history.length > 0 && !e.metaKey && !e.ctrlKey) {
-      const inHistoryMode = historyIdx >= 0 || promptInput.length === 0;
+      const inHistoryMode = historyCtl.historyIdx >= 0 || promptInput.length === 0;
       if (inHistoryMode) {
         e.preventDefault();
         if (e.key === 'ArrowUp') {
-          historyIdx = Math.min(history.length - 1, historyIdx + 1);
-          promptInput = history[historyIdx] ?? '';
+          historyCtl.historyIdx = Math.min(history.length - 1, historyCtl.historyIdx + 1);
+          promptInput = history[historyCtl.historyIdx] ?? '';
         } else {
-          historyIdx = Math.max(-1, historyIdx - 1);
-          promptInput = historyIdx === -1 ? '' : (history[historyIdx] ?? '');
+          historyCtl.historyIdx = Math.max(-1, historyCtl.historyIdx - 1);
+          promptInput = historyCtl.historyIdx === -1 ? '' : (history[historyCtl.historyIdx] ?? '');
         }
         return;
       }
@@ -707,7 +643,7 @@
 
   onMount(() => {
     promptEl?.focus();
-    refreshCrossRecents();
+    historyCtl.refreshCrossRecents();
     void loadLibrary();
     // Wait one tick for the menu to lay out so we measure its real
     // size before clamping.
@@ -752,7 +688,7 @@
       bind:this={promptEl}
       bind:value={promptInput}
       onkeydown={onKey}
-      oninput={() => { historyIdx = -1; }}
+      oninput={() => { historyCtl.historyIdx = -1; }}
       placeholder={hasSelection ? 'tell AI what to do with the selection…' : 'ask AI anything, or pick below…'}
       class="flex-1 bg-transparent text-[13px] placeholder-dim focus:outline-none"
       disabled={busy}
