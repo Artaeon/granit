@@ -13,7 +13,7 @@
   import { installNoteLifecycleEffects } from '$lib/notes/noteLifecycleEffects.svelte';
   import { installPreviewScrollWiring } from '$lib/notes/previewScrollWiring.svelte';
   import { installNoteShortcuts } from '$lib/notes/noteKeyboardShortcuts.svelte';
-  import { openResearchMode as openResearchModeFor } from '$lib/notes/researchMode';
+  import { createNoteEditorActions } from '$lib/notes/noteEditorActions.svelte';
   import { createNoteBreadcrumbsCtl } from '$lib/notes/noteBreadcrumbsCtl.svelte';
   import { createNoteSaveStatusCtl } from '$lib/notes/noteSaveStatusCtl.svelte';
   import { createNoteVersionCount } from '$lib/notes/noteVersionCount.svelte';
@@ -21,9 +21,7 @@
   import { createMissingNoteCtl } from '$lib/notes/createMissingNote.svelte';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
-  import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
   import { createNoteLinkSuggester } from '$lib/notes/noteLinkSuggester.svelte';
-  import { saveFrontmatter as saveFrontmatterFn } from '$lib/notes/saveFrontmatter';
   import { saveNote as saveNoteFn } from '$lib/notes/saveNote';
   import { createLoadNoteWrapper } from '$lib/notes/loadNoteWrapper.svelte';
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
@@ -300,20 +298,6 @@
   // on the NoteHeader and the parent has to own the lvalue.
   let overflowTriggerEl: HTMLButtonElement | undefined = $state();
 
-  async function navigateWikilink(target: string) {
-    // Best-effort flush of any pending edit. We never block navigation on
-    // the save result — the localStorage draft already preserves the body
-    // and beforeNavigate flushes again. If the user is offline, save will
-    // fail; the draft is on disk and gets retried automatically when
-    // 'online' fires. The lookup + AI-offer + goto flow lives in
-    // wikilinkNav so this surface only owns the dirty-flush + ctx wiring.
-    if (dirty) void save({ silent: true });
-    await navigateWikilinkHelper(target, {
-      parentPath: note?.path ?? '',
-      parentBody: body ?? ''
-    });
-  }
-
 
   // Status-bar counters + word goal live in $lib/notes/noteWordStats —
   // see there for the rationale on tying everything to bodyForPreview
@@ -352,24 +336,22 @@
     })
   );
 
-  function jumpToLine(lineNum: number) {
-    editor?.scrollToLine(lineNum);
-    overlays.infoDrawerOpen = false;
-  }
-
-  // Research Mode — see $lib/notes/researchMode for the AI overlay
-  // seeding contract. The page just forwards the active note + body.
-  function openResearchMode(): void {
-    if (!note) return;
-    openResearchModeFor(note, body);
-  }
-
-  // Frontmatter save lives in $lib/notes/saveFrontmatter — see
-  // there for the conflict + draft + surgical-mutation contract.
-  // The page just plumbs its reactive state via the pipe proxy above.
-  async function saveFrontmatter(next: Record<string, unknown>): Promise<boolean> {
-    return saveFrontmatterFn(next, pipe, saveCtx);
-  }
+  // Four small route-side action helpers — saveFrontmatter,
+  // navigateWikilink, openResearchMode, jumpToLine — bundled into
+  // noteEditorActions. Each one's a thin closure over pipe + editor
+  // + overlays; centralising the binding drops ~30 LOC from the
+  // route. The wikilinkNav / researchMode / saveFrontmatter helpers
+  // still own the real work.
+  const actions = createNoteEditorActions({
+    pipe,
+    overlays,
+    getEditor: () => editor,
+    save: (o) => save(o)
+  });
+  const saveFrontmatter = actions.saveFrontmatter;
+  const navigateWikilink = actions.navigateWikilink;
+  const openResearchMode = actions.openResearchMode;
+  const jumpToLine = actions.jumpToLine;
 
   // Link-suggester glue (tag chip + link chip insert) lives in
   // noteLinkSuggester — the route hands current-note + saveFrontmatter
