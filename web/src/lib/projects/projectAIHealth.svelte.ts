@@ -174,7 +174,12 @@ export function createProjectAIHealth(deps: ProjectAIHealthDeps): ProjectAIHealt
 
     // rAF throttle so the pre-rendered raw stream doesn't re-render
     // the card per token.
-    const healthT = rafThrottle((full) => { aiHealthRaw = full; });
+    // Gate apply on abort — dismiss/clear could flip aiHealthRaw
+    // to '' while a queued rAF frame still holds a buffer to apply.
+    const healthT = rafThrottle((full) => {
+      if (aiHealthAbort?.signal.aborted) return;
+      aiHealthRaw = full;
+    });
     try {
       await api.chatStream(
         [

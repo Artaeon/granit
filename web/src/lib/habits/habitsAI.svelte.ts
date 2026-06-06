@@ -112,6 +112,9 @@ export function createHabitsAI(deps: HabitsAIDeps): HabitsAIController {
           // rAF throttle — split + filter + reactive insightLines write
           // per chunk repaints the insights list per token.
           const habitT = rafThrottle((full) => {
+            // Gate on abort — dismissInsight() wipes insightLines;
+            // a queued rAF frame would repopulate otherwise.
+            if (insightAbort?.signal.aborted) return;
             insightLines = full.split(/\n+/).map((l) => l.trim()).filter((l) => l.length > 0);
           });
           return {

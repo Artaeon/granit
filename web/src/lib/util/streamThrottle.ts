@@ -28,6 +28,11 @@ export interface ChunkThrottle {
   onChunk: (chunk: string) => void;
   /** Force a synchronous flush of any pending buffer. Idempotent. */
   flush: () => void;
+  /** Drop the pending frame AND wipe the accumulated buffer without
+   *  calling apply(). Use from dismiss/clear paths so a queued rAF
+   *  frame doesn't repopulate state right after the caller wipes
+   *  it. Symmetric with flush(): flush commits, cancel drops. */
+  cancel: () => void;
   /** Read the current accumulated buffer (does NOT flush). Useful
    *  inside onDone for `JSON.parse(t.value())` style consumers. */
   value: () => string;
@@ -73,6 +78,18 @@ export function rafThrottle(apply: (accumulated: string) => void): ChunkThrottle
         dirty = false;
         apply(acc);
       }
+    },
+    cancel() {
+      if (frame !== 0) {
+        caf(frame);
+        frame = 0;
+      }
+      // Wipe both the dirty flag AND the accumulator so a
+      // subsequent run() starts fresh; without clearing acc, the
+      // first chunk of the next run would land on top of the
+      // dismissed stream's trailing buffer.
+      dirty = false;
+      acc = '';
     },
     value() {
       return acc;

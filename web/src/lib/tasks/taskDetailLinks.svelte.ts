@@ -26,20 +26,36 @@ export function createTaskDetailLinks(): TaskDetailLinksController {
   let goals = $state<Goal[]>([]);
   let deadlines = $state<Deadline[]>([]);
   let loaded = $state(false);
+  // inflight gates concurrent load() calls (template + parent both
+  // call); `loaded` only flips true once at least one slice
+  // succeeded, so a cold-network total failure stays retryable
+  // when the drawer next opens.
+  let inflight = false;
 
   async function load() {
-    if (loaded) return;
-    loaded = true;
-    // Three independent reads — settle in parallel and degrade
-    // silently on per-list failure rather than blocking the drawer.
-    const [pp, gg, dd] = await Promise.allSettled([
-      api.listProjects(),
-      api.listGoals(),
-      api.listDeadlines()
-    ]);
-    if (pp.status === 'fulfilled') projects = pp.value.projects;
-    if (gg.status === 'fulfilled') goals = gg.value.goals;
-    if (dd.status === 'fulfilled') deadlines = dd.value.deadlines;
+    if (loaded || inflight) return;
+    inflight = true;
+    try {
+      // Three independent reads — settle in parallel and degrade
+      // silently on per-list failure rather than blocking the drawer.
+      const [pp, gg, dd] = await Promise.allSettled([
+        api.listProjects(),
+        api.listGoals(),
+        api.listDeadlines()
+      ]);
+      if (pp.status === 'fulfilled') projects = pp.value.projects;
+      if (gg.status === 'fulfilled') goals = gg.value.goals;
+      if (dd.status === 'fulfilled') deadlines = dd.value.deadlines;
+      // At least one slice landed → consider this load successful so
+      // we don't refetch on every drawer open. If all three rejected
+      // (likely the user is offline / backend down), leave loaded
+      // false so the next open retries.
+      if (pp.status === 'fulfilled' || gg.status === 'fulfilled' || dd.status === 'fulfilled') {
+        loaded = true;
+      }
+    } finally {
+      inflight = false;
+    }
   }
 
   return {

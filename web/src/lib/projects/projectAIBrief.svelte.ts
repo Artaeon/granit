@@ -61,7 +61,14 @@ export function createProjectAIBrief(deps: ProjectAIBriefDeps): ProjectAIBriefCo
     aiBrief = '';
     aiBriefAbort = new AbortController();
     // rAF throttle so the live brief render isn't repainted per token.
-    const briefT = rafThrottle((full) => { aiBrief = full; });
+    // The apply lambda gates on abort: after dismiss() aborts the
+    // stream, a queued rAF frame can still fire and would write
+    // back into aiBrief AFTER the wipe — producing a one-frame
+    // phantom. Gating on signal.aborted closes that race.
+    const briefT = rafThrottle((full) => {
+      if (aiBriefAbort?.signal.aborted) return;
+      aiBrief = full;
+    });
 
     const project = deps.getProject();
     const openTasks = deps.getOpenTasks();

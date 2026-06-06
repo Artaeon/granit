@@ -154,6 +154,10 @@ export function createVenturesDetailAISummary(
         undefined,
         {
           onChunk: (c) => {
+            // Gate on abort — dismiss() wipes text; without this, an
+            // in-flight onChunk fires once more after the abort and
+            // re-populates text from the buffer.
+            if (abort?.signal.aborted) return;
             buf += c;
             text = buf;
           },

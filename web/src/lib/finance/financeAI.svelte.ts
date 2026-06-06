@@ -114,6 +114,7 @@ export function createFinanceAI(deps: FinanceAIDeps): FinanceAIController {
       goals: deps.getGoals()
     });
     const t = rafThrottle((full) => {
+      if (snapshotAbort?.signal.aborted) return;
       snapshotText = full;
     });
     try {
@@ -171,6 +172,7 @@ export function createFinanceAI(deps: FinanceAIDeps): FinanceAIController {
       currency: overview?.currency ?? 'EUR'
     });
     const t = rafThrottle((full) => {
+      if (auditAbort?.signal.aborted) return;
       auditText = full;
     });
     try {

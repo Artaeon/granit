@@ -145,6 +145,9 @@ export function createTaskDetailAIDecompose(deps: TaskDetailAIDecomposeDeps): Ta
       // a fast model would freeze the dialog because the proposals
       // list re-rendered per token.
       const decompT = rafThrottle((full) => {
+        // Gate on abort — dismiss() flips state to wiped; a queued
+        // rAF frame would re-populate raw + subtasks otherwise.
+        if (abort?.signal.aborted) return;
         raw = full;
         const block = extractDecompJson(full);
         if (block) {
