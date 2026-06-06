@@ -23,6 +23,7 @@
   import { api, todayISO, type Task, type HabitInfo, type Goal, type Deadline, type PrayerIntention, type CalendarEvent } from '$lib/api';
   import { scriptures } from '$lib/morning/scriptures';
   import { createMorningScripture } from '$lib/morning/morningScripture.svelte';
+  import { createMorningPicks } from '$lib/morning/morningPicks.svelte';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -46,15 +47,12 @@
   let winSentence = $state('');
   let goal = $state('');
   let linkedGoalId = $state<string>('');
-  let pickedTasks = $state<Set<string>>(new Set());
-  let showAllTasks = $state(false);
-  let pickedHabits = $state<Set<string>>(new Set());
-  let pickedIntentions = $state<Set<string>>(new Set());
-  let prayerPickerOpen = $state(false);
+  const picksCtl = createMorningPicks({
+    appendKnownHabit: (h) => { knownHabits = [...knownHabits, h]; },
+    prependActiveIntention: (p) => { activeIntentions = [p, ...activeIntentions]; },
+    createPrayer: (args) => api.createPrayer(args)
+  });
   let thoughts = $state('');
-  let newPrayerText = $state('');
-  let addingPrayer = $state(false);
-  let newHabit = $state('');
 
   let saving = $state(false);
   let suggesting = $state(false);
@@ -107,11 +105,11 @@
       winSentence,
       goal,
       linkedGoalId,
-      pickedTasks: [...pickedTasks],
-      pickedHabits: [...pickedHabits],
-      pickedIntentions: [...pickedIntentions],
+      pickedTasks: [...picksCtl.pickedTasks],
+      pickedHabits: [...picksCtl.pickedHabits],
+      pickedIntentions: [...picksCtl.pickedIntentions],
       thoughts,
-      newHabit
+      newHabit: picksCtl.newHabit
     };
     saveStored<Snapshot>(STORAGE_KEY, s);
   }
@@ -126,19 +124,21 @@
     winSentence = s.winSentence ?? '';
     goal = s.goal ?? '';
     linkedGoalId = s.linkedGoalId ?? '';
-    pickedTasks = new Set(s.pickedTasks ?? []);
-    pickedHabits = new Set(s.pickedHabits ?? []);
-    pickedIntentions = new Set(s.pickedIntentions ?? []);
+    picksCtl.restore({
+      pickedTasks: s.pickedTasks,
+      pickedHabits: s.pickedHabits,
+      pickedIntentions: s.pickedIntentions,
+      newHabit: s.newHabit
+    });
     thoughts = s.thoughts ?? '';
-    newHabit = s.newHabit ?? '';
     return true;
   }
   function clearPersisted() { saveStored<Snapshot>(STORAGE_KEY, undefined); }
   $effect(() => {
     void scriptureCtl.scripture; void scriptureCtl.customScripture; void scriptureCtl.customSource;
     void winSentence; void goal; void linkedGoalId;
-    void pickedTasks; void pickedHabits; void pickedIntentions;
-    void thoughts; void newHabit;
+    void picksCtl.pickedTasks; void picksCtl.pickedHabits; void picksCtl.pickedIntentions;
+    void thoughts; void picksCtl.newHabit;
     persist();
   });
 
@@ -198,12 +198,7 @@
       // Pre-tick today's habits (only if no restored snapshot — don't
       // clobber the user's deliberate choices).
       const hadSnapshot = !!localStorage.getItem(STORAGE_KEY);
-      if (!hadSnapshot) {
-        for (const k of knownHabits) {
-          if (k.last7Pct >= 50) pickedHabits.add(k.name);
-        }
-        pickedHabits = new Set(pickedHabits);
-      }
+      if (!hadSnapshot) picksCtl.pretickWarmHabits(knownHabits);
     } catch (e) {
       error = errorMessage(e);
     }
@@ -266,7 +261,7 @@
 
   const pickedTaskTexts = $derived.by(() => {
     const ts: string[] = [];
-    for (const t of openTasks) if (pickedTasks.has(t.id)) ts.push(t.text);
+    for (const t of openTasks) if (picksCtl.pickedTasks.has(t.id)) ts.push(t.text);
     return ts;
   });
 
@@ -288,51 +283,6 @@
   });
 
   // ─── Actions ──────────────────────────────────────────────────────
-  function toggleTask(id: string) {
-    if (pickedTasks.has(id)) pickedTasks.delete(id);
-    else pickedTasks.add(id);
-    pickedTasks = new Set(pickedTasks);
-  }
-  function toggleHabit(name: string) {
-    if (pickedHabits.has(name)) pickedHabits.delete(name);
-    else pickedHabits.add(name);
-    pickedHabits = new Set(pickedHabits);
-  }
-  function toggleIntention(id: string) {
-    if (pickedIntentions.has(id)) pickedIntentions.delete(id);
-    else pickedIntentions.add(id);
-    pickedIntentions = new Set(pickedIntentions);
-  }
-  function addCustomHabit(e: Event) {
-    e.preventDefault();
-    const n = newHabit.trim();
-    if (!n) return;
-    pickedHabits.add(n);
-    pickedHabits = new Set(pickedHabits);
-    knownHabits = [...knownHabits, {
-      name: n, days: [], currentStreak: 0, longestStreak: 0,
-      last7Pct: 0, last30Pct: 0, doneToday: false
-    }];
-    newHabit = '';
-  }
-  async function addNewPrayer(e: Event) {
-    e.preventDefault();
-    const text = newPrayerText.trim();
-    if (!text || addingPrayer) return;
-    addingPrayer = true;
-    try {
-      const created = await api.createPrayer({ text, status: 'praying' });
-      activeIntentions = [created, ...activeIntentions];
-      pickedIntentions.add(created.id);
-      pickedIntentions = new Set(pickedIntentions);
-      newPrayerText = '';
-    } catch (err) {
-      toast.error(`failed: ${errorMessage(err)}`);
-    } finally {
-      addingPrayer = false;
-    }
-  }
-
   function focusContext(): string {
     return sortedTasks.slice(0, 12).map((t) => {
       const p = t.priority > 0 ? `P${t.priority} ` : '';
@@ -492,7 +442,7 @@
       // 'Praying for:' (server has no dedicated prayer field — keeps
       // the daily note self-contained without a schema change).
       const prayerLines: string[] = [];
-      for (const id of pickedIntentions) {
+      for (const id of picksCtl.pickedIntentions) {
         const intent = activeIntentions.find((x) => x.id === id);
         if (!intent) continue;
         let line = `- ${intent.text}`;
@@ -514,7 +464,7 @@
         scripture: activeScripture.text ? activeScripture : undefined,
         goal: goalForSave,
         tasks: pickedTaskTexts,
-        habits: Array.from(pickedHabits),
+        habits: Array.from(picksCtl.pickedHabits),
         thoughts: thoughtsBody
       });
       clearPersisted();
@@ -534,9 +484,9 @@
     let n = 0;
     if (winSentence.trim()) n++;
     if (goal.trim()) n++;
-    if (pickedTasks.size > 0) n++;
-    if (pickedHabits.size > 0) n++;
-    if (thoughts.trim() || pickedIntentions.size > 0) n++;
+    if (picksCtl.pickedTasks.size > 0) n++;
+    if (picksCtl.pickedHabits.size > 0) n++;
+    if (thoughts.trim() || picksCtl.pickedIntentions.size > 0) n++;
     return n;
   });
 </script>
@@ -809,20 +759,20 @@
     <section class="mb-7">
       <div class="flex items-baseline justify-between mb-2">
         <h2 class="text-sm font-semibold text-text uppercase tracking-wider">Pick your tasks</h2>
-        <span class="text-[11px] text-dim">{pickedTasks.size} picked</span>
+        <span class="text-[11px] text-dim">{picksCtl.pickedTasks.size} picked</span>
       </div>
       {#if openTasks.length === 0}
         <p class="text-sm text-dim italic">no open tasks — <a href="/tasks" class="text-secondary hover:underline">add some</a></p>
       {:else}
         <ul class="space-y-0.5">
-          {#each (showAllTasks ? sortedTasks : taskPreview) as t (t.id)}
-            {@const sel = pickedTasks.has(t.id)}
+          {#each (picksCtl.showAllTasks ? sortedTasks : taskPreview) as t (t.id)}
+            {@const sel = picksCtl.pickedTasks.has(t.id)}
             {@const overdueImp = !!t.dueDate && t.dueDate < today && (t.priority === 1 || t.priority === 2)}
             {@const dueToday = t.dueDate === today}
             <li>
               <button
                 type="button"
-                onclick={() => toggleTask(t.id)}
+                onclick={() => picksCtl.toggleTask(t.id)}
                 class="w-full text-left flex items-baseline gap-2 px-2 py-1.5 rounded hover:bg-surface0 group"
               >
                 <span class="w-4 h-4 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center
@@ -847,16 +797,16 @@
             </li>
           {/each}
         </ul>
-        {#if !showAllTasks && taskOverflow > 0}
+        {#if !picksCtl.showAllTasks && taskOverflow > 0}
           <button
             type="button"
-            onclick={() => (showAllTasks = true)}
+            onclick={() => (picksCtl.showAllTasks = true)}
             class="mt-1.5 text-[11px] text-secondary hover:underline"
           >show {taskOverflow} more</button>
-        {:else if showAllTasks && sortedTasks.length > 8}
+        {:else if picksCtl.showAllTasks && sortedTasks.length > 8}
           <button
             type="button"
-            onclick={() => (showAllTasks = false)}
+            onclick={() => (picksCtl.showAllTasks = false)}
             class="mt-1.5 text-[11px] text-dim hover:text-text"
           >collapse</button>
         {/if}
@@ -864,19 +814,19 @@
     </section>
 
     <!-- 4 · Habits — compact horizontal grid -->
-    {#if knownHabits.length > 0 || newHabit.length === 0}
+    {#if knownHabits.length > 0 || picksCtl.newHabit.length === 0}
       <section class="mb-7">
         <div class="flex items-baseline justify-between mb-2">
           <h2 class="text-sm font-semibold text-text uppercase tracking-wider">Habits</h2>
-          <span class="text-[11px] text-dim">{pickedHabits.size} committed</span>
+          <span class="text-[11px] text-dim">{picksCtl.pickedHabits.size} committed</span>
         </div>
         {#if knownHabits.length > 0}
           <div class="flex flex-wrap gap-1.5 mb-2">
             {#each knownHabits as h (h.name)}
-              {@const sel = pickedHabits.has(h.name)}
+              {@const sel = picksCtl.pickedHabits.has(h.name)}
               <button
                 type="button"
-                onclick={() => toggleHabit(h.name)}
+                onclick={() => picksCtl.toggleHabit(h.name)}
                 class="px-3 py-2 text-xs rounded-full border transition-colors inline-flex items-center gap-1.5
                   sm:px-2.5 sm:py-1 sm:text-[11px]
                   {sel ? 'bg-surface1 border-primary text-primary' : 'border-surface1 text-subtext hover:border-primary'}"
@@ -888,13 +838,13 @@
             {/each}
           </div>
         {/if}
-        <form onsubmit={addCustomHabit} class="flex gap-2">
+        <form onsubmit={picksCtl.addCustomHabit} class="flex gap-2">
           <input
-            bind:value={newHabit}
+            bind:value={picksCtl.newHabit}
             placeholder="add a habit…"
             class="flex-1 px-2.5 py-1.5 bg-surface0 border border-surface1 rounded text-sm"
           />
-          <button type="submit" disabled={!newHabit.trim()} class="px-2.5 py-1.5 bg-surface1 text-subtext rounded text-sm disabled:opacity-50">+ add</button>
+          <button type="submit" disabled={!picksCtl.newHabit.trim()} class="px-2.5 py-1.5 bg-surface1 text-subtext rounded text-sm disabled:opacity-50">+ add</button>
         </form>
       </section>
     {/if}
@@ -910,10 +860,10 @@
         {#if activeIntentions.length > 0}
           <button
             type="button"
-            onclick={() => (prayerPickerOpen = !prayerPickerOpen)}
+            onclick={() => (picksCtl.prayerPickerOpen = !picksCtl.prayerPickerOpen)}
             class="text-[11px] text-secondary hover:underline"
           >
-            {prayerPickerOpen ? 'hide intentions' : `${pickedIntentions.size} of ${activeIntentions.length} intentions`}
+            {picksCtl.prayerPickerOpen ? 'hide intentions' : `${picksCtl.pickedIntentions.size} of ${activeIntentions.length} intentions`}
           </button>
         {/if}
       </div>
@@ -923,16 +873,16 @@
         placeholder="grateful for · wrestling with · today's mood · what to bring before God"
         class="w-full px-3 py-2.5 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary leading-relaxed"
       ></textarea>
-      {#if prayerPickerOpen}
+      {#if picksCtl.prayerPickerOpen}
         <div class="mt-3 p-3 bg-mantle border border-surface1 rounded space-y-2">
           {#if sortedIntentions.length > 0}
             <ul class="space-y-1 max-h-48 overflow-y-auto">
               {#each sortedIntentions as p (p.id)}
-                {@const picked = pickedIntentions.has(p.id)}
+                {@const picked = picksCtl.pickedIntentions.has(p.id)}
                 <li>
                   <button
                     type="button"
-                    onclick={() => toggleIntention(p.id)}
+                    onclick={() => picksCtl.toggleIntention(p.id)}
                     class="w-full text-left flex items-start gap-2 px-2 py-2.5 rounded
                       sm:py-1.5
                       {picked ? 'bg-primary/10' : 'hover:bg-surface0'}"
@@ -955,14 +905,14 @@
               {/each}
             </ul>
           {/if}
-          <form onsubmit={addNewPrayer} class="flex gap-2">
+          <form onsubmit={picksCtl.addNewPrayer} class="flex gap-2">
             <input
-              bind:value={newPrayerText}
+              bind:value={picksCtl.newPrayerText}
               placeholder="add an intention…"
               class="flex-1 px-2 py-1.5 bg-surface0 border border-surface1 rounded text-sm"
             />
-            <button type="submit" disabled={!newPrayerText.trim() || addingPrayer} class="px-2.5 py-1.5 bg-primary text-on-primary rounded text-sm disabled:opacity-50">
-              {addingPrayer ? '…' : '+ add'}
+            <button type="submit" disabled={!picksCtl.newPrayerText.trim() || picksCtl.addingPrayer} class="px-2.5 py-1.5 bg-primary text-on-primary rounded text-sm disabled:opacity-50">
+              {picksCtl.addingPrayer ? '…' : '+ add'}
             </button>
           </form>
         </div>
