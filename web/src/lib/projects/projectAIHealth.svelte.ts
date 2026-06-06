@@ -13,7 +13,7 @@
 //
 // Same Stop / Close distinction as the goals AI controllers — stop()
 // aborts mid-stream and keeps the partial result + error visible for
-// retry; clear() resets all state for the next run.
+// retry; dismiss() resets all state for the next run.
 
 import { api, type Goal, type Project, type Task } from '$lib/api';
 import { rafThrottle } from '$lib/util/streamThrottle';
@@ -39,7 +39,7 @@ export interface ProjectAIHealthController {
    *  whatever was streamed so the user can retry. */
   cancel(): void;
   /** Reset all state for a fresh run. */
-  clear(): void;
+  dismiss(): void;
 }
 
 export interface ProjectAIHealthDeps {
@@ -231,7 +231,7 @@ export function createProjectAIHealth(deps: ProjectAIHealthDeps): ProjectAIHealt
   // Close — abort + wipe. The abort matters because rafThrottle
   // can still flush a queued frame after we clear aiHealthRaw,
   // producing a phantom one-frame rewrite.
-  function clear() {
+  function dismiss() {
     aiHealthAbort?.abort();
     aiHealthAbort = null;
     aiHealthBusy = false;
@@ -249,6 +249,6 @@ export function createProjectAIHealth(deps: ProjectAIHealthDeps): ProjectAIHealt
     get aiHealthContextLine() { return aiHealthContextLine; },
     run,
     cancel,
-    clear
+    dismiss
   };
 }

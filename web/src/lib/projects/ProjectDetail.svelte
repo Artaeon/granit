@@ -218,7 +218,7 @@
   });
   const runAIHealth = aiHealthCtl.run;
   const cancelAIHealth = aiHealthCtl.cancel;
-  const clearAIHealth = aiHealthCtl.clear;
+  const clearAIHealth = aiHealthCtl.dismiss;
 
   function momentumTone(m: HealthMomentum): string {
     if (m === 'alive') return 'success';
