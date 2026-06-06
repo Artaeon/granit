@@ -23,18 +23,7 @@
 
 import { api, todayISO, type Project, type Task } from '$lib/api';
 import { toast } from '$lib/components/toast';
-
-// AbortError detection is tricky cross-engine. Chromium fetches
-// throw a DOMException with name === 'AbortError'; Firefox and
-// node-undici match the same shape. Matching just on .name lets
-// any thrown-with-AbortError-name error count.
-function isAbortError(err: unknown): boolean {
-  if (err instanceof DOMException && err.name === 'AbortError') return true;
-  if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'AbortError') {
-    return true;
-  }
-  return false;
-}
+import { isAbortError } from '$lib/util/aiErrors';
 
 export const STALL_DAYS = 14;
 
