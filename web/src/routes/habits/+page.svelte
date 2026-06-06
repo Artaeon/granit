@@ -10,6 +10,7 @@
   import { createHabitsViewState, type HabitsView } from '$lib/habits/habitsViewState.svelte';
   import { createHabitsAI } from '$lib/habits/habitsAI.svelte';
   import { createHabitsData } from '$lib/habits/habitsData.svelte';
+  import { createHabitsRename } from '$lib/habits/habitsRename.svelte';
 
   // /habits — three view modes for the same data:
   //   • Today: large quick-tick cards, the morning/evening rhythm view
@@ -183,68 +184,23 @@
     }
   }
 
-  // ----- Rename / delete -----
-  // Habits have no record file — these handlers rewrite the underlying
-  // `## Habits` checkbox lines across every daily note. The backend
-  // handles the cross-file scan; the UI just collects the new name (or
-  // a destructive-action confirmation) and triggers it.
-  let editingName = $state<string | null>(null);
-  let renameDraft = $state('');
-  function startRename(h: HabitInfo) {
-    editingName = h.name;
-    renameDraft = h.name;
-  }
-  function cancelRename() {
-    editingName = null;
-    renameDraft = '';
-  }
-  async function submitRename(oldName: string) {
-    const next = renameDraft.trim();
-    if (!next || next === oldName) {
-      cancelRename();
-      return;
+  // Rename + delete handlers: inline-edit buffer + confirm-then-call
+  // delete. Both write through to dataCtl.busy so the row-level
+  // disable still works, and trigger reload via dataCtl.load(). See
+  // lib/habits/habitsRename for the details.
+  const renameCtl = createHabitsRename({
+    setBusy: (key) => { dataCtl.busy = key; },
+    reload: () => dataCtl.load(),
+    onSuccess: async (msg) => {
+      (await import('$lib/components/toast')).toast.success(msg);
+    },
+    onError: async (msg) => {
+      (await import('$lib/components/toast')).toast.error(msg);
     }
-    dataCtl.busy = oldName;
-    try {
-      const res = await api.renameHabit(oldName, next);
-      cancelRename();
-      // Migrate any persisted weekly target so the new name keeps its goal.
-      const tgt = $habitTargets[oldName];
-      if (tgt != null) {
-        setHabitTarget(next, tgt);
-        setHabitTarget(oldName, null);
-      }
-      await dataCtl.load();
-      (await import('$lib/components/toast')).toast.success(
-        `renamed · ${res.filesTouched} ${res.filesTouched === 1 ? 'daily' : 'dailies'} updated`
-      );
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      (await import('$lib/components/toast')).toast.error(`rename failed: ${msg}`);
-    } finally {
-      dataCtl.busy = null;
-    }
-  }
-  async function deleteHabit(name: string) {
-    if (!confirm(
-      `Delete habit "${name}"?\n\nThis strips every checkbox line under ## Habits across every daily note in your vault — past streak data for this habit is gone. The daily notes themselves stay; only the matching lines are removed.`
-    )) return;
-    dataCtl.busy = name;
-    try {
-      const res = await api.deleteHabit(name);
-      // Drop any persisted target — it's now orphaned.
-      setHabitTarget(name, null);
-      await dataCtl.load();
-      (await import('$lib/components/toast')).toast.success(
-        `deleted · ${res.filesTouched} ${res.filesTouched === 1 ? 'daily' : 'dailies'} cleaned`
-      );
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      (await import('$lib/components/toast')).toast.error(`delete failed: ${msg}`);
-    } finally {
-      dataCtl.busy = null;
-    }
-  }
+  });
+  const editingName = $derived(renameCtl.editingName);
+  // renameDraft is two-way bound from the template; the binding reads
+  // and writes via renameCtl.renameDraft directly.
 
   // ----- Week view helpers -----
   // The server returns 90 days oldest→newest. We want the last 7 in
@@ -518,17 +474,17 @@
             <div class="flex-1 min-w-0">
               {#if editingName === h.name}
                 <form
-                  onsubmit={(e) => { e.preventDefault(); submitRename(h.name); }}
+                  onsubmit={(e) => { e.preventDefault(); renameCtl.submitRename(h.name); }}
                   class="flex items-center gap-1.5"
                 >
                   <input
-                    bind:value={renameDraft}
+                    bind:value={renameCtl.renameDraft}
                     use:focusOnMount
                     class="flex-1 px-2 py-1 bg-base border border-surface2 rounded text-text text-sm"
                     placeholder="new name"
                   />
                   <button type="submit" disabled={busy === h.name} class="px-2 py-1 bg-primary text-on-primary rounded text-xs disabled:opacity-50">save</button>
-                  <button type="button" onclick={cancelRename} class="px-2 py-1 text-dim hover:text-text text-xs">cancel</button>
+                  <button type="button" onclick={() => renameCtl.cancelRename()} class="px-2 py-1 text-dim hover:text-text text-xs">cancel</button>
                 </form>
               {:else}
                 <div class="flex items-start justify-between gap-2">
@@ -536,14 +492,14 @@
                   <div class="flex items-center gap-0.5 flex-shrink-0">
                     <button
                       type="button"
-                      onclick={() => startRename(h)}
+                      onclick={() => renameCtl.startRename(h)}
                       class="px-1.5 py-0.5 text-dim hover:text-text rounded text-[11px]"
                       title="rename habit"
                       aria-label="rename habit"
                     >✎</button>
                     <button
                       type="button"
-                      onclick={() => deleteHabit(h.name)}
+                      onclick={() => renameCtl.deleteHabit(h.name)}
                       disabled={busy === h.name}
                       class="px-1.5 py-0.5 text-dim hover:text-error rounded text-[11px] disabled:opacity-50"
                       title="delete habit — strips matching lines from every daily note"
@@ -675,17 +631,17 @@
               <div class="flex-1 min-w-0">
                 {#if editingName === h.name}
                   <form
-                    onsubmit={(e) => { e.preventDefault(); submitRename(h.name); }}
+                    onsubmit={(e) => { e.preventDefault(); renameCtl.submitRename(h.name); }}
                     class="flex items-center gap-1.5"
                   >
                     <input
-                      bind:value={renameDraft}
+                      bind:value={renameCtl.renameDraft}
                       use:focusOnMount
                       class="flex-1 px-2 py-1 bg-base border border-surface2 rounded text-text text-sm"
                       placeholder="new name"
                     />
                     <button type="submit" disabled={busy === h.name} class="px-2 py-1 bg-primary text-on-primary rounded text-xs disabled:opacity-50">save</button>
-                    <button type="button" onclick={cancelRename} class="px-2 py-1 text-dim hover:text-text text-xs">cancel</button>
+                    <button type="button" onclick={() => renameCtl.cancelRename()} class="px-2 py-1 text-dim hover:text-text text-xs">cancel</button>
                   </form>
                 {:else}
                   <div class="flex items-start justify-between gap-2">
@@ -693,14 +649,14 @@
                     <div class="flex items-center gap-0.5 flex-shrink-0">
                       <button
                         type="button"
-                        onclick={() => startRename(h)}
+                        onclick={() => renameCtl.startRename(h)}
                         class="px-1.5 py-0.5 text-dim hover:text-text rounded text-[11px]"
                         title="rename habit"
                         aria-label="rename habit"
                       >✎</button>
                       <button
                         type="button"
-                        onclick={() => deleteHabit(h.name)}
+                        onclick={() => renameCtl.deleteHabit(h.name)}
                         disabled={busy === h.name}
                         class="px-1.5 py-0.5 text-dim hover:text-error rounded text-[11px] disabled:opacity-50"
                         title="delete habit — strips matching lines from every daily note"
