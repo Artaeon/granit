@@ -19,6 +19,10 @@
     createProjectsListUrlState,
     type ViewMode
   } from '$lib/projects/projectsListUrlState.svelte';
+  import {
+    consumeAgentLaunchParam,
+    installProjectsListShortcuts
+  } from '$lib/projects/projectsListShortcuts';
   import { colorVar, statusTone } from '$lib/util/colors';
   import ProjectDetail from '$lib/projects/ProjectDetail.svelte';
   import ProjectCreate from '$lib/projects/ProjectCreate.svelte';
@@ -28,7 +32,6 @@
   import ProjectAgent from '$lib/projects/ProjectAgent.svelte';
   import ProjectDashboardPanel from '$lib/projects/ProjectDashboardPanel.svelte';
   import type { KanbanStatus } from '$lib/projects/kanbanGroup';
-  import { isTypingTarget } from '$lib/util/isTypingTarget';
   import ProjectStatusBar from '$lib/projects/ProjectStatusBar.svelte';
   import VisionContextStrip from '$lib/components/VisionContextStrip.svelte';
 
@@ -129,34 +132,18 @@
 
   onMount(() => {
     load();
-    // ?agent=1 launches the Project Agent — used by the chat
-    // sidebar's "Run Project Agent" entry. Consumed once: we
-    // clean the param so reload doesn't keep re-opening.
-    if ($page.url.searchParams.get('agent') === '1') {
-      agentOpen = true;
-      const params = new URLSearchParams($page.url.searchParams);
-      params.delete('agent');
-      void goto(`/projects${params.toString() ? '?' + params : ''}`, {
-        replaceState: true,
-        keepFocus: true
-      });
-    }
+    consumeAgentLaunchParam({
+      getSearchParams: () => $page.url.searchParams,
+      navigate: (url, opts) => void goto(url, opts),
+      openAgent: () => (agentOpen = true)
+    });
     const offLive = installProjectsListLive({ reload: load });
-    // 'a' opens the Project Agent — same hotkey contract as
-    // /tasks. isTypingTarget guard suppresses while the user is
-    // typing in inputs / textareas anywhere on the page.
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (isTypingTarget(e.target)) return;
-      if (e.key === 'a') {
-        agentOpen = true;
-        e.preventDefault();
-      }
-    };
-    window.addEventListener('keydown', onKey);
+    const offKeys = installProjectsListShortcuts({
+      openAgent: () => (agentOpen = true)
+    });
     return () => {
       offLive();
-      window.removeEventListener('keydown', onKey);
+      offKeys();
     };
   });
 
