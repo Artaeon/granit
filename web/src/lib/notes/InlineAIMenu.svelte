@@ -40,6 +40,7 @@
     createMenuPositionController,
     installMenuDismissHandlers
   } from './inlineAIMenuPosition.svelte';
+  import { createMenuKeyHandler } from './inlineAIMenuKeys';
   import {
     type Preset,
     CATEGORY_LABELS
@@ -307,70 +308,21 @@
   }
 
   // ── keyboard ────────────────────────────────────────────────────
-
-  function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      onClose();
-      return;
-    }
-    // History recall — Up/Down with the cursor in the input cycles
-    // through previous prompts before falling through to action-list
-    // navigation. We only treat the input as a "history field" when
-    // the cursor is at the start AND the input is either empty or
-    // already showing a history entry; otherwise Up still navigates
-    // the list (so power users who don't care about history get the
-    // expected behaviour). Mod-modified arrows always go to the list.
-    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && history.length > 0 && !e.metaKey && !e.ctrlKey) {
-      const inHistoryMode = historyCtl.historyIdx >= 0 || promptInput.length === 0;
-      if (inHistoryMode) {
-        e.preventDefault();
-        if (e.key === 'ArrowUp') {
-          historyCtl.historyIdx = Math.min(history.length - 1, historyCtl.historyIdx + 1);
-          promptInput = history[historyCtl.historyIdx] ?? '';
-        } else {
-          historyCtl.historyIdx = Math.max(-1, historyCtl.historyIdx - 1);
-          promptInput = historyCtl.historyIdx === -1 ? '' : (history[historyCtl.historyIdx] ?? '');
-        }
-        return;
-      }
-    }
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      presetCtl.highlightedIdx = (presetCtl.highlightedIdx + 1) % Math.max(1, visiblePresets.length);
-      return;
-    }
-    if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      presetCtl.highlightedIdx = (presetCtl.highlightedIdx - 1 + visiblePresets.length) % Math.max(1, visiblePresets.length);
-      return;
-    }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      // If the prompt input has text AND there's still at least one
-      // preset visible, the user is filtering — Enter picks the
-      // highlighted preset. If the query cleared the list (matched
-      // nothing), Enter runs the prompt as a custom Ask. This gives
-      // both "type a thought, hit Enter" and "type to filter,
-      // arrow, Enter" patterns. The earlier comparison against
-      // `PRESETS.length` was always true in practice (mode-filter
-      // narrows visiblePresets BELOW the unfiltered total before any
-      // query runs), so it added complexity without doing work.
-      const filtering = promptInput.trim().length > 0 && visiblePresets.length > 0;
-      if (filtering) {
-        // Filtered list — interpret Enter as picking the highlighted preset.
-        const p = visiblePresets[presetCtl.highlightedIdx];
-        if (p) runPreset(p);
-        return;
-      }
-      if (promptInput.trim().length > 0) {
-        runCustomPrompt();
-        return;
-      }
-      const p = visiblePresets[presetCtl.highlightedIdx];
-      if (p) runPreset(p);
-    }
-  }
+  // Chord precedence and full rules live in inlineAIMenuKeys.ts;
+  // this just wires the getters/setters / callbacks.
+  const onKey = createMenuKeyHandler({
+    getPromptInput: () => promptInput,
+    setPromptInput: (s) => { promptInput = s; },
+    getHistory: () => history,
+    getHistoryIdx: () => historyCtl.historyIdx,
+    setHistoryIdx: (n) => { historyCtl.historyIdx = n; },
+    getVisiblePresets: () => visiblePresets,
+    getHighlightedIdx: () => presetCtl.highlightedIdx,
+    setHighlightedIdx: (n) => { presetCtl.highlightedIdx = n; },
+    runPreset: (p) => runPreset(p),
+    runCustomPrompt: () => runCustomPrompt(),
+    onClose: () => onClose()
+  });
 
   // ── lifecycle ────────────────────────────────────────────────────
 
