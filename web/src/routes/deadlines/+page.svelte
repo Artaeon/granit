@@ -28,6 +28,15 @@
   import DeadlinesCalendar from '$lib/deadlines/DeadlinesCalendar.svelte';
   import DeadlineDrawer from '$lib/deadlines/DeadlineDrawer.svelte';
   import { daysUntil } from '$lib/deadlines/util';
+  import {
+    todayISO,
+    isValidDate,
+    addDaysISO,
+    countdown,
+    projectHref,
+    goalHref,
+    ventureHref
+  } from '$lib/deadlines/deadlinesPageHelpers';
   import { loadStored, saveStored, loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // Deadlines page — top-level "this matters by date X" markers backed
@@ -276,17 +285,6 @@
     return dt.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   }
 
-  function countdown(d: Deadline): string {
-    if (d.status === 'met') return 'met';
-    if (d.status === 'cancelled') return 'cancelled';
-    const n = daysUntil(d.date);
-    if (n === 0) return 'today';
-    if (n === 1) return 'tomorrow';
-    if (n === -1) return 'yesterday';
-    if (n > 1) return `in ${n}d`;
-    return `${-n}d ago`;
-  }
-
   // Each bucket is a Map of [key, rows] preserving insertion order
   // so the section render order matches our intended display order.
   let grouped = $derived.by(() => {
@@ -438,25 +436,6 @@
     }
   });
 
-  function todayISO(): string {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
-
-  function isValidDate(s: string): boolean {
-    return /^\d{4}-\d{2}-\d{2}$/.test(s);
-  }
-
-  // Add N days to an ISO YYYY-MM-DD string and return the same format.
-  // Used by snooze quick-actions. Local-time arithmetic (matches
-  // daysUntil's local-midnight semantics).
-  function addDaysISO(iso: string, n: number): string {
-    const [y, m, d] = iso.split('-').map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() + n);
-    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-  }
-
   async function save() {
     if (!fTitle.trim()) {
       toast.warning('title is required');
@@ -592,22 +571,6 @@
   let timelineRows = $derived.by(() => {
     return [...filtered].sort((a, b) => a.date.localeCompare(b.date));
   });
-
-  // ----- Cross-link helpers -----
-  // The deadline's `project` / `goal_id` / `venture` chips on the row
-  // become real links to the corresponding entity-detail page so the
-  // user can pivot from a deadline to its parent context in one click.
-  // We stopPropagation in the handler so the chip click doesn't also
-  // open the deadline drawer.
-  function projectHref(name: string): string {
-    return `/projects?p=${encodeURIComponent(name)}`;
-  }
-  function goalHref(id: string): string {
-    return `/goals?focus=${encodeURIComponent(id)}`;
-  }
-  function ventureHref(name: string): string {
-    return `/ventures?v=${encodeURIComponent(name)}`;
-  }
 
   // ----- Keyboard shortcuts -----
   //
