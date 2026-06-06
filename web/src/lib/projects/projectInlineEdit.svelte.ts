@@ -34,12 +34,10 @@ export interface ProjectInlineEditController {
   descBuf: string;
   nextActionBuf: string;
   nameBuf: string;
-  /** Cancel sentinels — set by Escape handlers before flipping
-   *  editing=false; checked by commit functions so the blur event
-   *  fired when the textarea unmounts doesn't silently persist text
-   *  the user discarded. */
-  cancellingDesc: boolean;
-  cancellingNextAction: boolean;
+  // cancellingDesc / cancellingNextAction sentinels are internal —
+  // owned by cancelEditDescription() + cancelEditNextAction() and
+  // read by the commit*() functions. Not on the interface; no
+  // external caller has business writing them.
 
   /** Open the description editor seeded with the current value (or
    *  the saved draft if present). */
@@ -80,8 +78,11 @@ export function createProjectInlineEdit(deps: ProjectInlineEditDeps): ProjectInl
   let descBuf = $state('');
   let nextActionBuf = $state('');
   let nameBuf = $state('');
-  let cancellingDesc = $state(false);
-  let cancellingNextAction = $state(false);
+  // Plain `let` not $state — set + read both happen synchronously
+  // inside the cancelEdit -> blur -> commit chain, no reactive
+  // consumer needs to track them.
+  let cancellingDesc = false;
+  let cancellingNextAction = false;
 
   const descDraftWriter = makeDraftWriter(400);
   const nextActionDraftWriter = makeDraftWriter(400);
@@ -189,10 +190,6 @@ export function createProjectInlineEdit(deps: ProjectInlineEditDeps): ProjectInl
     set nextActionBuf(v) { nextActionBuf = v; },
     get nameBuf() { return nameBuf; },
     set nameBuf(v) { nameBuf = v; },
-    get cancellingDesc() { return cancellingDesc; },
-    set cancellingDesc(v) { cancellingDesc = v; },
-    get cancellingNextAction() { return cancellingNextAction; },
-    set cancellingNextAction(v) { cancellingNextAction = v; },
     startEditDescription,
     startEditNextAction,
     startEditName,
