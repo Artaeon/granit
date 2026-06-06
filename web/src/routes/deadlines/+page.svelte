@@ -37,6 +37,14 @@
     goalHref,
     ventureHref
   } from '$lib/deadlines/deadlinesPageHelpers';
+  import {
+    type GroupBy,
+    monthBucket,
+    monthLabel,
+    bucketTitle as bucketTitleOf,
+    bucketTone as bucketToneOf,
+    buildGrouped
+  } from '$lib/deadlines/deadlinesBuckets';
   import { loadStored, saveStored, loadStoredString, saveStoredString } from '$lib/util/storage';
 
   // Deadlines page — top-level "this matters by date X" markers backed
@@ -51,7 +59,6 @@
   // user's last layout reopens with them.
 
   type ViewMode = 'list' | 'timeline' | 'calendar';
-  type GroupBy = 'urgency' | 'status' | 'month';
 
   const VIEW_KEY = 'granit.deadlines.view';
   const GROUP_KEY = 'granit.deadlines.groupby';
@@ -242,115 +249,15 @@
   // mental model, matches how birthdays and exams are usually
   // mentally bucketed.
 
-  type Bucket = string;
-  const urgencyOrder: Bucket[] = ['overdue', 'this_week', 'this_month', 'later', 'met', 'cancelled'];
-  const urgencyLabel: Record<string, string> = {
-    overdue: 'Overdue',
-    this_week: 'This week',
-    this_month: 'This month',
-    later: 'Later',
-    met: 'Met',
-    cancelled: 'Cancelled'
-  };
-  const statusOrder: Bucket[] = ['active', 'missed', 'met', 'cancelled'];
-  const statusLabel: Record<string, string> = {
-    active: 'Active',
-    missed: 'Missed',
-    met: 'Met',
-    cancelled: 'Cancelled'
-  };
-
-  function urgencyBucket(d: Deadline): Bucket {
-    if (d.status === 'met') return 'met';
-    if (d.status === 'cancelled') return 'cancelled';
-    const days = daysUntil(d.date);
-    if (days < 0) return 'overdue';
-    if (days <= 7) return 'this_week';
-    if (days <= 31) return 'this_month';
-    return 'later';
+  // Bucket helpers live in $lib/deadlines/deadlinesBuckets. The two
+  // closures read the live `groupBy` $state via the call site so they
+  // re-evaluate naturally when the user cycles group-by.
+  let grouped = $derived(buildGrouped(filtered, groupBy));
+  function bucketTitle(b: string): string {
+    return bucketTitleOf(b, groupBy);
   }
-
-  function statusBucket(d: Deadline): Bucket {
-    return d.status ?? 'active';
-  }
-
-  function monthBucket(d: Deadline): Bucket {
-    // 'YYYY-MM' as the bucket key; rendered with the localised month name.
-    return d.date.slice(0, 7);
-  }
-  function monthLabel(key: string): string {
-    const [y, m] = key.split('-').map(Number);
-    if (!y || !m) return key;
-    const dt = new Date(y, m - 1, 1);
-    return dt.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-  }
-
-  // Each bucket is a Map of [key, rows] preserving insertion order
-  // so the section render order matches our intended display order.
-  let grouped = $derived.by(() => {
-    const out = new Map<Bucket, Deadline[]>();
-    if (groupBy === 'urgency') {
-      for (const k of urgencyOrder) out.set(k, []);
-      for (const d of filtered) out.get(urgencyBucket(d))!.push(d);
-    } else if (groupBy === 'status') {
-      for (const k of statusOrder) out.set(k, []);
-      for (const d of filtered) {
-        const b = statusBucket(d);
-        if (!out.has(b)) out.set(b, []);
-        out.get(b)!.push(d);
-      }
-    } else {
-      // month — keys are the YYYY-MM in chronological order. We
-      // collect first then sort, which is cheap (deadlines.json is
-      // small enough that O(n log n) once isn't worth optimising).
-      const tmp = new Map<string, Deadline[]>();
-      for (const d of filtered) {
-        const k = monthBucket(d);
-        if (!tmp.has(k)) tmp.set(k, []);
-        tmp.get(k)!.push(d);
-      }
-      const keys = Array.from(tmp.keys()).sort();
-      for (const k of keys) out.set(k, tmp.get(k)!);
-    }
-    return out;
-  });
-
-  function bucketTitle(b: Bucket): string {
-    if (groupBy === 'urgency') return urgencyLabel[b] ?? b;
-    if (groupBy === 'status') return statusLabel[b] ?? b;
-    return monthLabel(b);
-  }
-
-  // Bucket header tint — drives the section heading color so the eye
-  // lands on Overdue / This week first under urgency, on Active under
-  // status, and on the urgency of the bucket's first row under month.
-  function bucketTone(b: Bucket): string {
-    if (groupBy === 'urgency') {
-      switch (b) {
-        case 'overdue': return 'error';
-        case 'this_week': return 'warning';
-        case 'this_month': return 'info';
-        case 'met': return 'success';
-        default: return 'dim';
-      }
-    }
-    if (groupBy === 'status') {
-      switch (b) {
-        case 'active': return 'info';
-        case 'missed': return 'error';
-        case 'met': return 'success';
-        default: return 'dim';
-      }
-    }
-    // month — tint by how close the bucket is to today.
-    const [y, m] = b.split('-').map(Number);
-    if (!y || !m) return 'dim';
-    const now = new Date();
-    const monthsAhead = (y - now.getFullYear()) * 12 + (m - 1 - now.getMonth());
-    if (monthsAhead < 0) return 'dim';
-    if (monthsAhead === 0) return 'warning';
-    if (monthsAhead <= 1) return 'info';
-    return 'secondary';
+  function bucketTone(b: string): string {
+    return bucketToneOf(b, groupBy);
   }
 
   function toggleSection(key: string) {
