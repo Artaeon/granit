@@ -15,6 +15,14 @@
   import { errorMessage } from '$lib/util/errorMessage';
   import { daysUntil } from '$lib/deadlines/util';
   import Skeleton from '$lib/components/Skeleton.svelte';
+  import {
+    colorVar,
+    statusTone,
+    countdown,
+    deadlineTone,
+    noteTitle,
+    noteBodyExcerpt
+  } from '$lib/ventures/venturesDetailHelpers';
 
   // Venture detail page — single aggregation view answering "what's
   // the current state of this venture, all in one place?". The
@@ -190,47 +198,6 @@
     return [...activeDeadlines].sort((a, b) => daysUntil(a.date) - daysUntil(b.date))[0];
   });
 
-  function colorVar(c?: string): string {
-    const map: Record<string, string> = {
-      red: 'error', yellow: 'warning', orange: 'accent', green: 'success',
-      blue: 'secondary', purple: 'primary', cyan: 'info', mauve: 'primary',
-      peach: 'accent', teal: 'info', sapphire: 'secondary', pink: 'accent',
-      lavender: 'primary', flamingo: 'error'
-    };
-    return `var(--color-${map[c ?? ''] ?? 'secondary'})`;
-  }
-
-  function statusTone(s?: string): string {
-    if (s === 'active') return 'success';
-    if (s === 'paused') return 'warning';
-    if (s === 'completed') return 'info';
-    if (s === 'archived') return 'subtext';
-    return 'subtext';
-  }
-
-  // Deadline countdown — short-form for the sidebar list. Mirrors the
-  // /deadlines page formatter so the language is consistent across surfaces.
-  function countdown(d: Deadline): string {
-    if (d.status === 'met') return 'met';
-    if (d.status === 'cancelled') return 'cancelled';
-    const n = daysUntil(d.date);
-    if (n === 0) return 'today';
-    if (n === 1) return 'tomorrow';
-    if (n === -1) return 'yesterday';
-    if (n > 1) return `in ${n}d`;
-    return `${-n}d ago`;
-  }
-  function deadlineTone(d: Deadline): string {
-    if (d.status === 'met') return 'success';
-    if (d.status === 'cancelled') return 'subtext';
-    const n = daysUntil(d.date);
-    if (n < 0) return 'error';
-    if (n <= 3) return 'error';
-    if (n <= 7) return 'warning';
-    if (n <= 30) return 'info';
-    return 'subtext';
-  }
-
   // Tab button helpers — counts on each tab so the user can see what's
   // behind each one without flipping. Tabs hide entirely when the
   // venture has nothing in that bucket and there's nothing actionable
@@ -359,24 +326,6 @@
     }
   }
 
-  // Note title fallback — listNotes returns title from frontmatter if
-  // present, else basename. We strip ".md" defensively.
-  function noteTitle(n: Note): string {
-    if (n.title && n.title.trim() !== '') return n.title;
-    const base = n.path.split('/').pop() ?? n.path;
-    return base.replace(/\.md$/i, '');
-  }
-
-  function noteBodyExcerpt(n: Note): string {
-    if (!n.body) return '';
-    // Find the first occurrence of the venture name (case-insensitive)
-    // and return a window around it. Falls back to the head of the
-    // body when no match (possible if the match is in frontmatter).
-    const lower = n.body.toLowerCase();
-    const idx = lower.indexOf(name.toLowerCase());
-    const start = idx >= 0 ? Math.max(0, idx - 40) : 0;
-    return n.body.slice(start, start + 200).replace(/\s+/g, ' ').trim();
-  }
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -1038,7 +987,7 @@
         {:else}
           <ul class="space-y-2">
             {#each linkedNotes as n (n.path)}
-              {@const excerpt = noteBodyExcerpt(n)}
+              {@const excerpt = noteBodyExcerpt(n, name)}
               <li>
                 <a
                   href={`/notes/${encodeURI(n.path)}`}
