@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { auth } from '$lib/stores/auth';
   import { todayISO, type Task } from '$lib/api';
@@ -37,6 +37,7 @@
   import TasksActiveFilterChips from '$lib/tasks/TasksActiveFilterChips.svelte';
   import { installTasksKeyboardForCtls } from '$lib/tasks/useTasksKeyboard';
   import { createTasksUrlSync } from '$lib/tasks/tasksUrlSync';
+  import { installTasksUrlAutoSync } from '$lib/tasks/tasksUrlAutoSync.svelte';
   import { createTasksGroupAdd } from '$lib/tasks/tasksGroupAdd.svelte';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import { applyNextPriority, toggleDoneOf } from '$lib/tasks/taskActions';
@@ -155,7 +156,6 @@
     onAgentParam: () => (agentOpen = true)
   });
   const hydrateFromUrl = urlSync.hydrate;
-  const syncToUrl = urlSync.sync;
   // Stream N — slide-out filter panel. Replaces the always-on desktop
   // sidebar so the default page is cleaner; one click opens advanced
   // filtering. Persists nothing — open-state is session-only so the
@@ -242,25 +242,10 @@
   });
   const load = loader.load;
 
-  // URL-state effect — runs whenever a filter changes after hydration.
-  // Skipped on the initial render so the URL doesn't get rewritten
-  // before we read it back. syncToUrl reads $page.url.pathname and
-  // calls goto(); both are reactive surfaces we don't want this effect
-  // to depend on, so the call is untracked. The void list above is
-  // the explicit dep set.
-  $effect(() => {
-    void filterCtl.status;
-    void filterCtl.q;
-    void filterCtl.tagFilters;
-    void filterCtl.projectFilter;
-    void filterCtl.priorityFilter;
-    void filterCtl.goalFilter;
-    void filterCtl.deadlineFilter;
-    void viewCtl.view;
-    void viewCtl.groupBy;
-    void filterCtl.smartFilter;
-    untrack(() => syncToUrl());
-  });
+  // URL-state effect — runs whenever a filter changes after
+  // hydration. See tasksUrlAutoSync for the dep list + the
+  // untracked-call rationale.
+  installTasksUrlAutoSync({ filterCtl, viewCtl, urlSync });
 
   onMount(() => {
     hydrateFromUrl();
