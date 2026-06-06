@@ -16,6 +16,7 @@
   import JotItem from '$lib/jots/JotItem.svelte';
   import JotsShortcutsOverlay from '$lib/jots/JotsShortcutsOverlay.svelte';
   import { createJotsFeedData } from '$lib/jots/jotsFeedData.svelte';
+  import { createJotsFilters } from '$lib/jots/jotsFilters.svelte';
 
   // Amplenote-style infinite-scroll feed of every daily note. The page
   // talks to /api/v1/jots which paginates server-side — fetching N
@@ -46,109 +47,21 @@
   let currentJotIdx = $state(-1);
   let showShortcuts = $state(false);
 
-  // Hashtag filter — when non-empty, jots must mention EVERY active
-  // tag (AND filter). Clicking a `#tag` chip toggles membership.
-  // Persisted in the URL hash so a refresh or shared link lands the
-  // user on the same filtered view. Supports both the new form
-  // `#tags=a,b,c` and the legacy single-tag form `#tag=foo` from
-  // earlier versions of this page.
-  function readTagsFromHash(): string[] {
-    if (typeof window === 'undefined') return [];
-    const h = window.location.hash;
-    const multi = h.match(/^#tags=(.+)$/);
-    if (multi) {
-      return decodeURIComponent(multi[1])
-        .split(',')
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-    }
-    const single = h.match(/^#tag=(.+)$/);
-    if (single) return [decodeURIComponent(single[1]).toLowerCase()];
-    return [];
-  }
-  let activeTags = $state<string[]>(readTagsFromHash());
-
-  // Quick filters — orthogonal to the tag set. "open tasks" hides jots
-  // whose daily has zero unchecked checkboxes; "timeframe" caps the
-  // feed to dailies within the last N days from today.
-  type Timeframe = 'all' | '7d' | '30d';
-  let filterOpenTasks = $state(false);
-  let filterTimeframe = $state<Timeframe>('all');
-
-  let hasAnyFilter = $derived(
-    activeTags.length > 0 || filterOpenTasks || filterTimeframe !== 'all'
-  );
-
-  // All distinct hashtags found across the loaded jots, ordered by
-  // frequency desc then alpha. Cheap derivation — for a few hundred
-  // jots × a few tags each, the linear scan is invisible.
-  let allTags = $derived.by(() => {
-    const counts = new Map<string, number>();
-    const tagRe = /(?:^|\s)#([\p{L}\p{N}_-]+)/gu;
-    for (const j of jots) {
-      const seen = new Set<string>();
-      for (const m of (j.body ?? '').matchAll(tagRe)) {
-        const t = m[1].toLowerCase();
-        if (seen.has(t)) continue;
-        seen.add(t);
-        counts.set(t, (counts.get(t) ?? 0) + 1);
-      }
-    }
-    return [...counts.entries()]
-      .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
-      .map(([t]) => t);
+  // Hashtag + quick-filter state lives in jotsFilters; the page binds
+  // through to allTags / visibleJots / hasAnyFilter so the chip rail
+  // and filtered list track changes reactively.
+  const filtersCtl = createJotsFilters({
+    getJots: () => feed.jots,
+    getToday: () => today
   });
-
-  // Filtered feed = jots that satisfy every active filter dimension:
-  //   1. every active tag must appear in the body (AND)
-  //   2. if filterOpenTasks, jot.openTasks > 0
-  //   3. if filterTimeframe != 'all', jot.date is within the window
-  // When no filter is active, returns the full list verbatim.
-  let visibleJots = $derived.by(() => {
-    let out = jots;
-    if (filterOpenTasks) out = out.filter((j) => j.openTasks > 0);
-    if (filterTimeframe !== 'all') {
-      const days = filterTimeframe === '7d' ? 7 : 30;
-      const cutoff = new Date(today);
-      cutoff.setDate(cutoff.getDate() - (days - 1));
-      const cutoffISO = fmtDateISO(cutoff);
-      out = out.filter((j) => j.date >= cutoffISO);
-    }
-    if (activeTags.length === 0) return out;
-    // Build one regex per tag; jot must match all of them.
-    const escaped = activeTags.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    const regexes = escaped.map((e) => new RegExp(`(?:^|\\s)#${e}\\b`, 'i'));
-    return out.filter((j) => {
-      const body = j.body ?? '';
-      return regexes.every((re) => re.test(body));
-    });
-  });
-
-  function writeTagsHash() {
-    if (typeof window === 'undefined') return;
-    const next = activeTags.length > 0
-      ? `#tags=${activeTags.map(encodeURIComponent).join(',')}`
-      : '';
-    // Replace, not push — tag filtering shouldn't pollute browser
-    // history with one entry per chip click.
-    history.replaceState(null, '', window.location.pathname + window.location.search + next);
-  }
-
-  function toggleTag(t: string) {
-    const lower = t.toLowerCase();
-    if (activeTags.includes(lower)) {
-      activeTags = activeTags.filter((x) => x !== lower);
-    } else {
-      activeTags = [...activeTags, lower];
-    }
-    writeTagsHash();
-  }
-  function clearAllFilters() {
-    activeTags = [];
-    filterOpenTasks = false;
-    filterTimeframe = 'all';
-    writeTagsHash();
-  }
+  let activeTags = $derived(filtersCtl.activeTags);
+  let filterOpenTasks = $derived(filtersCtl.filterOpenTasks);
+  let filterTimeframe = $derived(filtersCtl.filterTimeframe);
+  let hasAnyFilter = $derived(filtersCtl.hasAnyFilter);
+  let allTags = $derived(filtersCtl.allTags);
+  let visibleJots = $derived(filtersCtl.visibleJots);
+  const toggleTag = (t: string) => filtersCtl.toggleTag(t);
+  const clearAllFilters = () => filtersCtl.clearAllFilters();
 
   // Sentinel + observer for infinite scroll.
   let sentinel: HTMLDivElement | undefined = $state();
@@ -803,8 +716,8 @@
           hasAnyFilter={hasAnyFilter}
           visibleCount={visibleJots.length}
           totalCount={jots.length}
-          onToggleOpenTasks={() => (filterOpenTasks = !filterOpenTasks)}
-          onSetTimeframe={(tf) => (filterTimeframe = tf)}
+          onToggleOpenTasks={() => (filtersCtl.filterOpenTasks = !filtersCtl.filterOpenTasks)}
+          onSetTimeframe={(tf) => (filtersCtl.filterTimeframe = tf)}
           onToggleTag={toggleTag}
           onClearAll={clearAllFilters}
         />
