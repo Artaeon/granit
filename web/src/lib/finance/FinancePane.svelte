@@ -4,11 +4,9 @@
   import {
     api,
     todayISO,
-    type FinSubscription,
     type FinIncomeStream,
     type FinGoal
   } from '$lib/api';
-  import { fmtDateISO } from '$lib/util/date';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
@@ -26,6 +24,7 @@
   import { createFinanceData } from '$lib/finance/financeData.svelte';
   import { createFinanceAI } from '$lib/finance/financeAI.svelte';
   import { createFinanceAccountForm } from '$lib/finance/financeAccountForm.svelte';
+  import { createFinanceSubscriptionForm } from '$lib/finance/financeSubscriptionForm.svelte';
   import {
     ACCOUNT_COLORS,
     accColor,
@@ -48,6 +47,12 @@
     onError: (m) => toast.error(m)
   });
   const accountForm = createFinanceAccountForm({
+    getAccounts: () => dataCtl.accounts,
+    reload: () => dataCtl.loadAll(),
+    onSuccess: (m) => toast.success(m),
+    onError: (m) => toast.error(m)
+  });
+  const subscriptionForm = createFinanceSubscriptionForm({
     getAccounts: () => dataCtl.accounts,
     reload: () => dataCtl.loadAll(),
     onSuccess: (m) => toast.success(m),
@@ -81,62 +86,7 @@
 
   // Account create / inline balance edit / delete live on accountForm.
 
-  // ── New-subscription modal ─────────────────────────────────────────
-  let subOpen = $state(false);
-  let subForm = $state({
-    name: '', amount: '', currency: 'USD',
-    cadence: 'monthly' as FinSubscription['cadence'],
-    next_renewal: fmtDateISO(new Date(Date.now() + 30 * 86400000)),
-    account_id: '', project: '', tags: '', category: '', url: ''
-  });
-  function openSub() {
-    subForm = {
-      name: '', amount: '',
-      currency: dataCtl.accounts[0]?.currency || 'USD',
-      cadence: 'monthly',
-      next_renewal: fmtDateISO(new Date(Date.now() + 30 * 86400000)),
-      account_id: dataCtl.accounts[0]?.id ?? '',
-      project: '',
-      tags: '',
-      category: '', url: ''
-    };
-    subOpen = true;
-  }
-  async function submitSub() {
-    try {
-      const amt = parseFloat(subForm.amount || '0');
-      // Negate so the schema stays signed-consistent — users type a
-      // positive number, the schema records the outflow.
-      const cents = -Math.round(Math.abs(amt) * 100);
-      await api.finCreateSubscription({
-        name: subForm.name.trim(),
-        amount_cents: cents,
-        currency: subForm.currency.trim() || dataCtl.accounts[0]?.currency || 'USD',
-        cadence: subForm.cadence,
-        next_renewal: subForm.next_renewal,
-        account_id: subForm.account_id || undefined,
-        project: subForm.project.trim() || undefined,
-        tags: subForm.tags.split(',').map((t) => t.trim()).filter(Boolean),
-        category: subForm.category.trim() || undefined,
-        url: subForm.url.trim() || undefined,
-        active: true
-      });
-      subOpen = false;
-      toast.success('subscription added');
-      await dataCtl.loadAll();
-    } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
-  }
-  async function toggleSubActive(s: FinSubscription) {
-    try { await api.finPatchSubscription(s.id, { active: !s.active }); await dataCtl.loadAll(); } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-  async function deleteSub(s: FinSubscription) {
-    if (!confirm(`Delete subscription "${s.name}"?`)) return;
-    try { await api.finDeleteSubscription(s.id); await dataCtl.loadAll(); } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
+  // Subscription create / toggle / delete live on subscriptionForm.
 
   // ── New / edit income stream modal ─────────────────────────────────
   // One modal handles both create and edit — the UX is the same form
@@ -543,7 +493,7 @@
 
         <div class="flex flex-wrap gap-2">
           <button onclick={() => openIncome()} class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90">+ Income source</button>
-          <button onclick={openSub} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Subscription</button>
+          <button onclick={() => subscriptionForm.openModal()} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Subscription</button>
           <button onclick={() => accountForm.openModal()} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Account</button>
           <button onclick={openGoal} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Goal</button>
         </div>
@@ -665,7 +615,7 @@
               title="AI audit: surfaces 3-6 candidates to cancel / downgrade / consolidate, ordered by annual saving"
             >{aiCtl.auditBusy ? 'auditing…' : 'AI audit'}</button>
           {/if}
-          <button onclick={openSub} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New subscription</button>
+          <button onclick={() => subscriptionForm.openModal()} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New subscription</button>
         </div>
       </div>
       {#if aiCtl.auditText.trim() || aiCtl.auditError || aiCtl.auditBusy}
@@ -715,8 +665,8 @@
                 <span class="text-sm text-error font-mono">{fmtMoney(s.amount_cents, s.currency)}</span>
                 <span class="text-xs text-dim">/ {s.cadence}</span>
                 <span class="flex-1"></span>
-                <button onclick={() => toggleSubActive(s)} class="text-xs text-dim hover:text-text">{s.active ? 'pause' : 'resume'}</button>
-                <button onclick={() => deleteSub(s)} class="text-xs text-dim hover:text-error">delete</button>
+                <button onclick={() => subscriptionForm.toggleActive(s)} class="text-xs text-dim hover:text-text">{s.active ? 'pause' : 'resume'}</button>
+                <button onclick={() => subscriptionForm.remove(s)} class="text-xs text-dim hover:text-error">delete</button>
               </div>
               <p class="text-xs text-dim mt-1">
                 next: <span class="text-subtext">{s.next_renewal}</span> · <span class="{relDate(s.next_renewal).includes('ago') ? 'text-error' : ''}">{relDate(s.next_renewal)}</span>
@@ -951,17 +901,17 @@
 
 <!-- ── New-subscription modal ───────────────────────────────────────── -->
 <EditModal
-  open={subOpen}
+  open={subscriptionForm.open}
   maxWidth="sm"
   title="New subscription"
-  onClose={() => (subOpen = false)}
+  onClose={() => subscriptionForm.close()}
 >
-  <form onsubmit={(e) => { e.preventDefault(); submitSub(); }} class="p-4 space-y-3">
-      <input bind:value={subForm.name} required placeholder="Name (Netflix, Spotify…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+  <form onsubmit={(e) => { e.preventDefault(); subscriptionForm.submit(); }} class="p-4 space-y-3">
+      <input bind:value={subscriptionForm.form.name} required placeholder="Name (Netflix, Spotify…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       <div class="flex gap-2">
-        <input type="number" step="0.01" bind:value={subForm.amount} required placeholder="9.99" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-        <input bind:value={subForm.currency} class="w-20 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-        <select bind:value={subForm.cadence} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
+        <input type="number" step="0.01" bind:value={subscriptionForm.form.amount} required placeholder="9.99" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
+        <input bind:value={subscriptionForm.form.currency} class="w-20 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+        <select bind:value={subscriptionForm.form.cadence} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
           <option value="weekly">/ week</option>
           <option value="monthly">/ month</option>
           <option value="quarterly">/ quarter</option>
@@ -969,25 +919,25 @@
         </select>
       </div>
       <label class="block text-xs text-dim">Next renewal
-        <input type="date" bind:value={subForm.next_renewal} class="block mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+        <input type="date" bind:value={subscriptionForm.form.next_renewal} class="block mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       </label>
       <div class="grid grid-cols-2 gap-2">
         {#if dataCtl.accounts.length > 0}
-          <select bind:value={subForm.account_id} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
+          <select bind:value={subscriptionForm.form.account_id} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
             <option value="">— no account —</option>
             {#each dataCtl.accounts as a}<option value={a.id}>{a.name}</option>{/each}
           </select>
         {/if}
-        <select bind:value={subForm.project} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
+        <select bind:value={subscriptionForm.form.project} class="bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary">
           <option value="">— no project —</option>
           {#each dataCtl.projects as p}<option value={p.name}>{p.name}</option>{/each}
         </select>
       </div>
-    <input bind:value={subForm.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-    <input bind:value={subForm.category} placeholder="Category (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
-    <input bind:value={subForm.url} placeholder="Manage URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    <input bind:value={subscriptionForm.form.tags} placeholder="Tags (comma-separated)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    <input bind:value={subscriptionForm.form.category} placeholder="Category (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
+    <input bind:value={subscriptionForm.form.url} placeholder="Manage URL (optional)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-xs text-text focus:outline-none focus:border-primary" />
     <div class="flex justify-end gap-2 pt-2">
-      <button type="button" onclick={() => (subOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
+      <button type="button" onclick={() => subscriptionForm.close()} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
       <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Add</button>
     </div>
   </form>
