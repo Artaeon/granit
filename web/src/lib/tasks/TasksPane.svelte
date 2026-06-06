@@ -34,6 +34,7 @@
   import TasksQuickAddBar from '$lib/tasks/TasksQuickAddBar.svelte';
   import TasksEmptyStates from '$lib/tasks/TasksEmptyStates.svelte';
   import TasksPresetsBar from '$lib/tasks/TasksPresetsBar.svelte';
+  import TasksActiveFilterChips from '$lib/tasks/TasksActiveFilterChips.svelte';
   import { installTasksKeyboard } from '$lib/tasks/useTasksKeyboard';
   import { createTasksUrlSync } from '$lib/tasks/tasksUrlSync';
   import { createTasksGroupAdd } from '$lib/tasks/tasksGroupAdd.svelte';
@@ -750,39 +751,13 @@
            re-applies all stored fields. Long-press / right-click to
            delete via the small × on the active chip. -->
       <TasksPresetsBar {presetCtl} />
-      <!-- Active-filter chip row. Surfaces every non-default filter
-           as an x-removable chip so the user can SEE what's filtering
-           the visible list and dismiss any single one in one click —
-           no need to open the filter drawer (mobile) or hunt the
-           sidebar (desktop). Hidden when no filters are active.
+      <!-- Active-filter chip row. Hidden when no filters are active.
            "Clear all" pill appears once 2+ filters are active. -->
-      {#if filterCtl.activeFilterChips.length > 0}
-        <div class="px-3 py-1.5 border-b border-surface1 flex items-center gap-1 text-[11px] flex-shrink-0 flex-wrap bg-surface0/40">
-          <span class="text-[10px] uppercase tracking-wider text-dim mr-1 select-none">Filters</span>
-          {#each filterCtl.activeFilterChips as chip (chip.key)}
-            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 bg-surface0 border border-surface1 font-mono tabular-nums {chip.tone ?? 'text-subtext'}">
-              <span class="select-none">{chip.label}</span>
-              <button
-                type="button"
-                onclick={chip.clear}
-                aria-label="clear {chip.key} filter"
-                title="Remove this filter"
-                class="text-dim hover:text-error leading-none px-1 -mx-1"
-              >×</button>
-            </span>
-          {/each}
-          {#if filterCtl.activeFilterChips.length >= 2}
-            <button
-              type="button"
-              onclick={filterCtl.clearAll}
-              title="Reset every active filter to its default"
-              class="ml-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-warning hover:text-error border border-dashed border-warning hover:border-error"
-            >clear all</button>
-          {/if}
-          <span class="flex-1"></span>
-          <span class="text-[10px] text-dim font-mono tabular-nums select-none">{filterCtl.filtered.length} match{filterCtl.filtered.length === 1 ? '' : 'es'}</span>
-        </div>
-      {/if}
+      <TasksActiveFilterChips
+        chips={filterCtl.activeFilterChips}
+        filteredCount={filterCtl.filtered.length}
+        onClearAll={filterCtl.clearAll}
+      />
       <!-- Stream N — slim contextual sub-toolbar. Only shown for list
            and kanban views. The visual noise of the previous always-
            on filterCtl.smartCounts row is gone; key counts (done today / week /
