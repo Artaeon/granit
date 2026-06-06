@@ -26,11 +26,15 @@
 -->
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte';
-  import { api, type ChatMessage, type AIPromptEntry } from '$lib/api';
+  import { api, type AIPromptEntry } from '$lib/api';
   import { streamInlineAI } from '$lib/editor/inline-ai';
   import type { InlineAITriggerEvent } from '$lib/editor/inline-ai-trigger';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
   import { createPromptHistoryController } from './inlineAIPromptHistory.svelte';
+  import {
+    createContextScopeController,
+    readSelectionSurround
+  } from './inlineAIContextScope.svelte';
   import {
     type Preset,
     type PresetCategory,
@@ -117,96 +121,19 @@
   }
 
 
-  // Context toggles.
-  //
-  //   scope = 'note'    → backend injects full note body (notePath passed
-  //                       to chatStream). Default — best for whole-note
-  //                       transforms like Improve / Summarize / Outline.
-  //
-  //   scope = 'section' → only the current ## / ### section the cursor
-  //                       is in is sent. Cheaper, tighter, and the
-  //                       result reads as "the AI answered just about
-  //                       this part" rather than dragging in unrelated
-  //                       sections. We omit notePath in this mode and
-  //                       prepend the section text ourselves so the
-  //                       backend's auto-inject doesn't double-up.
-  //
-  // The +backlinks / +7d-jots toggles are additive on top of either.
-  type Scope = 'note' | 'section';
-  let scope = $state<Scope>('note');
-  // "Linked notes" toggle includes both backlinks (notes pointing
-  // here) AND outgoing wikilinks (notes this note points to). Each
-  // contributes a ~400-char body snippet so the AI can reason over
-  // actual content, not just titles.
-  let useLinkedNotes = $state(false);
-  let useRecentJots = $state(false);
-
-  // Detect the current section at the trigger cursor — a contiguous
-  // block of lines from the nearest heading down to the next heading
-  // at the same or higher level (or EOF). Returns null when the
-  // cursor is in pre-heading text (top of doc / no headings).
-  function detectSection(): { heading: string; body: string } | null {
-    const view = event.view;
-    const doc = view.state.doc;
-    const pos = event.pos;
-    const startLine = doc.lineAt(pos).number;
-    let headingLineNum = -1;
-    let headingLevel = 0;
-    for (let n = startLine; n >= 1; n--) {
-      const line = doc.line(n);
-      const m = line.text.match(/^(#{1,6})\s+(.+)$/);
-      if (m) {
-        headingLineNum = n;
-        headingLevel = m[1].length;
-        break;
-      }
-    }
-    if (headingLineNum === -1) return null;
-    const headingLine = doc.line(headingLineNum);
-    const headingMatch = headingLine.text.match(/^(#{1,6})\s+(.+)$/);
-    if (!headingMatch) return null;
-    let endLineNum = doc.lines;
-    for (let n = headingLineNum + 1; n <= doc.lines; n++) {
-      const line = doc.line(n);
-      const m = line.text.match(/^(#{1,6})\s+/);
-      if (m && m[1].length <= headingLevel) {
-        endLineNum = n - 1;
-        break;
-      }
-    }
-    const endLine = doc.line(endLineNum);
-    return {
-      heading: headingMatch[2].trim(),
-      body: doc.sliceString(headingLine.from, endLine.to)
-    };
-  }
-  // Memoize once — the cursor position is fixed for the menu's
-  // lifetime (closed + reopened = fresh event), so the section can't
-  // change while the menu is open.
-  const detectedSection = detectSection();
-
-  // Selection-surround — pulls ~600 chars before and ~300 chars after
-  // a selection so the model can rewrite consistently with what's
-  // adjacent. Without this, AI rewrites of a single sentence routinely
-  // drift in tone, terminology, or claim direction from the
-  // surrounding paragraphs. We don't pad symmetrically because
-  // "before" is what the reader has already absorbed by the time they
-  // hit the selection — usually the more relevant direction.
-  const SELECTION_SURROUND_BEFORE = 600;
-  const SELECTION_SURROUND_AFTER = 300;
-  function readSelectionSurround(
-    view: import('@codemirror/view').EditorView,
-    from: number,
-    to: number
-  ): { before: string; after: string } {
-    const doc = view.state.doc;
-    const beforeStart = Math.max(0, from - SELECTION_SURROUND_BEFORE);
-    const afterEnd = Math.min(doc.length, to + SELECTION_SURROUND_AFTER);
-    return {
-      before: doc.sliceString(beforeStart, from).trimStart(),
-      after: doc.sliceString(to, afterEnd).trimEnd()
-    };
-  }
+  // Context-scope controller. Owns the note/section toggle, the
+  // additive linked-notes / recent-jots toggles, the section
+  // detection (memoized once per trigger), the per-toggle fetch +
+  // cache for cross-note and jot bodies, and the effectiveNotePath
+  // derived from the current scope. Lives in
+  // inlineAIContextScope.svelte.ts so the menu stays focused on UI.
+  const contextCtl = createContextScopeController({
+    view: event.view,
+    pos: event.pos,
+    notePath
+  });
+  let detectedSection = $derived(contextCtl.detectedSection);
+  let effectiveNotePath = $derived(contextCtl.effectiveNotePath);
 
   // ── presets ──────────────────────────────────────────────────────
   // The static preset catalog lives in ./inline-ai-presets.ts — type
@@ -238,114 +165,6 @@
     highlightedIdx = 0;
   });
 
-  // ── context fetch ───────────────────────────────────────────────
-  // Linked notes (backlinks + outgoing wikilinks) and recent jots are
-  // fetched lazily on submit. Cached for the menu's lifetime so the
-  // user toggling on/off doesn't re-hit the server.
-  let linkedNotesCache: string | null = null;
-  let jotsCache: string | null = null;
-
-  // Per-link snippet budget. The handler caps at 400 chars; we re-
-  // truncate here to a tighter ceiling so the total context doesn't
-  // explode on densely-linked notes. The cap is on UTF-16 length, not
-  // tokens — close enough for our scale.
-  const LINKED_NOTE_SNIPPET_MAX = 320;
-  const LINKED_NOTES_CAP = 6; // backlinks + outgoing combined
-
-  async function fetchLinkedNotes(): Promise<string> {
-    if (linkedNotesCache !== null) return linkedNotesCache;
-    try {
-      // bodies=1 gets us snippet fields per link entry so the AI sees
-      // actual content from connected notes, not just titles. Without
-      // bodies the prompt is no better than telling the model "these
-      // titles exist" — useless for cross-note reasoning.
-      const r = await api.req<{
-        outgoing: ({ title: string; path?: string; snippet?: string })[];
-        backlinks: ({ title: string; path?: string; snippet?: string })[];
-      }>(`/links/${encodeURI(notePath)}?bodies=1`);
-
-      // Interleave backlinks first then outgoing — backlinks tend to
-      // carry deliberate connections (the other author chose to link
-      // here), outgoing are this note's own references. Both useful
-      // but backlinks are usually richer signal.
-      const all = [
-        ...(r.backlinks ?? []).map((b) => ({ ...b, direction: '←' as const })),
-        ...(r.outgoing ?? []).map((o) => ({ ...o, direction: '→' as const }))
-      ].slice(0, LINKED_NOTES_CAP);
-
-      if (all.length === 0) {
-        linkedNotesCache = '';
-        return linkedNotesCache;
-      }
-
-      const blocks = all.map((entry) => {
-        const snippet = (entry.snippet ?? '').slice(0, LINKED_NOTE_SNIPPET_MAX).trim();
-        const head = `${entry.direction} [[${entry.title}]]${entry.path ? ' (' + entry.path + ')' : ''}`;
-        return snippet ? `${head}\n${snippet}` : head;
-      });
-
-      linkedNotesCache =
-        'Linked notes in the user\'s vault (← link IN to this note, → linked OUT from this note). ' +
-        'Use these as background only — do not edit them, do not quote them verbatim unless asked.\n\n' +
-        blocks.join('\n\n---\n\n');
-      return linkedNotesCache;
-    } catch {
-      linkedNotesCache = '';
-      return '';
-    }
-  }
-
-  async function fetchRecentJots(): Promise<string> {
-    if (jotsCache !== null) return jotsCache;
-    try {
-      const r = await api.listJots({ limit: 7 });
-      const blocks = r.jots
-        .slice(0, 7)
-        .map((j) => `### ${j.date}\n${(j.body ?? '').slice(0, 800)}`);
-      jotsCache = blocks.length === 0 ? '' : 'Last week of daily notes:\n\n' + blocks.join('\n\n');
-      return jotsCache;
-    } catch {
-      jotsCache = '';
-      return '';
-    }
-  }
-
-  async function buildContextMessages(systemHead: string): Promise<ChatMessage[]> {
-    const messages: ChatMessage[] = [{ role: 'system', content: systemHead }];
-    // Section scope: include the section text as a focused system
-    // prefix so the model anchors on it. The chatStream call site
-    // omits notePath when scope === 'section' (see effectiveNotePath
-    // below), preventing the backend from double-injecting the full
-    // body on top of our targeted section.
-    if (scope === 'section' && detectedSection) {
-      messages.push({
-        role: 'system',
-        content:
-          'Focus on the section "## ' + detectedSection.heading +
-          '" of the user\'s note. Section content:\n\n```\n' +
-          detectedSection.body + '\n```'
-      });
-    }
-    if (useLinkedNotes) {
-      const b = await fetchLinkedNotes();
-      if (b) messages.push({ role: 'system', content: b });
-    }
-    if (useRecentJots) {
-      const j = await fetchRecentJots();
-      if (j) messages.push({ role: 'system', content: j });
-    }
-    return messages;
-  }
-
-  // Whether to pass notePath to chatStream — only for note scope.
-  // In section scope we already prepended the section as a focused
-  // system message; the backend's full-body auto-inject would dilute
-  // that focus. `undefined` (not `''`) so the field is omitted from
-  // the request body entirely — chatStream's notePath param is
-  // `string | undefined` and an explicit empty string would still
-  // round-trip a `"notePath": ""` the backend has to filter out.
-  let effectiveNotePath = $derived(scope === 'note' ? notePath : undefined);
-
   // Set when the menu is closed (either explicitly or by parent-driven
   // unmount). runPreset/runCustomPrompt await on buildContextMessages
   // BEFORE consumeTriggerRange + streamInlineAI; if the user clicks
@@ -368,7 +187,7 @@
       const extra = promptInput.trim();
       if (hasSelection && p.systemForSelection) {
         const system = extra ? p.systemForSelection + '\n\nAdditional instruction: ' + extra : p.systemForSelection;
-        const messages = await buildContextMessages(system);
+        const messages = await contextCtl.buildContextMessages(system);
         if (closed) return;
         // Selection-surround: include ~600 chars before and ~300 chars
         // after the selection as read-only context so the rewrite
@@ -393,7 +212,7 @@
         });
       } else if (p.systemForCursor) {
         const system = extra ? p.systemForCursor + '\n\nAdditional instruction: ' + extra : p.systemForCursor;
-        const messages = await buildContextMessages(system);
+        const messages = await contextCtl.buildContextMessages(system);
         if (closed) return;
         if (p.wholeNote) {
           messages.push({
@@ -445,7 +264,7 @@
           'Apply the user\'s instruction to the given text. Return ONLY the resulting text, ' +
           'no preamble, no commentary, no quoted block. Preserve markdown structure unless the ' +
           'instruction explicitly says otherwise.';
-        const messages = await buildContextMessages(system);
+        const messages = await contextCtl.buildContextMessages(system);
         if (closed) return;
         const surround = readSelectionSurround(view, event.selection.from, event.selection.to);
         messages.push({
@@ -469,7 +288,7 @@
           'You are writing inside the user\'s note at the cursor. Carry out the user\'s ' +
           'instruction and insert the result into the note. Return ONLY the text to insert, ' +
           'no preamble, no commentary, no surrounding quotes. Use markdown where appropriate.';
-        const messages = await buildContextMessages(system);
+        const messages = await contextCtl.buildContextMessages(system);
         if (closed) return;
         // Include the surrounding context so the model knows what to anchor against.
         const cur = event.pos;
@@ -806,29 +625,29 @@
          actually lives inside a heading section. -->
     <button
       type="button"
-      onclick={() => (scope = 'note')}
-      class="px-1 py-0.5 rounded {scope === 'note' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
+      onclick={() => (contextCtl.scope = 'note')}
+      class="px-1 py-0.5 rounded {contextCtl.scope === 'note' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
       title="send the entire note body to AI"
     >note</button>
     {#if detectedSection}
       <button
         type="button"
-        onclick={() => (scope = 'section')}
-        class="px-1 py-0.5 rounded {scope === 'section' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
+        onclick={() => (contextCtl.scope = 'section')}
+        class="px-1 py-0.5 rounded {contextCtl.scope === 'section' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
         title="send only the current section: {detectedSection.heading}"
       >§ {detectedSection.heading.length > 14 ? detectedSection.heading.slice(0, 14) + '…' : detectedSection.heading}</button>
     {/if}
     <span class="text-dim opacity-40 mx-0.5">|</span>
     <button
       type="button"
-      onclick={() => (useLinkedNotes = !useLinkedNotes)}
-      class="px-1 py-0.5 rounded {useLinkedNotes ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
+      onclick={() => (contextCtl.useLinkedNotes = !contextCtl.useLinkedNotes)}
+      class="px-1 py-0.5 rounded {contextCtl.useLinkedNotes ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
       title="include short body snippets from up to 6 linked notes (both backlinks and outgoing wikilinks) — the AI then reasons over actual content, not just titles"
     >+ linked notes</button>
     <button
       type="button"
-      onclick={() => (useRecentJots = !useRecentJots)}
-      class="px-1 py-0.5 rounded {useRecentJots ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
+      onclick={() => (contextCtl.useRecentJots = !contextCtl.useRecentJots)}
+      class="px-1 py-0.5 rounded {contextCtl.useRecentJots ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
       title="include the last 7 days of daily notes"
     >+ 7d jots</button>
     <!-- Hand-off to the global chat sidebar. Seeded with the note
