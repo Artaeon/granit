@@ -3,8 +3,11 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { api, type Project, type Task , todayISO } from '$lib/api';
-  import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
+  import {
+    createProjectsListData,
+    installProjectsListLive
+  } from '$lib/projects/projectsListData.svelte';
   import { colorVar, statusTone } from '$lib/util/colors';
   import { isoWeekString, startOfIsoWeek } from '$lib/util/isoWeek';
   import { fmtDateISO as ymd } from '$lib/util/date';
@@ -26,9 +29,10 @@
   // re-stream merge logic lives in $lib/agents/core.
   let agentOpen = $state(false);
 
-  let projects = $state<Project[]>([]);
-  let tasks = $state<Task[]>([]);
-  let loading = $state(false);
+  const dataCtl = createProjectsListData();
+  const projects = $derived(dataCtl.projects);
+  const tasks = $derived(dataCtl.tasks);
+  const loading = $derived(dataCtl.loading);
 
   // ── Per-project momentum derivations ─────────────────────────────
   // Pull all tasks once on the list page so each card can render a
@@ -323,7 +327,7 @@
   async function handleKanbanStatusChange(name: string, status: KanbanStatus) {
     // Optimistic local update so the card "lands" in the new column
     // before the network roundtrip completes.
-    projects = projects.map((p) => (p.name === name ? { ...p, status } : p));
+    dataCtl.projects = projects.map((p) => (p.name === name ? { ...p, status } : p));
     try {
       await api.patchProject(name, { status });
       toast.success(`"${name}" → ${status}`);
@@ -333,25 +337,7 @@
     await load();
   }
 
-  async function load() {
-    loading = true;
-    try {
-      // Two-call parallel load so the sparkline + this-week
-      // counts on each card don't wait for projects to finish
-      // before tasks even start. Both caches are kept in sync
-      // by the WS event subscriptions below.
-      const [pr, tr] = await Promise.all([
-        api.listProjects(),
-        api.listTasks({}).catch(() => ({ tasks: [] as Task[], total: 0 }))
-      ]);
-      projects = pr.projects;
-      tasks = tr.tasks ?? [];
-    } catch (e) {
-      toast.error('failed to load projects: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      loading = false;
-    }
-  }
+  const load = () => dataCtl.load();
 
   onMount(() => {
     load();
@@ -367,20 +353,7 @@
         keepFocus: true
       });
     }
-    const unsub = onWsEvent((ev) => {
-      if (ev.type.startsWith('project.')) load();
-      if (ev.type === 'note.changed' || ev.type === 'note.removed') load();
-    });
-    // Mobile browsers (and desktop tabs in the background) suspend the
-    // WS so events fired while we were away are simply lost. When the
-    // tab becomes visible again, force a refetch so we never present a
-    // stale list. Cheap to do; cheaper than the user wondering why a
-    // project they created on another device isn't showing.
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') load();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', onVisible);
+    const offLive = installProjectsListLive({ reload: load });
     // 'a' opens the Project Agent — same hotkey contract as
     // /tasks. isTypingTarget guard suppresses while the user is
     // typing in inputs / textareas anywhere on the page.
@@ -394,9 +367,7 @@
     };
     window.addEventListener('keydown', onKey);
     return () => {
-      unsub();
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', onVisible);
+      offLive();
       window.removeEventListener('keydown', onKey);
     };
   });
@@ -561,7 +532,7 @@
     // the listProjects roundtrip is slow. The await load() below
     // reconciles with server-decorated fields (progress, task counts).
     if (!projects.some((x) => x.name === p.name)) {
-      projects = [p, ...projects];
+      dataCtl.projects = [p, ...projects];
     }
     selectProject(p.name);
     await load();
