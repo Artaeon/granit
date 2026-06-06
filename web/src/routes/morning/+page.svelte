@@ -27,11 +27,11 @@
   import { createMorningData } from '$lib/morning/morningData.svelte';
   import { createMorningBriefing } from '$lib/morning/morningBriefing.svelte';
   import { createMorningFocus } from '$lib/morning/morningFocus.svelte';
+  import { installMorningPersistence } from '$lib/morning/morningPersistence.svelte';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import DeadlinePill from '$lib/deadlines/DeadlinePill.svelte';
-  import { loadStored, saveStored } from '$lib/util/storage';
 
   // ─── Persistence key (today) ──────────────────────────────────────
   // Hoisted above the controller construction so dataCtl can read it.
@@ -95,64 +95,13 @@
   // ─── Persistence ──────────────────────────────────────────────────
   // Per-day localStorage so a closed tab doesn't lose progress, but
   // yesterday's half-finished morning doesn't bleed into today.
-  interface Snapshot {
-    scriptureSource: string;
-    customScripture: string;
-    customSource: string;
-    winSentence: string;
-    goal: string;
-    linkedGoalId: string;
-    pickedTasks: string[];
-    pickedHabits: string[];
-    pickedIntentions: string[];
-    thoughts: string;
-    newHabit: string;
-  }
-  function persist() {
-    const s: Snapshot = {
-      scriptureSource: scriptureCtl.scripture.source,
-      customScripture: scriptureCtl.customScripture,
-      customSource: scriptureCtl.customSource,
-      winSentence: focusCtl.winSentence,
-      goal: focusCtl.goal,
-      linkedGoalId: focusCtl.linkedGoalId,
-      pickedTasks: [...picksCtl.pickedTasks],
-      pickedHabits: [...picksCtl.pickedHabits],
-      pickedIntentions: [...picksCtl.pickedIntentions],
-      thoughts,
-      newHabit: picksCtl.newHabit
-    };
-    saveStored<Snapshot>(STORAGE_KEY, s);
-  }
-  function restore() {
-    const s = loadStored<Snapshot | null>(STORAGE_KEY, null);
-    if (!s) return false;
-    scriptureCtl.restore({
-      scriptureSource: s.scriptureSource,
-      customScripture: s.customScripture,
-      customSource: s.customSource
-    });
-    focusCtl.restore({
-      winSentence: s.winSentence,
-      goal: s.goal,
-      linkedGoalId: s.linkedGoalId
-    });
-    picksCtl.restore({
-      pickedTasks: s.pickedTasks,
-      pickedHabits: s.pickedHabits,
-      pickedIntentions: s.pickedIntentions,
-      newHabit: s.newHabit
-    });
-    thoughts = s.thoughts ?? '';
-    return true;
-  }
-  function clearPersisted() { saveStored<Snapshot>(STORAGE_KEY, undefined); }
-  $effect(() => {
-    void scriptureCtl.scripture; void scriptureCtl.customScripture; void scriptureCtl.customSource;
-    void focusCtl.winSentence; void focusCtl.goal; void focusCtl.linkedGoalId;
-    void picksCtl.pickedTasks; void picksCtl.pickedHabits; void picksCtl.pickedIntentions;
-    void thoughts; void picksCtl.newHabit;
-    persist();
+  const persistenceCtl = installMorningPersistence({
+    storageKey: STORAGE_KEY,
+    scriptureCtl,
+    focusCtl,
+    picksCtl,
+    getThoughts: () => thoughts,
+    setThoughts: (v) => { thoughts = v; }
   });
 
   // ─── Load ─────────────────────────────────────────────────────────
@@ -163,11 +112,10 @@
     briefingCtl.hydrateDismissed();
     // Pre-tick today's habits (only if no restored snapshot — don't
     // clobber the user's deliberate choices).
-    const hadSnapshot = !!localStorage.getItem(STORAGE_KEY);
-    if (!hadSnapshot) picksCtl.pretickWarmHabits(dataCtl.knownHabits);
+    if (!persistenceCtl.hasSnapshot()) picksCtl.pretickWarmHabits(dataCtl.knownHabits);
   }
   onMount(() => {
-    restore();
+    persistenceCtl.restore();
     load();
   });
 
@@ -304,7 +252,7 @@
         habits: Array.from(picksCtl.pickedHabits),
         thoughts: thoughtsBody
       });
-      clearPersisted();
+      persistenceCtl.clear();
       toast.success('today is locked in');
       goto('/');
     } catch (e) {
