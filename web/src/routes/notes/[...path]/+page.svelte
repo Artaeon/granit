@@ -18,6 +18,7 @@
   import { createNoteSaveStatusCtl } from '$lib/notes/noteSaveStatusCtl.svelte';
   import { createNoteVersionCount } from '$lib/notes/noteVersionCount.svelte';
   import { createNotePipelineState } from '$lib/notes/notePipelineState.svelte';
+  import { createMissingNoteCtl } from '$lib/notes/createMissingNote.svelte';
   import ExtractToNoteDialog from '$lib/notes/ExtractToNoteDialog.svelte';
   import { createExtractController } from '$lib/notes/extractToNote.svelte';
   import { navigateWikilink as navigateWikilinkHelper } from '$lib/notes/wikilinkNav';
@@ -130,7 +131,6 @@
   let dirty = $derived(pipe.dirty);
   let error = $derived(pipe.error);
   let notFound = $derived(pipe.notFound);
-  let creatingNote = $state(false);
 
   // Inline-AI bridge — CodeMirror trigger extension + state observer
   // forwarding into reactive $state slots. Lives in inlineAIBridge.
@@ -236,31 +236,16 @@
     });
   }
 
-  // Title inferred from the path for the not-found state. Strips the
-  // .md extension and the folder prefix so "/notes/projects/foo.md"
-  // shows as "foo".
-  let notFoundTitle = $derived.by(() => {
-    const path = $page.params.path ?? '';
-    if (!path) return '';
-    return decodeURIComponent(path).split('/').pop()?.replace(/\.md$/, '') ?? '';
+  // "Create note" action for the not-found state + the derived
+  // header title. Lives in createMissingNote — owns the busy gate,
+  // the path-cleaning, and the post-create force-reload.
+  const missingNote = createMissingNoteCtl({
+    pipe,
+    getRawPath: () => $page.params.path ?? '',
+    load
   });
-
-  async function createMissingNote() {
-    const path = decodeURIComponent($page.params.path ?? '');
-    if (!path || creatingNote) return;
-    const cleanPath = path.endsWith('.md') ? path : path + '.md';
-    creatingNote = true;
-    try {
-      await api.createNote({ path: cleanPath, body: '' });
-      pipe.notFound = false;
-      pipe.lastLoadedPath = '';
-      await load(cleanPath, { force: true });
-    } catch (e) {
-      toast.error(`Couldn't create note: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      creatingNote = false;
-    }
-  }
+  let creatingNote = $derived(missingNote.creatingNote);
+  let notFoundTitle = $derived(missingNote.notFoundTitle);
 
   let lastSavedAt = $derived(pipe.lastSavedAt);
   let pendingFrontmatter = $derived(pipe.pendingFrontmatter);
@@ -539,7 +524,7 @@
       {notFoundTitle}
       rawPath={decodeURIComponent($page.params.path ?? '')}
       {creatingNote}
-      onCreate={createMissingNote}
+      onCreate={missingNote.create}
       onOpenTreeDrawer={() => (overlays.treeDrawerOpen = true)}
       onRetry={() => { pipe.lastLoadedPath = ''; load(decodeURIComponent($page.params.path ?? '')); }}
     />
