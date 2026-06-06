@@ -35,6 +35,11 @@ const LEGACY_LAYOUT_KEY = 'granit.workspace.layout';
 export type Workspace = {
   id: string;
   name: string;
+  /** NavIcon name — gives each workspace its own glanceable
+   *  identity in the StatusBar pills + future shell chrome. The
+   *  default 'workspace' (a 2x2 grid) matches the BottomNav glyph
+   *  so a never-customised workspace still reads as "workspace". */
+  icon?: string;
   /** Layout is a split-tree. Migrations rebuild older flat shapes
    *  into a horizontal split on first read. */
   layout: TreeNode;
@@ -76,13 +81,16 @@ function normalizeWorkspace(w: unknown): Workspace | null {
   const o = w as Record<string, unknown>;
   const name = typeof o.name === 'string' ? o.name : 'Workspace';
   const id = typeof o.id === 'string' ? o.id : newId();
+  // Optional icon field; pre-W7 entries don't carry it. Skip silently
+  // when missing; the consumers default to 'workspace' on read.
+  const icon = typeof o.icon === 'string' && o.icon ? o.icon : undefined;
   // v2 already-a-tree path.
   if (isTree(o.layout)) {
-    return { id, name, layout: o.layout };
+    return { id, name, icon, layout: o.layout };
   }
   // v1 flat-layout path — rebuild into a tree.
   if (isFlatLayout(o.layout)) {
-    return { id, name, layout: fromFlat(o.layout.left, o.layout.right, o.layout.ratio) };
+    return { id, name, icon, layout: fromFlat(o.layout.left, o.layout.right, o.layout.ratio) };
   }
   return null;
 }
@@ -141,6 +149,9 @@ export interface WorkspaceStoreController {
    *  taken, suffixes ` 2`, ` 3`, … until unique. */
   createWithLayout(name: string, layout: TreeNode): void;
   rename(id: string, name: string): void;
+  /** Set the NavIcon name for a workspace. Empty/whitespace falls
+   *  back to the default 'workspace' glyph. */
+  setIcon(id: string, icon: string): void;
   remove(id: string): void;
 
   // Active-workspace layout mutations. Each one is a tree-shape
@@ -289,6 +300,13 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     );
   }
 
+  function setIcon(id: string, icon: string) {
+    const trimmed = icon.trim();
+    workspaces = workspaces.map((w) =>
+      w.id === id ? { ...w, icon: trimmed || undefined } : w
+    );
+  }
+
   function remove(id: string) {
     if (workspaces.length <= 1) return;
     workspaces = workspaces.filter((w) => w.id !== id);
@@ -341,6 +359,7 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     create,
     createWithLayout,
     rename,
+    setIcon,
     remove,
     setPane,
     setRatio,

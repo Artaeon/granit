@@ -20,6 +20,8 @@
 <script lang="ts">
   import type { WorkspaceStoreController } from './workspaceStore.svelte';
   import WorkspaceNewMenu from './WorkspaceNewMenu.svelte';
+  import WorkspaceIconPicker from './WorkspaceIconPicker.svelte';
+  import NavIcon from '$lib/components/NavIcon.svelte';
 
   type Props = {
     store: WorkspaceStoreController;
@@ -92,6 +94,20 @@
       class="inline-flex items-stretch border-l border-surface1 transition-colors whitespace-nowrap
         {active ? 'bg-primary text-on-primary' : 'text-subtext hover:text-text hover:bg-surface0'}"
     >
+      {#if active}
+        <!-- Icon picker (active only) — clickable popover for changing
+             this workspace's glyph. Inactive pills get a read-only
+             icon prefix so the workspace identity reads the same
+             without an extra tap target. -->
+        <WorkspaceIconPicker
+          current={w.icon ?? 'workspace'}
+          onPick={(name) => store.setIcon(w.id, name)}
+        />
+      {:else}
+        <span class="inline-flex items-center px-1.5">
+          <NavIcon name={w.icon ?? 'workspace'} class="w-3.5 h-3.5 opacity-70" />
+        </span>
+      {/if}
       <button
         type="button"
         onclick={() => switchTo(w.id)}

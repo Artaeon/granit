@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import NavIcon from './NavIcon.svelte';
+  import { workspaceStoreSingleton } from '$lib/workspace/workspaceStore.svelte';
 
   interface Tab {
     href: string;
@@ -9,6 +10,11 @@
   }
 
   let { onMore }: { onMore: () => void } = $props();
+
+  // Read the active workspace's icon so the Workspaces tab carries
+  // the user-customised identity glyph instead of a static "workspace"
+  // grid. Default 'workspace' for never-customised workspaces.
+  const workspaceStore = workspaceStoreSingleton();
 
   // Four primary tabs + a More drawer button = five thumb columns,
   // the Apple/Material density target. The four primary tabs are
@@ -19,12 +25,12 @@
   // VSCode-for-life surface and the user reaches it constantly. The
   // bottom StatusBar's workspace pills are the cross-pane switcher;
   // this top-level tab is the "open the workspace shell" affordance.
-  const tabs: Tab[] = [
+  let tabs = $derived<Tab[]>([
     { href: '/', label: 'Today', icon: 'today' },
-    { href: '/workspace', label: 'Workspace', icon: 'workspace' },
+    { href: '/workspace', label: 'Workspace', icon: workspaceStore.active.icon ?? 'workspace' },
     { href: '/tasks', label: 'Tasks', icon: 'tasks' },
     { href: '/calendar', label: 'Calendar', icon: 'calendar' }
-  ];
+  ]);
 
   function isActive(href: string): boolean {
     if (href === '/') return $page.url.pathname === '/';
