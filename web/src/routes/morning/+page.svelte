@@ -20,10 +20,11 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { auth } from '$lib/stores/auth';
-  import { api, todayISO, type Task, type HabitInfo, type Goal, type Deadline, type PrayerIntention, type CalendarEvent } from '$lib/api';
+  import { api, todayISO, type Task, type Goal } from '$lib/api';
   import { scriptures } from '$lib/morning/scriptures';
   import { createMorningScripture } from '$lib/morning/morningScripture.svelte';
   import { createMorningPicks } from '$lib/morning/morningPicks.svelte';
+  import { createMorningData } from '$lib/morning/morningData.svelte';
   import { inlineMd } from '$lib/util/inlineMd';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -33,13 +34,27 @@
   import { rafThrottle } from '$lib/util/streamThrottle';
   import { BRIEFING_SYSTEM_PROMPT, buildBriefingUserPrompt } from '$lib/morning/briefingPrompt';
 
+  // ─── Persistence key (today) ──────────────────────────────────────
+  // Hoisted above the controller construction so dataCtl can read it.
+  const today = todayISO();
+  const STORAGE_KEY = `granit.morning.${today}`;
+
   // ─── Data ─────────────────────────────────────────────────────────
-  let activeGoals = $state<Goal[]>([]);
-  let allGoalsById = $state<Record<string, string>>({});
-  let upcomingDeadlines = $state<Deadline[] | null>(null);
-  let openTasks = $state<Task[]>([]);
-  let knownHabits = $state<HabitInfo[]>([]);
-  let activeIntentions = $state<PrayerIntention[]>([]);
+  const dataCtl = createMorningData({
+    todayISO: today,
+    listTasks: (o) => api.listTasks(o),
+    listHabits: () => api.listHabits(),
+    listGoals: () => api.listGoals(),
+    tryListDeadlines: () => api.tryListDeadlines(),
+    listPrayer: () => api.listPrayer(),
+    calendar: (a, b) => api.calendar(a, b)
+  });
+  const activeGoals = $derived(dataCtl.activeGoals);
+  const upcomingDeadlines = $derived(dataCtl.upcomingDeadlines);
+  const openTasks = $derived(dataCtl.openTasks);
+  const knownHabits = $derived(dataCtl.knownHabits);
+  const activeIntentions = $derived(dataCtl.activeIntentions);
+  const todayEvents = $derived(dataCtl.todayEvents);
 
   // ─── Form state ───────────────────────────────────────────────────
   const scriptureCtl = createMorningScripture();
@@ -48,8 +63,8 @@
   let goal = $state('');
   let linkedGoalId = $state<string>('');
   const picksCtl = createMorningPicks({
-    appendKnownHabit: (h) => { knownHabits = [...knownHabits, h]; },
-    prependActiveIntention: (p) => { activeIntentions = [p, ...activeIntentions]; },
+    appendKnownHabit: (h) => dataCtl.appendKnownHabit(h),
+    prependActiveIntention: (p) => dataCtl.prependActiveIntention(p),
     createPrayer: (args) => api.createPrayer(args)
   });
   let thoughts = $state('');
@@ -57,7 +72,10 @@
   let saving = $state(false);
   let suggesting = $state(false);
   let suggestion = $state('');
-  let error = $state('');
+  // Local save-path error. Load errors live on dataCtl.error and are
+  // merged into the banner via the `error` derived below.
+  let saveError = $state('');
+  const error = $derived(saveError || dataCtl.error);
 
   // AI morning briefing — a 60-100 word read of "what today looks
   // like and where to focus". Distinct from the single-sentence
@@ -74,7 +92,6 @@
   let briefingBusy = $state(false);
   let briefingError = $state('');
   let briefingAbort: AbortController | null = null;
-  let todayEvents = $state<CalendarEvent[]>([]);
   // briefingDismissed key gets initialised after `today` is set,
   // below — kept as a let so the load() block can populate.
   let briefingDismissed = $state(false);
@@ -82,8 +99,6 @@
   // ─── Persistence ──────────────────────────────────────────────────
   // Per-day localStorage so a closed tab doesn't lose progress, but
   // yesterday's half-finished morning doesn't bleed into today.
-  const today = todayISO();
-  const STORAGE_KEY = `granit.morning.${today}`;
   interface Snapshot {
     scriptureSource: string;
     customScripture: string;
@@ -145,63 +160,15 @@
   // ─── Load ─────────────────────────────────────────────────────────
   async function load() {
     if (!$auth) return;
-    try {
-      // Auxiliary feeds (goals, prayer, calendar) are graceful-degrade:
-      // morning page must keep working when one of them fails, but a
-      // silent fallback used to leave the user wondering why their
-      // calendar/goals went missing. We log + toast.warning the
-      // specific failure so the user can act, then continue with
-      // empty shapes. Tasks + habits + deadlines are load-bearing and
-      // still bubble up via the outer try/catch.
-      const warn = (label: string) => (e: unknown) => {
-        console.warn(`[morning] ${label} load failed:`, e);
-        toast.warning(`${label} unavailable — ${errorMessage(e)}`);
-      };
-      const [t, h, g, d, p, cal] = await Promise.all([
-        api.listTasks({ status: 'open' }),
-        api.listHabits(),
-        api.listGoals().catch((e): { goals: Goal[]; total: number } => {
-          warn('goals')(e);
-          return { goals: [], total: 0 };
-        }),
-        api.tryListDeadlines(),
-        api.listPrayer().catch((e) => {
-          warn('prayer')(e);
-          return { intentions: [] as PrayerIntention[], total: 0 };
-        }),
-        // Today's events power the AI briefing's "shape of the day"
-        // paragraph + the stat-row event count. Tolerate failure —
-        // morning page is still useful without the calendar feed.
-        api.calendar(today, today).catch((e) => {
-          warn('calendar')(e);
-          return { events: [] };
-        })
-      ]);
-      openTasks = t.tasks;
-      knownHabits = h.habits;
-      activeIntentions = p.intentions.filter((x) => x.status === 'praying');
-      activeGoals = g.goals.filter((x) => (x.status ?? 'active') === 'active').slice(0, 3);
-      const map: Record<string, string> = {};
-      for (const ge of g.goals) map[ge.id] = ge.title;
-      allGoalsById = map;
-      upcomingDeadlines = d;
-      // Filter the feed to events+ics_events only (skip tasks +
-      // deadlines, which we summarise from their own data). Sort
-      // by start time so the brief reads in chronological order.
-      todayEvents = (cal.events ?? [])
-        .filter((e) => e.type === 'event' || e.type === 'ics_event')
-        .sort((a, b) => (a.start ?? a.date ?? '').localeCompare(b.start ?? b.date ?? ''));
-      // Restore the per-day dismissed flag now that `today` is set.
-      briefingDismissed =
-        typeof localStorage !== 'undefined' &&
-        localStorage.getItem(`granit.morning.briefDismissed.${today}`) === '1';
-      // Pre-tick today's habits (only if no restored snapshot — don't
-      // clobber the user's deliberate choices).
-      const hadSnapshot = !!localStorage.getItem(STORAGE_KEY);
-      if (!hadSnapshot) picksCtl.pretickWarmHabits(knownHabits);
-    } catch (e) {
-      error = errorMessage(e);
-    }
+    await dataCtl.load();
+    // Restore the per-day dismissed flag now that `today` is set.
+    briefingDismissed =
+      typeof localStorage !== 'undefined' &&
+      localStorage.getItem(`granit.morning.briefDismissed.${today}`) === '1';
+    // Pre-tick today's habits (only if no restored snapshot — don't
+    // clobber the user's deliberate choices).
+    const hadSnapshot = !!localStorage.getItem(STORAGE_KEY);
+    if (!hadSnapshot) picksCtl.pretickWarmHabits(dataCtl.knownHabits);
   }
   onMount(() => {
     restore();
@@ -430,7 +397,7 @@
 
   async function lockIn() {
     saving = true;
-    error = '';
+    saveError = '';
     try {
       const linked = activeGoals.find((g) => g.id === linkedGoalId);
       const goalText = goal.trim();
@@ -472,7 +439,7 @@
       goto('/');
     } catch (e) {
       const msg = errorMessage(e);
-      error = msg;
+      saveError = msg;
       toast.error(`save failed: ${msg}`);
     } finally {
       saving = false;
