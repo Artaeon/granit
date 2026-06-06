@@ -3,10 +3,7 @@
   import { page } from '$app/stores';
   import { api, type Note } from '$lib/api';
   import { installWsReload } from '$lib/notes/wsReload.svelte';
-  import Editor from '$lib/editor/Editor.svelte';
   import NotesTree from '$lib/notes/NotesTree.svelte';
-  import MarkdownRenderer from '$lib/notes/MarkdownRenderer.svelte';
-  import DayActivityInline from '$lib/notes/DayActivityInline.svelte';
   import DailyQuickAdd from '$lib/notes/DailyQuickAdd.svelte';
   import DailyContext from '$lib/notes/DailyContext.svelte';
   import NoteDeadlinesStrip from '$lib/deadlines/NoteDeadlinesStrip.svelte';
@@ -47,8 +44,6 @@
     type InlineAITriggerEvent
   } from '$lib/editor/inline-ai-trigger';
   import { inlineAIObserver, type InlineAIState } from '$lib/editor/inline-ai';
-  import type { EditorView } from '@codemirror/view';
-  import NoteSummaryCard from '$lib/notes/NoteSummaryCard.svelte';
   import NoteAudioPlayer from '$lib/notes/NoteAudioPlayer.svelte';
   import NotePresentation from '$lib/notes/NotePresentation.svelte';
   import NoteStatusBar from '$lib/notes/NoteStatusBar.svelte';
@@ -57,6 +52,8 @@
   import NoteHeader from '$lib/notes/NoteHeader.svelte';
   import NoteEditorBanners from '$lib/notes/NoteEditorBanners.svelte';
   import NoteEmptyState from '$lib/notes/NoteEmptyState.svelte';
+  import NoteEditorPane from '$lib/notes/NoteEditorPane.svelte';
+  import type { EditorHandle } from '$lib/notes/editorHandle';
   import { ensurePinnedLoaded } from '$lib/notes/pinnedNotes';
   import { createNotePinAction } from '$lib/notes/notePinAction.svelte';
   import { createEditorCallbacks } from '$lib/notes/editorCallbacks.svelte';
@@ -192,20 +189,7 @@
     if (!c) return;
     return previewScroll.attach(c, () => note?.path ?? null);
   });
-  let editor:
-    | {
-        scrollToLine: (n: number) => void;
-        getScrollTop: () => number;
-        setScrollTop: (top: number) => void;
-        isCompletionActive: () => boolean;
-        dispatchChord: (chord: string) => void;
-        getDOM: () => HTMLElement | undefined;
-        getView: () => EditorView | undefined;
-        openFind: () => void;
-        insertAtCursor: (text: string) => void;
-        getContent: () => string;
-      }
-    | undefined = $state();
+  let editor = $state<EditorHandle | undefined>();
   // Re-derived after every render so the SelectionToolbar can scope
   // its selection detection to the editor's contentDOM specifically.
   // The CodeMirror DOM exists only after mount, so this stays
@@ -724,46 +708,29 @@
       <!-- EditorAIBar removed — the inline AI menu (Cmd-/ / "/ai") is
            the only AI entry point now. See $lib/notes/InlineAIMenu.svelte
            and its trigger registration in editorAIExtensions above. -->
-      {#snippet previewBody()}
-        {#if dayActivitySegments && dailyDate}
-          <MarkdownRenderer body={dayActivitySegments.before} onWikilink={navigateWikilink} />
-          <DayActivityInline date={dailyDate} />
-          <MarkdownRenderer body={dayActivitySegments.after} onWikilink={navigateWikilink} />
-        {:else}
-          <!-- Throttled body — rAF-coalesced via bodyForPreview above.
-               Multiple keystrokes in one frame produce one parse, not 5+. -->
-          <MarkdownRenderer body={bodyForPreview} onWikilink={navigateWikilink} />
-        {/if}
-      {/snippet}
-      <div class="flex-1 min-h-0 p-2 sm:p-3">
-        {#if viewMode === 'edit'}
-          <Editor bind:value={pipe.body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={editorCb.onCursor} onScroll={editorCb.onScroll} extraExtensions={editorAIExtensions} />
-        {:else if viewMode === 'preview'}
-          <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4" bind:this={previewContainer}>
-            <div class="max-w-3xl mx-auto">
-              {#if note}
-                <NoteSummaryCard
-                  notePath={note.path}
-                  title={note.title || note.path}
-                  body={bodyForPreview}
-                  frontmatter={(note.frontmatter ?? {}) as Record<string, unknown>}
-                  onSaveFrontmatter={saveFrontmatter}
-                  onPrepend={(text) => { pipe.body = text + pipe.body; pipe.dirty = true; }}
-                />
-              {/if}
-              {@render previewBody()}
-            </div>
-          </div>
-        {:else}
-          <!-- split (desktop only) -->
-          <div class="h-full grid grid-cols-1 lg:grid-cols-2 gap-2">
-            <Editor bind:value={pipe.body} bind:this={editor} onSave={save} onNavigate={navigateWikilink} onExtract={extractCtl.handleExtract} onCursor={editorCb.onCursor} onScroll={editorCb.onScroll} extraExtensions={editorAIExtensions} />
-            <div class="h-full overflow-y-auto bg-surface0 border border-surface1 rounded px-4 sm:px-6 py-4 hidden lg:block" bind:this={previewContainer}>
-              {@render previewBody()}
-            </div>
-          </div>
-        {/if}
-      </div>
+      <!-- Edit / preview / split switch lives in <NoteEditorPane>;
+           the page hands a bind:this passthrough (bindEditor /
+           bindPreviewContainer) so the editor handle + preview
+           container ref reach the route's lifecycle effects, scroll
+           tracker, and selection toolbar. -->
+      <NoteEditorPane
+        {note}
+        {viewMode}
+        bind:body={pipe.body}
+        {bodyForPreview}
+        {dayActivitySegments}
+        {dailyDate}
+        {editorAIExtensions}
+        onSave={save}
+        onNavigateWikilink={navigateWikilink}
+        onExtract={extractCtl.handleExtract}
+        onCursor={editorCb.onCursor}
+        onScroll={editorCb.onScroll}
+        onSaveFrontmatter={saveFrontmatter}
+        onPrepend={(text) => { pipe.body = text + pipe.body; pipe.dirty = true; }}
+        bindEditor={(h) => (editor = h)}
+        bindPreviewContainer={(el) => (previewContainer = el)}
+      />
       <!-- Status bar — always visible (mobile + desktop). The
            previous version was md:hidden, which left desktop users
            with no live word/char/line/cursor readout. The desktop
