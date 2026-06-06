@@ -2,7 +2,7 @@
   import { onMount, untrack } from 'svelte';
   import { page } from '$app/stores';
   import { auth } from '$lib/stores/auth';
-  import { api, todayISO, type Task, type Project, type Goal, type Deadline } from '$lib/api';
+  import { todayISO, type Task } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { installTasksLifecycle } from '$lib/tasks/tasksLifecycle';
   import Kanban from '$lib/tasks/Kanban.svelte';
@@ -52,6 +52,7 @@
   import { createTasksData } from '$lib/tasks/tasksData.svelte';
   import { createTasksSelection } from '$lib/tasks/tasksSelection.svelte';
   import { createTasksDetail } from '$lib/tasks/tasksDetail.svelte';
+  import { createTasksLoader } from '$lib/tasks/tasksLoader.svelte';
 
   // Loaded data (dataCtl.tasks/dataCtl.projects/dataCtl.goals/dataCtl.deadlines), dataCtl.loading flag,
   // dataCtl.parentMap/dataCtl.childCount/dataCtl.allTags/dataCtl.countOpen/dataCtl.countDone/dataCtl.stats, plus
@@ -231,84 +232,15 @@
 
   // view + groupBy persistence handled inside viewCtl.
 
-  async function load() {
-    if (!$auth) return;
-    dataCtl.loading = true;
-    try {
-      // Honor every server-side filter we expose. The client-side
-      // filterCtl.filtered derivation still re-applies these (so the
-      // view-specific logic like inbox/stale stays consistent), but
-      // pushing them to the server first means we don't ship the
-      // entire task graph over the wire when the user wants P1 only.
-      const params: Parameters<typeof api.listTasks>[0] = {};
-      if (filterCtl.status !== 'all') params.status = filterCtl.status;
-      // The backend endpoint accepts a single tag; for multi-tag
-      // filters we pass the first to narrow the server response and
-      // AND-narrow the rest client-side in the filterCtl.filtered
-      // derivation.
-      if (filterCtl.tagFilters.length > 0) params.tag = filterCtl.tagFilters[0];
-      if (filterCtl.priorityFilter !== '') params.priority = filterCtl.priorityFilter;
-      if (filterCtl.projectFilter) params.project = filterCtl.projectFilter;
-      if (filterCtl.goalFilter) params.goal = filterCtl.goalFilter;
-      if (filterCtl.deadlineFilter) params.deadline = filterCtl.deadlineFilter;
-      if (filterCtl.archivedMode === 'show') params.includeArchived = true;
-      if (filterCtl.archivedMode === 'only') params.archived = true;
-      const [list, p, gg, dd] = await Promise.all([
-        api.listTasks(params),
-        dataCtl.projects.length === 0
-          ? api.listProjects().catch(() => ({ projects: [] as Project[] }))
-          : Promise.resolve({ projects: dataCtl.projects }),
-        dataCtl.goals.length === 0
-          ? api.listGoals().catch(() => ({ goals: [] as Goal[] }))
-          : Promise.resolve({ goals: dataCtl.goals }),
-        dataCtl.deadlines.length === 0
-          ? api.listDeadlines().catch(() => ({ deadlines: [] as Deadline[] }))
-          : Promise.resolve({ deadlines: dataCtl.deadlines })
-      ]);
-      dataCtl.tasks = list.tasks;
-      dataCtl.projects = p.projects;
-      dataCtl.goals = gg.goals;
-      dataCtl.deadlines = dd.deadlines;
-    } catch {
-      // 401 (stale auth) and network failures both end up here.
-      // Silently leave dataCtl.tasks/dataCtl.projects empty so the empty-state copy
-      // renders instead of the indefinite dataCtl.loading spinner. A later
-      // WS reconnect or filter change will retry naturally — no
-      // toast, no console noise; the comment above is the only
-      // documentation we need for the silent branch.
-    } finally {
-      dataCtl.loading = false;
-    }
-  }
-
-  // Single load driver: an effect that keys off $auth + filters. When
-  // auth resolves (or changes) it fires; when status/filterCtl.tagFilters change
-  // it fires. We don't pair it with onMount(load) — that would cause
-  // a double-fetch on initial paint and (more importantly) was the
-  // source of the "stays dataCtl.loading" bug when an early call set
-  // dataCtl.loading=true before $auth was ready.
-  //
-  // load() is wrapped in untrack() because the function reads
-  // dataCtl.projects.length / dataCtl.goals.length / dataCtl.deadlines.length to decide whether
-  // to refetch the linkable-entity sidecars, and it reassigns those
-  // arrays when fresh data lands. Without untrack, those reads would
-  // become deps of THIS effect, and Svelte 5 fires reactivity on
-  // $state array reassignment even when contents are equal — turning
-  // a single initial fetch into a tight loop (most visible when
-  // /api/v1/deadlines returns []: dataCtl.deadlines.length stays 0, so every
-  // load() refires load(), saturating the page). The explicit `void`
-  // list above is the source-of-truth for what should retrigger load.
-  $effect(() => {
-    void $auth;
-    void filterCtl.status;
-    void filterCtl.tagFilters;
-    void filterCtl.priorityFilter;
-    void filterCtl.projectFilter;
-    void filterCtl.goalFilter;
-    void filterCtl.deadlineFilter;
-    void filterCtl.archivedMode;
-    untrack(() => load());
+  // Data loader — owns the fetch + the filter-driven $effect that
+  // re-fires it. See tasksLoader.svelte.ts for the why on the
+  // untrack() / void-list pattern.
+  const loader = createTasksLoader({
+    getAuth: () => $auth,
+    filterCtl,
+    dataCtl
   });
+  const load = loader.load;
 
   // URL-state effect — runs whenever a filter changes after hydration.
   // Skipped on the initial render so the URL doesn't get rewritten
