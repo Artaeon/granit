@@ -241,6 +241,10 @@ export function createProjectsListStallRadar(
         },
         abort.signal
       );
+      // After user-stop, don't parse partial buf — it would surface
+      // as "unexpected shape" red text and overwrite rows with no
+      // unblock copy.
+      if (abort.signal.aborted) return;
       const trimmed = buf.trim();
       if (trimmed) {
         try {
@@ -287,8 +291,12 @@ export function createProjectsListStallRadar(
 
   function close() {
     open = false;
-    // Hidden radar shouldn't keep streaming into nowhere.
+    // Hidden radar shouldn't keep streaming into nowhere. Abort +
+    // null + flip busy synchronously so a re-open + Rerun doesn't
+    // early-return on the stale busy flag.
     abort?.abort();
+    abort = null;
+    busy = false;
   }
 
   async function archiveProject(name: string) {

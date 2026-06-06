@@ -146,6 +146,10 @@ export function createJotsAI(deps: JotsAIDeps): JotsAIController {
           onChunk: t.onChunk,
           onDone: () => {
             t.flush();
+            // After user-stop, skip parse — partial JSON would
+            // surface as "Model didn't return parseable JSON."
+            // and overwrite themes.
+            if (abort?.signal.aborted) return;
             let cleaned = raw.trim();
             if (cleaned.startsWith('```')) {
               cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();

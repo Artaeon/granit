@@ -54,8 +54,17 @@ export interface MorningPersistenceDeps {
 
 export interface MorningPersistenceController {
   /** Returns true if a snapshot was found and applied; false on a
-   *  fresh load (caller uses this to gate the warm-habit pre-tick). */
+   *  fresh load (caller uses this to gate the warm-habit pre-tick).
+   *  Side-effect: arms auto-save (subsequent mutations flow back
+   *  to localStorage). */
   restore(): boolean;
+  /** Arm auto-save explicitly. Call after the page's first-load
+   *  setup (loaders + warm-habit pre-tick) on the fresh-load path
+   *  where restore() returned false. Without this, the auto-save
+   *  $effect would write an empty snapshot before pretickWarmHabits
+   *  ran and hasSnapshot() would return true on subsequent reloads,
+   *  silently suppressing the pre-tick. */
+  arm(): void;
   /** Drop the snapshot — called after a successful lockIn save so
    *  the next page open starts clean. */
   clear(): void;
@@ -80,7 +89,17 @@ export function installMorningPersistence(
     setThoughts
   } = deps;
 
+  // The "armed" flag gates auto-persist until the page has had a
+  // chance to either restore() an existing snapshot OR run its
+  // first-load setup (e.g. pretickWarmHabits in the morning page).
+  // Without it, the $effect below fires immediately on mount with
+  // empty defaults, writes a stub snapshot to localStorage, and
+  // hasSnapshot() returns true forever — silently suppressing the
+  // documented "pre-tick warm habits on fresh first load" UX.
+  let armed = false;
+
   function persist() {
+    if (!armed) return;
     const s: Snapshot = {
       scriptureSource: scriptureCtl.scripture.source,
       customScripture: scriptureCtl.customScripture,
@@ -117,7 +136,18 @@ export function installMorningPersistence(
       newHabit: s.newHabit
     });
     setThoughts(s.thoughts ?? '');
+    // Restore just hydrated state from localStorage — arm autosave
+    // so subsequent user mutations flow back to disk.
+    armed = true;
     return true;
+  }
+
+  // Called by the page after first-load setup (loaders + warm-habit
+  // pre-tick) so autosave kicks in only AFTER the initial state is
+  // populated. Calling this BEFORE the page's pretickWarmHabits run
+  // would suppress the pre-tick.
+  function arm() {
+    armed = true;
   }
 
   function clear() {
@@ -148,5 +178,5 @@ export function installMorningPersistence(
     persist();
   });
 
-  return { restore, clear, hasSnapshot };
+  return { restore, arm, clear, hasSnapshot };
 }

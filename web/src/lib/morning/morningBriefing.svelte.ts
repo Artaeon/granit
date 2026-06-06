@@ -145,6 +145,10 @@ export function createMorningBriefing(
           onChunk: t.onChunk,
           onDone: () => {
             t.flush();
+            // After user-stop, suppress the "empty brief" error and
+            // don't reset prev — cancel() restores prev intentionally
+            // and we shouldn't clobber that.
+            if (abort?.signal.aborted) return;
             busy = false;
             abort = null;
             prev = '';

@@ -19,7 +19,7 @@
 
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import { api, todayISO, type Goal } from '$lib/api';
+  import { api, todayISO } from '$lib/api';
   import { scriptures } from '$lib/morning/scriptures';
   import { createMorningScripture } from '$lib/morning/morningScripture.svelte';
   import { createMorningPicks } from '$lib/morning/morningPicks.svelte';
@@ -112,6 +112,11 @@
     // Pre-tick today's habits (only if no restored snapshot — don't
     // clobber the user's deliberate choices).
     if (!persistenceCtl.hasSnapshot()) picksCtl.pretickWarmHabits(dataCtl.knownHabits);
+    // Arm auto-save AFTER pretickWarmHabits — without this, the
+    // persistence $effect would write an empty snapshot on first
+    // mount and hasSnapshot() above would return true forever,
+    // silently breaking the pre-tick on every fresh load.
+    persistenceCtl.arm();
   }
   onMount(() => {
     persistenceCtl.restore();
