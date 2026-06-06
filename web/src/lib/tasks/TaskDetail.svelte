@@ -9,13 +9,13 @@
     recurrenceOptions,
     triageStates,
     fmtDate,
-    snoozeOffset,
     buildAskAIPrompt
   } from './taskDetailHelpers';
   import { createTaskDetailLinks } from './taskDetailLinks.svelte';
   import { createTaskDetailSubtasks } from './taskDetailSubtasks.svelte';
   import { createTaskDetailAIDecompose } from './taskDetailAIDecompose.svelte';
   import { createTaskDetailInlineEdit } from './taskDetailInlineEdit.svelte';
+  import { createTaskDetailScheduling } from './taskDetailScheduling.svelte';
 
   // TaskDetail is the side-drawer that pops open when the user clicks
   // a task card. Editable fields not already inline-editable on the card:
@@ -43,16 +43,19 @@
 
   let recurrenceBuf = $state('');
   let busy = $state(false);
-  // Editable scheduling. The drawer was previously read-only here;
-  // users had to bounce to the calendar grid to set a due date.
-  let dueBuf = $state('');
-  let schedDateBuf = $state(''); // YYYY-MM-DD
-  let schedTimeBuf = $state(''); // HH:MM
   // Tags + estimate edits would round-trip through the task line's
   // #tag / est:Nm markers (parseTaskInput handles them on read), but
   // the patchTask API doesn't currently expose direct fields for
   // either. Keeping these read-only on the drawer for now — quick-add
   // bar is the canonical surface for setting them at create time.
+
+  // Due / scheduled-start / snooze controls — short commit-on-change
+  // buffers + the snoozeActive derived view. See taskDetailScheduling.svelte.ts.
+  const scheduling = createTaskDetailScheduling({
+    getTask: () => task,
+    patch: (p) => patch(p)
+  });
+  const snoozeActive = $derived(scheduling.snoozeActive);
 
   // Title + notes buffers, draft autosave, and the inline-edit
   // commit/cancel/start helpers. See taskDetailInlineEdit.svelte.ts.
@@ -121,10 +124,8 @@
     if (task.id === lastInitialisedTaskId) return;
     lastInitialisedTaskId = task.id;
     inlineEdit.initFor(task);
+    scheduling.initFor(task);
     recurrenceBuf = task.recurrence ?? '';
-    dueBuf = task.dueDate ?? '';
-    schedDateBuf = task.scheduledStart ? task.scheduledStart.slice(0, 10) : '';
-    schedTimeBuf = task.scheduledStart ? task.scheduledStart.slice(11, 16) : '';
     aiDecomp.reset();
     subtasksCtl.reset();
     void links.load();
@@ -155,48 +156,6 @@
   async function setProject(name: string) { await patch({ projectId: name }); }
   async function setGoal(id: string) { await patch({ goalId: id }); }
   async function setDeadline(id: string) { await patch({ deadlineId: id }); }
-
-  // Date / time edits. The backend accepts dueDate as 'YYYY-MM-DD' or
-  // empty to clear. scheduledStart is 'YYYY-MM-DDTHH:MM' (local, no
-  // zone — the backend stores it as wall-clock, see commit 05183fc).
-  async function commitDue() {
-    if (!task) return;
-    const next = dueBuf.trim();
-    if (next === (task.dueDate ?? '')) return;
-    await patch({ dueDate: next });
-  }
-  async function commitScheduled() {
-    if (!task) return;
-    const ds = schedDateBuf.trim();
-    const ts = schedTimeBuf.trim();
-    let next = '';
-    if (ds && ts) next = `${ds}T${ts}`;
-    else if (ds) next = `${ds}T09:00`; // sensible default if user picked date but no time
-    if (next === (task.scheduledStart ?? '')) return;
-    await patch({ scheduledStart: next });
-  }
-  async function clearScheduled() {
-    if (!task) return;
-    schedDateBuf = '';
-    schedTimeBuf = '';
-    await patch({ scheduledStart: '' });
-  }
-
-  // Snooze quick-actions. Sets snoozedUntil to a YYYY-MM-DDTHH:MM
-  // local-time string (built by snoozeOffset) + flips triage to
-  // 'snoozed'. Wall-clock semantics so the timing matches the user's
-  // intent without TZ arithmetic.
-  async function snoozeUntil(days: number) {
-    await patch({ snoozedUntil: snoozeOffset(days), triage: 'snoozed' });
-  }
-  async function unsnooze() {
-    await patch({ snoozedUntil: '', triage: 'triaged' });
-  }
-  let snoozeActive = $derived.by(() => {
-    if (!task?.snoozedUntil) return false;
-    const sn = new Date(task.snoozedUntil);
-    return Number.isFinite(sn.getTime()) && sn.getTime() > Date.now();
-  });
 
   function close() { open = false; }
   function openNote() {
@@ -465,33 +424,33 @@
               <span class="text-dim w-20 flex-shrink-0">Due</span>
               <input
                 type="date"
-                bind:value={dueBuf}
-                onchange={commitDue}
+                bind:value={scheduling.dueBuf}
+                onchange={scheduling.commitDue}
                 disabled={busy}
                 class="flex-1 min-w-0 bg-surface0 border border-surface1 rounded px-2 py-1 text-text"
               />
-              {#if dueBuf}
-                <button onclick={() => { dueBuf = ''; void commitDue(); }} class="text-dim hover:text-error" title="clear due date" aria-label="clear due date">×</button>
+              {#if scheduling.dueBuf}
+                <button onclick={() => { scheduling.dueBuf = ''; void scheduling.commitDue(); }} class="text-dim hover:text-error" title="clear due date" aria-label="clear due date">×</button>
               {/if}
             </label>
             <label class="flex items-center gap-2">
               <span class="text-dim w-20 flex-shrink-0">Start</span>
               <input
                 type="date"
-                bind:value={schedDateBuf}
-                onchange={commitScheduled}
+                bind:value={scheduling.schedDateBuf}
+                onchange={scheduling.commitScheduled}
                 disabled={busy}
                 class="flex-1 min-w-0 bg-surface0 border border-surface1 rounded px-2 py-1 text-text"
               />
               <input
                 type="time"
-                bind:value={schedTimeBuf}
-                onchange={commitScheduled}
-                disabled={busy || !schedDateBuf}
+                bind:value={scheduling.schedTimeBuf}
+                onchange={scheduling.commitScheduled}
+                disabled={busy || !scheduling.schedDateBuf}
                 class="w-24 bg-surface0 border border-surface1 rounded px-2 py-1 text-text disabled:opacity-50"
               />
-              {#if schedDateBuf || schedTimeBuf}
-                <button onclick={() => void clearScheduled()} class="text-dim hover:text-error" title="clear scheduled start" aria-label="clear scheduled start">×</button>
+              {#if scheduling.schedDateBuf || scheduling.schedTimeBuf}
+                <button onclick={() => void scheduling.clearScheduled()} class="text-dim hover:text-error" title="clear scheduled start" aria-label="clear scheduled start">×</button>
               {/if}
             </label>
             {#if task.estimatedMinutes}
@@ -513,15 +472,15 @@
           {#if snoozeActive && task.snoozedUntil}
             <div class="flex items-baseline gap-2 mb-2 px-2 py-1.5 bg-surface0 border border-info rounded">
               <span class="text-xs text-info flex-1">until {fmtDate(task.snoozedUntil)}</span>
-              <button onclick={unsnooze} disabled={busy} class="text-[11px] text-warning hover:underline">unsnooze</button>
+              <button onclick={scheduling.unsnooze} disabled={busy} class="text-[11px] text-warning hover:underline">unsnooze</button>
             </div>
           {/if}
           <div class="flex flex-wrap gap-1 text-xs">
-            <button onclick={() => void snoozeUntil(1)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">tomorrow</button>
-            <button onclick={() => void snoozeUntil(2)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">in 2d</button>
-            <button onclick={() => void snoozeUntil(7)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">next week</button>
-            <button onclick={() => void snoozeUntil(14)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">in 2 weeks</button>
-            <button onclick={() => void snoozeUntil(30)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">next month</button>
+            <button onclick={() => void scheduling.snoozeUntil(1)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">tomorrow</button>
+            <button onclick={() => void scheduling.snoozeUntil(2)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">in 2d</button>
+            <button onclick={() => void scheduling.snoozeUntil(7)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">next week</button>
+            <button onclick={() => void scheduling.snoozeUntil(14)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">in 2 weeks</button>
+            <button onclick={() => void scheduling.snoozeUntil(30)} disabled={busy} class="px-2.5 py-1 rounded bg-surface0 border border-surface1 text-subtext hover:border-info hover:text-info">next month</button>
           </div>
         </section>
 
