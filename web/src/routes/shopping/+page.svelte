@@ -5,7 +5,6 @@
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
-  import { loadStoredString, saveStoredString } from '$lib/util/storage';
   import {
     type Cadence,
     CADENCE_OPTIONS,
@@ -16,6 +15,7 @@
     lineTotal,
     categoryLabel
   } from '$lib/shopping/shoppingHelpers';
+  import { createShoppingViewState, type ShoppingView } from '$lib/shopping/shoppingViewState.svelte';
 
   // /shopping — three-view page over a single Item collection:
   //   Plan: status=planned items, grouped by category (the active
@@ -33,10 +33,8 @@
   // optional prices (totals roll up only when prices are set),
   // and a single status lifecycle.
 
-  type View = 'plan' | 'standards' | 'bought';
-  const VIEW_KEY = 'granit.shopping.view';
-  let view = $state<View>(loadStoredString(VIEW_KEY, 'plan') as View);
-  $effect(() => saveStoredString(VIEW_KEY, view));
+  const viewCtl = createShoppingViewState();
+  const view = $derived(viewCtl.view);
 
   let items = $state<ShoppingItem[]>([]);
   let totals = $state<ShoppingTotals | null>(null);
@@ -377,7 +375,7 @@
         <button
           type="button"
           class="flex-1 px-3 py-2 capitalize transition-colors {view === o.v ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
-          onclick={() => (view = o.v as View)}
+          onclick={() => (viewCtl.view = o.v as ShoppingView)}
         >
           {o.label}
           <span class="ml-1 text-xs opacity-70 tabular-nums">{o.count}</span>
