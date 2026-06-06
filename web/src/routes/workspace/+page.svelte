@@ -17,6 +17,7 @@
   import { onMount } from 'svelte';
   import SplitView from '$lib/workspace/SplitView.svelte';
   import PaneSlot from '$lib/workspace/PaneSlot.svelte';
+  import NavIcon from '$lib/components/NavIcon.svelte';
   import { workspaceStoreSingleton } from '$lib/workspace/workspaceStore.svelte';
   import { leaves } from '$lib/workspace/splitTree';
   import { findPane } from '$lib/workspace/paneRegistry';
@@ -77,9 +78,15 @@
           role="tab"
           aria-selected={active}
           onclick={() => store.focus(leaf.id)}
-          class="px-2 py-0.5 rounded text-xs font-medium border whitespace-nowrap
+          class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border whitespace-nowrap tap-target
             {active ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-subtext border-surface1 hover:border-primary'}"
-        >{entry?.label ?? leaf.pane} <span class="opacity-60 ml-0.5">{i + 1}</span></button>
+        >
+          {#if entry}
+            <NavIcon name={entry.icon} class="w-3.5 h-3.5 {active ? 'text-on-primary' : 'text-dim'}" />
+          {/if}
+          <span>{entry?.label ?? leaf.pane}</span>
+          <span class="opacity-60 text-[10px] font-mono">{i + 1}</span>
+        </button>
       {/each}
     </div>
   {/if}

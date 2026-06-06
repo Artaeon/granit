@@ -37,6 +37,9 @@ export interface PaneEntry {
   id: PaneKind;
   /** Human-readable label shown in the slot picker. */
   label: string;
+  /** NavIcon name — same identity vocabulary as the BottomNav + sidebar
+   *  so a Tasks pane reads the same icon everywhere it appears. */
+  icon: string;
   /** Svelte component constructor — what the slot renders. */
   component: Component;
 }
@@ -45,19 +48,19 @@ export const PANES: ReadonlyArray<PaneEntry> = [
   // Daily-glance pane first — most workspaces will want it anchored
   // somewhere visible. Built on the same data sources as the home
   // route + right-pane Today widget, just rendered in pane chrome.
-  { id: 'today', label: 'Today', component: TodayPane },
-  { id: 'tasks', label: 'Tasks', component: TasksPane },
-  { id: 'calendar', label: 'Calendar', component: CalendarPane },
-  { id: 'goals', label: 'Goals', component: GoalsPane },
-  { id: 'notes', label: 'Notes', component: NotesListPane },
-  { id: 'habits', label: 'Habits', component: HabitsPane },
-  { id: 'deadlines', label: 'Deadlines', component: DeadlinesPane },
-  { id: 'projects', label: 'Projects', component: ProjectsPane },
-  { id: 'finance', label: 'Finance', component: FinancePane },
+  { id: 'today', label: 'Today', icon: 'today', component: TodayPane },
+  { id: 'tasks', label: 'Tasks', icon: 'tasks', component: TasksPane },
+  { id: 'calendar', label: 'Calendar', icon: 'calendar', component: CalendarPane },
+  { id: 'goals', label: 'Goals', icon: 'goals', component: GoalsPane },
+  { id: 'notes', label: 'Notes', icon: 'notes', component: NotesListPane },
+  { id: 'habits', label: 'Habits', icon: 'habits', component: HabitsPane },
+  { id: 'deadlines', label: 'Deadlines', icon: 'deadline', component: DeadlinesPane },
+  { id: 'projects', label: 'Projects', icon: 'projects', component: ProjectsPane },
+  { id: 'finance', label: 'Finance', icon: 'finance', component: FinancePane },
   // "AI as a pane type" — the innovative bit of the granit vision.
   // Park the chat next to any working surface (notes / tasks / etc.)
   // to use AI as a contextual companion.
-  { id: 'chat', label: 'AI', component: ChatPane }
+  { id: 'chat', label: 'AI', icon: 'chat', component: ChatPane }
 ];
 
 export function findPane(id: PaneKind): PaneEntry | undefined {
