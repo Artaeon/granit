@@ -15,6 +15,10 @@
     computeMomentumByProject
   } from '$lib/projects/projectsListMomentum';
   import { createProjectsListStallRadar } from '$lib/projects/projectsListStallRadar.svelte';
+  import {
+    createProjectsListUrlState,
+    type ViewMode
+  } from '$lib/projects/projectsListUrlState.svelte';
   import { colorVar, statusTone } from '$lib/util/colors';
   import ProjectDetail from '$lib/projects/ProjectDetail.svelte';
   import ProjectCreate from '$lib/projects/ProjectCreate.svelte';
@@ -38,6 +42,25 @@
   const projects = $derived(dataCtl.projects);
   const tasks = $derived(dataCtl.tasks);
   const loading = $derived(dataCtl.loading);
+
+  // URL-driven view state — selected project, view mode, dashboard
+  // overlay, venture scope. The page is bookmarkable: every
+  // persisted choice round-trips through the URL.
+  const urlCtl = createProjectsListUrlState({
+    getSearchParams: () => $page.url.searchParams,
+    getProjects: () => projects,
+    navigate: (url, opts) => goto(url, opts)
+  });
+  const selectedName = $derived(urlCtl.selectedName);
+  const selected = $derived(urlCtl.selected);
+  const viewMode = $derived(urlCtl.viewMode);
+  const ventureFilter = $derived(urlCtl.ventureFilter);
+  const dashboardOpen = $derived(urlCtl.dashboardOpen);
+  const selectProject = (name: string) => urlCtl.selectProject(name);
+  const setViewMode = (v: ViewMode) => urlCtl.setViewMode(v);
+  const openDashboard = () => urlCtl.openDashboard();
+  const closeDashboard = () => urlCtl.closeDashboard();
+  const clearVentureFilter = () => urlCtl.clearVentureFilter();
 
   // ── Per-project momentum derivations ─────────────────────────────
   // Pull all tasks once on the list page so each card can render a
@@ -136,69 +159,6 @@
       window.removeEventListener('keydown', onKey);
     };
   });
-
-  // Selected project name from query param. Two-pane layout: list left, detail right.
-  let selectedName = $derived($page.url.searchParams.get('p') ?? '');
-  let selected = $derived(projects.find((p) => p.name === selectedName) ?? null);
-
-  // View modes — list (default; sidebar + detail), timeline (Gantt-ish
-  // bars across the full width). Persisted via ?view= so a "show me
-  // the project plan" link is shareable. When in timeline mode the
-  // sidebar collapses (timeline takes the full surface) and clicking
-  // a bar opens the detail drawer-style on top.
-  type ViewMode = 'list' | 'kanban' | 'timeline' | 'heatmap';
-  let viewMode = $derived<ViewMode>(
-    (() => {
-      const v = $page.url.searchParams.get('view');
-      if (v === 'kanban' || v === 'timeline' || v === 'heatmap') return v;
-      return 'list';
-    })()
-  );
-  function setViewMode(v: ViewMode) {
-    const params = new URLSearchParams($page.url.searchParams);
-    if (v === 'list') params.delete('view');
-    else params.set('view', v);
-    goto(`/projects?${params.toString()}`, { replaceState: true, keepFocus: true });
-  }
-
-  // ?venture=<name> scopes the list to a single venture. Cleared via the
-  // header chip. Persisted to URL so a "venture roll-up" view is shareable.
-  // The `ventures` list, `filtered`, `kanbanFeed`, and `grouped`
-  // derivations live in projectsListFilter (filterCtl above).
-  let ventureFilter = $derived($page.url.searchParams.get('venture') ?? '');
-
-  function selectProject(name: string) {
-    const params = new URLSearchParams($page.url.searchParams);
-    if (name) params.set('p', name);
-    else params.delete('p');
-    // Closing or switching the project also closes the dashboard
-    // overlay — a different project shouldn't keep the prior
-    // project's dashboard mounted in the background.
-    params.delete('dashboard');
-    goto(`/projects?${params.toString()}`, { replaceState: true, keepFocus: true });
-  }
-
-  // Dashboard overlay — full-screen ProjectDashboardPanel for the
-  // selected project. State persists in the URL so a reload (or a
-  // shared link) keeps the dashboard open. Pure presentation flag;
-  // the panel does its own data load.
-  let dashboardOpen = $derived($page.url.searchParams.get('dashboard') === '1');
-  function openDashboard() {
-    if (!selectedName) return;
-    const params = new URLSearchParams($page.url.searchParams);
-    params.set('dashboard', '1');
-    goto(`/projects?${params.toString()}`, { replaceState: true, keepFocus: true });
-  }
-  function closeDashboard() {
-    const params = new URLSearchParams($page.url.searchParams);
-    params.delete('dashboard');
-    goto(`/projects?${params.toString()}`, { replaceState: true, keepFocus: true });
-  }
-  function clearVentureFilter() {
-    const params = new URLSearchParams($page.url.searchParams);
-    params.delete('venture');
-    goto(`/projects?${params.toString()}`, { replaceState: true, keepFocus: true });
-  }
 
   async function created(p: Project) {
     createOpen = false;
