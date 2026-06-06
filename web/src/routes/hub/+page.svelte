@@ -8,6 +8,7 @@
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { createHubData, installHubDataLive } from '$lib/hub/hubData.svelte';
   import { createHubView } from '$lib/hub/hubView.svelte';
+  import { createHubForm } from '$lib/hub/hubForm.svelte';
 
   // Two tabs: 'links' (the existing launcher) and 'tools' (the new
   // setup-command catalogue). Default to links because the existing
@@ -49,25 +50,15 @@
   const visibleItems = $derived(viewCtl.visibleItems);
   const grouped = $derived(viewCtl.grouped);
 
-  // Add / edit modal state. editing = null means "create"; an
-  // HubItem instance means "edit this".
-  let modalOpen = $state(false);
-  let editing = $state<HubItem | null>(null);
+  // Add / edit modal controller — modalOpen + editing + the eight
+  // form buffers + saving + open/save/remove/toggleFavorite. Lives in
+  // $lib/hub/hubForm so the modal markup binds against a single root.
+  const formCtl = createHubForm({ reload: load });
+  const editing = $derived(formCtl.editing);
+  const saving = $derived(formCtl.saving);
   // Bookmark import dialog — separate modal so its preview list
   // doesn't fight the add/edit form for screen real estate.
   let importOpen = $state(false);
-
-  // Form buffers — bound to the modal inputs so cancel cleanly
-  // discards without mutating the on-disk record.
-  let fTitle = $state('');
-  let fUrl = $state('');
-  let fCategory = $state('');
-  let fIcon = $state('');
-  let fNotes = $state('');
-  let fUsername = $state('');
-  let fPassword = $state('');
-  let fFavorite = $state(false);
-  let saving = $state(false);
 
   // Per-card "show password" toggle. Map keyed by item ID so
   // expanding one credential doesn't reveal others.
@@ -84,84 +75,6 @@
     load();
     return installHubDataLive({ reload: load });
   });
-
-  function openCreate() {
-    editing = null;
-    fTitle = '';
-    fUrl = '';
-    fCategory = '';
-    fIcon = '';
-    fNotes = '';
-    fUsername = '';
-    fPassword = '';
-    fFavorite = false;
-    modalOpen = true;
-  }
-
-  function openEdit(it: HubItem) {
-    editing = it;
-    fTitle = it.title;
-    fUrl = it.url ?? '';
-    fCategory = it.category ?? '';
-    fIcon = it.icon ?? '';
-    fNotes = it.notes ?? '';
-    fUsername = it.username ?? '';
-    fPassword = it.password ?? '';
-    fFavorite = !!it.favorite;
-    modalOpen = true;
-  }
-
-  async function save() {
-    if (!fTitle.trim()) {
-      toast.warning('title is required');
-      return;
-    }
-    saving = true;
-    const payload: Partial<HubItem> = {
-      title: fTitle.trim(),
-      url: fUrl.trim() || undefined,
-      category: fCategory.trim() || undefined,
-      icon: fIcon.trim() || undefined,
-      notes: fNotes.trim() || undefined,
-      username: fUsername.trim() || undefined,
-      password: fPassword || undefined,
-      favorite: fFavorite || undefined
-    };
-    try {
-      if (editing) {
-        await api.patchHubItem(editing.id, payload);
-        toast.success('updated');
-      } else {
-        await api.createHubItem(payload);
-        toast.success('added to hub');
-      }
-      modalOpen = false;
-      await load();
-    } catch (e) {
-      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      saving = false;
-    }
-  }
-
-  async function remove(it: HubItem) {
-    if (!confirm(`Remove "${it.title}" from the hub?`)) return;
-    try {
-      await api.deleteHubItem(it.id);
-      await load();
-    } catch (e) {
-      toast.error('delete failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
-
-  async function toggleFavorite(it: HubItem) {
-    try {
-      await api.patchHubItem(it.id, { favorite: !it.favorite });
-      await load();
-    } catch (e) {
-      toast.error('save failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
 
   function toggleReveal(id: string) {
     const next = new Set(revealed);
@@ -226,7 +139,7 @@
   // navigation.
   function openItem(it: HubItem) {
     if (!it.url) {
-      openEdit(it);
+      formCtl.openEdit(it);
       return;
     }
     // window.open with noopener so the destination can't access
@@ -313,7 +226,7 @@
             title="Paste a browser bookmark export and pick which ones to add"
           >↓ Import</button>
           <button
-            onclick={openCreate}
+            onclick={formCtl.openCreate}
             class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
           >+ Add to hub</button>
         {/if}
@@ -379,7 +292,7 @@
           as clusters instead of a wall of links.
         </p>
         <button
-          onclick={openCreate}
+          onclick={formCtl.openCreate}
           class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
         >+ Add your first entry</button>
       </div>
@@ -475,19 +388,19 @@
                           aria-hidden="true"
                         >⋮⋮</span>
                         <button
-                          onclick={() => toggleFavorite(it)}
+                          onclick={() => formCtl.toggleFavorite(it)}
                           title={it.favorite ? 'unfavorite' : 'favorite'}
                           aria-label={it.favorite ? 'unfavorite' : 'favorite'}
                           class="text-dim hover:text-warning text-xs leading-none w-5 h-5"
                         >{it.favorite ? '★' : '☆'}</button>
                         <button
-                          onclick={() => openEdit(it)}
+                          onclick={() => formCtl.openEdit(it)}
                           title="edit"
                           aria-label="edit"
                           class="text-dim hover:text-text text-xs leading-none w-5 h-5"
                         >✎</button>
                         <button
-                          onclick={() => remove(it)}
+                          onclick={() => formCtl.remove(it)}
                           title="delete"
                           aria-label="delete"
                           class="text-dim hover:text-error text-xs leading-none w-5 h-5"
@@ -557,10 +470,10 @@
 </div>
 
 <!-- Add / edit modal -->
-{#if modalOpen}
+{#if formCtl.modalOpen}
   <div
     class="fixed inset-0 z-50 flex items-start justify-center pt-12 px-4 bg-black/60"
-    onclick={(e) => { if (e.target === e.currentTarget) modalOpen = false; }}
+    onclick={(e) => { if (e.target === e.currentTarget) formCtl.modalOpen = false; }}
     role="presentation"
   >
     <div
@@ -570,14 +483,14 @@
       class="w-full max-w-md bg-base border border-surface1 rounded-lg shadow-xl max-h-[90dvh] flex flex-col"
     >
     <form
-      onsubmit={(e) => { e.preventDefault(); save(); }}
+      onsubmit={(e) => { e.preventDefault(); formCtl.save(); }}
       class="flex flex-col min-h-0 flex-1"
     >
       <header class="px-3 py-2 border-b border-surface1 flex items-baseline gap-2">
         <h2 class="text-sm font-semibold text-text flex-1">{editing ? 'Edit hub item' : 'Add to hub'}</h2>
         <button
           type="button"
-          onclick={() => (modalOpen = false)}
+          onclick={() => (formCtl.modalOpen = false)}
           aria-label="close"
           class="text-dim hover:text-text text-lg leading-none"
         >×</button>
@@ -588,7 +501,7 @@
           <label for="hub-title" class="block text-xs uppercase tracking-wider text-dim mb-1">Title</label>
           <input
             id="hub-title"
-            bind:value={fTitle}
+            bind:value={formCtl.title}
             required
             use:focusOnMount
             placeholder="e.g. Staging dashboard"
@@ -599,7 +512,7 @@
           <label for="hub-url" class="block text-xs uppercase tracking-wider text-dim mb-1">URL <span class="text-dim/70 normal-case">(optional)</span></label>
           <input
             id="hub-url"
-            bind:value={fUrl}
+            bind:value={formCtl.url}
             type="url"
             placeholder="https://…"
             class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary font-mono"
@@ -610,7 +523,7 @@
             <label for="hub-category" class="block text-xs uppercase tracking-wider text-dim mb-1">Category</label>
             <input
               id="hub-category"
-              bind:value={fCategory}
+              bind:value={formCtl.category}
               placeholder="Dev / Internal / SaaS …"
               class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
             />
@@ -619,7 +532,7 @@
             <label for="hub-icon" class="block text-xs uppercase tracking-wider text-dim mb-1">Icon</label>
             <input
               id="hub-icon"
-              bind:value={fIcon}
+              bind:value={formCtl.icon}
               placeholder="🐙"
               maxlength="4"
               class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary text-center"
@@ -630,7 +543,7 @@
           <label for="hub-notes" class="block text-xs uppercase tracking-wider text-dim mb-1">Notes</label>
           <textarea
             id="hub-notes"
-            bind:value={fNotes}
+            bind:value={formCtl.notes}
             rows="2"
             placeholder="What is this for?"
             class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary"
@@ -652,7 +565,7 @@
               <label for="hub-user" class="block text-xs uppercase tracking-wider text-dim mb-1">Username</label>
               <input
                 id="hub-user"
-                bind:value={fUsername}
+                bind:value={formCtl.username}
                 autocomplete="off"
                 placeholder=""
                 class="w-full px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text focus:outline-none focus:border-primary font-mono"
@@ -662,7 +575,7 @@
               <label for="hub-pass" class="block text-xs uppercase tracking-wider text-dim mb-1">Password</label>
               <input
                 id="hub-pass"
-                bind:value={fPassword}
+                bind:value={formCtl.password}
                 type="text"
                 autocomplete="off"
                 placeholder=""
@@ -673,7 +586,7 @@
         </details>
 
         <label class="flex items-center gap-2 text-sm text-text cursor-pointer">
-          <input type="checkbox" bind:checked={fFavorite} class="cursor-pointer" />
+          <input type="checkbox" bind:checked={formCtl.favorite} class="cursor-pointer" />
           <span>Favorite (pinned to top)</span>
         </label>
       </div>
@@ -682,18 +595,18 @@
         {#if editing}
           <button
             type="button"
-            onclick={() => { remove(editing!); modalOpen = false; }}
+            onclick={() => { formCtl.remove(editing!); formCtl.modalOpen = false; }}
             class="px-3 py-1.5 text-sm text-error hover:bg-surface0 rounded mr-auto"
           >Delete</button>
         {/if}
         <button
           type="button"
-          onclick={() => (modalOpen = false)}
+          onclick={() => (formCtl.modalOpen = false)}
           class="px-3 py-1.5 text-sm text-subtext hover:bg-surface0 rounded"
         >Cancel</button>
         <button
           type="submit"
-          disabled={saving || !fTitle.trim()}
+          disabled={saving || !formCtl.title.trim()}
           class="px-3 py-1.5 text-sm bg-primary text-on-primary rounded font-medium hover:opacity-90 disabled:opacity-50"
         >{saving ? 'saving…' : editing ? 'Save' : 'Add'}</button>
       </footer>
