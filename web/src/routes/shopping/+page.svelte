@@ -6,6 +6,16 @@
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
   import { loadStoredString, saveStoredString } from '$lib/util/storage';
+  import {
+    type Cadence,
+    CADENCE_OPTIONS,
+    CATEGORY_SUGGESTIONS,
+    normalizeCadence,
+    cadenceMonthlyFactor,
+    fmtMoney,
+    lineTotal,
+    categoryLabel
+  } from '$lib/shopping/shoppingHelpers';
 
   // /shopping — three-view page over a single Item collection:
   //   Plan: status=planned items, grouped by category (the active
@@ -52,32 +62,8 @@
   let eQuantity = $state<number | ''>('');
   let eUrl = $state('');
   let eStandard = $state(false);
-  let eCadence = $state<'' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly'>('');
+  let eCadence = $state<Cadence>('');
   let eNotes = $state('');
-
-  // Cadence picker options. Empty value = "no projected recurrence"
-  // (catalogue-only — the standard exists but doesn't contribute to
-  // the /finance monthly run-rate). The label "—" matches what the
-  // user expects from a "none" sentinel in the rest of granit.
-  const CADENCE_OPTIONS: { value: '' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly'; label: string }[] = [
-    { value: '', label: '— no schedule —' },
-    { value: 'weekly', label: 'weekly' },
-    { value: 'biweekly', label: 'biweekly' },
-    { value: 'monthly', label: 'monthly' },
-    { value: 'quarterly', label: 'quarterly' },
-    { value: 'yearly', label: 'yearly' }
-  ];
-
-  const CATEGORY_SUGGESTIONS = [
-    'groceries',
-    'household',
-    'clothing',
-    'health',
-    'electronics',
-    'books',
-    'gifts',
-    'other'
-  ];
 
   // ----- Load / sync -----
 
@@ -242,11 +228,10 @@
     eQuantity = it.quantity ?? '';
     eUrl = it.url ?? '';
     eStandard = !!it.standard;
-    // Cast to the local union — server may return any string but
-    // the picker only honours canonical values; everything else
-    // round-trips as "no schedule" via NormalizeCadence on save.
-    const c = (it.cadence ?? '') as typeof eCadence;
-    eCadence = ['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'].includes(c) ? c : '';
+    // Server may return any string but the picker only honours
+    // canonical values; everything else round-trips as "no schedule"
+    // via NormalizeCadence on save.
+    eCadence = normalizeCadence(it.cadence);
     eNotes = it.notes ?? '';
   }
   function cancelEdit() {
@@ -276,33 +261,6 @@
     }
   }
 
-  // ----- Helpers -----
-
-  // Pretty currency. We don't know the user's currency upfront —
-  // hard-coding € would surprise non-EU users; using Intl with no
-  // currency renders just numbers; defaulting to EUR is a UX bet
-  // appropriate for granit's primary user base. A future settings
-  // toggle for currency lands cleanly here.
-  function fmtMoney(n: number | undefined): string {
-    if (n === undefined || n === null || n === 0) return '—';
-    try {
-      return new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: 'EUR',
-        maximumFractionDigits: 2
-      }).format(n);
-    } catch {
-      return String(n);
-    }
-  }
-  function lineTotal(it: ShoppingItem): number {
-    const qty = it.quantity && it.quantity > 0 ? it.quantity : 1;
-    return (it.price ?? 0) * qty;
-  }
-
-  function categoryLabel(c: string): string {
-    return c === '—' ? 'uncategorised' : c;
-  }
 </script>
 
 <div class="h-full overflow-y-auto">
@@ -571,8 +529,7 @@
                           </label>
                           {#if eStandard && eCadence && typeof ePrice === 'number' && ePrice > 0}
                             {@const qty = typeof eQuantity === 'number' && eQuantity > 0 ? eQuantity : 1}
-                            {@const factor = eCadence === 'weekly' ? 52/12 : eCadence === 'biweekly' ? 26/12 : eCadence === 'monthly' ? 1 : eCadence === 'quarterly' ? 1/3 : eCadence === 'yearly' ? 1/12 : 0}
-                            {@const monthly = ePrice * qty * factor}
+                            {@const monthly = ePrice * qty * cadenceMonthlyFactor(eCadence)}
                             <span class="text-[11px] text-secondary">≈ {fmtMoney(monthly)}/month</span>
                           {/if}
                         </div>
