@@ -1,10 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { auth } from '$lib/stores/auth';
-  import {
-    api,
-    type FinGoal
-  } from '$lib/api';
+  import { api } from '$lib/api';
   import { onWsEvent } from '$lib/ws';
   import { toast } from '$lib/components/toast';
   import PageHeader from '$lib/components/PageHeader.svelte';
@@ -24,6 +21,7 @@
   import { createFinanceAccountForm } from '$lib/finance/financeAccountForm.svelte';
   import { createFinanceSubscriptionForm } from '$lib/finance/financeSubscriptionForm.svelte';
   import { createFinanceIncomeForm } from '$lib/finance/financeIncomeForm.svelte';
+  import { createFinanceGoalForm } from '$lib/finance/financeGoalForm.svelte';
   import {
     ACCOUNT_COLORS,
     accColor,
@@ -64,6 +62,11 @@
     onSuccess: (m) => toast.success(m),
     onError: (m) => toast.error(m)
   });
+  const goalForm = createFinanceGoalForm({
+    getAccounts: () => dataCtl.accounts,
+    reload: () => dataCtl.loadAll(),
+    onError: (m) => toast.error(m)
+  });
   const aiCtl = createFinanceAI({
     getOverview: () => dataCtl.overview,
     getSubs: () => dataCtl.subs,
@@ -96,44 +99,7 @@
 
   // Income create / edit / delete live on incomeForm.
 
-  // ── New goal modal ────────────────────────────────────────────────
-  let goalOpen = $state(false);
-  let goalForm = $state({
-    name: '', kind: 'savings' as FinGoal['kind'],
-    target: '', current: '0', currency: 'USD',
-    target_date: '', linked_account_id: ''
-  });
-  function openGoal() {
-    goalForm = {
-      name: '', kind: 'savings',
-      target: '', current: '0',
-      currency: dataCtl.accounts[0]?.currency || 'USD',
-      target_date: '', linked_account_id: ''
-    };
-    goalOpen = true;
-  }
-  async function submitGoal() {
-    if (!goalForm.name.trim() || !goalForm.target) return;
-    try {
-      await api.finCreateGoal({
-        name: goalForm.name.trim(),
-        kind: goalForm.kind,
-        target_cents: Math.round(parseFloat(goalForm.target) * 100),
-        current_cents: Math.round(parseFloat(goalForm.current || '0') * 100),
-        currency: goalForm.currency.trim() || 'USD',
-        target_date: goalForm.target_date || undefined,
-        linked_account_id: goalForm.linked_account_id || undefined
-      });
-      goalOpen = false;
-      await dataCtl.loadAll();
-    } catch (e) { toast.error('failed: ' + (e instanceof Error ? e.message : String(e))); }
-  }
-  async function deleteGoal(g: FinGoal) {
-    if (!confirm(`Delete goal "${g.name}"?`)) return;
-    try { await api.finDeleteGoal(g.id); await dataCtl.loadAll(); } catch (e) {
-      toast.error('failed: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  }
+  // Goal create / delete live on goalForm.
 
   // Income-stream split (active/pipeline/paused) + 30-day cashflow
   // timeline + dataCtl.accountName lookup live on dataCtl now.
@@ -402,7 +368,7 @@
           <button onclick={() => incomeForm.openModal()} class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90">+ Income source</button>
           <button onclick={() => subscriptionForm.openModal()} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Subscription</button>
           <button onclick={() => accountForm.openModal()} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Account</button>
-          <button onclick={openGoal} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Goal</button>
+          <button onclick={() => goalForm.openModal()} class="px-3 py-1.5 bg-surface0 border border-surface1 rounded text-sm hover:border-primary">+ Goal</button>
         </div>
 
         {#if dataCtl.accounts.length === 0 && dataCtl.streams.length === 0 && dataCtl.subs.length === 0}
@@ -640,7 +606,7 @@
     {:else if viewCtl.tab === 'goals'}
       <div class="flex justify-between items-center mb-3">
         <p class="text-xs text-dim">{dataCtl.goals.length} financial dataCtl.goals</p>
-        <button onclick={openGoal} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New goal</button>
+        <button onclick={() => goalForm.openModal()} class="text-xs px-2.5 py-1 bg-primary text-on-primary rounded font-medium hover:opacity-90">+ New goal</button>
       </div>
       {#if dataCtl.goals.length === 0}
         <p class="text-sm text-dim italic">No financial goals yet.</p>
@@ -656,7 +622,7 @@
                 <span class="text-xs text-dim">{pct}%</span>
                 <span class="flex-1"></span>
                 {#if g.target_date}<span class="text-xs text-dim">by {g.target_date}</span>{/if}
-                <button onclick={() => deleteGoal(g)} class="text-xs text-dim hover:text-error">delete</button>
+                <button onclick={() => goalForm.remove(g)} class="text-xs text-dim hover:text-error">delete</button>
               </div>
               <div class="h-1.5 mt-2 bg-mantle rounded-full overflow-hidden">
                 <div class="h-full bg-primary transition-all" style="width: {pct}%"></div>
@@ -852,28 +818,28 @@
 
 <!-- ── New-goal modal ───────────────────────────────────────────────── -->
 <EditModal
-  open={goalOpen}
+  open={goalForm.open}
   maxWidth="sm"
   title="New financial goal"
-  onClose={() => (goalOpen = false)}
+  onClose={() => goalForm.close()}
 >
-  <form onsubmit={(e) => { e.preventDefault(); submitGoal(); }} class="p-4 space-y-3">
-      <input bind:value={goalForm.name} required placeholder="Name (Emergency fund, Pay off card…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
-      <select bind:value={goalForm.kind} class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
+  <form onsubmit={(e) => { e.preventDefault(); goalForm.submit(); }} class="p-4 space-y-3">
+      <input bind:value={goalForm.form.name} required placeholder="Name (Emergency fund, Pay off card…)" class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+      <select bind:value={goalForm.form.kind} class="w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary">
         <option value="savings">Savings (build up to target)</option>
         <option value="payoff">Payoff (shrink debt to zero)</option>
         <option value="networth">Net worth (aggregate target)</option>
       </select>
       <div class="flex gap-2">
-        <input type="number" step="0.01" bind:value={goalForm.target} required placeholder="Target" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-        <input type="number" step="0.01" bind:value={goalForm.current} placeholder="Current" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
-        <input bind:value={goalForm.currency} class="w-20 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+        <input type="number" step="0.01" bind:value={goalForm.form.target} required placeholder="Target" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
+        <input type="number" step="0.01" bind:value={goalForm.form.current} placeholder="Current" class="flex-1 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text font-mono text-right focus:outline-none focus:border-primary" />
+        <input bind:value={goalForm.form.currency} class="w-20 bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       </div>
       <label class="block text-xs text-dim">Target date (optional)
-        <input type="date" bind:value={goalForm.target_date} class="block mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
+        <input type="date" bind:value={goalForm.form.target_date} class="block mt-1 w-full bg-surface0 border border-surface1 rounded px-2 py-1.5 text-sm text-text focus:outline-none focus:border-primary" />
       </label>
     <div class="flex justify-end gap-2 pt-2">
-      <button type="button" onclick={() => (goalOpen = false)} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
+      <button type="button" onclick={() => goalForm.close()} class="text-xs px-3 py-1.5 rounded bg-surface0 text-subtext hover:bg-surface1">Cancel</button>
       <button type="submit" class="text-xs px-3 py-1.5 rounded bg-primary text-on-primary font-medium hover:opacity-90">Add</button>
     </div>
   </form>
