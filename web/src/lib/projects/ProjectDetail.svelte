@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, type Goal, type Project, type ProjectGoal, type Task, type VisionDoc } from '$lib/api';
+  import { api, type Project, type ProjectGoal } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import GoalEditor from './GoalEditor.svelte';
   import ProjectNotesTab from './ProjectNotesTab.svelte';
@@ -12,16 +12,14 @@
   import { isoWeekString, startOfIsoWeek } from '$lib/util/isoWeek';
   import { fmtDateISO as ymd } from '$lib/util/date';
   import { focusOnMount } from '$lib/util/focusOnMount';
-  import { slugifyTitle } from '$lib/util/slug';
-  import { goto } from '$app/navigation';
   import { onWsEvent } from '$lib/ws';
-  import { errorMessage } from '$lib/util/errorMessage';
   import { loadDraft, clearDraft, makeDraftWriter } from '$lib/util/draftAutosave';
   import {
     createProjectAIHealth,
     type HealthMomentum
   } from './projectAIHealth.svelte';
   import { createProjectAIBrief } from './projectAIBrief.svelte';
+  import { createProjectDetailData } from './projectDetailData.svelte';
 
   let { project, onClose, onUpdated, onDeleted, onOpenDashboard }: {
     project: Project;
@@ -44,87 +42,26 @@
   let editingName = $state(false);
   let nameBuf = $state('');
 
-  // Per-project vision — read-only here; edits happen on /vision (the
-  // central multi-doc editor with history + reasons). We use a
-  // 'project:<slug>' key convention so the vision lives in the same
-  // catalogue as Hauptvision/Mission/etc., not duplicated into the
-  // project record. Slug stays stable across project renames.
-  let projectVision = $state<VisionDoc | null>(null);
-  let projectVisionLoading = $state(false);
-  let projectVisionCreating = $state(false);
-  let projectVisionKey = $derived(`project:${slugifyTitle(project.name)}`);
+  // Loaded data + loaders live in projectDetailData. Read via
+  // dataCtl.projectTasks / linkedGoals / projectVision / loadingTasks
+  // / projectVisionLoading / projectVisionCreating / projectVisionKey.
+  const dataCtl = createProjectDetailData({ getProject: () => project });
+  const loadTasks = dataCtl.loadTasks;
+  const loadLinkedGoals = dataCtl.loadLinkedGoals;
+  const loadProjectVision = dataCtl.loadProjectVision;
+  const createProjectVision = dataCtl.createProjectVision;
 
-  async function loadProjectVision() {
-    projectVisionLoading = true;
-    try {
-      projectVision = await api.getVisionDoc(projectVisionKey);
-    } catch {
-      // 404 = no vision yet, render the "anlegen" CTA. Don't toast
-      // — this is the normal empty state, not an error.
-      projectVision = null;
-    } finally {
-      projectVisionLoading = false;
-    }
-  }
-
-  async function createProjectVision() {
-    projectVisionCreating = true;
-    try {
-      await api.createVisionDoc({
-        key: projectVisionKey,
-        label: project.name
-      });
-      // Jump straight to /vision opened at this tab so the user can
-      // start writing. The vision page reads ?tab=key on mount and
-      // activates the matching doc.
-      goto(`/vision?tab=${encodeURIComponent(projectVisionKey)}`);
-    } catch (e) {
-      toast.error('failed: ' + errorMessage(e));
-    } finally {
-      projectVisionCreating = false;
-    }
-  }
-
-  let projectTasks = $state<Task[]>([]);
-  let loadingTasks = $state(false);
   let showCompletedTasks = $state(false);
 
-  // Top-level goals (.granit/goals.json) linked to this project via the
-  // goal's `project` field. Read-only here — the goals page is where
-  // those get edited. We render a compact list as a quick context cue
-  // so the project detail surface answers "what are we working towards?".
-  let linkedGoals = $state<Goal[]>([]);
-
-  async function loadTasks() {
-    loadingTasks = true;
-    try {
-      // Pull ALL tasks; project membership = matching project field OR
-      // notePath under project's folder. Server already does this matching
-      // for the projectView decoration so we mirror the same logic here.
-      const r = await api.listTasks({});
-      const folder = (project.folder ?? '').replace(/\/$/, '');
-      projectTasks = r.tasks.filter((t) => {
-        if (t.projectId === project.name) return true;
-        if (folder && t.notePath.startsWith(folder + '/')) return true;
-        return false;
-      });
-    } catch (e) {
-      console.error(e);
-    } finally {
-      loadingTasks = false;
-    }
-  }
-
-  async function loadLinkedGoals() {
-    try {
-      const r = await api.listGoals();
-      linkedGoals = r.goals.filter((g) => g.project === project.name);
-    } catch (e) {
-      // Non-fatal — goals endpoint failure shouldn't break the project
-      // page; just leave the section empty.
-      console.error('listGoals', e);
-    }
-  }
+  // Local read aliases for the template — writes go through dataCtl
+  // via the loader methods. Same pattern as aiOverlayState's aliases.
+  const projectTasks = $derived(dataCtl.projectTasks);
+  const linkedGoals = $derived(dataCtl.linkedGoals);
+  const projectVision = $derived(dataCtl.projectVision);
+  const loadingTasks = $derived(dataCtl.loadingTasks);
+  const projectVisionLoading = $derived(dataCtl.projectVisionLoading);
+  const projectVisionCreating = $derived(dataCtl.projectVisionCreating);
+  const projectVisionKey = $derived(dataCtl.projectVisionKey);
 
   // Last project name we initialised buffers for. When the parent
   // swaps the project prop without unmounting (master-detail list-
