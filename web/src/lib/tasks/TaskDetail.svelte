@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { api, type Task, type Project, type Goal, type Deadline } from '$lib/api';
+  import { api, type Task } from '$lib/api';
   import { toast } from '$lib/components/toast';
   import { cleanTaskText } from '$lib/util/taskParse';
   import Drawer from '$lib/components/Drawer.svelte';
@@ -14,6 +14,7 @@
     snoozeOffset,
     buildAskAIPrompt
   } from './taskDetailHelpers';
+  import { createTaskDetailLinks } from './taskDetailLinks.svelte';
 
   // TaskDetail is the side-drawer that pops open when the user clicks
   // a task card. Editable fields not already inline-editable on the card:
@@ -57,12 +58,12 @@
   // either. Keeping these read-only on the drawer for now — quick-add
   // bar is the canonical surface for setting them at create time.
 
-  // Linkable-entity lists. Lazy-loaded the first time the drawer opens
-  // so the list pages don't pay the lookup cost on every card render.
-  let projects = $state<Project[]>([]);
-  let goals = $state<Goal[]>([]);
-  let deadlines = $state<Deadline[]>([]);
-  let linksLoaded = $state(false);
+  // Linkable-entity lookup for the Project / Goal / Deadline <select>s.
+  // Lazy-loaded on first open per session; see taskDetailLinks.svelte.ts.
+  const links = createTaskDetailLinks();
+  const projects = $derived(links.projects);
+  const goals = $derived(links.goals);
+  const deadlines = $derived(links.deadlines);
 
   // ── AI Decompose ────────────────────────────────────────────────
   // Takes the task title + notes and asks the model for 3-7 small,
@@ -347,22 +348,6 @@
     }
   }
 
-  async function loadLinks() {
-    if (linksLoaded) return;
-    linksLoaded = true;
-    // Settle these in parallel — three independent reads. Failures
-    // degrade silently to an empty list rather than blocking the
-    // drawer; the dropdown will just show "(none)".
-    const [pp, gg, dd] = await Promise.allSettled([
-      api.listProjects(),
-      api.listGoals(),
-      api.listDeadlines()
-    ]);
-    if (pp.status === 'fulfilled') projects = pp.value.projects;
-    if (gg.status === 'fulfilled') goals = gg.value.goals;
-    if (dd.status === 'fulfilled') deadlines = dd.value.deadlines;
-  }
-
   // Resync local buffers whenever the modal opens for a different task.
   // Also reset Decompose state — proposals from a previous task
   // shouldn't leak into the next one's drawer.
@@ -398,7 +383,7 @@
     manualSubtaskBuf = '';
     subtasks = [];
     subtasksLoaded = false;
-    void loadLinks();
+    void links.load();
     void loadSubtasks();
   });
 
