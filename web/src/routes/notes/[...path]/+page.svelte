@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
   import { api, type Note } from '$lib/api';
-  import { installWsReload } from '$lib/notes/wsReload.svelte';
+  import { installSavePipeline } from '$lib/notes/installSavePipeline.svelte';
   import NotesTree from '$lib/notes/NotesTree.svelte';
   import DailyQuickAdd from '$lib/notes/DailyQuickAdd.svelte';
   import DailyContext from '$lib/notes/DailyContext.svelte';
@@ -26,7 +26,6 @@
   import { saveFrontmatter as saveFrontmatterFn } from '$lib/notes/saveFrontmatter';
   import { saveNote as saveNoteFn } from '$lib/notes/saveNote';
   import { loadNote as loadNoteFn } from '$lib/notes/loadNote';
-  import { installNoteAutosave } from '$lib/notes/noteAutosave.svelte';
   import { createViewModeController } from '$lib/notes/viewModes.svelte';
   import { createViewportBreakpoints } from '$lib/notes/viewportBreakpoints.svelte';
   import { createPreviewBodyMirror } from '$lib/notes/previewBodyMirror.svelte';
@@ -84,19 +83,6 @@
     ensurePinnedLoaded();
     return breakpoints.install();
   });
-
-  // Window after our own save during which an inbound `note.changed`
-  // WS event is suppressed — the event is almost certainly the echo
-  // of our own write bouncing through the file watcher. Used at both
-  // the synchronous fast-path and the timed coalesce. 3 s covers the
-  // worst-case file-watcher debounce + scan + broadcast latency.
-  const OWN_SAVE_QUIET_MS = 3000;
-  // Trailing-edge coalesce on `note.changed` bursts (a TUI save or
-  // sync drop can fire 5+ events in a burst). One reload per burst.
-  const WS_RELOAD_COALESCE_MS = 600;
-  // Autosave debounce — fires `save({silent: true})` 2 s after the
-  // last keystroke when the picker isn't open.
-  const AUTOSAVE_DEBOUNCE_MS = 2000;
 
   // The 17 $state slots the save / load / autosave / wsReload /
   // frontmatter helpers all touch live in notePipelineState — see
@@ -270,26 +256,16 @@
 
   const saveCtx = { getLiveBody: () => editor?.getContent?.() ?? pipe.body };
 
-  // Install dirty + autosave + draft-rAF + tab-hide flush + online
-  // retry — six effects worth of plumbing live in noteAutosave so
-  // this surface keeps the deps wiring at one glance.
-  installNoteAutosave({
-    getNote: () => pipe.note,
-    getBody: () => pipe.body,
-    getLiveBody: () => editor?.getContent?.() ?? pipe.body,
-    getDirty: () => pipe.dirty,
-    getSaving: () => pipe.saving,
-    getSaveFailed: () => pipe.saveFailed,
-    getConflictDetected: () => pipe.conflictDetected,
-    getPrev: () => pipe.prev,
-    setDirty: (v) => { pipe.dirty = v; },
-    setPrev: (v) => { pipe.prev = v; },
-    getLastDraftedBody: () => pipe.lastDraftedBody,
-    setLastDraftedBody: (v) => { pipe.lastDraftedBody = v; },
-    getEditorView: () => editor?.getView?.(),
-    isCompletionActive: () => editor?.isCompletionActive?.() ?? false,
+  // Two persistence sub-pipelines bundled behind a single install:
+  // installNoteAutosave (dirty / debounce / draft-rAF / tab-hide /
+  // online-retry / unmount) + installWsReload (coalesced trailing-
+  // edge reload on WS `note.changed` bursts). See installSavePipeline
+  // for the shared deps + the magic-number defaults.
+  installSavePipeline({
+    pipe,
+    getEditor: () => editor,
     save: (o) => save(o),
-    autosaveDebounceMs: AUTOSAVE_DEBOUNCE_MS
+    reload: (p) => void load(p, { force: true })
   });
 
   // Cross-surface lifecycle effects (active-editor registration +
@@ -341,23 +317,6 @@
     });
   }
 
-  // Live-reload current note from WS via a small controller that
-  // coalesces note.changed bursts (PUT handler + file watcher fire
-  // separately) and honours every clobber guard: unsaved edits, an
-  // in-flight save, our own just-completed save bouncing back.
-  // See $lib/notes/wsReload for the contract.
-  onMount(() =>
-    installWsReload({
-      getActivePath: () => pipe.note?.path ?? null,
-      getLiveBody: () => editor?.getContent?.() ?? pipe.body,
-      getSavedBody: () => pipe.prev,
-      isSaving: () => pipe.saving,
-      getLastSavedAt: () => pipe.lastSavedAt,
-      reload: (p) => void load(p, { force: true }),
-      ownSaveQuietMs: OWN_SAVE_QUIET_MS,
-      coalesceMs: WS_RELOAD_COALESCE_MS
-    })
-  );
 
   // Status-bar counters + word goal live in $lib/notes/noteWordStats —
   // see there for the rationale on tying everything to bodyForPreview
