@@ -42,6 +42,7 @@
   } from '$lib/deadlines/deadlinesBuckets';
   import { createDeadlinesData } from '$lib/deadlines/deadlinesData.svelte';
   import { createDeadlinesViewState } from '$lib/deadlines/deadlinesViewState.svelte';
+  import { createDeadlinesFilterState } from '$lib/deadlines/deadlinesFilterState.svelte';
 
   // Deadlines page — top-level "this matters by date X" markers backed
   // by .granit/deadlines.json. Distinct from Tasks (no checkbox / not
@@ -82,15 +83,6 @@
   const load = () => dataCtl.load();
   const ensureTasksLoaded = () => dataCtl.ensureTasksLoaded();
 
-  // Active importance filter — null = show all; otherwise filter to
-  // the matching importance value. The chip row at the top reads + writes this.
-  let importanceFilter = $state<DeadlineImportance | null>(null);
-
-  // Title-substring quick filter — typing in the search box narrows
-  // the visible set. Cheap on the client; deadlines.json rarely runs
-  // to thousands of rows.
-  let q = $state('');
-
   // Optional URL-driven scope filters (e.g. /deadlines?project=Foo or
   // ?goal_id=G123). Used by the note-page deadline strip to deep-link
   // to "show me everything tied to this thing". Reactive — survives
@@ -98,6 +90,22 @@
   let scopeProject = $derived($page.url.searchParams.get('project') ?? '');
   let scopeGoalId = $derived($page.url.searchParams.get('goal_id') ?? '');
   let scopeVenture = $derived($page.url.searchParams.get('venture') ?? '');
+
+  // Importance chip + free-text search + the scoped/filtered/counts
+  // derivations all live in the filter controller. Read via filterCtl;
+  // the $derived aliases below keep the rest of the script terse.
+  const filterCtl = createDeadlinesFilterState({
+    getDeadlines: () => dataCtl.deadlines,
+    getScopeProject: () => scopeProject,
+    getScopeGoalId: () => scopeGoalId,
+    getScopeVenture: () => scopeVenture
+  });
+  let importanceFilter = $derived(filterCtl.importanceFilter);
+  let q = $derived(filterCtl.q);
+  let scoped = $derived(filterCtl.scoped);
+  let filtered = $derived(filterCtl.filtered);
+  let importanceCounts = $derived(filterCtl.importanceCounts);
+  const setFilter = filterCtl.setFilter;
 
   // Selection / drawer state.
   let drawerOpen = $state(false);
@@ -131,53 +139,6 @@
       if (ev.type === 'state.changed' && ev.path === '.granit/deadlines.json') reload.trigger();
       if (ev.type === 'task.changed' || ev.type === 'note.changed') reload.trigger();
     });
-  });
-
-  // ----- Importance filter -----
-  //
-  // Counts roll over the FULL list (so the chip row shows the global
-  // distribution); the list itself is filtered to whatever the user
-  // picked. Active filter shows a "Showing N of M" hint with a clear
-  // affordance so the user can never forget they're in a filtered view.
-  let importanceCounts = $derived.by(() => {
-    let critical = 0, high = 0, normal = 0;
-    for (const d of scoped) {
-      // Hide already-met from the active-importance counts — those
-      // belong to the "Met" tail and shouldn't inflate "you have X
-      // critical things to worry about".
-      if (d.status === 'met' || d.status === 'cancelled') continue;
-      if (d.importance === 'critical') critical++;
-      else if (d.importance === 'high') high++;
-      else normal++;
-    }
-    return { critical, high, normal };
-  });
-
-  // Scope-filter (URL params) is applied BEFORE the importance filter so
-  // counts in the chip row reflect the scoped subset, not the entire
-  // vault — matches the user's mental model when they land here via
-  // "deadlines for this project".
-  let scoped = $derived.by(() => {
-    let out = deadlines;
-    if (scopeProject) out = out.filter((d) => d.project === scopeProject);
-    if (scopeGoalId) out = out.filter((d) => d.goal_id === scopeGoalId);
-    if (scopeVenture) out = out.filter((d) => d.venture === scopeVenture);
-    return out;
-  });
-
-  let filtered = $derived.by(() => {
-    let out = scoped;
-    if (importanceFilter) out = out.filter((d) => d.importance === importanceFilter);
-    const term = q.trim().toLowerCase();
-    if (term) {
-      out = out.filter((d) =>
-        d.title.toLowerCase().includes(term) ||
-        (d.description ?? '').toLowerCase().includes(term) ||
-        (d.project ?? '').toLowerCase().includes(term) ||
-        (d.venture ?? '').toLowerCase().includes(term)
-      );
-    }
-    return out;
   });
 
   // ----- Grouping for the list -----
@@ -380,10 +341,6 @@
     return g?.title ?? '(unknown)';
   }
 
-  function setFilter(v: DeadlineImportance | null) {
-    importanceFilter = importanceFilter === v ? null : v;
-  }
-
   // ----- "Coming up" hero strip -----
   // Three most-urgent active rows (critical→high→normal, then
   // earliest date). Replaces the single hero card on first paint
@@ -477,8 +434,7 @@
           shortcutsOpen = false;
         } else if (importanceFilter || q) {
           e.preventDefault();
-          importanceFilter = null;
-          q = '';
+          filterCtl.clearAll();
         }
         break;
     }
@@ -490,7 +446,7 @@
   function onSearchKey(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       (e.target as HTMLInputElement).blur();
-      q = '';
+      filterCtl.q = '';
     }
   }
 </script>
@@ -512,7 +468,7 @@
     {shortcutsOpen}
     onSelectView={(v) => (viewCtl.viewMode = v)}
     onSelectGroup={(g) => (viewCtl.groupBy = g)}
-    onSearchChange={(v) => (q = v)}
+    onSearchChange={(v) => (filterCtl.q = v)}
     onSearchKey={onSearchKey}
     onToggleShortcuts={() => (shortcutsOpen = !shortcutsOpen)}
     onCloseShortcuts={() => (shortcutsOpen = false)}
@@ -603,7 +559,7 @@
           {q}
           counts={importanceCounts}
           onSet={setFilter}
-          onClearAll={() => { importanceFilter = null; q = ''; }}
+          onClearAll={() => filterCtl.clearAll()}
         />
       </div>
 
@@ -612,7 +568,7 @@
           <span>Showing {filtered.length} of {scoped.length}</span>
           <button
             type="button"
-            onclick={() => { importanceFilter = null; q = ''; }}
+            onclick={() => filterCtl.clearAll()}
             class="px-1.5 py-0.5 rounded text-dim hover:text-text hover:bg-surface1"
           >× clear</button>
         </div>
@@ -642,7 +598,7 @@
             No deadlines match your filters.
             <button
               type="button"
-              onclick={() => { importanceFilter = null; q = ''; }}
+              onclick={() => filterCtl.clearAll()}
               class="text-secondary hover:underline ml-1"
             >clear →</button>
           </div>
