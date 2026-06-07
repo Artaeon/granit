@@ -335,7 +335,7 @@
   };
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4">
+<section class="bg-surface0 border border-surface1 rounded-lg shadow-sm p-3 sm:p-4">
   <!-- Header. Day + date on the left, "N left" pill on the right.
        Single line, no decorative chrome. The "now" event lived
        here as a tiny inline pill before — too easy to miss. We

@@ -56,7 +56,7 @@
 </script>
 
 {#if loaded && active.length > 0}
-  <section class="bg-surface0 border border-surface1 rounded-lg p-3">
+  <section class="bg-surface0 border border-surface1 rounded-lg shadow-sm p-3">
     <div class="flex items-baseline justify-between mb-3">
       <h2 class="text-xs text-dim font-semibold">Ventures</h2>
       <a href="/ventures" class="text-xs text-secondary hover:underline">all →</a>

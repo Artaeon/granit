@@ -86,7 +86,7 @@
   }
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-3">
+<section class="bg-surface0 border border-surface1 rounded-lg shadow-sm p-3">
   <div class="flex items-baseline justify-between mb-3">
     <h2 class="text-xs text-dim font-semibold">Habits</h2>
     <span class="flex-1"></span>

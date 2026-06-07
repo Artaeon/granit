@@ -230,7 +230,7 @@
   let activeMode = $derived(MODES.find((m) => m.id === mode)!);
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-2.5">
+<section class="bg-surface0 border border-surface1 rounded-lg shadow-sm p-2.5">
   <form
     onsubmit={submit}
     class="flex items-center gap-1.5 bg-mantle border border-surface1 rounded-lg pl-1 pr-1.5 py-1 focus-within:border-primary transition-colors"

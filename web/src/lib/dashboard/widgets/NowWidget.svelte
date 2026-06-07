@@ -84,7 +84,7 @@
   }
 </script>
 
-<section class="bg-surface0 border border-surface1 rounded-lg p-3">
+<section class="bg-surface0 border border-surface1 rounded-lg shadow-sm p-3">
   <div class="flex items-baseline gap-2 mb-3">
     <span class="text-2xl sm:text-3xl font-mono font-semibold text-text tabular-nums">{fmtTime(now)}</span>
     <span class="text-xs text-dim">{now.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</span>

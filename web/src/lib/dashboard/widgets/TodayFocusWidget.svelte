@@ -104,7 +104,7 @@
      committed scope without competing with the goal itself. Empty
      state surfaces a single CTA so the user has a one-tap path
      back to /morning. -->
-<section class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4 flex flex-col h-full">
+<section class="bg-surface0 border border-surface1 rounded-lg shadow-sm p-3 sm:p-4 flex flex-col h-full">
   <div class="flex items-baseline justify-between mb-2">
     <h2 class="text-[10px] uppercase tracking-wider text-dim font-medium">Today's focus</h2>
     {#if daily && section}
