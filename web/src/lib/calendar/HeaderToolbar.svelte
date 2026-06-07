@@ -32,7 +32,8 @@
     onFindTime,
     onShowShortcuts,
     onOpenFilterDrawer,
-    onCapture
+    onCapture,
+    onPlanDay
   }: {
     view?: View;
     cursor?: Date;
@@ -49,6 +50,11 @@
     onShowShortcuts: () => void;
     onOpenFilterDrawer: () => void;
     onCapture: () => void;
+    /** Daily Routine AI — opens the RoutineProposalDrawer and triggers
+     *  a streaming proposal for today. Omitted when the page hasn't
+     *  wired the drawer yet (e.g. a future surface that doesn't need
+     *  the button). */
+    onPlanDay?: () => void;
   } = $props();
 
   let moreOpen = $state(false);
@@ -230,6 +236,32 @@
       </svg>
     </button>
   </div>
+
+  <!-- Plan my day — Daily Routine AI. Opens the RoutineProposalDrawer
+       and streams a proposed rewrite of today's plan + a list of
+       event mutations the user can review before applying. -->
+  {#if onPlanDay}
+    <button
+      onclick={onPlanDay}
+      class="hidden sm:inline-flex h-7 items-center gap-1 px-2 rounded border bg-surface0 border-surface1 text-subtext hover:border-primary hover:text-text flex-shrink-0 text-xs"
+      title="Plan my day with AI"
+      aria-label="plan my day"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        class="w-3.5 h-3.5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 3v3m0 12v3M3 12h3m12 0h3" />
+        <circle cx="12" cy="12" r="4" />
+      </svg>
+      <span class="hidden md:inline">Plan my day</span>
+    </button>
+  {/if}
 
   <!-- Find time — 'f' shortcut. Surfaces free gaps that fit a chosen
        duration. Keeps a prominent slot in the chrome because it's the
