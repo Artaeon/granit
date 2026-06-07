@@ -171,7 +171,10 @@ export function closeTab(id: string): { nextUrl: string | null } {
       activeClosed = true;
       const neighbor = s.tabs[idx + 1] || s.tabs[idx - 1] || null;
       activeTabId = neighbor?.id ?? null;
-      nextUrl = neighbor?.url ?? '/';
+      // No tabs left → go to the workspace home (NOT '/', which redirects
+      // there anyway and would trip the nav effect into bootstrapping a
+      // fresh tab — the "can't close the last tab" respawn).
+      nextUrl = neighbor?.url ?? '/workspace';
     }
     return { tabs, activeTabId };
   });

@@ -50,19 +50,20 @@
   }
 
   function onNewTab() {
-    // "+ new tab" opens a fresh dashboard slot. We use ensureTab
-    // semantics via newTab so the user gets a NEW tab even if /
-    // is already open in another tab — the affordance reads
-    // "give me another workspace", not "switch to dashboard".
-    const id = newTab('/', 'Today');
-    if (id) goto('/');
+    // "+ new tab" opens a fresh Today dashboard slot. Targets /dashboard
+    // directly (NOT '/', which redirects to /workspace and would leave a
+    // stale url:'/' tab); the affordance reads "give me another surface".
+    const id = newTab('/dashboard', 'Today');
+    if (id) goto('/dashboard');
   }
 
 </script>
 
-{#if tabs.length > 0}
-  <!-- Hidden until at least one tab is open. md:flex so mobile
-       keeps its existing single-pane flow (Phase 3 will revisit). -->
+{#if tabs.length > 1}
+  <!-- Hidden until the user opens a SECOND tab — a single tab is just
+       the current route (always bootstrapped on navigation), so showing
+       a one-pill strip with a close button invited the "close the last
+       tab" respawn loop. md:flex so mobile keeps its single-pane flow. -->
   <div
     class="hidden md:flex items-stretch gap-px bg-base border-b border-surface1 px-1 pt-1 overflow-x-auto flex-shrink-0"
     role="tablist"
