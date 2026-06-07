@@ -153,7 +153,7 @@
   ondragover={onDragOver}
   ondragleave={onDragLeave}
   ondrop={onDrop}
-  class="relative flex flex-col h-full min-h-0 border rounded overflow-hidden bg-base transition-all
+  class="relative flex flex-col w-full h-full min-w-0 min-h-0 border rounded overflow-hidden bg-base transition-all
     {focused ? 'border-primary' : 'border-surface1'}
     {dragging ? 'opacity-40' : ''}"
 >
