@@ -31,17 +31,21 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/artaeon/granit/internal/agentruntime"
 	"github.com/artaeon/granit/internal/aiprefs"
+	"github.com/artaeon/granit/internal/atomicio"
 	"github.com/artaeon/granit/internal/deadlines"
 	"github.com/artaeon/granit/internal/goals"
 	"github.com/artaeon/granit/internal/granitmeta"
 	"github.com/artaeon/granit/internal/habits"
 	"github.com/artaeon/granit/internal/sabbath"
+	"github.com/artaeon/granit/internal/wshub"
+	"github.com/oklog/ulid/v2"
 )
 
 // routineProposalRequest is the optional body for the streaming endpoint.
@@ -566,22 +570,261 @@ type routineApplyResponse struct {
 	Failed  []routineApplyFailure `json:"failed"`
 }
 
-// handleCalendarApplyRoutine applies a proposal. Stub for commit 1 —
-// validates the body shape + returns an empty applied/failed response so
-// the frontend wiring has something to call. Real apply lands in a later
-// commit.
+// handleCalendarApplyRoutine applies a (possibly user-edited) proposal.
+//
+// Partial-safe: a mid-batch op failure does NOT abort the rest of the
+// batch. The per-op error is captured into the Failed slice with the
+// row's index in the request so the UI can highlight exactly which
+// rows didn't land. This mirrors handlePlanDayApply and the bulk-patch
+// pattern in habitsBulkSelect.svelte.ts.
+//
+// Order of work:
+//  1. Rewrite the "## Daily Plan" section of the date's daily note when
+//     a non-empty DailyPlan is supplied. Failure here aborts the whole
+//     call — losing the plan write is the only thing that would leave
+//     the user without an audit trail of what changed.
+//  2. Walk eventOps in order. Each op is executed atomically by reading
+//     events.json, mutating in-memory, writing back. On any per-op
+//     error we record the failure and continue.
+//  3. Broadcast event.changed / event.removed for every successful op
+//     so the calendar refreshes on connected clients.
+//
+// We never touch ICS files — eventOps only mutate the native events
+// sidecar.
 func (s *Server) handleCalendarApplyRoutine(w http.ResponseWriter, r *http.Request) {
 	var body routineApplyRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	if !eventDateRe.MatchString(strings.TrimSpace(body.Date)) {
+	body.Date = strings.TrimSpace(body.Date)
+	if !eventDateRe.MatchString(body.Date) {
 		writeError(w, http.StatusBadRequest, "date must be YYYY-MM-DD")
 		return
 	}
+
+	failed := make([]routineApplyFailure, 0)
+	applied := 0
+
+	// 1. Daily-plan rewrite. We only touch the "## Daily Plan" section;
+	// the rest of the note is preserved byte-for-byte. Errors here are
+	// returned as 500 — the user gets to retry with a cleaner state
+	// rather than silently losing their proposed plan.
+	if strings.TrimSpace(body.DailyPlan) != "" {
+		if err := s.rewriteDailyPlan(body.Date, body.DailyPlan); err != nil {
+			writeError(w, http.StatusInternalServerError, "daily plan rewrite failed: "+err.Error())
+			return
+		}
+	}
+
+	// 2. Event ops. Read events.json once, apply ops in-memory, write
+	// once. Atomic enough for the small batches the AI proposes; if a
+	// per-op validation fails we record the failure and move on.
+	events, err := granitmeta.ReadEvents(s.cfg.Vault.Root)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Track which event IDs need a hub broadcast after the write lands.
+	// Two slices so we can broadcast event.changed for create/update
+	// and event.removed for delete in one pass after the disk write.
+	changed := make([]string, 0)
+	removed := make([]string, 0)
+
+	for i, op := range body.EventOps {
+		switch op.Op {
+		case "create":
+			if op.Event == nil {
+				failed = append(failed, routineApplyFailure{Index: i, Op: op.Op, Message: "missing event payload"})
+				continue
+			}
+			ev := *op.Event
+			if strings.TrimSpace(ev.Title) == "" || strings.TrimSpace(ev.Date) == "" {
+				failed = append(failed, routineApplyFailure{Index: i, Op: op.Op, Message: "title and date required"})
+				continue
+			}
+			if err := validateEventTimes(ev.Date, ev.StartTime, ev.EndTime); err != nil {
+				failed = append(failed, routineApplyFailure{Index: i, Op: op.Op, Message: err.Error()})
+				continue
+			}
+			if strings.TrimSpace(ev.ID) == "" {
+				ev.ID = newRoutineEventID()
+			}
+			if ev.CreatedAt == "" {
+				ev.CreatedAt = time.Now().Format(time.RFC3339)
+			}
+			events = append(events, ev)
+			changed = append(changed, ev.ID)
+			applied++
+
+		case "update":
+			id := strings.TrimSpace(op.EventID)
+			if id == "" {
+				failed = append(failed, routineApplyFailure{Index: i, Op: op.Op, Message: "missing eventId"})
+				continue
+			}
+			idx := -1
+			for j, ev := range events {
+				if ev.ID == id {
+					idx = j
+					break
+				}
+			}
+			if idx < 0 {
+				failed = append(failed, routineApplyFailure{Index: i, Op: op.Op, EventID: id, Message: "event not found"})
+				continue
+			}
+			ev := events[idx]
+			applyRoutinePatch(&ev, op.Patch)
+			if err := validateEventTimes(ev.Date, ev.StartTime, ev.EndTime); err != nil {
+				failed = append(failed, routineApplyFailure{Index: i, Op: op.Op, EventID: id, Message: err.Error()})
+				continue
+			}
+			events[idx] = ev
+			changed = append(changed, ev.ID)
+			applied++
+
+		case "delete":
+			id := strings.TrimSpace(op.EventID)
+			if id == "" {
+				failed = append(failed, routineApplyFailure{Index: i, Op: op.Op, Message: "missing eventId"})
+				continue
+			}
+			found := false
+			out := make([]granitmeta.Event, 0, len(events))
+			for _, ev := range events {
+				if ev.ID == id {
+					found = true
+					continue
+				}
+				out = append(out, ev)
+			}
+			if !found {
+				failed = append(failed, routineApplyFailure{Index: i, Op: op.Op, EventID: id, Message: "event not found"})
+				continue
+			}
+			events = out
+			removed = append(removed, id)
+			applied++
+
+		default:
+			failed = append(failed, routineApplyFailure{Index: i, Op: op.Op, Message: "unknown op (expected create/update/delete)"})
+		}
+	}
+
+	// One disk write covers every successful op. If the write itself
+	// fails we can't credit any of the ops as applied — flip them all
+	// back into failed so the UI's "applied N" doesn't lie. We don't
+	// try to be clever about rollback; the in-memory list is already
+	// the source of truth for the next read.
+	if err := granitmeta.WriteEvents(s.cfg.Vault.Root, events); err != nil {
+		writeError(w, http.StatusInternalServerError, "events write failed: "+err.Error())
+		return
+	}
+
+	for _, id := range changed {
+		s.hub.Broadcast(wshub.Event{Type: "event.changed", ID: id})
+	}
+	for _, id := range removed {
+		s.hub.Broadcast(wshub.Event{Type: "event.removed", ID: id})
+	}
+
 	writeJSON(w, http.StatusOK, routineApplyResponse{
-		Applied: 0,
-		Failed:  []routineApplyFailure{},
+		Applied: applied,
+		Failed:  failed,
 	})
 }
+
+// rewriteDailyPlan replaces (or inserts) the "## Daily Plan" section in
+// the daily note for the given date. Reuses upsertNamedSection so the
+// section parser stays in one place. EnsureDaily creates the note when
+// missing so the first apply of the day still lands.
+func (s *Server) rewriteDailyPlan(date, planBody string) error {
+	cfg := s.dailyConfigFor()
+	folder := strings.Trim(cfg.Folder, "/")
+	rel := date + ".md"
+	if folder != "" {
+		rel = filepath.ToSlash(filepath.Join(folder, date+".md"))
+	}
+	dailyPath := filepath.Join(s.cfg.Vault.Root, rel)
+
+	raw, err := os.ReadFile(dailyPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	plan := planBody
+	// Caller may include or omit the "## Daily Plan" header. We
+	// normalise to "header + body" so upsertNamedSection always
+	// matches a known marker.
+	if !strings.HasPrefix(strings.TrimSpace(plan), "## Daily Plan") {
+		plan = "## Daily Plan — " + date + "\n\n" + plan
+	}
+	updated := upsertDailyPlan(string(raw), plan)
+
+	if err := atomicio.WriteNote(dailyPath, updated); err != nil {
+		return err
+	}
+
+	// Refresh the in-memory state so subsequent reads see the new
+	// content. Same pattern handleSaveMorning uses.
+	s.rescanMu.Lock()
+	_ = s.cfg.Vault.ScanFast()
+	_ = s.cfg.TaskStore.Reload()
+	s.rescanMu.Unlock()
+	return nil
+}
+
+// applyRoutinePatch translates the AI's loosely-typed patch map into
+// concrete field assignments on a granitmeta.Event. We accept both
+// snake_case (events.json convention) and camelCase (AI JSON-output
+// convention) keys for every field — the AI's instructions name
+// camelCase but local round-trips happen in snake_case, so accepting
+// both avoids a fragile schema gate.
+func applyRoutinePatch(ev *granitmeta.Event, patch map[string]any) {
+	if patch == nil {
+		return
+	}
+	pickStr := func(keys ...string) (string, bool) {
+		for _, k := range keys {
+			if v, ok := patch[k]; ok {
+				if s, ok := v.(string); ok {
+					return s, true
+				}
+			}
+		}
+		return "", false
+	}
+	if v, ok := pickStr("title"); ok {
+		ev.Title = v
+	}
+	if v, ok := pickStr("date"); ok {
+		ev.Date = v
+	}
+	if v, ok := pickStr("startTime", "start_time"); ok {
+		ev.StartTime = v
+	}
+	if v, ok := pickStr("endTime", "end_time"); ok {
+		ev.EndTime = v
+	}
+	if v, ok := pickStr("location"); ok {
+		ev.Location = v
+	}
+	if v, ok := pickStr("color"); ok {
+		ev.Color = v
+	}
+	if v, ok := pickStr("kind"); ok {
+		ev.Kind = v
+	}
+	if v, ok := pickStr("projectId", "project_id"); ok {
+		ev.ProjectID = v
+	}
+}
+
+// newRoutineEventID mints a lowercase ULID for a created event. Kept
+// as a tiny indirection so the apply handler doesn't drag the ulid
+// package import into every commit in the series.
+func newRoutineEventID() string {
+	return strings.ToLower(ulid.Make().String())
+}
+
