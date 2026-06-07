@@ -218,6 +218,32 @@ export function workspaceCommands(): WorkspaceCmd[] {
     }
   });
 
+  // Swap focused pane with another leaf. Surfaces one entry per other
+  // leaf in the active workspace so a user with a 3-pane layout can
+  // rearrange without dragging. Implemented as two sequential setPane
+  // calls — the second update overwrites the first if they happen in
+  // the same tick. No new store method needed.
+  if (focusedLeaf && focusedPaneKind && activeLeaves.length > 1) {
+    for (const other of activeLeaves) {
+      if (other.id === focusedLeaf.id) continue;
+      if (other.pane === focusedPaneKind) continue;
+      const otherLabel = findPane(other.pane)?.label ?? other.pane;
+      out.push({
+        id: 'workspace:swap-with:' + other.id,
+        label: `Swap focused with ${otherLabel}`,
+        detail: `${focusedLabel} ↔ ${otherLabel}`,
+        icon: 'workspace',
+        run: () => {
+          const a = focusedPaneKind;
+          const b = other.pane;
+          store.setPane(focusedLeaf.id, b);
+          store.setPane(other.id, a);
+          void goto('/workspace');
+        }
+      });
+    }
+  }
+
   if (focusedLeaf && focusedPaneKind) {
     const target = differentPane(focusedPaneKind);
     out.push({
