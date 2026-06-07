@@ -9,6 +9,7 @@
   // below — the chrome itself is muted so it doesn't compete with the
   // work surface.
   import { focusOnMount } from '$lib/util/focusOnMount';
+  import Button from '$lib/components/Button.svelte';
 
   type ViewMode = 'cards' | 'list' | 'kanban';
 
@@ -94,19 +95,19 @@
   <!-- Icon-segmented view picker (desktop). -->
   <div class="hidden sm:flex bg-surface0 border border-surface1 rounded overflow-hidden">
     {#each VIEWS as v (v.key)}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        active={view === v.key}
         onclick={() => onSelectView(v.key)}
         title={v.title}
         aria-label={v.label}
         aria-pressed={view === v.key}
-        class="px-2 py-1.5 inline-flex items-center gap-1 text-xs {view === v.key ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
       >
         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d={v.icon} />
         </svg>
         <span class="hidden md:inline">{v.label}</span>
-      </button>
+      </Button>
     {/each}
   </div>
 
@@ -129,9 +130,9 @@
        tint so the user can see something is on without opening the
        menu. -->
   <div class="relative" data-goals-more>
-    <button
-      type="button"
-      class="px-2 py-1.5 inline-flex items-center gap-1 bg-surface0 border border-surface1 rounded text-xs {checkinOpen || auditOpen ? 'text-primary' : 'text-subtext'} hover:bg-surface1"
+    <Button
+      variant="secondary"
+      active={checkinOpen || auditOpen}
       aria-haspopup="true"
       aria-expanded={moreOpen}
       onclick={onToggleMore}
@@ -140,7 +141,7 @@
       <span class="hidden sm:inline">More</span>
       <span class="sm:hidden" aria-hidden="true">⋯</span>
       <span class="text-[9px] opacity-70" aria-hidden="true">▾</span>
-    </button>
+    </Button>
     {#if moreOpen}
       <div
         role="menu"
@@ -176,16 +177,15 @@
 
   <!-- Primary create button. Always visible — creating a goal is the
        core write action of this page. -->
-  <button
-    type="button"
+  <Button
+    variant="primary"
     onclick={onCreate}
     aria-label="New goal"
     title="Create a new goal"
-    class="px-2 py-1.5 text-xs bg-primary text-on-primary rounded hover:opacity-90 inline-flex items-center gap-1"
   >
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
       <path d="M12 5v14M5 12h14"/>
     </svg>
     <span class="hidden md:inline">New goal</span>
-  </button>
+  </Button>
 </div>
