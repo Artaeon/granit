@@ -20,7 +20,6 @@
 //                                  parent's $isMobile / mobileForced
 //                                  pair used to live inline as a $effect.
 
-import { mediaQuery } from '$lib/util/mediaQuery';
 import {
   addDays,
   endOfWeek,
@@ -45,17 +44,29 @@ export interface CalendarViewDeps {
 
 export function createCalendarView(deps: CalendarViewDeps): CalendarViewController {
   const { viewCtl, filterCtl } = deps;
-  const isMobile = mediaQuery('(max-width: 767px)');
+
+  // $store auto-subscribe syntax (`$isMobile`) only works inside .svelte
+  // files; this is a .svelte.ts file, so we wire matchMedia directly
+  // into a rune-native $state. Same observable behaviour: starts false,
+  // flips on breakpoint crossings.
+  let isMobile = $state(false);
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    const mql = window.matchMedia('(max-width: 767px)');
+    isMobile = mql.matches;
+    mql.addEventListener('change', (e) => {
+      isMobile = e.matches;
+    });
+  }
 
   // One-shot "force day view on mobile" rule. Fires on the first
-  // render where $isMobile flips true; a desktop user resizing down
+  // render where isMobile flips true; a desktop user resizing down
   // crosses the breakpoint once and lands on the day view instead of a
   // cramped week. We don't re-fire on subsequent mobile-true flips —
   // the user might have manually picked week and we shouldn't undo
   // that choice.
   let mobileViewForced = $state(false);
   $effect(() => {
-    if ($isMobile && !mobileViewForced) {
+    if (isMobile && !mobileViewForced) {
       viewCtl.view = 'day';
       mobileViewForced = true;
     }
@@ -64,7 +75,7 @@ export function createCalendarView(deps: CalendarViewDeps): CalendarViewControll
   const headline = $derived.by(() => {
     if (viewCtl.view === 'day') {
       return viewCtl.cursor.toLocaleDateString(undefined, {
-        weekday: $isMobile ? 'short' : 'long',
+        weekday: isMobile ? 'short' : 'long',
         month: 'short',
         day: 'numeric'
       });
@@ -121,7 +132,7 @@ export function createCalendarView(deps: CalendarViewDeps): CalendarViewControll
       return pipelineButtonLabel;
     },
     get isMobile() {
-      return $isMobile;
+      return isMobile;
     }
   };
 }
