@@ -4,6 +4,7 @@
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
   import Heatmap from '$lib/components/Heatmap.svelte';
+  import Button from '$lib/components/Button.svelte';
   import { habitTargets } from '$lib/habits/targets';
   import { focusOnMount } from '$lib/util/focusOnMount';
   import { createHabitsViewState, type HabitsView } from '$lib/habits/habitsViewState.svelte';
@@ -107,21 +108,21 @@
       </div>
       <div class="flex items-center gap-2 self-start">
         {#if undoneToday.length > 0}
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onclick={() => dataCtl.tickAllToday()}
             disabled={bulkBusy}
             title="mark every undone habit as done today"
-            class="px-3 py-1.5 bg-surface0 text-success border border-success rounded text-sm font-medium hover:bg-surface1 disabled:opacity-50"
+            class="px-3 py-1.5 text-sm !text-success !border-success hover:!text-success"
           >
             {bulkBusy ? '…' : `Tick all (${undoneToday.length})`}
-          </button>
+          </Button>
         {/if}
-        <button
-          type="button"
+        <Button
+          variant="primary"
           onclick={() => (addCtl.addOpen = !addCtl.addOpen)}
-          class="px-3 py-1.5 bg-primary text-on-primary rounded text-sm font-medium hover:opacity-90"
-        >{addCtl.addOpen ? 'cancel' : '+ Add habit'}</button>
+          class="px-3 py-1.5 text-sm"
+        >{addCtl.addOpen ? 'cancel' : '+ Add habit'}</Button>
       </div>
     </header>
 
@@ -140,11 +141,12 @@
           placeholder="habit name (e.g. morning movement, no doomscrolling)…"
           class="flex-1 min-w-[12rem] px-3 py-2 bg-mantle border border-surface1 rounded text-base sm:text-sm text-text placeholder-dim focus:outline-none focus:border-primary"
         />
-        <button
+        <Button
           type="submit"
+          variant="primary"
           disabled={!addCtl.addName.trim() || addBusy}
-          class="px-4 py-2 bg-primary text-on-primary rounded text-sm font-medium disabled:opacity-50"
-        >{addBusy ? '…' : 'add to today'}</button>
+          class="px-4 py-2 text-sm"
+        >{addBusy ? '…' : 'add to today'}</Button>
       </form>
     {/if}
 
