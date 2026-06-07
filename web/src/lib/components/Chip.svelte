@@ -57,7 +57,7 @@
     md: 'gap-1.5 px-2.5 py-1 text-xs'
   };
   const base =
-    'inline-flex items-center border font-medium whitespace-nowrap transition-colors select-none ' +
+    'inline-flex items-center rounded-md border font-medium whitespace-nowrap transition-colors select-none ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ' +
     'disabled:opacity-40 disabled:pointer-events-none';
 

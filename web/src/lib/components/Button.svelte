@@ -67,7 +67,7 @@
   // display utility (e.g. `hidden sm:inline-flex` for responsive
   // visibility) so the override actually wins — Tailwind can't reliably
   // arbitrate two same-specificity `display` rules otherwise.
-  const layout = 'items-center justify-center gap-1.5 font-medium leading-none whitespace-nowrap transition-colors select-none ' +
+  const layout = 'items-center justify-center gap-1.5 rounded-md font-medium leading-none whitespace-nowrap transition-colors select-none ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-0 ' +
     'disabled:opacity-40 disabled:pointer-events-none';
   let hasDisplay = $derived(/(^|\s)(hidden|block|inline-block|inline|flex|inline-flex|grid|contents)(\s|$)/.test(extra));

@@ -34,21 +34,21 @@
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', monospace;
 
   /* Power-UI: zero border-radius everywhere. Override Tailwind v4's
-     radius scale tokens so every `rounded`, `rounded-sm`, `rounded-md`,
-     `rounded-lg`, `rounded-xl`, `rounded-2xl`, `rounded-3xl`, and
-     `rounded-full` utility resolves to 0 — without touching markup
-     across 100s of Svelte files. Crisp 90° corners on every UI
-     element, matching the dense / functional aesthetic preference.
-     If we want to re-introduce rounding later it's a one-line revert. */
-  --radius-xs: 0;
-  --radius-sm: 0;
-  --radius-md: 0;
-  --radius-lg: 0;
-  --radius-xl: 0;
-  --radius-2xl: 0;
-  --radius-3xl: 0;
-  --radius-full: 0;
-  --radius: 0;
+     radius scale tokens. Soft, modern rounding tuned for a dense UI:
+     small controls get a gentle 4–6px, cards 8–12px, pills fully
+     round. This drives every `rounded`, `rounded-sm`, `rounded-md`,
+     `rounded-lg`, … `rounded-full` utility app-wide from one place —
+     no markup churn across 100s of Svelte files. (This used to be a
+     flat 0 for a crisp 90° Power-UI look; rounded reads more modern.) */
+  --radius-xs: 0.125rem;  /* 2px  */
+  --radius-sm: 0.25rem;   /* 4px  */
+  --radius-md: 0.375rem;  /* 6px  */
+  --radius-lg: 0.5rem;    /* 8px  */
+  --radius-xl: 0.75rem;   /* 12px */
+  --radius-2xl: 1rem;     /* 16px */
+  --radius-3xl: 1.5rem;   /* 24px */
+  --radius-full: 9999px;
+  --radius: 0.375rem;     /* default `rounded` → 6px */
 }
 
 /* Dark — OLED-black surfaces, near-white text. Apple-style greys. */
