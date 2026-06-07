@@ -66,19 +66,23 @@ export interface BuildItemsInput {
 }
 
 export function buildItems(input: BuildItemsInput): CmdItem[] {
+  // Every source defaults to [] — the palette opens before its data
+  // controller has loaded (and an odd/empty API response can leave a
+  // slice undefined), and a bare `for…of undefined` below would throw
+  // "X is not iterable" and blank the whole palette.
   const {
     query,
-    workspaceCmds,
-    pages,
-    agents,
-    projects,
-    goals,
-    notes,
-    tasks,
-    events,
-    deadlines,
-    habits,
-    searchHits,
+    workspaceCmds = [],
+    pages = [],
+    agents = [],
+    projects = [],
+    goals = [],
+    notes = [],
+    tasks = [],
+    events = [],
+    deadlines = [],
+    habits = [],
+    searchHits = [],
     recencyBoost,
     isRecent
   } = input;
