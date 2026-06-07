@@ -14,6 +14,7 @@
   import { PANES, findPane, type PaneKind } from './paneRegistry';
   import PaneTypePicker from './PaneTypePicker.svelte';
   import AddPaneMenu from './AddPaneMenu.svelte';
+  import Button from '$lib/components/Button.svelte';
 
   let {
     pane,
@@ -186,31 +187,37 @@
       </span>
       <!-- Desktop keeps the two axes so a user designing a side-by-
            side layout can pick where the new pane lands. -->
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
+        iconOnly
         onclick={() => onSplitH?.(nextPaneCandidate)}
         title="Split horizontally — new pane appears to the right"
         aria-label="Split horizontally"
-        class="hidden md:inline-block px-1.5 py-0.5 text-dim hover:text-primary border border-surface1 hover:border-primary rounded font-mono text-[11px] leading-none"
-      >|</button>
+        class="hidden md:inline-flex font-mono"
+      >|</Button>
     {/if}
     {#if onSplitV}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
+        iconOnly
         onclick={() => onSplitV?.(nextPaneCandidate)}
         title="Split vertically — new pane appears below"
         aria-label="Split vertically"
-        class="hidden md:inline-block px-1.5 py-0.5 text-dim hover:text-primary border border-surface1 hover:border-primary rounded font-mono text-[11px] leading-none"
-      >_</button>
+        class="hidden md:inline-flex font-mono"
+      >_</Button>
     {/if}
     {#if closable && onClose}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
+        iconOnly
         onclick={onClose}
         title="Close this pane"
         aria-label="Close this pane"
-        class="tap-target text-dim hover:text-error text-base leading-none px-2 md:px-1"
-      >×</button>
+        class="tap-target text-base hover:text-error"
+      >×</Button>
     {/if}
   </header>
   <div class="flex-1 min-h-0 overflow-auto">
