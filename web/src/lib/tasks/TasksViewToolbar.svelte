@@ -23,7 +23,7 @@
 
 <div class="px-3 py-1.5 border-b border-surface1 flex items-center gap-2 text-xs flex-shrink-0 flex-wrap bg-mantle">
   {#if viewCtl.view === 'list'}
-    <span class="text-dim font-mono uppercase tracking-wider select-none">group</span>
+    <span class="text-dim text-[11px] select-none">group</span>
     <select
       bind:value={viewCtl.groupBy}
       title="How to split the list into sections"
@@ -37,7 +37,7 @@
       <option value="deadline">deadline</option>
       <option value="note">note</option>
     </select>
-    <span class="text-dim font-mono uppercase tracking-wider select-none">sort</span>
+    <span class="text-dim text-[11px] select-none">sort</span>
     <select
       bind:value={viewCtl.sortBy}
       title="How to order tasks inside each group"
@@ -51,7 +51,7 @@
       <option value="estimate">estimate (smallest)</option>
     </select>
   {:else}
-    <span class="text-dim font-mono uppercase tracking-wider select-none">columns</span>
+    <span class="text-dim text-[11px] select-none">columns</span>
     <select bind:value={viewCtl.kanbanMode} class="bg-surface0 border border-surface1 rounded px-2 py-0.5 text-text">
       <option value="priority">priority</option>
       <option value="due">due</option>

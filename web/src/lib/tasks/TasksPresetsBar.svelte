@@ -11,6 +11,7 @@
   presets the starter set is shown to surface the feature.
 -->
 <script lang="ts">
+  import Button from '$lib/components/Button.svelte';
   import type { PresetsController } from './tasksPresets.svelte';
 
   type Props = {
@@ -21,9 +22,9 @@
 </script>
 
 <div class="px-3 py-1.5 border-b border-surface1 flex items-center gap-1.5 text-xs flex-shrink-0 flex-wrap">
-  <span class="text-dim font-mono uppercase tracking-wider">presets</span>
+  <span class="text-dim text-[11px] select-none">Presets</span>
   {#if presetCtl.isShowingStarters}
-    <span class="text-[10px] text-dim italic font-mono" title="Built-in starter presets — save your own and these go away">starter</span>
+    <span class="text-[10px] text-dim italic" title="Built-in starter presets — save your own and these go away">starter</span>
   {/if}
   {#each presetCtl.visiblePresets as p (p.name)}
     {@const active = presetCtl.matches(p)}
@@ -45,9 +46,11 @@
       {/if}
     </span>
   {/each}
-  <button
+  <Button
+    variant="ghost"
+    size="sm"
     onclick={() => presetCtl.capture()}
     title="Save the current filters as a named preset"
-    class="px-2 py-0.5 text-dim hover:text-primary border border-dashed border-surface1 hover:border-primary rounded"
-  >+ save current</button>
+    class="border border-dashed border-surface1 hover:border-primary text-dim"
+  >+ save current</Button>
 </div>
