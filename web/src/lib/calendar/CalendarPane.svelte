@@ -3,8 +3,6 @@
   import { page } from '$app/stores';
   import { auth } from '$lib/stores/auth';
   import CalendarAgent from '$lib/calendar/CalendarAgent.svelte';
-  import RoutineProposalDrawer from '$lib/calendar/RoutineProposalDrawer.svelte';
-  import { createRoutineAICtl } from '$lib/calendar/calendarRoutineAI.svelte';
   import { EVENT_TYPES } from '$lib/calendar/eventTypes';
   import { toast } from '$lib/components/toast';
   import { createCalendarViewState } from '$lib/calendar/calendarViewState.svelte';
@@ -73,25 +71,6 @@
   // and the loadNativeEvents function moved into dataCtl.
   let agentOpen = $state(false);
 
-  // Daily Routine AI — opens the RoutineProposalDrawer and triggers a
-  // streaming proposal for today. State + apply lifecycle lives in
-  // routineCtl; the drawer is a pure render surface.
-  let routineDrawerOpen = $state(false);
-  const routineCtl = createRoutineAICtl({
-    onApplied: async () => {
-      await dataCtl.load();
-      await dataCtl.loadNativeEvents();
-    }
-  });
-  function openRoutineAI() {
-    // Two right-side drawers can't share screen real-estate cleanly.
-    // Close CalendarAgent before opening the routine drawer so the
-    // user sees one focused surface at a time.
-    agentOpen = false;
-    routineDrawerOpen = true;
-    void routineCtl.propose();
-  }
-
   // Detail drawer state + clickEvent router live in calendarDetail.
   // clickEvent routes goal_target → /goals, meal_slot → toggle done,
   // everything else → open the EventDetail drawer + publish to
@@ -129,14 +108,13 @@
 
   // Mobile detection moved to the mediaQuery store + $effect above.
 
-  // ?plan / ?project / ?agent / ?routineAi URL intents — applied once
-  // on mount. See calendarUrlIntents.ts for what each param does.
+  // ?plan / ?project / ?agent URL intents — applied once on mount.
+  // See calendarUrlIntents.ts for what each param does.
   onMount(() =>
     applyCalendarUrlIntents({
       viewCtl,
       filterCtl,
-      openAgent: () => { routineDrawerOpen = false; agentOpen = true; },
-      openRoutineAI
+      openAgent: () => (agentOpen = true)
     })
   );
 
@@ -213,7 +191,7 @@
     viewCtl,
     dlgCtl,
     detCtl,
-    openAgent: () => { routineDrawerOpen = false; agentOpen = true; }
+    openAgent: () => (agentOpen = true)
   });
   const onKeydown = kbCtl.onKeydown;
   const { onTouchStart, onTouchEnd } = createCalendarSwipe(viewCtl);
@@ -496,7 +474,6 @@
         dlgCtl.unifiedKind = 'event';
         dlgCtl.unifiedOpen = true;
       }}
-      onPlanDay={openRoutineAI}
     />
 
     <!-- AI inline panels (Find Free Time / Day Insight / Plan My Week)
@@ -811,14 +788,5 @@
   knownProjects={dataCtl.allProjects.map((p) => p.name)}
   onClose={() => (agentOpen = false)}
   onChanged={() => { void dataCtl.load(); void dataCtl.loadNativeEvents(); }}
-/>
-
-<!-- Daily Routine AI — rewrites today's plan + proposes event
-     mutations. Opens via the "Plan my day" button in the toolbar
-     and the ?routineAi=1 URL intent. -->
-<RoutineProposalDrawer
-  open={routineDrawerOpen}
-  ctl={routineCtl}
-  onClose={() => (routineDrawerOpen = false)}
 />
 

@@ -315,12 +315,6 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/calendar", s.handleCalendar)
 		r.Get("/api/v1/calendar/sources", s.handleListCalendarSources)
 		r.Patch("/api/v1/calendar/sources", s.handlePatchCalendarSources)
-		// Daily Routine AI — streams a proposed rewrite of today's
-		// daily plan + a list of native-event mutations. Apply is a
-		// separate POST so the user can edit-then-apply (or discard)
-		// from the preview drawer. Phase 2 of the workspace OS arc.
-		r.Post("/api/v1/calendar/routine-proposal", s.handleCalendarRoutineProposal)
-		r.Post("/api/v1/calendar/apply-routine", s.handleCalendarApplyRoutine)
 
 		// Local writable ICS calendars under <vault>/calendars/. Remote
 		// subscriptions (any .ics outside that dir) stay read-only — see
@@ -736,15 +730,6 @@ func (s *Server) Handler() http.Handler {
 
 		r.Get("/api/v1/dashboard", s.handleGetDashboard)
 		r.Put("/api/v1/dashboard", s.handlePutDashboard)
-
-		// Workspace layouts — the named split-tree layouts the web
-		// shell surfaces in its pills. Mirrors the frontend store
-		// (web/src/lib/workspace/workspaceStore.svelte.ts) to
-		// <vault>/.granit/workspaces.json so a layout tuned on one
-		// device follows the user to phone + laptop. Opaque blob —
-		// schema lives in the client.
-		r.Get("/api/v1/workspaces", s.handleGetWorkspaces)
-		r.Put("/api/v1/workspaces", s.handlePutWorkspaces)
 		// Saved layout presets — focus / morning / shutdown switcher.
 		// The layouts catalogue lives inside the same dashboard config
 		// file; switching activates a named layout's widgets.
