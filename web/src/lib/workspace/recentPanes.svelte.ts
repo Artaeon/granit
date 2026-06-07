@@ -1,15 +1,21 @@
 // Recent-panes MRU. Tracks the last N paneKinds the user navigated
-// into (via workspace pane-set, route navigation, or palette pick).
-// Persists per-device to localStorage so the list survives reloads.
-// Not synced across devices — a follow-up feature, intentionally out
-// of scope here.
+// into (via workspace pane-set or palette pick). Persists per-device
+// to localStorage so the list survives reloads. Not synced across
+// devices — a follow-up feature, intentionally out of scope here.
 //
-// Setter-side persistence: we write on each mutation rather than
-// wiring a $effect, because $effect requires a component / root
-// setup context that's not guaranteed when this module is first
-// imported by a non-Svelte caller. Mirrors the safe-pattern used in
-// notePinAction.svelte.ts — plain object with getters reading a
-// $state variable, no auto-store-subscription tricks.
+// IMPORTANT: this used to declare `let recent = $state(loadInitial())`
+// at module top-level. Module-level $state in production bundles can
+// hit a TDZ ReferenceError ("Cannot access 'G' before initialization")
+// when concatenated module init runs before the Svelte 5 runtime
+// finishes binding. Same failure mode as the $isMobile bug.
+//
+// The replacement is a plain TypeScript variable + getter. Consumers
+// (workspaceCommands.ts) only read the list synchronously when the
+// palette is opened, so no reactivity is actually needed — every
+// palette open already runs after every push().
+//
+// The file stays a .svelte.ts so the import path `./recentPanes.svelte`
+// resolves without churn at every call site.
 
 import { loadStored, saveStored } from '$lib/util/storage';
 import type { PaneKind } from './paneRegistry';
@@ -23,7 +29,7 @@ function loadInitial(): PaneKind[] {
   return raw.filter((x): x is string => typeof x === 'string') as PaneKind[];
 }
 
-let recent = $state<PaneKind[]>(loadInitial());
+let recent: PaneKind[] = loadInitial();
 
 export const recentPanes = {
   /** MRU-ordered: index 0 is the most recently opened pane. */
@@ -36,8 +42,8 @@ export const recentPanes = {
     recent = [kind, ...recent.filter((k) => k !== kind)].slice(0, MAX_RECENT);
     saveStored(STORE_KEY, recent);
   },
-  /** Wipe the MRU. Used by tests + a possible future "clear recents"
-   *  command. */
+  /** Wipe the MRU. Reserved for tests + a possible future
+   *  "clear recents" command. */
   clear(): void {
     recent = [];
     saveStored(STORE_KEY, recent);
