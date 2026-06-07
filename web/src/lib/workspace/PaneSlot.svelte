@@ -74,12 +74,21 @@
   const EDGE_THRESHOLD = 0.75;
   type DropRegion = 'center' | 'right' | 'bottom';
   let dropRegion = $state<DropRegion | null>(null);
+  // Source-drag visual feedback. When true, the pane fades to ~40%
+  // opacity so the user sees where the content is moving FROM.
+  // Mirrors VSCode's drag-source treatment. Flips back on dragend
+  // (always fires after drop/cancel, including drop outside).
+  let dragging = $state(false);
 
   function onDragStart(e: DragEvent) {
     if (!leafId || !e.dataTransfer) return;
     e.dataTransfer.setData(DRAG_MIME_LEAF, leafId);
     e.dataTransfer.setData(DRAG_MIME_PANE, pane);
     e.dataTransfer.effectAllowed = 'move';
+    dragging = true;
+  }
+  function onDragEnd() {
+    dragging = false;
   }
   function regionFor(e: DragEvent, rect: DOMRect): DropRegion {
     const rightFraction = (e.clientX - rect.left) / rect.width;
@@ -133,14 +142,17 @@
 
 <div
   onpointerdowncapture={() => onFocus?.()}
+  ondragstart={onDragStart}
+  ondragend={onDragEnd}
   ondragover={onDragOver}
   ondragleave={onDragLeave}
   ondrop={onDrop}
-  class="relative flex flex-col h-full min-h-0 border rounded overflow-hidden bg-base transition-colors {focused ? 'border-primary' : 'border-surface1'}"
+  class="relative flex flex-col h-full min-h-0 border rounded overflow-hidden bg-base transition-all
+    {focused ? 'border-primary' : 'border-surface1'}
+    {dragging ? 'opacity-40' : ''}"
 >
   <header
     draggable={leafId ? 'true' : undefined}
-    ondragstart={onDragStart}
     class="flex items-center gap-1.5 px-2 py-1 border-b text-xs flex-shrink-0 transition-colors
       {focused ? 'border-primary bg-surface0' : 'border-surface1 bg-surface0'}
       {leafId ? 'cursor-grab active:cursor-grabbing' : ''}"
