@@ -35,6 +35,16 @@
   import { createFrequencyEditCtl } from '$lib/habits/habitsFrequencyEdit.svelte';
   import HabitReminderBadge from '$lib/components/habits/HabitReminderBadge.svelte';
   import HabitFrequencyPicker from '$lib/components/habits/HabitFrequencyPicker.svelte';
+  // Archive, templates, bulk-select. The archive controller toggles
+  // the "Show archived" section at the bottom; templates spins up
+  // pre-curated habit sets via createHabit; bulk-select gives
+  // multi-archive / set-category / add-tag fan-out.
+  import { createArchiveCtl } from '$lib/habits/habitsArchive.svelte';
+  import { createTemplatesDialogCtl } from '$lib/habits/habitsTemplatesDialog.svelte';
+  import { createBulkSelectCtl } from '$lib/habits/habitsBulkSelect.svelte';
+  import HabitsArchiveSection from '$lib/components/habits/HabitsArchiveSection.svelte';
+  import HabitsTemplatesDialog from '$lib/components/habits/HabitsTemplatesDialog.svelte';
+  import HabitsBulkActionBar from '$lib/components/habits/HabitsBulkActionBar.svelte';
 
   // /habits — three view modes (Today / Week / List / Heatmap) over
   // the same 90-day window. Sort + insight (best day of week) work
@@ -138,12 +148,30 @@
   const tagFilterCtl = createTagFilterCtl({
     getHabits: () => dataCtl.data?.habits ?? []
   });
+  // Archive, templates, and bulk-select controllers. Declared before
+  // visibleHabits so the archive filter can read showArchived. The
+  // archive section at the bottom of the page reads data.habits
+  // directly (it wants the archived subset, which visibleHabits
+  // excludes by default).
+  const archiveCtl = createArchiveCtl({ reload: () => dataCtl.load() });
+  const templatesDialogCtl = createTemplatesDialogCtl({ reload: () => dataCtl.load() });
+  const bulkSelectCtl = createBulkSelectCtl({
+    getHabits: () => dataCtl.data?.habits ?? [],
+    reload: () => dataCtl.load()
+  });
+
   // visibleHabits is what every render branch iterates instead of
   // sortedHabits directly. sortedHabits is preserved as the input to
   // the filter pipeline so the existing sort comparator keeps owning
-  // ordering inside each (sub)bucket.
+  // ordering inside each (sub)bucket. Archived habits are excluded
+  // from the main views regardless of the Show-archived toggle —
+  // that toggle controls only the dedicated archive section below.
   const visibleHabits = $derived(
-    sortedHabits.filter((h) => categoryFilterCtl.matches(h) && tagFilterCtl.matches(h))
+    sortedHabits.filter((h) =>
+      !h.archived &&
+      categoryFilterCtl.matches(h) &&
+      tagFilterCtl.matches(h)
+    )
   );
   const groupingCtl = createGroupingCtl({ getHabits: () => visibleHabits });
 
@@ -204,6 +232,27 @@
             {bulkBusy ? '…' : `Tick all (${undoneToday.length})`}
           </button>
         {/if}
+        <!-- POWERUI controls: bulk-select, templates, archive toggle.
+             Kept text-only so the header doesn't grow icon clutter. -->
+        <label class="text-[11px] text-dim inline-flex items-center gap-1 px-2 py-1 rounded border border-surface1 hover:text-text cursor-pointer">
+          <input type="checkbox" bind:checked={archiveCtl.showArchived} class="accent-primary" />
+          archived
+        </label>
+        <button
+          type="button"
+          onclick={() => templatesDialogCtl.openDialog()}
+          class="px-2 py-1 text-[11px] rounded border border-surface1 text-subtext hover:text-text hover:bg-surface1"
+          title="apply a curated habit template"
+        >templates</button>
+        <button
+          type="button"
+          onclick={() => bulkSelectCtl.toggleActive()}
+          class="px-2 py-1 text-[11px] rounded border border-surface1 text-subtext hover:text-text hover:bg-surface1"
+          class:bg-primary={bulkSelectCtl.active}
+          class:text-on-primary={bulkSelectCtl.active}
+          class:border-primary={bulkSelectCtl.active}
+          title={bulkSelectCtl.active ? 'leave bulk-select mode' : 'enter bulk-select mode'}
+        >{bulkSelectCtl.active ? `selected · ${bulkSelectCtl.count}` : 'select'}</button>
         <button
           type="button"
           onclick={() => (addCtl.addOpen = !addCtl.addOpen)}
@@ -847,5 +896,21 @@
       {/snippet}
       <HabitsGroupedView ctl={groupingCtl} card={groupedHabitCard} />
     {/if}
+
+    <!-- Archive section. Renders below all view modes when the
+         "archived" toggle is on; the component self-filters down
+         to archived habits and stays hidden when the vault has
+         none. Muted styling so it doesn't fight the active list. -->
+    {#if archiveCtl.showArchived && data}
+      <HabitsArchiveSection habits={data.habits} archive={archiveCtl} />
+    {/if}
   </div>
 </div>
+
+<!-- Top-level overlays. The templates dialog renders its own
+     modal scrim; the bulk action bar pins to the bottom edge when
+     active. Both read straight from their controllers. -->
+<HabitsTemplatesDialog ctl={templatesDialogCtl} />
+{#if bulkSelectCtl.active}
+  <HabitsBulkActionBar ctl={bulkSelectCtl} />
+{/if}
