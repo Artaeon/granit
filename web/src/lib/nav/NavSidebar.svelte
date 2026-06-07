@@ -25,7 +25,6 @@
   import NavIcon from '$lib/components/NavIcon.svelte';
   import NavItem from './NavItem.svelte';
   import NavFooter from './NavFooter.svelte';
-  import ProfileSwitcher from './ProfileSwitcher.svelte';
   import {
     sections,
     today,
@@ -43,7 +42,6 @@
   import { sabbath, SABBATH_HIDE_MODULES } from '$lib/stores/sabbath';
   import { modulesStore } from '$lib/stores/modules';
   import { openAIOverlay } from '$lib/stores/ai-overlay';
-  import { aiStatus } from '$lib/stores/ai-status';
   import { rightPaneStore, toggleRightPane } from '$lib/stores/rightPane';
 
   type Props = {
@@ -145,19 +143,15 @@
 
 <div class="flex flex-col h-full">
   <!-- Brand area + profile chip + settings shortcut. The earlier
-       layout buried profile + settings in the meta footer at the
-       bottom of the rail; user feedback (2026-05-25) wanted them
-       moved up since active workflow context belongs at the same
-       altitude as app identity, and settings is reached often
-       enough that a top-row icon beats a footer row. Compact mode
-       stacks: logo → profile chip → settings icon. -->
-  <!-- Brand row. min-w-0 + overflow-hidden on the parent flex lets
-       shrinkable children (ProfileSwitcher chip text) collapse
-       below their natural width instead of pushing fixed icons
-       past the sidebar's right edge. The "Granit" wordmark dropped
-       in expanded mode — the logo + the aria-label carry the brand
-       identity and the wordmark was the item with the most cost
-       for the least value. See feedback 2026-05-29. -->
+       settings is reached often enough that a top-row icon beats a
+       footer row. Compact mode stacks: logo → right-pane toggle →
+       settings icon. (The profile switcher chip was removed — it was
+       buggy and only ever showed with 2+ profiles.) -->
+  <!-- Brand row. min-w-0 + overflow-hidden lets shrinkable children
+       collapse below their natural width instead of pushing fixed
+       icons past the sidebar's right edge. The "Granit" wordmark is
+       dropped in expanded mode — the logo + aria-label carry the
+       brand identity. See feedback 2026-05-29. -->
   <div class="border-b border-surface1 min-w-0 overflow-hidden {isCompact ? 'px-1.5 py-1.5 flex flex-col items-center gap-1' : 'px-2.5 py-1.5 flex items-center gap-1.5'}">
     {#if isCompact}
       <div class="w-8 h-8 rounded bg-surface1 text-primary flex items-center justify-center" aria-label="Granit">
@@ -175,7 +169,6 @@
           <line x1="15" y1="4" x2="15" y2="20"/>
         </svg>
       </button>
-      <ProfileSwitcher isCompact={true} />
       <a
         href="/settings"
         onclick={navigate}
@@ -201,9 +194,7 @@
           <line x1="15" y1="4" x2="15" y2="20"/>
         </svg>
       </button>
-      <div class="flex-1 min-w-0 flex justify-end">
-        <ProfileSwitcher isCompact={false} />
-      </div>
+      <div class="flex-1 min-w-0"></div>
       <a
         href="/settings"
         onclick={navigate}
@@ -244,9 +235,9 @@
     <button
       onclick={() => { openAIOverlay(); navigate(); }}
       title={isCompact ? ($sabbath ? 'AI paused — Sabbath' : 'Ask AI (⌘J)') : undefined}
-      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1.5' : 'gap-2.5 px-2.5 py-1.5'} rounded text-[13px] mt-0.5 mb-2 transition-colors {$sabbath ? 'bg-surface0 text-dim' : 'bg-primary text-on-primary hover:opacity-90 font-medium'}"
+      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1' : 'gap-2.5 px-2.5 py-1'} rounded text-[13px] mt-0.5 mb-1.5 transition-colors {$sabbath ? 'text-dim hover:bg-surface0' : 'text-subtext hover:bg-surface0 hover:text-text'}"
     >
-      <span class="relative flex-shrink-0">
+      <span class="relative flex-shrink-0 {$sabbath ? '' : 'text-primary'}">
         <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>
           <circle cx="12" cy="12" r="3.5" fill="currentColor"/>
@@ -261,30 +252,10 @@
           <span class="text-[10px] text-warning font-medium">Sabbath</span>
         {:else}
           <span class="flex-1 text-left">Ask AI</span>
-          <kbd class="text-[10px] font-mono px-1.5 py-0.5 rounded border border-on-primary text-on-primary opacity-70">⌘J</kbd>
+          <kbd class="text-[10px] font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded text-dim">⌘J</kbd>
         {/if}
       {/if}
     </button>
-
-    {#if !isCompact && !$sabbath && $aiStatus}
-      <!-- AI model indicator — tiny pill below the Ask AI button
-           showing the active provider's model so the user knows
-           which backend the next click will pay for. Reads from
-           the shared aiStatus store ($lib/stores/ai-status) so
-           settings changes propagate without a sidebar refetch.
-           Hidden during Sabbath (already gates the AI button) and
-           in compact mode (the icon-only rail has no room for a
-           model name). Click → /settings/ai for provider switch. -->
-      <a
-        href="/settings"
-        onclick={navigate}
-        class="-mt-2 mb-3 px-3 py-1 text-[10px] font-mono text-dim hover:text-subtext transition-colors flex items-center gap-1.5 min-w-0"
-        title="Default AI backend — click to change in Settings"
-      >
-        <span class="w-1.5 h-1.5 rounded-full bg-success flex-shrink-0" aria-hidden="true"></span>
-        <span class="truncate">{$aiStatus.global_model || $aiStatus.global_provider || 'AI ready'}</span>
-      </a>
-    {/if}
 
     <!-- Pinned items — user-curated rail above Today. Hidden when
          empty so first-time users don't see a phantom group. The
