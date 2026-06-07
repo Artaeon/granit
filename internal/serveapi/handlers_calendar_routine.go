@@ -26,13 +26,17 @@ package serveapi
 //     handlers_morning.go so the section parser stays in one place.
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/artaeon/granit/internal/agentruntime"
+	"github.com/artaeon/granit/internal/aiprefs"
 	"github.com/artaeon/granit/internal/deadlines"
 	"github.com/artaeon/granit/internal/goals"
 	"github.com/artaeon/granit/internal/granitmeta"
@@ -112,24 +116,182 @@ func (s *Server) handleCalendarRoutineProposal(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Snapshot the day. Cheap; reads .granit/*.json + the daily note
-	// + the live task store. We include it in the stub response so the
-	// frontend can render the context summary even before the AI call
-	// is wired in. The next commit replaces the stub rationale with a
-	// real model response.
-	snap := s.buildRoutineSnapshot(date)
-	rationale := fmt.Sprintf(
-		"Stub proposal — %d events, %d tasks, %d active goals, %d habits, %d deadlines in scope. Real AI call lands in a follow-up commit.",
-		len(snap.Events), len(snap.Tasks), len(snap.Goals), len(snap.Habits), len(snap.Deadlines),
-	)
-	stub := routineProposal{
-		Rationale: rationale,
-		DailyPlan: "## Daily Plan — " + date + "\n\n_(stub — no real plan yet)_\n",
-		EventOps:  []routineEventOp{},
+	// Consent gate — Daily Briefing is the natural feature flag for
+	// "the AI rewrites the user's day", matching the morning-routine
+	// posture. Users opt in via Settings → AI.
+	prefs, _ := aiprefs.Load(s.cfg.Vault.Root)
+	fcfg, fok := prefs.Features[aiprefs.FeatureDailyBriefing]
+	if !fok || !fcfg.Enabled {
+		send("error", mustJSON(map[string]string{"message": "feature \"daily_briefing\" is disabled in AI preferences"}))
+		return
 	}
-	send("proposal", mustJSON(stub))
+
+	// Snapshot the day. Cheap; reads .granit/*.json + the daily note
+	// + the live task store. The snapshot becomes the AI's user prompt.
+	snap := s.buildRoutineSnapshot(date)
+
+	cfgFile := resolveLLMConfig(s.cfg.Vault.Root, fcfg.Provider, prefs.DefaultProvider)
+	llm, err := agentruntime.NewLLM(cfgFile)
+	if err != nil {
+		send("error", mustJSON(map[string]string{"message": err.Error()}))
+		return
+	}
+	if hint := preflightLLM(llm); hint != "" {
+		send("error", mustJSON(map[string]string{"message": hint}))
+		return
+	}
+
+	systemPrompt := routineProposalSystemPrompt
+	snapJSON, _ := json.Marshal(snap)
+	userPrompt := fmt.Sprintf("Today's context (JSON):\n\n```json\n%s\n```\n\nReturn the proposal as a single JSON object matching the schema in your instructions.", string(snapJSON))
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+
+	messages := []agentruntime.ChatMessage{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
+
+	// Stream the model output and re-emit partial proposals as we go.
+	// We accumulate raw text and try to parse a complete JSON object on
+	// every chunk boundary; a successful parse replaces the current
+	// preview. Partial / malformed objects are skipped silently — the
+	// final flush carries the canonical result.
+	var (
+		buf      strings.Builder
+		lastEmit string
+		runErr   error
+	)
+
+	tryEmit := func() {
+		text := buf.String()
+		proposal, ok := tryParseRoutineProposal(text)
+		if !ok {
+			return
+		}
+		out := mustJSON(proposal)
+		if out == lastEmit {
+			return
+		}
+		lastEmit = out
+		send("proposal", out)
+	}
+
+	if streamer, ok := llm.(agentruntime.ChatStreamer); ok {
+		runErr = streamer.ChatStream(ctx, messages, func(chunk string) {
+			buf.WriteString(chunk)
+			tryEmit()
+		})
+	} else if chatter, ok := llm.(agentruntime.Chatter); ok {
+		var reply string
+		reply, runErr = chatter.Chat(ctx, messages)
+		buf.WriteString(reply)
+		tryEmit()
+	} else {
+		runErr = fmt.Errorf("configured LLM does not support chat")
+	}
+
+	if runErr != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			runErr = fmt.Errorf("cancelled by user")
+		} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			runErr = fmt.Errorf("timed out")
+		}
+		send("error", mustJSON(map[string]string{"message": runErr.Error()}))
+		return
+	}
+
+	// Final attempt to surface a canonical proposal if streaming
+	// didn't already emit one (e.g. the model padded the JSON with
+	// prose that made every intermediate parse fail).
+	if lastEmit == "" {
+		if proposal, ok := tryParseRoutineProposal(buf.String()); ok {
+			send("proposal", mustJSON(proposal))
+		} else {
+			send("error", mustJSON(map[string]string{"message": "AI returned no parseable proposal"}))
+			return
+		}
+	}
 	send("done", `{"ok":true}`)
 }
+
+// routineProposalSystemPrompt is the model's instruction. We constrain
+// the output to a single JSON object, list the exact schema, and pin the
+// rules that make the proposal safe to apply (no ICS writes, no
+// invented IDs).
+const routineProposalSystemPrompt = `You are a calendar planner inside the user's personal vault (granit). The user has just asked you to rewrite their daily plan for the given date.
+
+Return STRICTLY one JSON object — no prose, no fences, no commentary — matching this schema:
+
+{
+  "rationale": "1-2 sentences explaining the shape of the day you're proposing",
+  "dailyPlan": "<markdown body for the ## Daily Plan section, WITHOUT the leading '## Daily Plan' header>",
+  "eventOps": [
+    { "op": "create", "event": { "title": "string", "date": "YYYY-MM-DD", "startTime": "HH:MM", "endTime": "HH:MM", "projectId": "optional string" } },
+    { "op": "update", "eventId": "<existing id from the context>", "patch": { "startTime": "HH:MM", "endTime": "HH:MM", "title": "optional", "projectId": "optional" } },
+    { "op": "delete", "eventId": "<existing id from the context>" }
+  ]
+}
+
+Rules:
+- ONLY mutate native granit events. The IDs in the context are the only ones you may reference for update / delete. NEVER invent an event ID.
+- All times are HH:MM 24-hour local time. All dates are YYYY-MM-DD.
+- Prefer small, conservative changes. If the existing day already looks reasonable, return an empty eventOps and a daily plan that just narrates it.
+- The dailyPlan body should mention the goal, the top tasks, and the habits — match the morning-routine markdown style ("### Today's Goal", "### Tasks", "### Habits", "### Thoughts" when relevant).
+- Do NOT emit ops on goals, deadlines, tasks, or habits. They are context only.
+- Respect existing project_id and kind on updated events unless the user explicitly asked you to re-classify.
+- Return at most 10 eventOps.`
+
+// tryParseRoutineProposal extracts a JSON object from raw model output
+// and decodes it into a routineProposal. Tolerates leading prose / code
+// fences by walking from the first '{' and balancing braces. Returns
+// (zero, false) when no complete object is found yet — the streaming
+// loop calls this on every chunk and only emits when the parse
+// succeeds, so partial output never reaches the client.
+func tryParseRoutineProposal(s string) (routineProposal, bool) {
+	start := strings.IndexByte(s, '{')
+	if start < 0 {
+		return routineProposal{}, false
+	}
+	depth := 0
+	inStr := false
+	escape := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if escape {
+			escape = false
+			continue
+		}
+		if inStr {
+			if c == '\\' {
+				escape = true
+				continue
+			}
+			if c == '"' {
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				var p routineProposal
+				if err := json.Unmarshal([]byte(s[start:i+1]), &p); err != nil {
+					return routineProposal{}, false
+				}
+				return p, true
+			}
+		}
+	}
+	return routineProposal{}, false
+}
+
 
 // routineSnapshot is the AI prompt's context section. Trimmed shapes
 // (we drop everything the AI doesn't need) so the prompt stays bounded
