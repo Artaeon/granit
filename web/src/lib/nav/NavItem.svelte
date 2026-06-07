@@ -86,7 +86,7 @@
   }}
   title={isCompact ? (badge ? `${item.label} — ${badge.label}` : item.label) : undefined}
   aria-label={badge ? `${item.label}, ${badge.label}` : item.label}
-  class="group relative flex items-center {isCompact ? 'justify-center px-2 py-1.5' : 'gap-2.5 px-2.5 py-1'} rounded text-[13px] transition-colors
+  class="group relative flex items-center {isCompact ? 'justify-center px-2 py-1.5' : 'gap-2 px-2 py-0.5'} rounded text-[13px] transition-colors
     {active
       ? 'text-primary bg-surface1 font-medium'
       : 'text-subtext hover:bg-surface0 hover:text-text focus-visible:bg-surface0 focus-visible:text-text focus-visible:outline-none'}"
@@ -100,7 +100,7 @@
     <span class="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-primary" aria-hidden="true"></span>
   {/if}
   <span class="relative flex-shrink-0">
-    <NavIcon name={item.icon} class="w-5 h-5 flex-shrink-0" />
+    <NavIcon name={item.icon} class="{isCompact ? 'w-5 h-5' : 'w-[18px] h-[18px]'} flex-shrink-0" />
     {#if isCompact && badge}
       <!-- Compact-mode badge sits as a corner overlay on the icon
            so the rail can still surface alerts without labels. The

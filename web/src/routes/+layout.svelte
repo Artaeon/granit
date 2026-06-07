@@ -651,7 +651,7 @@
            compact toggle in the footer rail. Both states animate via
            the transition class so the resize feels intentional. -->
       <aside
-      class="hidden md:flex bg-mantle border-r border-surface1 flex-shrink-0 transition-[width] duration-150 {$sidebarCompact ? 'md:w-12' : 'md:w-48 lg:w-52'}"
+      class="hidden md:flex bg-mantle border-r border-surface1 flex-shrink-0 transition-[width] duration-150 {$sidebarCompact ? 'md:w-12' : 'md:w-44 lg:w-48'}"
     >
       <NavSidebar
         isCompact={$sidebarCompact}

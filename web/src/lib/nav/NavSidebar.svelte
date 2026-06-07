@@ -214,7 +214,7 @@
     <button
       onclick={() => { onQuickJump(); navigate(); }}
       title={isCompact ? 'Quick jump (⌘K)' : undefined}
-      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1' : 'gap-2.5 px-2.5 py-1'} rounded text-xs text-dim hover:bg-surface0 hover:text-subtext transition-colors"
+      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1' : 'gap-2 px-2 py-0.5'} rounded text-xs text-dim hover:bg-surface0 hover:text-subtext transition-colors"
     >
       <NavIcon name="search" class="w-4 h-4 flex-shrink-0" />
       {#if !isCompact}
@@ -235,7 +235,7 @@
     <button
       onclick={() => { openAIOverlay(); navigate(); }}
       title={isCompact ? ($sabbath ? 'AI paused — Sabbath' : 'Ask AI (⌘J)') : undefined}
-      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1' : 'gap-2.5 px-2.5 py-1'} rounded text-[13px] mt-0.5 mb-1.5 transition-colors {$sabbath ? 'text-dim hover:bg-surface0' : 'text-subtext hover:bg-surface0 hover:text-text'}"
+      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1' : 'gap-2 px-2 py-0.5'} rounded text-[13px] mt-0.5 mb-1.5 transition-colors {$sabbath ? 'text-dim hover:bg-surface0' : 'text-subtext hover:bg-surface0 hover:text-text'}"
     >
       <span class="relative flex-shrink-0 {$sabbath ? '' : 'text-primary'}">
         <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
