@@ -98,7 +98,11 @@
   }: Props = $props();
 </script>
 
-<header class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle sticky top-0 z-20">
+<!-- @container: the header's controls reveal/hide based on the EDITOR
+     column width (not the viewport), so a narrow editor (notes-list
+     sidebar open, split pane, right rail) progressively drops secondary
+     actions instead of crushing the title to "W..". -->
+<header class="@container flex items-center gap-1 px-2 sm:px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle sticky top-0 z-20">
   <!-- Hidden on mobile: the layout's top-bar already shows a back
        arrow to /notes for any subpath, so a second one here pushes
        the view-mode toggle (and save button) off the right edge on
@@ -106,7 +110,7 @@
   <a
     href="/notes"
     aria-label="back to notes"
-    class="hidden md:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0"
+    class="hidden @lg:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0"
   >
     <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" />
@@ -116,7 +120,7 @@
     onclick={onOpenTreeDrawer}
     aria-label="vault tree"
     title="vault tree"
-    class="lg:hidden w-9 h-9 flex items-center justify-center text-subtext hover:bg-surface0 rounded flex-shrink-0"
+    class="@lg:hidden w-9 h-9 flex items-center justify-center text-subtext hover:bg-surface0 rounded flex-shrink-0"
   >
     <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M3 6h18M3 12h18M3 18h18" stroke-linecap="round" />
@@ -138,13 +142,13 @@
          shows up to one row's worth so the buttons on the
          right never get pushed off the viewport. -->
     <h1
-      class="text-base sm:text-lg font-semibold text-text truncate"
+      class="text-base @lg:text-lg font-semibold text-text truncate"
       title={note.title}
       aria-label={note.title}
     >
       {note.title}
       {#if dailyLabel}
-        <span class="ml-2 text-xs font-normal text-dim uppercase tracking-wider">{dailyLabel}</span>
+        <span class="ml-2 text-xs font-normal text-dim">{dailyLabel}</span>
       {/if}
     </h1>
     <!-- Folder breadcrumbs — each segment is a clickable filter
@@ -174,7 +178,7 @@
         >{c.label}</a>
       {/each}
       {#if (note.frontmatter as Record<string, unknown>)?.tags && Array.isArray((note.frontmatter as Record<string, unknown>).tags)}
-        <span class="ml-2 hidden sm:flex items-center gap-1 flex-wrap min-w-0">
+        <span class="ml-2 hidden @3xl:flex items-center gap-1 flex-wrap min-w-0">
           {#each ((note.frontmatter as Record<string, unknown>).tags as string[]).slice(0, 6) as t}
             <a
               href="/notes?tag={encodeURIComponent(t)}"
@@ -197,7 +201,7 @@
       onclick={() => onGotoDaily('today')}
       aria-label="today"
       title="jump to today"
-      class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-primary hidden md:inline-flex flex-shrink-0"
+      class="px-3 py-1.5 text-xs bg-surface0 border border-surface1 rounded text-subtext hover:border-primary hover:text-primary hidden @2xl:inline-flex flex-shrink-0"
     >today</button>
   {/if}
   <button
@@ -205,12 +209,12 @@
     disabled={pinBusy}
     aria-label={pinned.has(note.path) ? 'unpin' : 'pin'}
     title={pinned.has(note.path) ? 'unpin from dashboard' : 'pin to dashboard'}
-    class="w-9 h-9 flex items-center justify-center rounded text-lg disabled:opacity-50
+    class="w-9 h-9 hidden @lg:flex items-center justify-center rounded text-lg disabled:opacity-50 flex-shrink-0
       {pinned.has(note.path) ? 'text-warning' : 'text-dim hover:text-warning'}"
   >
     {pinned.has(note.path) ? '★' : '☆'}
   </button>
-  <span class="text-xs text-dim hidden lg:inline">
+  <span class="text-xs text-dim hidden @3xl:inline flex-shrink-0 whitespace-nowrap">
     {wordCount} words{#if wordCount >= 50} · {readingMinutes} min read{#if viewMode === 'preview' && previewProgress > 0.05 && previewProgress < 0.95} · {Math.max(1, Math.ceil(readingMinutes * (1 - previewProgress)))} left{/if}{/if}
   </span>
   <!-- AI-draft back-link chip — surfaces for notes saved
@@ -228,13 +232,13 @@
        so the streak chip doesn't squeeze the title row on narrow
        viewports; the badge still renders on the dashboard and
        at sm+. -->
-  <span class="hidden lg:inline-flex">
+  <span class="hidden @4xl:inline-flex">
     <StreakBadge />
   </span>
   <!-- view-mode toggle: 3-button strip from md+ (when there's room
        for icon + tooltip), 2-button toggle below md so the header
        keeps its save button on-screen on phones. -->
-  <div class="hidden md:flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs">
+  <div class="hidden @xl:flex bg-surface0 border border-surface1 rounded overflow-hidden text-xs flex-shrink-0">
     {#each [{m: 'edit', l: 'edit', i: '✎'}, {m: 'split', l: 'split', i: '⊟'}, {m: 'preview', l: 'preview', i: '👁'}] as v}
       <button
         onclick={() => onSetViewMode(v.m as ViewMode)}
@@ -252,7 +256,7 @@
   <button
     onclick={() => onSetViewMode(viewMode === 'preview' ? 'edit' : 'preview')}
     aria-label={viewMode === 'preview' ? 'edit source' : 'show preview'}
-    class="md:hidden w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+    class="@xl:hidden w-9 h-9 flex items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
   >
     {viewMode === 'preview' ? '✎' : '👁'}
   </button>
@@ -279,7 +283,7 @@
     type="button"
     onclick={onDispatchAI}
     title="AI — Cmd-/ or type /ai in the editor"
-    class="w-9 h-9 flex items-center justify-center text-subtext hover:text-text hover:bg-surface0 rounded flex-shrink-0 text-[10px] font-mono uppercase tracking-wider"
+    class="w-9 h-9 hidden @2xl:flex items-center justify-center text-subtext hover:text-text hover:bg-surface0 rounded flex-shrink-0 text-[10px] font-mono uppercase tracking-wider"
   >AI</button>
   <!-- Research Mode — pins the AI overlay as a side rail
        seeded with this note's title + tags + leading excerpt,
@@ -293,7 +297,7 @@
     onclick={onOpenResearchMode}
     title="Research Mode — pin AI side-rail with this note as context"
     aria-label="open research mode"
-    class="hidden lg:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
+    class="hidden @4xl:flex w-9 h-9 items-center justify-center text-subtext hover:text-primary hover:bg-surface0 rounded flex-shrink-0 text-base"
   >
     <span aria-hidden="true">🔬</span>
   </button>
@@ -321,7 +325,7 @@
       onclick={onOpenHistory}
       title={`${versionCount} backup${versionCount === 1 ? '' : 's'} — click to browse`}
       aria-label={`${versionCount} backups`}
-      class="hidden sm:inline-flex items-center gap-1 px-2 h-8 rounded text-[11px] font-medium text-subtext hover:text-text hover:bg-surface0 transition-colors flex-shrink-0"
+      class="hidden @3xl:inline-flex items-center gap-1 px-2 h-8 rounded text-[11px] font-medium text-subtext hover:text-text hover:bg-surface0 transition-colors flex-shrink-0"
     >
       <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="9"/>
@@ -345,7 +349,7 @@
   <button
     onclick={onOpenInfoDrawer}
     aria-label="outline & backlinks"
-    class="xl:hidden w-9 h-9 flex items-center justify-center text-subtext hover:bg-surface0 rounded"
+    class="@4xl:hidden w-9 h-9 flex items-center justify-center text-subtext hover:bg-surface0 rounded flex-shrink-0"
   >
     <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M4 6h16M4 10h10M4 14h16M4 18h10" stroke-linecap="round" />
