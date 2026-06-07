@@ -56,36 +56,73 @@
 
   let entry = $derived(findPane(pane));
 
-  // Drag-and-drop header swap. VSCode-style: grab a pane's header,
-  // drag it onto another pane's header, the two contents swap. Uses
-  // a custom MIME type so the browser only treats granit headers as
-  // valid drop targets — text dragged from outside the app won't
-  // light up a target. Mobile clients fall through (touch doesn't
-  // fire native drag events) and use the palette swap commands.
-  const DRAG_MIME = 'application/x-granit-pane-leaf';
-  let dragOver = $state(false);
+  // Drag-and-drop. VSCode-style: grab a pane's header, drop on
+  // another pane. The drop region inside the target decides what
+  // happens:
+  //   center  → swap two leaves' contents (existing behaviour)
+  //   right   → split the target horizontally; new right pane gets
+  //             the dragged source's pane kind (source unchanged)
+  //   bottom  → split the target vertically; new bottom pane gets
+  //             the dragged source's pane kind (source unchanged)
+  // Uses custom MIME types so external text/file drags don't light
+  // up drop targets. Mobile clients fall through (touch doesn't fire
+  // native drag events) and use the palette swap/split commands.
+  const DRAG_MIME_LEAF = 'application/x-granit-pane-leaf';
+  const DRAG_MIME_PANE = 'application/x-granit-pane-kind';
+  // 25% margin on right + bottom edges — wide enough to hit
+  // comfortably without crowding the center swap zone.
+  const EDGE_THRESHOLD = 0.75;
+  type DropRegion = 'center' | 'right' | 'bottom';
+  let dropRegion = $state<DropRegion | null>(null);
+
   function onDragStart(e: DragEvent) {
     if (!leafId || !e.dataTransfer) return;
-    e.dataTransfer.setData(DRAG_MIME, leafId);
+    e.dataTransfer.setData(DRAG_MIME_LEAF, leafId);
+    e.dataTransfer.setData(DRAG_MIME_PANE, pane);
     e.dataTransfer.effectAllowed = 'move';
   }
+  function regionFor(e: DragEvent, rect: DOMRect): DropRegion {
+    const rightFraction = (e.clientX - rect.left) / rect.width;
+    const bottomFraction = (e.clientY - rect.top) / rect.height;
+    // Prefer the more "extreme" edge when both qualify (bottom-right
+    // corner). Bias slightly to the right edge for ties since most
+    // users drag horizontally and read right→left in dialect.
+    const rightExcess = rightFraction - EDGE_THRESHOLD;
+    const bottomExcess = bottomFraction - EDGE_THRESHOLD;
+    if (rightExcess > 0 && rightExcess >= bottomExcess && onSplitH) return 'right';
+    if (bottomExcess > 0 && onSplitV) return 'bottom';
+    return 'center';
+  }
   function onDragOver(e: DragEvent) {
-    if (!leafId || !onSwap || !e.dataTransfer) return;
-    if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+    if (!leafId || !e.dataTransfer) return;
+    if (!e.dataTransfer.types.includes(DRAG_MIME_LEAF)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    dragOver = true;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    dropRegion = regionFor(e, rect);
   }
-  function onDragLeave() {
-    dragOver = false;
+  function onDragLeave(e: DragEvent) {
+    // Only clear when leaving the outer slot — child elements can
+    // trigger dragleave as the cursor crosses their boundaries.
+    if (e.currentTarget === e.target) {
+      dropRegion = null;
+    }
   }
   function onDrop(e: DragEvent) {
-    dragOver = false;
-    if (!leafId || !onSwap || !e.dataTransfer) return;
-    const source = e.dataTransfer.getData(DRAG_MIME);
+    const region = dropRegion;
+    dropRegion = null;
+    if (!leafId || !e.dataTransfer) return;
+    const source = e.dataTransfer.getData(DRAG_MIME_LEAF);
+    const sourcePane = e.dataTransfer.getData(DRAG_MIME_PANE) as PaneKind;
     if (!source || source === leafId) return;
     e.preventDefault();
-    onSwap(source);
+    if (region === 'right' && onSplitH && sourcePane) {
+      onSplitH(sourcePane);
+    } else if (region === 'bottom' && onSplitV && sourcePane) {
+      onSplitV(sourcePane);
+    } else if (onSwap) {
+      onSwap(source);
+    }
   }
 
   // When the user clicks the split buttons, default the new pane to
@@ -96,17 +133,16 @@
 
 <div
   onpointerdowncapture={() => onFocus?.()}
-  class="flex flex-col h-full min-h-0 border rounded overflow-hidden bg-base transition-colors {focused ? 'border-primary' : 'border-surface1'}"
+  ondragover={onDragOver}
+  ondragleave={onDragLeave}
+  ondrop={onDrop}
+  class="relative flex flex-col h-full min-h-0 border rounded overflow-hidden bg-base transition-colors {focused ? 'border-primary' : 'border-surface1'}"
 >
   <header
     draggable={leafId ? 'true' : undefined}
     ondragstart={onDragStart}
-    ondragover={onDragOver}
-    ondragleave={onDragLeave}
-    ondrop={onDrop}
     class="flex items-center gap-1.5 px-2 py-1 border-b text-xs flex-shrink-0 transition-colors
       {focused ? 'border-primary bg-surface0' : 'border-surface1 bg-surface0'}
-      {dragOver ? 'ring-2 ring-inset ring-primary' : ''}
       {leafId ? 'cursor-grab active:cursor-grabbing' : ''}"
   >
     <PaneTypePicker {pane} {onChange} />
@@ -158,4 +194,18 @@
       <PaneComponent />
     {/if}
   </div>
+  <!-- Drop preview overlay. Shows during dragover; pointer-events-none
+       so the underlying pane still receives the dragover/leave/drop
+       events that drive the region calculation. -->
+  {#if dropRegion}
+    <div class="absolute inset-0 pointer-events-none z-10">
+      {#if dropRegion === 'right'}
+        <div class="absolute top-0 bottom-0 right-0 w-1/2 bg-primary/15 border-l-2 border-primary"></div>
+      {:else if dropRegion === 'bottom'}
+        <div class="absolute left-0 right-0 bottom-0 h-1/2 bg-primary/15 border-t-2 border-primary"></div>
+      {:else}
+        <div class="absolute inset-0 ring-2 ring-inset ring-primary bg-primary/5"></div>
+      {/if}
+    </div>
+  {/if}
 </div>
