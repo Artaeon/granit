@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import {
   createChatSessionManager,
   type ChatStreamHandlers,
+  type ChatStreamFn,
   type ChatSessionRefs,
   type PreludeBundle
 } from './chatSessionManager.svelte';
@@ -61,7 +62,10 @@ interface Capture {
  *  hands control back to the test (so the test can fire onChunk/
  *  onDone/onError at will). */
 function makeStreamStub(): {
-  fn: ReturnType<typeof vi.fn>;
+  // Both a vitest Mock (so tests read .mock.calls) AND a ChatStreamFn (so
+  // it's assignable where the manager expects the stream fn). vi.fn loses
+  // the impl signature to a generic Mock type, hence the intersection.
+  fn: ChatStreamFn & ReturnType<typeof vi.fn>;
   capture: Capture;
 } {
   const capture: Capture = {
@@ -89,7 +93,7 @@ function makeStreamStub(): {
       });
     }
   );
-  return { fn, capture };
+  return { fn: fn as unknown as ChatStreamFn & ReturnType<typeof vi.fn>, capture };
 }
 
 const emptyPrelude: PreludeBundle = {
@@ -428,7 +432,7 @@ describe('chatSessionManager', () => {
       ],
       quickTitle: 'Briefing',
       quickResult: 'old',
-      perTurnRagHits: { 1: [{ path: 'a.md', title: 'A', excerpt: '' }] }
+      perTurnRagHits: { 1: [{ path: 'a.md', title: 'A', excerpt: '', score: 1 }] }
     });
     const autoSave = vi.fn();
     const resetForClear = vi.fn();
@@ -513,7 +517,7 @@ describe('chatSessionManager', () => {
       refs,
       buildPrelude: async () => ({
         messages: [],
-        ragHits: [{ path: 'a.md', title: 'A', excerpt: 'ex' }],
+        ragHits: [{ path: 'a.md', title: 'A', excerpt: 'ex', score: 1 }],
         notePathForStream: null
       }),
       chatStream,
