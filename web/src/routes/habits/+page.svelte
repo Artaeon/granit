@@ -3,7 +3,6 @@
   import { auth } from '$lib/stores/auth';
   import { onWsEvent } from '$lib/ws';
   import Skeleton from '$lib/components/Skeleton.svelte';
-  import Heatmap from '$lib/components/Heatmap.svelte';
   import Button from '$lib/components/Button.svelte';
   import { habitTargets } from '$lib/habits/targets';
   import { focusOnMount } from '$lib/util/focusOnMount';
@@ -14,7 +13,10 @@
   import { createHabitsStackEdit } from '$lib/habits/habitsStackEdit.svelte';
   import { createHabitsAdd } from '$lib/habits/habitsAdd.svelte';
   import { createHabitsTargetsEdit } from '$lib/habits/habitsTargetsEdit.svelte';
-  import { bestDay, weekDays, shortDow, shortDate } from '$lib/habits/habitsDerives';
+  import HabitsTodayView from '$lib/habits/HabitsTodayView.svelte';
+  import HabitsWeekView from '$lib/habits/HabitsWeekView.svelte';
+  import HabitsHeatmapView from '$lib/habits/HabitsHeatmapView.svelte';
+  import HabitsListView from '$lib/habits/HabitsListView.svelte';
 
   // /habits — three view modes (Today / Week / List / Heatmap) over
   // the same 90-day window. Sort + insight (best day of week) work
@@ -34,9 +36,7 @@
   const dataCtl = createHabitsData({ isAuthed: () => !!$auth, onError: toastError });
   const data = $derived(dataCtl.data);
   const loading = $derived(dataCtl.loading);
-  const busy = $derived(dataCtl.busy);
   const bulkBusy = $derived(dataCtl.bulkBusy);
-  const anchorsFor = $derived(dataCtl.anchorsFor);
   const todayDone = $derived(dataCtl.todayDone);
   const todayTotal = $derived(dataCtl.todayTotal);
   const undoneToday = $derived(dataCtl.undoneToday);
@@ -69,14 +69,12 @@
   const suggestError = $derived(aiCtl.suggestError);
 
   const targetsCtl = createHabitsTargetsEdit({ getTargets: () => $habitTargets });
-  const editingTarget = $derived(targetsCtl.editingTarget);
 
   const stackCtl = createHabitsStackEdit({
     setBusy: (key) => { dataCtl.busy = key; },
     reload: () => dataCtl.load(),
     onError: toastError
   });
-  const editingStack = $derived(stackCtl.editingStack);
 
   const renameCtl = createHabitsRename({
     setBusy: (key) => { dataCtl.busy = key; },
@@ -84,7 +82,6 @@
     onSuccess: toastSuccess,
     onError: toastError
   });
-  const editingName = $derived(renameCtl.editingName);
 
   onMount(() => {
     dataCtl.load();
@@ -321,379 +318,13 @@
         </p>
       </div>
     {:else if data && viewCtl.view === 'today'}
-      <!-- ===== TODAY VIEW ===== -->
-      <!-- Large quick-tick cards focused on today. The big checkbox
-           is the one the user wants to hit fast in the morning or
-           evening — every other element is supporting context. -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {#each sortedHabits as h (h.name)}
-          {@const insight = bestDay(h)}
-          {@const tgt = targetsCtl.targetState(h)}
-          <div
-            class="relative text-left p-4 bg-surface0 border rounded-lg transition-colors flex items-start gap-3
-              {h.doneToday
-                ? 'border-success bg-surface0'
-                : 'border-surface1 hover:border-primary'}"
-          >
-            <button
-              type="button"
-              onclick={() => dataCtl.toggleToday(h)}
-              disabled={busy === h.name || !h.taskIdToday}
-              title={h.taskIdToday ? '' : 'add this habit to today\'s daily note first'}
-              class="w-10 h-10 rounded flex-shrink-0 flex items-center justify-center transition-colors disabled:opacity-50
-                {h.doneToday ? 'bg-success border-2 border-success' : 'border-2 border-surface2 hover:border-primary'}"
-              aria-label="toggle today"
-            >
-              {#if h.doneToday}
-                <svg viewBox="0 0 12 12" class="w-5 h-5 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
-              {/if}
-            </button>
-            <div class="flex-1 min-w-0">
-              {#if editingName === h.name}
-                <form
-                  onsubmit={(e) => { e.preventDefault(); renameCtl.submitRename(h.name); }}
-                  class="flex items-center gap-1.5"
-                >
-                  <input
-                    bind:value={renameCtl.renameDraft}
-                    use:focusOnMount
-                    class="flex-1 px-2 py-1 bg-base border border-surface2 rounded text-text text-sm"
-                    placeholder="new name"
-                  />
-                  <button type="submit" disabled={busy === h.name} class="px-2 py-1 bg-primary text-on-primary rounded text-xs disabled:opacity-50">save</button>
-                  <button type="button" onclick={() => renameCtl.cancelRename()} class="px-2 py-1 text-dim hover:text-text text-xs">cancel</button>
-                </form>
-              {:else}
-                <div class="flex items-start justify-between gap-2">
-                  <h2 class="text-base font-medium text-text break-words flex-1 min-w-0">{h.name}</h2>
-                  <div class="flex items-center gap-0.5 flex-shrink-0">
-                    <button
-                      type="button"
-                      onclick={() => renameCtl.startRename(h)}
-                      class="px-1.5 py-0.5 text-dim hover:text-text rounded text-[11px]"
-                      title="rename habit"
-                      aria-label="rename habit"
-                    >✎</button>
-                    <button
-                      type="button"
-                      onclick={() => renameCtl.deleteHabit(h.name)}
-                      disabled={busy === h.name}
-                      class="px-1.5 py-0.5 text-dim hover:text-error rounded text-[11px] disabled:opacity-50"
-                      title="delete habit — strips matching lines from every daily note"
-                      aria-label="delete habit"
-                    >×</button>
-                  </div>
-                </div>
-              {/if}
-              <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-dim mt-1">
-                <span title="current streak">🔥 {h.currentStreak}d</span>
-                <span title="last 7 days">7d: {h.last7Pct}%</span>
-                <span title="last 30 days">30d: {h.last30Pct}%</span>
-                {#if insight}
-                  <span class="text-secondary" title="best day of week from last 90 days">
-                    best: {insight.label} ({insight.pct}%)
-                  </span>
-                {/if}
-                {#if tgt}
-                  {@const hit = tgt.done >= tgt.target}
-                  <button
-                    type="button"
-                    onclick={() => targetsCtl.editingTarget = editingTarget === h.name ? null : h.name}
-                    class="px-1.5 py-0.5 rounded text-[10px] border transition-colors
-                      {hit
-                        ? 'bg-surface0 text-success border-success hover:bg-surface1'
-                        : 'bg-surface0 text-warning border-warning hover:bg-surface1'}"
-                    title="weekly target — click to edit"
-                  >🎯 {tgt.done}/{tgt.target}/wk</button>
-                {:else}
-                  <button
-                    type="button"
-                    onclick={() => targetsCtl.editingTarget = editingTarget === h.name ? null : h.name}
-                    class="px-1.5 py-0.5 rounded text-[10px] border bg-surface1 text-dim border-surface2 hover:text-text"
-                    title="set a weekly target"
-                  >+ target</button>
-                {/if}
-              </div>
-              {#if editingTarget === h.name}
-                <div class="mt-2 flex items-center gap-1.5 text-[11px]">
-                  <span class="text-dim">target / week:</span>
-                  <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => targetsCtl.bumpTarget(h.name, -1)}>−</button>
-                  <span class="font-mono text-text w-4 text-center">{$habitTargets[h.name] ?? 5}</span>
-                  <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => targetsCtl.bumpTarget(h.name, 1)}>+</button>
-                  <button class="ml-1 px-1.5 py-0.5 text-dim hover:text-text underline" onclick={() => targetsCtl.clearTarget(h.name)}>clear</button>
-                  <button class="ml-auto px-1.5 py-0.5 text-dim hover:text-text" onclick={() => (targetsCtl.editingTarget = null)}>done</button>
-                </div>
-              {/if}
-            </div>
-          </div>
-        {/each}
-      </div>
+      <HabitsTodayView {sortedHabits} {dataCtl} {renameCtl} {targetsCtl} />
     {:else if data && viewCtl.view === 'week'}
-      <!-- ===== WEEK VIEW ===== -->
-      <!-- 7-column grid: each row a habit, each column a day. Header
-           row labels the day-of-week + date (M/D). Last column is
-           today and gets a primary outline. Click any cell to toggle. -->
-      {@const days = sortedHabits.length > 0 ? weekDays(sortedHabits[0]) : []}
-      <!-- Mobile: the table doesn't fit in 7 columns at touch-target
-           size, so it's allowed to scroll horizontally. min-w on the
-           table forces 44px-ish day cells; the inner aspect-square
-           keeps cells visually balanced once the layout has room. -->
-      <div class="bg-surface0 border border-surface1 rounded-lg p-3 sm:p-4 overflow-x-auto">
-        <table class="w-full border-separate border-spacing-1 min-w-[28rem]">
-          <thead>
-            <tr>
-              <th class="w-32 sm:w-1/4 text-left text-[11px] text-dim font-medium pb-2">Habit</th>
-              {#each days as d (d.date)}
-                {@const isToday = d.date === data.today}
-                <th
-                  class="text-center text-[11px] font-medium pb-2 {isToday ? 'text-primary' : 'text-dim'}"
-                >
-                  <div>{shortDow(d.date)}</div>
-                  <div class="font-mono text-[10px] mt-0.5">{shortDate(d.date)}</div>
-                </th>
-              {/each}
-            </tr>
-          </thead>
-          <tbody>
-            {#each sortedHabits as h (h.name)}
-              <tr>
-                <td class="text-sm text-text break-words py-1 pr-2">
-                  {h.name}
-                  <div class="text-[11px] text-dim">
-                    🔥 {h.currentStreak}d · {h.last7Pct}% / 7d
-                  </div>
-                </td>
-                {#each weekDays(h) as d (d.date)}
-                  {@const isToday = d.date === data.today}
-                  {@const cellBusy = busy === `${h.name}|${d.date}`}
-                  <td class="p-0">
-                    <button
-                      type="button"
-                      onclick={() => dataCtl.toggleOnDate(h, d.date, !d.done)}
-                      disabled={cellBusy}
-                      class="w-full aspect-square min-h-9 rounded transition-colors hover:opacity-80 disabled:opacity-40
-                        {d.done ? 'bg-success' : 'bg-surface1 hover:bg-surface2'}"
-                      class:ring-1={isToday}
-                      class:ring-primary={isToday}
-                      title={`${d.date}${d.done ? ' · done · click to undo' : ' · click to mark done'}`}
-                      aria-label={`toggle ${h.name} on ${d.date}`}
-                    ></button>
-                  </td>
-                {/each}
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {:else if data}
-      <!-- ===== LIST VIEW ===== (was the only view before) -->
-      <div class="space-y-4">
-        {#each sortedHabits as h (h.name)}
-          {@const insight = bestDay(h)}
-          {@const tgt = targetsCtl.targetState(h)}
-          <article class="bg-surface0 border border-surface1 rounded-lg p-3">
-            <div class="flex items-start gap-3 mb-3">
-              <button
-                onclick={() => dataCtl.toggleToday(h)}
-                disabled={busy === h.name || !h.taskIdToday}
-                title={h.taskIdToday ? (h.doneToday ? 'mark not done today' : 'mark done today') : 'open daily note to add this habit'}
-                class="w-6 h-6 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors disabled:opacity-50
-                  {h.doneToday ? 'bg-success border-success' : 'border-surface2 hover:border-primary'}"
-                aria-label="toggle today"
-              >
-                {#if h.doneToday}
-                  <svg viewBox="0 0 12 12" class="w-4 h-4 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
-                {/if}
-              </button>
-              <div class="flex-1 min-w-0">
-                {#if editingName === h.name}
-                  <form
-                    onsubmit={(e) => { e.preventDefault(); renameCtl.submitRename(h.name); }}
-                    class="flex items-center gap-1.5"
-                  >
-                    <input
-                      bind:value={renameCtl.renameDraft}
-                      use:focusOnMount
-                      class="flex-1 px-2 py-1 bg-base border border-surface2 rounded text-text text-sm"
-                      placeholder="new name"
-                    />
-                    <button type="submit" disabled={busy === h.name} class="px-2 py-1 bg-primary text-on-primary rounded text-xs disabled:opacity-50">save</button>
-                    <button type="button" onclick={() => renameCtl.cancelRename()} class="px-2 py-1 text-dim hover:text-text text-xs">cancel</button>
-                  </form>
-                {:else}
-                  <div class="flex items-start justify-between gap-2">
-                    <h2 class="text-base font-medium text-text break-words flex-1 min-w-0">{h.name}</h2>
-                    <div class="flex items-center gap-0.5 flex-shrink-0">
-                      <button
-                        type="button"
-                        onclick={() => renameCtl.startRename(h)}
-                        class="px-1.5 py-0.5 text-dim hover:text-text rounded text-[11px]"
-                        title="rename habit"
-                        aria-label="rename habit"
-                      >✎</button>
-                      <button
-                        type="button"
-                        onclick={() => renameCtl.deleteHabit(h.name)}
-                        disabled={busy === h.name}
-                        class="px-1.5 py-0.5 text-dim hover:text-error rounded text-[11px] disabled:opacity-50"
-                        title="delete habit — strips matching lines from every daily note"
-                        aria-label="delete habit"
-                      >×</button>
-                    </div>
-                  </div>
-                {/if}
-                <div class="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 text-xs text-dim mt-0.5">
-                  <span>🔥 {h.currentStreak}-day streak</span>
-                  <span>longest: {h.longestStreak}</span>
-                  <span>last 7: {h.last7Pct}%</span>
-                  <span>last 30: {h.last30Pct}%</span>
-                  {#if insight}
-                    <span class="text-secondary" title="best day of week from last 90 days">
-                      best: {insight.label} ({insight.pct}%)
-                    </span>
-                  {/if}
-                  {#if tgt}
-                    {@const hit = tgt.done >= tgt.target}
-                    <button
-                      type="button"
-                      onclick={() => targetsCtl.editingTarget = editingTarget === h.name ? null : h.name}
-                      class="px-1.5 py-0.5 rounded text-[10px] border transition-colors
-                        {hit
-                          ? 'bg-surface0 text-success border-success hover:bg-surface1'
-                          : 'bg-surface0 text-warning border-warning hover:bg-surface1'}"
-                      title="weekly target — click to edit"
-                    >🎯 {tgt.done}/{tgt.target}/wk</button>
-                  {:else}
-                    <button
-                      type="button"
-                      onclick={() => targetsCtl.editingTarget = editingTarget === h.name ? null : h.name}
-                      class="px-1.5 py-0.5 rounded text-[10px] border bg-surface1 text-dim border-surface2 hover:text-text"
-                    >+ target</button>
-                  {/if}
-                </div>
-                {#if editingTarget === h.name}
-                  <div class="mt-1.5 flex items-center gap-1.5 text-[11px]">
-                    <span class="text-dim">target / week:</span>
-                    <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => targetsCtl.bumpTarget(h.name, -1)}>−</button>
-                    <span class="font-mono text-text w-4 text-center">{$habitTargets[h.name] ?? 5}</span>
-                    <button class="px-1.5 py-0.5 bg-surface1 hover:bg-surface2 rounded text-text" onclick={() => targetsCtl.bumpTarget(h.name, 1)}>+</button>
-                    <button class="ml-1 px-1.5 py-0.5 text-dim hover:text-text underline" onclick={() => targetsCtl.clearTarget(h.name)}>clear</button>
-                    <button class="ml-auto px-1.5 py-0.5 text-dim hover:text-text" onclick={() => (targetsCtl.editingTarget = null)}>done</button>
-                  </div>
-                {/if}
-                <!-- Stack anchor — chain badge when set, "+ stack"
-                     button when not. Edit pops a small inline form
-                     with a select of every other (non-self) habit.
-                     Behavioural-science play: anchoring beats
-                     willpower for habit consistency. -->
-                {#if editingStack === h.name}
-                  <div class="mt-1.5 flex items-center gap-1.5 text-[11px] flex-wrap">
-                    <span class="text-dim">after</span>
-                    <select
-                      bind:value={stackCtl.stackDraft}
-                      class="px-1.5 py-0.5 bg-surface1 border border-surface2 rounded text-text text-[11px]"
-                    >
-                      <option value="">(none — clear anchor)</option>
-                      {#each data?.habits.filter((other) => other.name !== h.name) ?? [] as other (other.name)}
-                        <option value={other.name}>{other.name}</option>
-                      {/each}
-                    </select>
-                    <button
-                      class="px-1.5 py-0.5 bg-primary text-on-primary rounded text-[11px] disabled:opacity-50"
-                      disabled={busy === h.name}
-                      onclick={() => stackCtl.submitStackEdit(h.name)}
-                    >save</button>
-                    <button class="px-1.5 py-0.5 text-dim hover:text-text" onclick={() => stackCtl.cancelStackEdit()}>cancel</button>
-                  </div>
-                {:else if h.stackAfter}
-                  <div class="mt-1.5 flex items-center gap-1.5 text-[11px] flex-wrap">
-                    <button
-                      type="button"
-                      onclick={() => stackCtl.startStackEdit(h)}
-                      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border border-secondary/40 bg-surface0 text-secondary hover:bg-surface1"
-                      title="stack anchor — click to edit or clear"
-                    >🔗 after {h.stackAfter}</button>
-                    {#if anchorsFor[h.name]?.length}
-                      <span
-                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-surface1 text-dim"
-                        title="other habits anchored to this one"
-                      >→ triggers {anchorsFor[h.name].join(', ')}</span>
-                    {/if}
-                  </div>
-                {:else}
-                  <div class="mt-1.5 flex items-center gap-1.5 text-[11px] flex-wrap">
-                    <button
-                      type="button"
-                      onclick={() => stackCtl.startStackEdit(h)}
-                      class="px-1.5 py-0.5 rounded text-[10px] border bg-surface1 text-dim border-surface2 hover:text-text"
-                      title="anchor this habit to another habit you already do"
-                    >+ stack after…</button>
-                    {#if anchorsFor[h.name]?.length}
-                      <span
-                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-surface1 text-dim"
-                        title="other habits anchored to this one"
-                      >→ triggers {anchorsFor[h.name].join(', ')}</span>
-                    {/if}
-                  </div>
-                {/if}
-              </div>
-            </div>
-
-            <!-- Dot grid: 90 days, oldest→newest. Each dot is now a
-                 button — click to toggle done/undone for that date.
-                 Future-dated dots stay clickable too so the user can
-                 plan-log (e.g. mark a workout planned for tomorrow). -->
-            <!-- Compact GitHub-contribution-style grid: fixed ~13px cells
-                 instead of stretching each of the 13 columns to fill the
-                 row (which made one habit ~600px tall). w-fit keeps the
-                 grid at its natural width so it doesn't sprawl. -->
-            <div class="grid grid-flow-col grid-rows-7 gap-[3px] w-fit" style="grid-auto-columns: 0.85rem;">
-              {#each h.days as d (d.date)}
-                {@const isToday = d.date === data.today}
-                {@const cellBusy = busy === `${h.name}|${d.date}`}
-                <button
-                  type="button"
-                  onclick={() => dataCtl.toggleOnDate(h, d.date, !d.done)}
-                  disabled={cellBusy}
-                  class="aspect-square rounded-[2px] transition-colors hover:opacity-70 disabled:opacity-40
-                    {d.done ? 'bg-success' : 'bg-surface1 hover:bg-surface2'}"
-                  class:ring-1={isToday}
-                  class:ring-primary={isToday}
-                  title={`${d.date}${d.done ? ' · done · click to undo' : ' · click to mark done'}`}
-                  aria-label={`toggle ${h.name} on ${d.date}`}
-                ></button>
-              {/each}
-            </div>
-            <p class="text-[11px] text-dim mt-2">click any past day to mark / unmark — server updates that day's daily note</p>
-          </article>
-        {/each}
-      </div>
+      <HabitsWeekView {data} {sortedHabits} {dataCtl} />
     {:else if data && viewCtl.view === 'heatmap'}
-      <!-- Year-at-a-glance per habit. The Heatmap component handles
-           layout + tooltips; we just feed it {date, value} pairs.
-           value = 1 when done, 0 otherwise — binary maxes the
-           color scale at the brightest tone, which reads as a
-           clean "completed" green. -->
-      <div class="space-y-4">
-        {#each sortedHabits as h (h.name)}
-          <article class="bg-surface0 border border-surface1 rounded-lg p-3">
-            <header class="flex items-baseline gap-2 mb-3">
-              <h3 class="text-sm font-medium text-text">{h.name}</h3>
-              <span class="text-[11px] text-dim font-mono tabular-nums">
-                {h.currentStreak}d streak · best {h.longestStreak}d
-              </span>
-              <span class="text-[11px] text-dim font-mono tabular-nums ml-auto">
-                {h.last30Pct}% / 30d
-              </span>
-            </header>
-            <Heatmap
-              cells={h.days.map((d) => ({ date: d.date, value: d.done ? 1 : 0 }))}
-              maxValue={1}
-              legendLabels={['none', '', '', '', 'done']}
-            />
-          </article>
-        {/each}
-      </div>
+      <HabitsHeatmapView {sortedHabits} />
+    {:else if data}
+      <HabitsListView {data} {sortedHabits} {dataCtl} {renameCtl} {targetsCtl} {stackCtl} />
     {/if}
   </div>
 </div>
