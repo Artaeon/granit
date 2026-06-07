@@ -85,7 +85,7 @@
 
 <section class="bg-surface0 border border-surface1 rounded-lg p-3 flex flex-col">
   <div class="flex items-baseline justify-between mb-2 gap-2">
-    <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Daily note</h2>
+    <h2 class="text-xs text-dim font-semibold">Daily note</h2>
     {#if daily}
       <a href="/notes/{encodeURIComponent(daily.path)}" class="text-xs text-secondary hover:underline">edit →</a>
     {/if}

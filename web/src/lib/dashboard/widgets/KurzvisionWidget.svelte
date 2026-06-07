@@ -58,7 +58,7 @@
 
 <section class="bg-mantle border border-surface1 rounded-lg p-4">
   <header class="flex items-baseline gap-2 mb-2">
-    <h2 class="text-xs uppercase tracking-wider text-dim font-medium">
+    <h2 class="text-xs text-dim font-semibold">
       {pinned?.label ?? 'Kurzvision'}
     </h2>
     <span class="flex-1"></span>

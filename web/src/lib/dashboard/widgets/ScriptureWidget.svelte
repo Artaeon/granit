@@ -42,7 +42,7 @@
 
 <section class="bg-surface0 border border-surface1 rounded-lg p-3">
   <div class="flex items-baseline justify-between mb-2">
-    <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Today's verse</h2>
+    <h2 class="text-xs text-dim font-semibold">Today's verse</h2>
     <a href="/scripture" class="text-xs text-secondary hover:underline">all →</a>
   </div>
   {#if !loaded}

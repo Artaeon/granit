@@ -113,7 +113,7 @@
 
 <section class="bg-surface0 border border-surface1 rounded-lg p-3">
   <div class="flex items-baseline justify-between mb-3">
-    <h2 class="text-xs uppercase tracking-wider text-dim font-medium">
+    <h2 class="text-xs text-dim font-semibold">
       Inbox
       {#if inbox.length > 0}
         <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-surface1 text-primary tabular-nums">{inbox.length} to triage</span>

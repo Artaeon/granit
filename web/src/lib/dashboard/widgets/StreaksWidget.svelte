@@ -71,7 +71,7 @@
 
 <section class="bg-surface0 border border-surface1 rounded-lg p-3">
   <div class="flex items-baseline justify-between mb-3">
-    <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Streaks</h2>
+    <h2 class="text-xs text-dim font-semibold">Streaks</h2>
     {#if !loading && habits.length > 0}
       {@const atRisk = habits.filter((h) => h.currentStreak >= 3 && !h.doneToday).length}
       {#if atRisk > 0}

@@ -130,7 +130,7 @@
 
 <section class="bg-surface0 border border-surface1 rounded-lg p-3 flex flex-col h-full">
   <div class="flex items-baseline justify-between mb-2">
-    <h2 class="text-xs uppercase tracking-wider text-dim font-medium">This week's commitments</h2>
+    <h2 class="text-xs text-dim font-semibold">This week's commitments</h2>
     <a href="/plans/week" class="text-xs text-secondary hover:underline">open →</a>
   </div>
 

@@ -39,7 +39,7 @@
 
 <section class="bg-surface0 border border-surface1 rounded-lg p-3">
   <div class="flex items-baseline justify-between mb-2">
-    <h2 class="text-xs uppercase tracking-wider text-dim font-medium">Scheduled today</h2>
+    <h2 class="text-xs text-dim font-semibold">Scheduled today</h2>
     <a href="/calendar" class="text-xs text-secondary hover:underline">cal →</a>
   </div>
   {#if scheduled.length === 0}
