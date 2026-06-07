@@ -499,6 +499,40 @@ export interface EventOverride {
   color?: string;
 }
 
+/** Daily Routine AI — one event mutation in a streamed proposal.
+ *  Mirrors internal/serveapi.routineEventOp. The shape varies by op:
+ *   - create: `event` is required (camelCase fields the AI emits).
+ *   - update: `eventId` + `patch` are required.
+ *   - delete: `eventId` is required.
+ *  Fields the AI doesn't touch are simply absent — the apply handler
+ *  preserves their existing values on the server side. */
+export interface RoutineEventOp {
+  op: 'create' | 'update' | 'delete';
+  event?: {
+    id?: string;
+    title: string;
+    date: string;
+    startTime?: string;
+    endTime?: string;
+    projectId?: string;
+    kind?: string;
+    location?: string;
+    color?: string;
+  };
+  eventId?: string;
+  patch?: Record<string, unknown>;
+}
+
+/** Daily Routine AI — the streamed proposal envelope.
+ *  Mirrors internal/serveapi.routineProposal. The server may emit
+ *  multiple partial proposals as it streams; the latest one always
+ *  supersedes earlier ones. */
+export interface RoutineProposal {
+  rationale: string;
+  dailyPlan: string;
+  eventOps: RoutineEventOp[];
+}
+
 export interface Milestone {
   text: string;
   done: boolean;
@@ -1918,6 +1952,129 @@ export const api = {
     req<CalendarEventEntry>(`/events/${encodeURIComponent(id)}/override`, {
       method: 'POST',
       body: JSON.stringify({ key, override })
+    }),
+
+  // Daily Routine AI — streams a proposed rewrite of the day's plan
+  // + a list of native-event mutations. The server emits SSE with
+  // three event kinds:
+  //   event: proposal — data is a (possibly partial) RoutineProposal
+  //                      JSON object; the latest one supersedes any
+  //                      earlier emission
+  //   event: done     — data is {"ok":true}
+  //   event: error    — data is {"message":"…"}
+  // Returns an AbortController so the caller can cancel mid-stream —
+  // same contract as maintenanceWeeklyDigest above.
+  //
+  // Aborts surface as a no-op (neither onError nor onDone fires), so
+  // the caller can disambiguate "user cancelled" from "real failure".
+  calendarRoutineProposal: (
+    handlers: {
+      onProposal: (p: RoutineProposal) => void;
+      onDone?: () => void;
+      onError?: (err: Error) => void;
+    },
+    date?: string
+  ): AbortController => {
+    const ctrl = new AbortController();
+    (async () => {
+      const headers = new Headers({ 'Content-Type': 'application/json' });
+      const tok = getToken();
+      if (tok) headers.set('Authorization', `Bearer ${tok}`);
+      let res: Response;
+      try {
+        res = await fetch('/api/v1/calendar/routine-proposal', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(date ? { date } : {}),
+          signal: ctrl.signal
+        });
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+        handlers.onError?.(e instanceof Error ? e : new Error(String(e)));
+        return;
+      }
+      if (!res.ok) {
+        let msg = res.statusText;
+        try {
+          const body = await res.json();
+          if (body?.error) msg = body.error;
+        } catch {}
+        handlers.onError?.(new ApiError(res.status, msg));
+        return;
+      }
+      if (!res.body) {
+        handlers.onError?.(new Error('No response body'));
+        return;
+      }
+      // SSE parser — same hand-rolled shape as chatStream.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let event = '';
+      let dataLines: string[] = [];
+
+      const flush = () => {
+        if (dataLines.length === 0) return;
+        const data = dataLines.join('\n');
+        dataLines = [];
+        try {
+          if (event === 'error') {
+            const parsed = JSON.parse(data) as { message?: string };
+            handlers.onError?.(new Error(parsed.message ?? 'stream error'));
+          } else if (event === 'done') {
+            handlers.onDone?.();
+          } else if (event === 'proposal') {
+            const parsed = JSON.parse(data) as RoutineProposal;
+            handlers.onProposal(parsed);
+          }
+        } catch {
+          // Malformed event — skip rather than abort the whole stream.
+        }
+        event = '';
+      };
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, idx).replace(/\r$/, '');
+            buf = buf.slice(idx + 1);
+            if (line === '') {
+              flush();
+              continue;
+            }
+            if (line.startsWith('event: ')) event = line.slice(7).trim();
+            else if (line.startsWith('data: ')) dataLines.push(line.slice(6));
+          }
+        }
+        if (dataLines.length > 0) flush();
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') return;
+        handlers.onError?.(e instanceof Error ? e : new Error(String(e)));
+      }
+    })();
+    return ctrl;
+  },
+
+  // Apply a (possibly user-edited) routine proposal. Partial-safe —
+  // the response carries `applied` (count of ops that landed) and
+  // `failed` (per-row failures with the request index, op label, and
+  // error message) so the UI can highlight the rows that didn't land
+  // without rolling back the rest. See handlers_calendar_routine.go.
+  calendarApplyRoutine: (body: {
+    date: string;
+    dailyPlan: string;
+    eventOps: RoutineEventOp[];
+  }) =>
+    req<{
+      applied: number;
+      failed: { index: number; op?: string; eventId?: string; message: string }[];
+    }>('/calendar/apply-routine', {
+      method: 'POST',
+      body: JSON.stringify(body)
     }),
 
   // Goals (granit, full CRUD — schema mirrors internal/goals.Goal)
