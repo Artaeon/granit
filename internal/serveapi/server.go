@@ -315,6 +315,12 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/api/v1/calendar", s.handleCalendar)
 		r.Get("/api/v1/calendar/sources", s.handleListCalendarSources)
 		r.Patch("/api/v1/calendar/sources", s.handlePatchCalendarSources)
+		// Daily Routine AI — streams a proposed rewrite of today's
+		// daily plan + a list of native-event mutations. Apply is a
+		// separate POST so the user can edit-then-apply (or discard)
+		// from the preview drawer. Phase 2 of the workspace OS arc.
+		r.Post("/api/v1/calendar/routine-proposal", s.handleCalendarRoutineProposal)
+		r.Post("/api/v1/calendar/apply-routine", s.handleCalendarApplyRoutine)
 
 		// Local writable ICS calendars under <vault>/calendars/. Remote
 		// subscriptions (any .ics outside that dir) stay read-only — see
