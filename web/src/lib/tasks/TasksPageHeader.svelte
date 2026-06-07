@@ -101,8 +101,8 @@
   ];
 </script>
 
-<div class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle">
-  <h1 class="text-base sm:text-lg font-semibold text-text leading-none">Tasks</h1>
+<div class="@container flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle">
+  <h1 class="text-base @lg:text-lg font-semibold text-text leading-none">Tasks</h1>
   <!-- Count chip — total + filtered. The filtered chip only shows when
        the filter actually narrows the list, so the user doesn't have to
        read N/N when nothing is filtering. -->
@@ -123,7 +123,7 @@
   <!-- Primary view-switcher. Icon-only segmented control on desktop;
        compact label-only on the smallest viewports (the icons collapse
        to text). Active view = primary background with on-primary text. -->
-  <div class="hidden sm:flex bg-surface0 border border-surface1 rounded overflow-hidden">
+  <div class="hidden @2xl:flex bg-surface0 border border-surface1 rounded overflow-hidden">
     {#each PRIMARY as p (p.key)}
       <Button
         variant="ghost"
@@ -136,7 +136,7 @@
         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d={p.icon} />
         </svg>
-        <span class="hidden md:inline">{p.label}</span>
+        <span class="hidden @xl:inline">{p.label}</span>
         {#if p.key === 'today' && todayLoad > 0 && view !== 'today'}
           <span
             class="text-[10px] tabular-nums font-mono {todayOverdue > 0 ? 'text-error' : 'text-warning'}"
@@ -150,7 +150,7 @@
   <!-- Compact label-cycler for mobile — keeps the same 4 primary views
        accessible in a tiny pill. -->
   <select
-    class="sm:hidden bg-surface0 border border-surface1 rounded px-2 py-1 text-xs text-text"
+    class="@2xl:hidden bg-surface0 border border-surface1 rounded px-2 py-1 text-xs text-text"
     value={view}
     onchange={(e) => onSelectView((e.currentTarget as HTMLSelectElement).value as View)}
     aria-label="view"
@@ -165,7 +165,7 @@
 
   <!-- More-views overflow dropdown. Same data-more-views marker the
        page's click-outside effect looks for. -->
-  <div class="relative hidden sm:block" data-more-views>
+  <div class="relative hidden @lg:block" data-more-views>
     <Button
       variant="secondary"
       active={!!activeOverflowLabel}
@@ -232,7 +232,7 @@
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M4 5h16l-6 8v6l-4-2v-4z" />
     </svg>
-    <span class="hidden md:inline">Filter</span>
+    <span class="hidden @xl:inline">Filter</span>
     {#if activeFilterCount > 0}
       <span class="px-1 py-0 bg-on-primary/20 text-[9px] font-mono rounded leading-tight">{activeFilterCount}</span>
     {/if}
@@ -248,7 +248,7 @@
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
       <path d="M12 5v14M5 12h14"/>
     </svg>
-    <span class="hidden md:inline">Capture</span>
+    <span class="hidden @xl:inline">Capture</span>
   </Button>
 
   <Button
@@ -257,6 +257,6 @@
     onclick={onToggleHelp}
     aria-label="keyboard shortcuts"
     title="keyboard shortcuts (?)"
-    class="hidden sm:inline-flex"
+    class="hidden @2xl:inline-flex"
   >?</Button>
 </div>

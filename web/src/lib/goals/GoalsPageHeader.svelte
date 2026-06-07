@@ -73,8 +73,8 @@
   ];
 </script>
 
-<div class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle">
-  <h1 class="text-base sm:text-lg font-semibold text-text leading-none">Goals</h1>
+<div class="@container flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle">
+  <h1 class="text-base @lg:text-lg font-semibold text-text leading-none">Goals</h1>
 
   <!-- Count chip — total + filtered. The filtered chip only renders
        when the active filter actually narrows the list. -->
@@ -93,7 +93,7 @@
   <span class="flex-1"></span>
 
   <!-- Icon-segmented view picker (desktop). -->
-  <div class="hidden sm:flex bg-surface0 border border-surface1 rounded overflow-hidden">
+  <div class="hidden @2xl:flex bg-surface0 border border-surface1 rounded overflow-hidden">
     {#each VIEWS as v (v.key)}
       <Button
         variant="ghost"
@@ -106,14 +106,14 @@
         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d={v.icon} />
         </svg>
-        <span class="hidden md:inline">{v.label}</span>
+        <span class="hidden @xl:inline">{v.label}</span>
       </Button>
     {/each}
   </div>
 
   <!-- Mobile: collapse to a labelled select instead of a row of icons. -->
   <select
-    class="sm:hidden bg-surface0 border border-surface1 rounded px-2 py-1 text-xs text-text"
+    class="@2xl:hidden bg-surface0 border border-surface1 rounded px-2 py-1 text-xs text-text"
     value={view}
     onchange={(e) => onSelectView((e.currentTarget as HTMLSelectElement).value as ViewMode)}
     aria-label="view"
@@ -138,8 +138,8 @@
       onclick={onToggleMore}
       title="AI coaching surfaces"
     >
-      <span class="hidden sm:inline">More</span>
-      <span class="sm:hidden" aria-hidden="true">⋯</span>
+      <span class="hidden @lg:inline">More</span>
+      <span class="@2xl:hidden" aria-hidden="true">⋯</span>
       <span class="text-[9px] opacity-70" aria-hidden="true">▾</span>
     </Button>
     {#if moreOpen}
@@ -186,6 +186,6 @@
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
       <path d="M12 5v14M5 12h14"/>
     </svg>
-    <span class="hidden md:inline">New goal</span>
+    <span class="hidden @xl:inline">New goal</span>
   </Button>
 </div>

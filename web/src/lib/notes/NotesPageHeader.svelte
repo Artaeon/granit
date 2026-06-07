@@ -105,8 +105,8 @@
   ];
 </script>
 
-<div class="flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle">
-  <h1 class="text-base sm:text-lg font-semibold text-text leading-none">Notes</h1>
+<div class="@container flex items-center gap-2 px-3 py-2 border-b border-surface1 flex-shrink-0 bg-mantle">
+  <h1 class="text-base @lg:text-lg font-semibold text-text leading-none">Notes</h1>
   <!-- Count chip — total + pinned. Compact, monospaced so the digits
        don't shift width as notes are added/removed. -->
   <span class="inline-flex items-center gap-1 text-[11px] font-mono tabular-nums">
@@ -149,7 +149,7 @@
        hidden under md so the bar stays narrow. Active = primary
        background; the search-result tab badge shows when a query is
        active and the active view is `search`. -->
-  <div class="hidden sm:flex bg-surface0 border border-surface1 rounded overflow-hidden">
+  <div class="hidden @2xl:flex bg-surface0 border border-surface1 rounded overflow-hidden">
     {#each PRIMARY as p (p.key)}
       <Button
         variant="ghost"
@@ -162,7 +162,7 @@
         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d={p.icon} />
         </svg>
-        <span class="hidden md:inline">{p.label}</span>
+        <span class="hidden @xl:inline">{p.label}</span>
         {#if p.key === 'pinned' && pinnedCount > 0 && view !== 'pinned'}
           <span class="text-[10px] tabular-nums font-mono text-warning">{pinnedCount}</span>
         {/if}
@@ -174,7 +174,7 @@
        + search if a query is active) so the user has a single control
        to switch view on a small screen. -->
   <select
-    class="sm:hidden bg-surface0 border border-surface1 rounded px-2 py-1 text-xs text-text"
+    class="@2xl:hidden bg-surface0 border border-surface1 rounded px-2 py-1 text-xs text-text"
     value={view}
     onchange={(e) => onSelectView((e.currentTarget as HTMLSelectElement).value as View)}
     aria-label="view"
@@ -191,7 +191,7 @@
        parent's click-outside effect. Shows '· {label}' when an
        overflow view is currently active so the user still has the
        visual breadcrumb. -->
-  <div class="relative hidden sm:block" data-more-views>
+  <div class="relative hidden @lg:block" data-more-views>
     <Button
       variant="secondary"
       active={!!activeOverflowLabel}
@@ -237,6 +237,6 @@
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
       <path d="M12 5v14M5 12h14"/>
     </svg>
-    <span class="hidden md:inline">New</span>
+    <span class="hidden @xl:inline">New</span>
   </Button>
 </div>
