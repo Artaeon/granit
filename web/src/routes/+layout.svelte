@@ -635,7 +635,7 @@
          compact toggle in the footer rail. Both states animate via
          the transition class so the resize feels intentional. -->
     <aside
-      class="hidden md:flex bg-mantle border-r border-surface1 flex-shrink-0 transition-[width] duration-150 {$sidebarCompact ? 'md:w-14' : 'md:w-56 lg:w-60'}"
+      class="hidden md:flex bg-mantle border-r border-surface1 flex-shrink-0 transition-[width] duration-150 {$sidebarCompact ? 'md:w-12' : 'md:w-48 lg:w-52'}"
     >
       <NavSidebar
         isCompact={$sidebarCompact}
@@ -660,7 +660,7 @@
        pb-bottomnav (mobile) / pb-0 (desktop) base so the bottom
        28px of editable content isn't clipped behind the tray. -->
   <main
-    class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col pb-bottomnav md:pb-0 main-with-tray"
+    class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col main-with-tray"
     style="padding-right: var(--ai-pinned-w, 0px);"
   >
     {#if $auth}
