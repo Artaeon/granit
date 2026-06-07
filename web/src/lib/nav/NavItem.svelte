@@ -65,7 +65,7 @@
   }}
   title={isCompact ? (badge ? `${item.label} — ${badge.label}` : item.label) : undefined}
   aria-label={badge ? `${item.label}, ${badge.label}` : item.label}
-  class="group relative flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-1.5'} rounded text-sm transition-colors
+  class="group relative flex items-center {isCompact ? 'justify-center px-2 py-1.5' : 'gap-2.5 px-2.5 py-1'} rounded text-[13px] transition-colors
     {active
       ? 'text-primary bg-surface1 font-medium'
       : 'text-subtext hover:bg-surface0 hover:text-text focus-visible:bg-surface0 focus-visible:text-text focus-visible:outline-none'}"

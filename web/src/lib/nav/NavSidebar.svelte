@@ -158,7 +158,7 @@
        in expanded mode — the logo + the aria-label carry the brand
        identity and the wordmark was the item with the most cost
        for the least value. See feedback 2026-05-29. -->
-  <div class="border-b border-surface1 min-w-0 overflow-hidden {isCompact ? 'px-2 py-2 flex flex-col items-center gap-1.5' : 'px-3 py-2.5 flex items-center gap-1.5'}">
+  <div class="border-b border-surface1 min-w-0 overflow-hidden {isCompact ? 'px-1.5 py-1.5 flex flex-col items-center gap-1' : 'px-2.5 py-1.5 flex items-center gap-1.5'}">
     {#if isCompact}
       <div class="w-8 h-8 rounded bg-surface1 text-primary flex items-center justify-center" aria-label="Granit">
         <Logo class="w-4 h-4" label="" />
@@ -216,14 +216,14 @@
     {/if}
   </div>
 
-  <nav class="flex-1 overflow-y-auto {isCompact ? 'px-1.5 py-2' : 'px-2 py-2'} space-y-0.5">
+  <nav class="flex-1 overflow-y-auto {isCompact ? 'px-1 py-1.5' : 'px-1.5 py-1.5'} space-y-px">
     <!-- Quick jump — visually subdued so the Ask-AI button below
          is the dominant primary affordance. ⌘K is the keyboard
          pattern; this row exists for click-discovery. -->
     <button
       onclick={() => { onQuickJump(); navigate(); }}
       title={isCompact ? 'Quick jump (⌘K)' : undefined}
-      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1.5' : 'gap-3 px-3 py-1.5'} rounded text-xs text-dim hover:bg-surface0 hover:text-subtext transition-colors"
+      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1' : 'gap-2.5 px-2.5 py-1'} rounded text-xs text-dim hover:bg-surface0 hover:text-subtext transition-colors"
     >
       <NavIcon name="search" class="w-4 h-4 flex-shrink-0" />
       {#if !isCompact}
@@ -244,10 +244,10 @@
     <button
       onclick={() => { openAIOverlay(); navigate(); }}
       title={isCompact ? ($sabbath ? 'AI paused — Sabbath' : 'Ask AI (⌘J)') : undefined}
-      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'} rounded text-sm mt-1 mb-3 transition-colors {$sabbath ? 'bg-surface0 text-dim' : 'bg-primary text-on-primary hover:opacity-90 font-medium'}"
+      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1.5' : 'gap-2.5 px-2.5 py-1.5'} rounded text-[13px] mt-0.5 mb-2 transition-colors {$sabbath ? 'bg-surface0 text-dim' : 'bg-primary text-on-primary hover:opacity-90 font-medium'}"
     >
       <span class="relative flex-shrink-0">
-        <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>
           <circle cx="12" cy="12" r="3.5" fill="currentColor"/>
         </svg>
@@ -394,7 +394,7 @@
             type="button"
             onclick={() => toggleSection(section.id)}
             aria-expanded={!isCollapsed}
-            class="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] uppercase tracking-wider font-medium text-dim hover:text-subtext hover:bg-surface0 rounded transition-colors"
+            class="w-full flex items-center gap-1.5 px-2 py-1 text-[10px] uppercase tracking-wider font-medium text-dim hover:text-subtext hover:bg-surface0 rounded transition-colors"
           >
             <svg
               viewBox="0 0 24 24"
