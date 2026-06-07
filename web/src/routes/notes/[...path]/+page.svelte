@@ -180,6 +180,14 @@
 
   let draftRestored = $derived(pipe.draftRestored);
 
+  // Folder breadcrumbs controller. Declared here (not next to its
+  // derivations further down) because the loadNote wrapper below takes
+  // it as a dep — referencing it later would read it inside its
+  // temporal dead zone and crash every mount of this page with
+  // "Cannot access 'breadcrumbs' before initialization". Depends only
+  // on `note` via a lazy getter, so its position doesn't matter.
+  const breadcrumbs = createNoteBreadcrumbsCtl({ getNote: () => note });
+
   // Route-side adapter around loadNote — closes over the editor +
   // drawer state + breadcrumbs + URL accessors. See loadNoteWrapper
   // for the deps wiring; loadNote.ts owns the actual draft +
@@ -361,11 +369,12 @@
   let dayActivitySegments = $derived(dailyNav.dayActivitySegments);
   const gotoDaily = dailyNav.gotoDaily;
 
-  // Folder breadcrumbs — expanded toggle + the three derivations
-  // (allCrumbs / visibleCrumbs / crumbsCollapsed). load() calls
+  // Folder breadcrumbs derivations (allCrumbs / visibleCrumbs /
+  // crumbsCollapsed). The `breadcrumbs` controller itself is created
+  // earlier — above the loadNote wrapper, which takes it as a dep —
+  // so it must exist before that point. load() calls
   // breadcrumbs.reset() on real navigation; the header calls
   // breadcrumbs.expand() from the "+N more" affordance.
-  const breadcrumbs = createNoteBreadcrumbsCtl({ getNote: () => note });
   let allCrumbs = $derived(breadcrumbs.allCrumbs);
   let visibleCrumbs = $derived(breadcrumbs.visibleCrumbs);
   let crumbsCollapsed = $derived(breadcrumbs.crumbsCollapsed);
