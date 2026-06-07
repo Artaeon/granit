@@ -84,6 +84,10 @@
     }
   });
   function openRoutineAI() {
+    // Two right-side drawers can't share screen real-estate cleanly.
+    // Close CalendarAgent before opening the routine drawer so the
+    // user sees one focused surface at a time.
+    agentOpen = false;
     routineDrawerOpen = true;
     void routineCtl.propose();
   }
@@ -131,7 +135,7 @@
     applyCalendarUrlIntents({
       viewCtl,
       filterCtl,
-      openAgent: () => (agentOpen = true),
+      openAgent: () => { routineDrawerOpen = false; agentOpen = true; },
       openRoutineAI
     })
   );
@@ -209,7 +213,7 @@
     viewCtl,
     dlgCtl,
     detCtl,
-    openAgent: () => (agentOpen = true)
+    openAgent: () => { routineDrawerOpen = false; agentOpen = true; }
   });
   const onKeydown = kbCtl.onKeydown;
   const { onTouchStart, onTouchEnd } = createCalendarSwipe(viewCtl);
