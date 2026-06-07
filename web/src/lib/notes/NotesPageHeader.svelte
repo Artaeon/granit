@@ -9,6 +9,7 @@
   // header so the chrome itself stays mute and the work surface owns
   // the visual hierarchy.
   import { focusOnMount } from '$lib/util/focusOnMount';
+  import Button from '$lib/components/Button.svelte';
 
   type View = 'stream' | 'recent' | 'tree' | 'pinned' | 'all' | 'alpha' | 'tags' | 'collections' | 'folders' | 'search';
 
@@ -150,13 +151,13 @@
        active and the active view is `search`. -->
   <div class="hidden sm:flex bg-surface0 border border-surface1 rounded overflow-hidden">
     {#each PRIMARY as p (p.key)}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        active={view === p.key}
         onclick={() => onSelectView(p.key)}
         title={p.title}
         aria-label={p.label}
         aria-pressed={view === p.key}
-        class="px-2 py-1.5 inline-flex items-center gap-1 text-xs {view === p.key ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
       >
         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d={p.icon} />
@@ -165,7 +166,7 @@
         {#if p.key === 'pinned' && pinnedCount > 0 && view !== 'pinned'}
           <span class="text-[10px] tabular-nums font-mono text-warning">{pinnedCount}</span>
         {/if}
-      </button>
+      </Button>
     {/each}
   </div>
 
@@ -191,9 +192,9 @@
        overflow view is currently active so the user still has the
        visual breadcrumb. -->
   <div class="relative hidden sm:block" data-more-views>
-    <button
-      type="button"
-      class="px-2 py-1.5 inline-flex items-center gap-1 bg-surface0 border border-surface1 rounded text-xs {activeOverflowLabel ? 'text-primary' : 'text-subtext'} hover:bg-surface1"
+    <Button
+      variant="secondary"
+      active={!!activeOverflowLabel}
       aria-haspopup="true"
       aria-expanded={moreViewsOpen}
       onclick={onToggleMoreViews}
@@ -201,7 +202,7 @@
     >
       {activeOverflowLabel ? `· ${activeOverflowLabel}` : 'More'}
       <span class="text-[9px] opacity-70" aria-hidden="true">▾</span>
-    </button>
+    </Button>
     {#if moreViewsOpen}
       <div
         role="menu"
@@ -227,16 +228,15 @@
 
   <!-- Quick-capture entry. Mirrors tasks' Capture button so muscle
        memory transfers between pages. -->
-  <button
-    type="button"
+  <Button
+    variant="primary"
     onclick={onQuickCapture}
     aria-label="Quick capture"
     title="Quick capture (⌘N)"
-    class="px-2 py-1.5 text-xs bg-primary text-on-primary rounded hover:opacity-90 inline-flex items-center gap-1"
   >
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
       <path d="M12 5v14M5 12h14"/>
     </svg>
     <span class="hidden md:inline">New</span>
-  </button>
+  </Button>
 </div>
