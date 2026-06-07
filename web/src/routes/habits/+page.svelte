@@ -482,6 +482,15 @@
                 ? 'border-success bg-surface0'
                 : 'border-surface1 hover:border-primary'}"
           >
+            {#if bulkSelectCtl.active}
+              <input
+                type="checkbox"
+                checked={bulkSelectCtl.isSelected(h.name)}
+                onchange={() => bulkSelectCtl.toggle(h.name)}
+                class="mt-3 accent-primary w-4 h-4 flex-shrink-0"
+                aria-label="select for bulk action"
+              />
+            {/if}
             <button
               type="button"
               onclick={() => dataCtl.toggleToday(h)}
@@ -642,6 +651,15 @@
           {@const tgt = targetsCtl.targetState(h)}
           <article class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-start gap-3 mb-3">
+              {#if bulkSelectCtl.active}
+                <input
+                  type="checkbox"
+                  checked={bulkSelectCtl.isSelected(h.name)}
+                  onchange={() => bulkSelectCtl.toggle(h.name)}
+                  class="mt-1.5 accent-primary w-4 h-4 flex-shrink-0"
+                  aria-label="select for bulk action"
+                />
+              {/if}
               <button
                 onclick={() => dataCtl.toggleToday(h)}
                 disabled={busy === h.name || !h.taskIdToday}
