@@ -95,10 +95,10 @@
 </script>
 
 <div class="h-full overflow-y-auto">
-  <div class="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
-    <header class="mb-5 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-3">
+  <div class="@container p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
+    <header class="mb-5 flex flex-col @md:flex-row @md:items-baseline @md:justify-between gap-3">
       <div class="min-w-0">
-        <h1 class="text-2xl sm:text-3xl font-semibold text-text">Habits</h1>
+        <h1 class="text-2xl @md:text-3xl font-semibold text-text">Habits</h1>
         <p class="text-sm text-dim mt-1">
           derived from <code class="text-xs">## Habits</code> in each daily note
           {#if data}
@@ -153,7 +153,7 @@
     {#if data && data.habits.length >= 2 && (aiInsights.length > 0 || aiBusy || aiError)}
       <section class="mb-4 p-3 bg-surface1 border border-surface2 rounded-lg">
         <div class="flex items-baseline gap-2 mb-2">
-          <h3 class="text-xs uppercase tracking-wider text-primary font-medium">Pattern insight</h3>
+          <h3 class="text-xs text-primary font-medium">Pattern insight</h3>
           <span class="flex-1"></span>
           {#if aiBusy}
             <span class="text-[11px] text-dim italic">analyzing…</span>
@@ -185,7 +185,7 @@
     {#if suggestedHabits.length > 0 || suggestBusy || suggestError}
       <section class="mb-4 p-3 bg-surface1 border border-secondary/40 rounded-lg">
         <div class="flex items-baseline gap-2 mb-2">
-          <h3 class="text-xs uppercase tracking-wider text-secondary font-medium">Habits from your goals</h3>
+          <h3 class="text-xs text-secondary font-medium">Habits from your goals</h3>
           <span class="flex-1"></span>
           {#if suggestBusy}
             <span class="text-[11px] text-dim italic">proposing…</span>
@@ -399,7 +399,7 @@
                   <button
                     type="button"
                     onclick={() => targetsCtl.editingTarget = editingTarget === h.name ? null : h.name}
-                    class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border transition-colors
+                    class="px-1.5 py-0.5 rounded text-[10px] border transition-colors
                       {hit
                         ? 'bg-surface0 text-success border-success hover:bg-surface1'
                         : 'bg-surface0 text-warning border-warning hover:bg-surface1'}"
@@ -409,7 +409,7 @@
                   <button
                     type="button"
                     onclick={() => targetsCtl.editingTarget = editingTarget === h.name ? null : h.name}
-                    class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1 text-dim border-surface2 hover:text-text"
+                    class="px-1.5 py-0.5 rounded text-[10px] border bg-surface1 text-dim border-surface2 hover:text-text"
                     title="set a weekly target"
                   >+ target</button>
                 {/if}
@@ -442,7 +442,7 @@
         <table class="w-full border-separate border-spacing-1 min-w-[28rem]">
           <thead>
             <tr>
-              <th class="w-32 sm:w-1/4 text-left text-[11px] uppercase tracking-wider text-dim font-medium pb-2">Habit</th>
+              <th class="w-32 sm:w-1/4 text-left text-[11px] text-dim font-medium pb-2">Habit</th>
               {#each days as d (d.date)}
                 {@const isToday = d.date === data.today}
                 <th
@@ -557,7 +557,7 @@
                     <button
                       type="button"
                       onclick={() => targetsCtl.editingTarget = editingTarget === h.name ? null : h.name}
-                      class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border transition-colors
+                      class="px-1.5 py-0.5 rounded text-[10px] border transition-colors
                         {hit
                           ? 'bg-surface0 text-success border-success hover:bg-surface1'
                           : 'bg-surface0 text-warning border-warning hover:bg-surface1'}"
@@ -567,7 +567,7 @@
                     <button
                       type="button"
                       onclick={() => targetsCtl.editingTarget = editingTarget === h.name ? null : h.name}
-                      class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1 text-dim border-surface2 hover:text-text"
+                      class="px-1.5 py-0.5 rounded text-[10px] border bg-surface1 text-dim border-surface2 hover:text-text"
                     >+ target</button>
                   {/if}
                 </div>
@@ -610,12 +610,12 @@
                     <button
                       type="button"
                       onclick={() => stackCtl.startStackEdit(h)}
-                      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border border-secondary/40 bg-surface0 text-secondary hover:bg-surface1"
+                      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border border-secondary/40 bg-surface0 text-secondary hover:bg-surface1"
                       title="stack anchor — click to edit or clear"
                     >🔗 after {h.stackAfter}</button>
                     {#if anchorsFor[h.name]?.length}
                       <span
-                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider bg-surface1 text-dim"
+                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-surface1 text-dim"
                         title="other habits anchored to this one"
                       >→ triggers {anchorsFor[h.name].join(', ')}</span>
                     {/if}
@@ -625,12 +625,12 @@
                     <button
                       type="button"
                       onclick={() => stackCtl.startStackEdit(h)}
-                      class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1 text-dim border-surface2 hover:text-text"
+                      class="px-1.5 py-0.5 rounded text-[10px] border bg-surface1 text-dim border-surface2 hover:text-text"
                       title="anchor this habit to another habit you already do"
                     >+ stack after…</button>
                     {#if anchorsFor[h.name]?.length}
                       <span
-                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider bg-surface1 text-dim"
+                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-surface1 text-dim"
                         title="other habits anchored to this one"
                       >→ triggers {anchorsFor[h.name].join(', ')}</span>
                     {/if}
@@ -643,7 +643,11 @@
                  button — click to toggle done/undone for that date.
                  Future-dated dots stay clickable too so the user can
                  plan-log (e.g. mark a workout planned for tomorrow). -->
-            <div class="grid grid-flow-col grid-rows-7 gap-0.5" style="grid-auto-columns: minmax(0, 1fr);">
+            <!-- Compact GitHub-contribution-style grid: fixed ~13px cells
+                 instead of stretching each of the 13 columns to fill the
+                 row (which made one habit ~600px tall). w-fit keeps the
+                 grid at its natural width so it doesn't sprawl. -->
+            <div class="grid grid-flow-col grid-rows-7 gap-[3px] w-fit" style="grid-auto-columns: 0.85rem;">
               {#each h.days as d (d.date)}
                 {@const isToday = d.date === data.today}
                 {@const cellBusy = busy === `${h.name}|${d.date}`}
