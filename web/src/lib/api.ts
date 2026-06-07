@@ -2013,24 +2013,50 @@ export const api = {
       let event = '';
       let dataLines: string[] = [];
 
+      // Track whether the controller has terminated (onDone or onError
+      // fired). A server that drops the connection without emitting
+      // `event: done\n\n` would otherwise leave the caller awaiting
+      // forever; the synthesized done at end of stream covers that.
+      let terminated = false;
+      const fireDone = () => {
+        if (terminated) return;
+        terminated = true;
+        handlers.onDone?.();
+      };
+      const fireError = (err: Error) => {
+        if (terminated) return;
+        terminated = true;
+        handlers.onError?.(err);
+      };
+
       const flush = () => {
         if (dataLines.length === 0) return;
         const data = dataLines.join('\n');
+        const ev = event;
         dataLines = [];
-        try {
-          if (event === 'error') {
+        event = '';
+        if (ev === 'error') {
+          // Even a malformed error payload still surfaces as an error
+          // — silently dropping it would leave the UI stuck in
+          // "drafting…" with no way to recover.
+          try {
             const parsed = JSON.parse(data) as { message?: string };
-            handlers.onError?.(new Error(parsed.message ?? 'stream error'));
-          } else if (event === 'done') {
-            handlers.onDone?.();
-          } else if (event === 'proposal') {
+            fireError(new Error(parsed.message ?? 'stream error'));
+          } catch {
+            fireError(new Error('stream error (malformed payload)'));
+          }
+        } else if (ev === 'done') {
+          fireDone();
+        } else if (ev === 'proposal') {
+          // Half-formed proposal mid-stream is fine to skip — the next
+          // emission supersedes. Don't surface as an error.
+          try {
             const parsed = JSON.parse(data) as RoutineProposal;
             handlers.onProposal(parsed);
+          } catch {
+            // intentional: skip
           }
-        } catch {
-          // Malformed event — skip rather than abort the whole stream.
         }
-        event = '';
       };
 
       try {
@@ -2050,10 +2076,23 @@ export const api = {
             else if (line.startsWith('data: ')) dataLines.push(line.slice(6));
           }
         }
+        // Stream closed. Drain whatever didn't end with a \n — a
+        // server that closed mid-event (network hiccup, server crash)
+        // would otherwise lose the trailing payload silently.
+        if (buf.length > 0) {
+          const tail = buf.replace(/\r$/, '');
+          if (tail.startsWith('event: ')) event = tail.slice(7).trim();
+          else if (tail.startsWith('data: ')) dataLines.push(tail.slice(6));
+          buf = '';
+        }
         if (dataLines.length > 0) flush();
+        // Server closed without a `done` / `error` terminator: synth one
+        // so the caller's await resolves. fireDone is a no-op if a real
+        // terminator already fired.
+        fireDone();
       } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') return;
-        handlers.onError?.(e instanceof Error ? e : new Error(String(e)));
+        fireError(e instanceof Error ? e : new Error(String(e)));
       }
     })();
     return ctrl;
