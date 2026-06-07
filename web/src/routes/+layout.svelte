@@ -656,7 +656,6 @@
       <NavSidebar
         isCompact={$sidebarCompact}
         onNavigate={() => (drawerOpen = false)}
-        onQuickJump={() => palette?.show()}
       />
     </aside>
 
@@ -666,7 +665,6 @@
       <NavSidebar
         isCompact={false}
         onNavigate={() => (drawerOpen = false)}
-        onQuickJump={() => palette?.show()}
       />
     </Drawer>
   {/if}
@@ -686,7 +684,7 @@
            hides itself on mobile (md:flex) until Phase 3. The
            scrollable content area below owns the per-route scroll
            position which we persist into the active tab. -->
-      <TabStrip />
+      <TabStrip onQuickJump={() => palette?.show()} />
     {/if}
     <!-- Inner content area. overflow-hidden is intentional — each
          route owns its own scroll container (h-full overflow-y-auto)

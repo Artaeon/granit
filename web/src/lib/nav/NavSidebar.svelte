@@ -18,8 +18,6 @@
   //   isCompact     — width mode (false in the mobile drawer)
   //   onNavigate    — called when a row click should also close
   //                   the mobile drawer; no-op on desktop
-  //   onQuickJump   — opens the command palette (the palette
-  //                   instance is bound in the layout)
 
   import Logo from '$lib/components/Logo.svelte';
   import NavIcon from '$lib/components/NavIcon.svelte';
@@ -47,10 +45,9 @@
   type Props = {
     isCompact: boolean;
     onNavigate?: () => void;
-    onQuickJump: () => void;
   };
 
-  let { isCompact, onNavigate, onQuickJump }: Props = $props();
+  let { isCompact, onNavigate }: Props = $props();
 
   function navigate() {
     onNavigate?.();
@@ -208,20 +205,9 @@
   </div>
 
   <nav class="flex-1 overflow-y-auto {isCompact ? 'px-1 py-1.5' : 'px-1.5 py-1.5'} space-y-px">
-    <!-- Quick jump — visually subdued so the Ask-AI button below
-         is the dominant primary affordance. ⌘K is the keyboard
-         pattern; this row exists for click-discovery. -->
-    <button
-      onclick={() => { onQuickJump(); navigate(); }}
-      title={isCompact ? 'Quick jump (⌘K)' : undefined}
-      class="w-full flex items-center {isCompact ? 'justify-center px-2 py-1' : 'gap-2 px-2 py-0.5'} rounded text-xs text-dim hover:bg-surface0 hover:text-subtext transition-colors"
-    >
-      <NavIcon name="search" class="w-4 h-4 flex-shrink-0" />
-      {#if !isCompact}
-        <span class="flex-1 text-left">Quick jump</span>
-        <kbd class="text-[10px] font-mono px-1.5 py-0.5 bg-surface0 border border-surface1 rounded">⌘K</kbd>
-      {/if}
-    </button>
+    <!-- Quick jump (⌘K) now lives in the desktop top bar + MobileTopBar,
+         so the sidebar doesn't duplicate it — keeps the rail focused on
+         destinations and a touch smaller. -->
 
     <!-- Ask AI — opens the global AI overlay. Subtle gradient
          border + sparkle icon distinguish it from regular nav so
