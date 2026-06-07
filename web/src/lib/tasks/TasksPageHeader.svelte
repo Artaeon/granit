@@ -7,6 +7,7 @@
   // chrome (overdue red, today amber, etc), so the chrome itself is
   // intentionally muted — it shouldn't compete with the work surface.
   import { focusOnMount } from '$lib/util/focusOnMount';
+  import Button from '$lib/components/Button.svelte';
 
   type View = 'list' | 'kanban' | 'today' | 'week' | 'triage' | 'inbox' | 'stale' | 'duplicates' | 'quickwins' | 'review' | 'eisenhower';
 
@@ -124,13 +125,13 @@
        to text). Active view = primary background with on-primary text. -->
   <div class="hidden sm:flex bg-surface0 border border-surface1 rounded overflow-hidden">
     {#each PRIMARY as p (p.key)}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        active={view === p.key}
         onclick={() => onSelectView(p.key)}
         title={p.title}
         aria-label={p.label}
         aria-pressed={view === p.key}
-        class="px-2 py-1.5 inline-flex items-center gap-1 text-xs {view === p.key ? 'bg-primary text-on-primary' : 'text-subtext hover:bg-surface1'}"
       >
         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d={p.icon} />
@@ -142,7 +143,7 @@
             title="{todayOverdue} overdue + {todayLoad - todayOverdue} due today"
           >{todayLoad}</span>
         {/if}
-      </button>
+      </Button>
     {/each}
   </div>
 
@@ -165,9 +166,9 @@
   <!-- More-views overflow dropdown. Same data-more-views marker the
        page's click-outside effect looks for. -->
   <div class="relative hidden sm:block" data-more-views>
-    <button
-      type="button"
-      class="px-2 py-1.5 inline-flex items-center gap-1 bg-surface0 border border-surface1 rounded text-xs {activeOverflowLabel ? 'text-primary' : 'text-subtext'} hover:bg-surface1"
+    <Button
+      variant="secondary"
+      active={!!activeOverflowLabel}
       aria-haspopup="true"
       aria-expanded={moreViewsOpen}
       onclick={onToggleMoreViews}
@@ -178,7 +179,7 @@
         <span class="text-[10px] tabular-nums text-secondary font-mono">{inboxLoad}</span>
       {/if}
       <span class="text-[9px] opacity-70" aria-hidden="true">▾</span>
-    </button>
+    </Button>
     {#if moreViewsOpen}
       <div
         role="menu"
@@ -207,52 +208,55 @@
 
   <!-- Density toggle. Persisted at the route level (DENSITY_KEY); icon
        glyph signals current state — three close lines = compact. -->
-  <button
-    type="button"
+  <Button
+    variant="secondary"
+    iconOnly
+    active={density === 'compact'}
     onclick={onToggleDensity}
     aria-pressed={density === 'compact'}
     title={density === 'compact' ? 'Compact — click for comfortable' : 'Comfortable — click for compact'}
-    class="px-2 py-1.5 text-xs font-mono leading-none border border-surface1 rounded {density === 'compact' ? 'bg-primary text-on-primary' : 'bg-surface0 text-dim hover:bg-surface1 hover:text-text'}"
-  >{density === 'compact' ? '≡' : '≣'}</button>
+    class="font-mono"
+  >{density === 'compact' ? '≡' : '≣'}</Button>
 
   <!-- Filter button. Counts active filters in a small badge so the user
        always knows how many dimensions are narrowing the list before
        opening the slide-out panel. -->
-  <button
-    type="button"
+  <Button
+    variant="secondary"
+    active={activeFilterCount > 0}
     onclick={onToggleFilterPanel}
     aria-label="filters"
     title="Open the filter panel (priority, project, tag, goal, deadline, search)"
-    class="relative px-2 py-1.5 inline-flex items-center gap-1 text-xs border rounded {activeFilterCount > 0 ? 'border-primary bg-surface1 text-primary' : 'border-surface1 bg-surface0 text-subtext hover:bg-surface1 hover:text-text'}"
+    class="relative"
   >
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M4 5h16l-6 8v6l-4-2v-4z" />
     </svg>
     <span class="hidden md:inline">Filter</span>
     {#if activeFilterCount > 0}
-      <span class="px-1 py-0 bg-primary text-on-primary text-[9px] font-mono rounded leading-tight">{activeFilterCount}</span>
+      <span class="px-1 py-0 bg-on-primary/20 text-[9px] font-mono rounded leading-tight">{activeFilterCount}</span>
     {/if}
-  </button>
+  </Button>
 
   <!-- Quick capture — kicks the global QuickCaptureFab. -->
-  <button
-    type="button"
+  <Button
+    variant="primary"
     onclick={onQuickCapture}
     aria-label="Quick capture"
     title="Quick capture (Cmd-Shift-N)"
-    class="px-2 py-1.5 text-xs bg-primary text-on-primary rounded hover:opacity-90 inline-flex items-center gap-1"
   >
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
       <path d="M12 5v14M5 12h14"/>
     </svg>
     <span class="hidden md:inline">Capture</span>
-  </button>
+  </Button>
 
-  <button
-    type="button"
+  <Button
+    variant="secondary"
+    iconOnly
     onclick={onToggleHelp}
     aria-label="keyboard shortcuts"
     title="keyboard shortcuts (?)"
-    class="hidden sm:inline-flex w-7 h-7 items-center justify-center text-dim hover:text-text border border-surface1 rounded text-sm"
-  >?</button>
+    class="hidden sm:inline-flex"
+  >?</Button>
 </div>
