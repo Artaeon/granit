@@ -3134,7 +3134,20 @@ export const api = {
   // EnabledModules to the modules registry as a side effect.
   listProfiles: () => req<ProfilesResponse>('/profiles'),
   activateProfile: (id: string) =>
-    req<ProfilesResponse>(`/profiles/${encodeURIComponent(id)}/activate`, { method: 'POST' })
+    req<ProfilesResponse>(`/profiles/${encodeURIComponent(id)}/activate`, { method: 'POST' }),
+
+  // Workspaces — the web shell's named split-tree layouts mirrored
+  // to <vault>/.granit/workspaces.json so a layout tuned on one
+  // device follows the user to phone + laptop. The payload is
+  // opaque on both sides of the wire: the workspaceStore owns the
+  // schema (so a future field bump doesn't need a coordinated
+  // server release), the backend just round-trips the JSON. GET
+  // returns the empty default {workspaces:[]} when the sidecar is
+  // missing — first-run callers fall through to their existing
+  // localStorage seed.
+  getWorkspaces: () => req<unknown>('/workspaces'),
+  putWorkspaces: (payload: unknown) =>
+    req<unknown>('/workspaces', { method: 'PUT', body: JSON.stringify(payload) })
 };
 
 export interface ObjectTypeProperty {
