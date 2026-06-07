@@ -244,6 +244,23 @@ export function workspaceCommands(): WorkspaceCmd[] {
     }
   }
 
+  // Maximize / restore the focused pane. VSCode's ⌘K Z parallel — hide
+  // every other leaf, focused pane fills the workspace. Toggle off
+  // brings the split tree back, untouched.
+  if (focusedLeaf) {
+    const isMaxed = store.maximizedLeafId === focusedLeaf.id;
+    out.push({
+      id: 'workspace:toggle-maximize',
+      label: isMaxed ? 'Restore split layout' : 'Maximize focused pane',
+      detail: focusedLabel,
+      icon: 'workspace',
+      run: () => {
+        store.toggleMaximize(focusedLeaf.id);
+        void goto('/workspace');
+      }
+    });
+  }
+
   if (focusedLeaf && focusedPaneKind) {
     const target = differentPane(focusedPaneKind);
     out.push({

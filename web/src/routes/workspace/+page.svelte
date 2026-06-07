@@ -50,6 +50,17 @@
   let activeLeaves = $derived(leaves(store.active.layout));
   let canClose = $derived(activeLeaves.length > 1);
 
+  // Maximized-leaf override. When the store says a leaf is maximized,
+  // desktop renders just that PaneSlot full-height instead of the
+  // SplitView. Splits still exist in the tree — we just hide them.
+  // Falls back to null when the maximized id no longer points at a
+  // real leaf (store self-heals; this is defensive).
+  let maximizedLeaf = $derived(
+    store.maximizedLeafId
+      ? activeLeaves.find((l) => l.id === store.maximizedLeafId) ?? null
+      : null
+  );
+
   // Mobile picks the leaf to show from the store's focused leaf so
   // the same "which pane am I on" notion drives both: desktop's focus
   // ring AND mobile's full-screen leaf. Tapping a tab focuses; the
@@ -91,19 +102,37 @@
     </div>
   {/if}
 
-  <!-- Desktop: recursive split-tree fills the rest. -->
+  <!-- Desktop: recursive split-tree fills the rest. When a leaf is
+       maximized, short-circuit the SplitView and render just that
+       PaneSlot full-height — the split tree is preserved underneath,
+       toggling off restores the original layout. -->
   <div class="hidden md:flex flex-1 min-h-0 w-full overflow-hidden">
-    <SplitView
-      node={store.active.layout}
-      onSetPane={store.setPane}
-      onSetRatio={store.setRatio}
-      onSplit={store.split}
-      onClose={store.close}
-      onSwap={store.swap}
-      {canClose}
-      focusedLeafId={store.focusedLeafId}
-      onFocus={store.focus}
-    />
+    {#if maximizedLeaf}
+      <PaneSlot
+        pane={maximizedLeaf.pane}
+        leafId={maximizedLeaf.id}
+        onChange={(p) => store.setPane(maximizedLeaf.id, p)}
+        onSplitH={(p) => store.split(maximizedLeaf.id, 'h', p)}
+        onSplitV={(p) => store.split(maximizedLeaf.id, 'v', p)}
+        closable={canClose}
+        onClose={() => store.close(maximizedLeaf.id)}
+        focused={true}
+        onFocus={() => store.focus(maximizedLeaf.id)}
+        onSwap={(sourceLeafId) => store.swap(sourceLeafId, maximizedLeaf.id)}
+      />
+    {:else}
+      <SplitView
+        node={store.active.layout}
+        onSetPane={store.setPane}
+        onSetRatio={store.setRatio}
+        onSplit={store.split}
+        onClose={store.close}
+        onSwap={store.swap}
+        {canClose}
+        focusedLeafId={store.focusedLeafId}
+        onFocus={store.focus}
+      />
+    {/if}
   </div>
 
   <!-- Mobile: show whichever leaf the tabs picked. Splits + closes

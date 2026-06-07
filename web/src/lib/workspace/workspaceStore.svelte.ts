@@ -140,6 +140,15 @@ export interface WorkspaceStoreController {
   /** Set the focused leaf in the active workspace. Silent no-op when
    *  the id doesn't belong to the active layout. */
   focus(leafId: string): void;
+  /** When set, the /workspace shell renders ONLY this leaf — splits
+   *  are hidden but their tree is preserved. Transient (cleared on
+   *  active-workspace switch or when the leaf disappears). null
+   *  means the normal multi-leaf SplitView is in charge. */
+  readonly maximizedLeafId: string | null;
+  /** Toggle the maximize state for the given leaf. Maximizing a
+   *  different leaf swaps the target; calling on the already-
+   *  maximized leaf unmaximizes. */
+  toggleMaximize(leafId: string): void;
 
   // Workspace CRUD.
   create(name?: string): void;
@@ -224,20 +233,38 @@ export function createWorkspaceStore(): WorkspaceStoreController {
   // or pane swap that removed it), snap to the first leaf so the
   // store's external contract — "always a real leaf" — holds.
   let focusedLeafId = $state<string>('');
+  // Maximized leaf — transient too. When non-null, the workspace shell
+  // renders only this leaf. The same self-healing rule applies: if the
+  // leaf disappears (workspace switch, close, split-collapse), reset
+  // to null so the user lands back in the normal SplitView.
+  let maximizedLeafId = $state<string | null>(null);
   $effect(() => {
     const ids = leaves(active.layout).map((l) => l.id);
     if (ids.length === 0) {
       focusedLeafId = '';
+      maximizedLeafId = null;
       return;
     }
     if (!ids.includes(focusedLeafId)) {
       focusedLeafId = ids[0];
+    }
+    if (maximizedLeafId !== null && !ids.includes(maximizedLeafId)) {
+      maximizedLeafId = null;
     }
   });
 
   function focus(leafId: string) {
     const ids = leaves(active.layout).map((l) => l.id);
     if (ids.includes(leafId)) focusedLeafId = leafId;
+  }
+
+  function toggleMaximize(leafId: string) {
+    const ids = leaves(active.layout).map((l) => l.id);
+    if (!ids.includes(leafId)) return;
+    // Maximizing a leaf that's already maximized → unmaximize.
+    // Maximizing a different leaf while another is maximized →
+    // switch to the new one (matches VSCode's behaviour).
+    maximizedLeafId = maximizedLeafId === leafId ? null : leafId;
   }
 
   function patchActiveLayout(next: TreeNode) {
@@ -377,7 +404,11 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     get focusedLeafId() {
       return focusedLeafId;
     },
+    get maximizedLeafId() {
+      return maximizedLeafId;
+    },
     focus,
+    toggleMaximize,
     create,
     createWithLayout,
     rename,
