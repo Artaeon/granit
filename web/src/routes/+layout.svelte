@@ -6,6 +6,7 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import Drawer from '$lib/components/Drawer.svelte';
+  import AuthScreen from '$lib/components/AuthScreen.svelte';
   import CommandPalette from '$lib/components/CommandPalette.svelte';
   import BottomNav from '$lib/components/BottomNav.svelte';
   import Toaster from '$lib/components/Toaster.svelte';
@@ -627,6 +628,15 @@
   the root, and falls back to 100vh on browsers that don't support
   dvh (auto via Tailwind's fallback chain).
 -->
+<!-- Global auth gate. A signed-out user (no bearer token) sees ONLY the
+     login screen — no sidebar, no route content, no chrome. This is the
+     single source of truth for "you must be in to see anything"; the
+     per-route guards below only run inside the authed branch. Data is
+     additionally protected server-side (the API 401s without the token);
+     this closes the UI-exposure gap so no page shell leaks pre-login. -->
+{#if !$auth}
+  <AuthScreen />
+{:else}
 <div class="h-dvh flex flex-col md:flex-row overflow-hidden">
   {#if $auth}
     <MobileTopBar onQuickJump={() => palette?.show()} />
@@ -745,6 +755,10 @@
        a pre-login user has no vault to remember from. -->
   <NoteTray />
 {/if}
+{/if}
+<!-- Auth-agnostic globals — these render on the login screen too:
+     Toaster (surfaces auth errors), the update banner (PWA refresh),
+     and the shortcuts cheat-sheet. -->
 <Toaster />
 <UpdateAvailableBanner />
 
