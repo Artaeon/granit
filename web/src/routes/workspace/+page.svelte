@@ -120,6 +120,7 @@
         onFocus={() => store.focus(maximizedLeaf.id)}
         onSwap={(sourceLeafId) => store.swap(sourceLeafId, maximizedLeaf.id)}
         onToggleMaximize={() => store.toggleMaximize(maximizedLeaf.id)}
+        maximized={true}
       />
     {:else}
       <SplitView

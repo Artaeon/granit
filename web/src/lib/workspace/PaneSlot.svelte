@@ -27,7 +27,8 @@
     focused = false,
     onFocus,
     onSwap,
-    onToggleMaximize
+    onToggleMaximize,
+    maximized = false
   }: {
     pane: PaneKind;
     /** Id of the leaf this slot renders. Used to label drag payloads
@@ -58,6 +59,9 @@
      *  toggle the workspace's maximize state for this leaf. Optional;
      *  when omitted, double-click does nothing (mobile view). */
     onToggleMaximize?: () => void;
+    /** True when this leaf is currently maximized — flips the header's
+     *  maximize button to a "restore" icon. */
+    maximized?: boolean;
   } = $props();
 
   let entry = $derived(findPane(pane));
@@ -192,10 +196,14 @@
         size="sm"
         iconOnly
         onclick={() => onSplitH?.(nextPaneCandidate)}
-        title="Split horizontally — new pane appears to the right"
-        aria-label="Split horizontally"
-        class="hidden md:inline-flex font-mono"
-      >|</Button>
+        title="Split right — new pane appears to the right"
+        aria-label="Split right"
+        class="hidden md:inline-flex"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="16" rx="1.5" /><line x1="12" y1="4" x2="12" y2="20" />
+        </svg>
+      </Button>
     {/if}
     {#if onSplitV}
       <Button
@@ -203,10 +211,35 @@
         size="sm"
         iconOnly
         onclick={() => onSplitV?.(nextPaneCandidate)}
-        title="Split vertically — new pane appears below"
-        aria-label="Split vertically"
-        class="hidden md:inline-flex font-mono"
-      >_</Button>
+        title="Split down — new pane appears below"
+        aria-label="Split down"
+        class="hidden md:inline-flex"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="16" rx="1.5" /><line x1="3" y1="12" x2="21" y2="12" />
+        </svg>
+      </Button>
+    {/if}
+    {#if onToggleMaximize}
+      <Button
+        variant="ghost"
+        size="sm"
+        iconOnly
+        onclick={onToggleMaximize}
+        title={maximized ? 'Restore (or double-click header)' : 'Maximize (or double-click header)'}
+        aria-label={maximized ? 'Restore pane' : 'Maximize pane'}
+        class="hidden md:inline-flex"
+      >
+        {#if maximized}
+          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 9V4 M9 9H4 M15 9V4 M15 9h5 M9 15v5 M9 15H4 M15 15v5 M15 15h5" />
+          </svg>
+        {:else}
+          <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 9V4h5 M20 9V4h-5 M4 15v5h5 M20 15v5h-5" />
+          </svg>
+        {/if}
+      </Button>
     {/if}
     {#if closable && onClose}
       <Button
@@ -214,10 +247,14 @@
         size="sm"
         iconOnly
         onclick={onClose}
-        title="Close this pane"
-        aria-label="Close this pane"
-        class="tap-target text-base hover:text-error"
-      >×</Button>
+        title="Close pane"
+        aria-label="Close pane"
+        class="tap-target hover:text-error"
+      >
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12 M18 6L6 18" />
+        </svg>
+      </Button>
     {/if}
   </header>
   <div class="flex-1 min-h-0 overflow-auto">

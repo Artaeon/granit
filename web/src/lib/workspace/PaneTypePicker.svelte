@@ -56,7 +56,7 @@
     {#if entry}
       <NavIcon name={entry.icon} class="w-3.5 h-3.5 text-dim" />
     {/if}
-    <span class="uppercase tracking-wider">{entry?.label ?? pane}</span>
+    <span class="font-medium">{entry?.label ?? pane}</span>
     <svg viewBox="0 0 24 24" class="w-3 h-3 text-dim" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <polyline points="6 9 12 15 18 9" />
     </svg>
