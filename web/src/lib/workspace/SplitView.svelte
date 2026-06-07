@@ -22,6 +22,7 @@
     onSetRatio,
     onSplit,
     onClose,
+    onSwap,
     canClose,
     focusedLeafId,
     onFocus
@@ -31,6 +32,9 @@
     onSetRatio: (splitId: string, ratio: number) => void;
     onSplit: (leafId: string, direction: 'h' | 'v', newPane: PaneKind) => void;
     onClose: (leafId: string) => void;
+    /** Swap two leaves' pane kinds. Wired by /workspace to store.swap.
+     *  Drives the header drag-and-drop in PaneSlot. */
+    onSwap: (leafIdA: string, leafIdB: string) => void;
     /** True when the workspace has more than one leaf — drives
      *  PaneSlot's close-button visibility. The store guarantees at
      *  least one leaf survives at all times. */
@@ -95,6 +99,7 @@
 {#if node.kind === 'leaf'}
   <PaneSlot
     pane={node.pane}
+    leafId={node.id}
     onChange={(p) => onSetPane(node.id, p)}
     onSplitH={(p) => onSplit(node.id, 'h', p)}
     onSplitV={(p) => onSplit(node.id, 'v', p)}
@@ -102,6 +107,7 @@
     onClose={() => onClose(node.id)}
     focused={focusedLeafId === node.id}
     onFocus={() => onFocus(node.id)}
+    onSwap={(sourceLeafId) => onSwap(sourceLeafId, node.id)}
   />
 {:else}
   <div
@@ -123,6 +129,7 @@
         {onSetRatio}
         {onSplit}
         {onClose}
+        {onSwap}
         {canClose}
         {focusedLeafId}
         {onFocus}
@@ -165,6 +172,7 @@
         {onSetRatio}
         {onSplit}
         {onClose}
+        {onSwap}
         {canClose}
         {focusedLeafId}
         {onFocus}

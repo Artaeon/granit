@@ -160,6 +160,10 @@ export interface WorkspaceStoreController {
 
   /** Replace the pane kind in a leaf. */
   setPane(leafId: string, pane: PaneKind): void;
+  /** Swap the pane kinds in two leaves. Both must exist in the active
+   *  layout; no-op on equal ids, unknown ids, or identical panes.
+   *  Used by the header drag-and-drop in PaneSlot. */
+  swap(leafIdA: string, leafIdB: string): void;
   /** Update the gutter ratio on a split. */
   setRatio(splitId: string, ratio: number): void;
   /** Split a leaf into two — the existing leaf becomes the first
@@ -265,6 +269,19 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     patchActiveLayout(closeLeafTree(active.layout, leafId));
   }
 
+  function swap(leafIdA: string, leafIdB: string) {
+    if (leafIdA === leafIdB) return;
+    const allLeaves = leaves(active.layout);
+    const a = allLeaves.find((l) => l.id === leafIdA);
+    const b = allLeaves.find((l) => l.id === leafIdB);
+    if (!a || !b || a.pane === b.pane) return;
+    // Two sequential setPane calls — the underlying patches collapse
+    // into the same effect-tick from the consumer's perspective.
+    const aPane = a.pane;
+    setPane(leafIdA, b.pane);
+    setPane(leafIdB, aPane);
+  }
+
   // Pick a name that doesn't collide with an existing workspace. If
   // `desired` is taken, suffix with ' 2', ' 3', …. Empty / missing
   // falls back to "Workspace".
@@ -367,6 +384,7 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     setIcon,
     remove,
     setPane,
+    swap,
     setRatio,
     split,
     close,

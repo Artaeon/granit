@@ -17,15 +17,21 @@
 
   let {
     pane,
+    leafId,
     onChange,
     onSplitH,
     onSplitV,
     closable = false,
     onClose,
     focused = false,
-    onFocus
+    onFocus,
+    onSwap
   }: {
     pane: PaneKind;
+    /** Id of the leaf this slot renders. Used to label drag payloads
+     *  for the header drag-and-drop swap. Optional — when omitted,
+     *  drag-and-drop is disabled (e.g. mobile single-leaf view). */
+    leafId?: string;
     onChange: (next: PaneKind) => void;
     /** Split this pane horizontally — new pane appears to the right. */
     onSplitH?: (newPane: PaneKind) => void;
@@ -41,9 +47,46 @@
      *  inside the pane focuses it. Capture-phase to fire before any
      *  child handler. */
     onFocus?: () => void;
+    /** Called when a header from another PaneSlot is dropped onto
+     *  this one — the parent should swap pane kinds between the two
+     *  leaves. The argument is the SOURCE leaf id (this leaf's id is
+     *  already known to the caller). */
+    onSwap?: (sourceLeafId: string) => void;
   } = $props();
 
   let entry = $derived(findPane(pane));
+
+  // Drag-and-drop header swap. VSCode-style: grab a pane's header,
+  // drag it onto another pane's header, the two contents swap. Uses
+  // a custom MIME type so the browser only treats granit headers as
+  // valid drop targets — text dragged from outside the app won't
+  // light up a target. Mobile clients fall through (touch doesn't
+  // fire native drag events) and use the palette swap commands.
+  const DRAG_MIME = 'application/x-granit-pane-leaf';
+  let dragOver = $state(false);
+  function onDragStart(e: DragEvent) {
+    if (!leafId || !e.dataTransfer) return;
+    e.dataTransfer.setData(DRAG_MIME, leafId);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+  function onDragOver(e: DragEvent) {
+    if (!leafId || !onSwap || !e.dataTransfer) return;
+    if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    dragOver = true;
+  }
+  function onDragLeave() {
+    dragOver = false;
+  }
+  function onDrop(e: DragEvent) {
+    dragOver = false;
+    if (!leafId || !onSwap || !e.dataTransfer) return;
+    const source = e.dataTransfer.getData(DRAG_MIME);
+    if (!source || source === leafId) return;
+    e.preventDefault();
+    onSwap(source);
+  }
 
   // When the user clicks the split buttons, default the new pane to
   // the FIRST pane type that isn't this one — saves a click vs.
@@ -56,7 +99,15 @@
   class="flex flex-col h-full min-h-0 border rounded overflow-hidden bg-base transition-colors {focused ? 'border-primary' : 'border-surface1'}"
 >
   <header
-    class="flex items-center gap-1.5 px-2 py-1 border-b text-xs flex-shrink-0 transition-colors {focused ? 'border-primary bg-surface0' : 'border-surface1 bg-surface0'}"
+    draggable={leafId ? 'true' : undefined}
+    ondragstart={onDragStart}
+    ondragover={onDragOver}
+    ondragleave={onDragLeave}
+    ondrop={onDrop}
+    class="flex items-center gap-1.5 px-2 py-1 border-b text-xs flex-shrink-0 transition-colors
+      {focused ? 'border-primary bg-surface0' : 'border-surface1 bg-surface0'}
+      {dragOver ? 'ring-2 ring-inset ring-primary' : ''}
+      {leafId ? 'cursor-grab active:cursor-grabbing' : ''}"
   >
     <PaneTypePicker {pane} {onChange} />
     <span class="flex-1"></span>

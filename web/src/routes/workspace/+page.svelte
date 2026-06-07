@@ -99,6 +99,7 @@
       onSetRatio={store.setRatio}
       onSplit={store.split}
       onClose={store.close}
+      onSwap={store.swap}
       {canClose}
       focusedLeafId={store.focusedLeafId}
       onFocus={store.focus}
