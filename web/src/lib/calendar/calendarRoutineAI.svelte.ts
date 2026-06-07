@@ -81,6 +81,13 @@ export function createRoutineAICtl(
   let rejected = $state(new Set<number>());
   let date = $state(todayISO());
   let ctrl: AbortController | null = null;
+  // Generation counter for stream lifecycle. Every propose() bumps it
+  // and captures `myGen` locally; every closure that writes state
+  // (rAF throttle callback, on-done, on-error) checks `myGen === gen`
+  // first. A discard / cancel / re-propose advances `gen`, so any
+  // in-flight closure from the old stream no-ops at apply time and
+  // can't repopulate `proposal` after reset() has wiped it.
+  let gen = 0;
 
   const totalOps = $derived(proposal?.eventOps?.length ?? 0);
   const selectedCount = $derived(
@@ -97,12 +104,16 @@ export function createRoutineAICtl(
     cancel();
     reset();
     if (targetDate) date = targetDate;
+    const myGen = ++gen;
     busy = true;
     // Throttle proposal updates to one paint per frame — the AI's
     // chunk cadence is much finer than the screen's refresh rate and
     // re-rendering the diff on every token shape would jank the
     // drawer. Same pattern CalendarAgent uses for raw text.
+    // The myGen guard means a queued rAF that fires AFTER discard /
+    // re-propose no-ops instead of repopulating the wiped state.
     const t = rafThrottle((latest) => {
+      if (myGen !== gen) return;
       try {
         proposal = JSON.parse(latest) as RoutineProposal;
       } catch {
@@ -113,19 +124,25 @@ export function createRoutineAICtl(
       ctrl = api.calendarRoutineProposal(
         {
           onProposal: (p) => {
+            if (myGen !== gen) return;
             // The server already parses each event; round-trip through
             // JSON.stringify so the throttle can dedupe identical
             // payloads cheaply.
             t.onChunk(JSON.stringify(p));
           },
           onDone: () => {
+            if (myGen !== gen) { resolve(); return; }
             t.flush();
             busy = false;
             ctrl = null;
             resolve();
           },
           onError: (err) => {
-            t.flush();
+            if (myGen !== gen) { resolve(); return; }
+            // Drop the throttle's pending frame so a half-parsed
+            // proposal from a failed stream can't replace the prior
+            // clean state. flush() would do the opposite.
+            t.cancel?.();
             busy = false;
             ctrl = null;
             if (isAbortError(err)) {
@@ -143,6 +160,12 @@ export function createRoutineAICtl(
   }
 
   function cancel(): void {
+    // Bump the generation BEFORE aborting so the SSE client's onError
+    // closure — which fires asynchronously after the abort propagates
+    // through the fetch reader — sees a stale myGen and no-ops. This
+    // prevents a post-abort `t.flush()` from repainting the canvas
+    // with a half-parsed proposal.
+    gen++;
     if (ctrl) {
       ctrl.abort();
       ctrl = null;
@@ -175,6 +198,15 @@ export function createRoutineAICtl(
         dailyPlan: proposal.dailyPlan,
         eventOps: ops
       });
+      // Concurrent discard during apply: the ops still landed on the
+      // server (good — we don't want phantom rollbacks) but the user
+      // has moved on. Don't paint the now-stale "N applied" string
+      // over their cleared drawer. The calendar reload below still
+      // fires so the drawer's parent sees fresh events.
+      if (proposal === null) {
+        await deps.onApplied?.(resp.applied);
+        return;
+      }
       // Partial-safe: even when some ops failed, the daily plan + the
       // successful ops did land. Surface the failed-row count in the
       // inline error string so the drawer can render a soft warning
