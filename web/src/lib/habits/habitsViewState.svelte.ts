@@ -21,7 +21,7 @@ import { loadStoredString, saveStoredString } from '$lib/util/storage';
 // original four. It re-uses the list-view card via a passed snippet;
 // the controller doesn't render anything itself.
 export type HabitsView = 'today' | 'week' | 'list' | 'heatmap' | 'category';
-export type HabitsSort = 'streak' | 'completion' | 'alpha' | 'behind';
+export type HabitsSort = 'streak' | 'completion' | 'alpha' | 'behind' | 'reminder';
 
 const VIEW_KEY = 'granit.habits.view';
 const SORT_KEY = 'granit.habits.sort';
@@ -64,6 +64,17 @@ export function createHabitsViewState(deps: HabitsViewStateDeps): HabitsViewStat
         return list.sort((a, b) => a.last7Pct - b.last7Pct);
       case 'alpha':
         return list.sort((a, b) => a.name.localeCompare(b.name));
+      case 'reminder':
+        // HH:MM ascending; habits without a reminder go last so a
+        // morning scan reads top-down by wake time.
+        return list.sort((a, b) => {
+          const ar = a.reminderTime ?? '';
+          const br = b.reminderTime ?? '';
+          if (!ar && !br) return a.name.localeCompare(b.name);
+          if (!ar) return 1;
+          if (!br) return -1;
+          return ar.localeCompare(br);
+        });
     }
   });
 
