@@ -609,75 +609,278 @@ func (s *Server) handleDeleteHabit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-type habitRenameBody struct {
-	NewName string `json:"new_name"`
+// habitPatchBody is the PATCH /habits/{name} body. Every field is a
+// pointer so we can distinguish "omitted" (don't touch the sidecar)
+// from "explicitly cleared" (write the cleared value). new_name keeps
+// its historical name — this endpoint started life as rename-only and
+// still drives the rename rewrite when supplied.
+type habitPatchBody struct {
+	NewName      *string   `json:"new_name,omitempty"`
+	Category     *string   `json:"category,omitempty"`
+	ReminderTime *string   `json:"reminderTime,omitempty"`
+	Frequency    *string   `json:"frequency,omitempty"`
+	Archived     *bool     `json:"archived,omitempty"`
+	Tags         *[]string `json:"tags,omitempty"`
+}
+
+var (
+	// HH:MM 24h — 00:00 through 23:59. Loose on leading zero in the
+	// hour digit so "9:00" passes; the frontend may emit it that way.
+	reminderTimeRe = regexp.MustCompile(`^([01]?\d|2[0-3]):[0-5]\d$`)
+	// Comma-separated list of three-letter weekday abbreviations
+	// (case-insensitive). Used as the fallback frequency pattern when
+	// the value isn't one of the named cadences.
+	weekdayListRe = regexp.MustCompile(`^(?i)(mon|tue|wed|thu|fri|sat|sun)(\s*,\s*(mon|tue|wed|thu|fri|sat|sun))*$`)
+)
+
+// validFrequency accepts the four named cadences plus a comma-separated
+// weekday list. Empty string is also valid — it means "clear the entry".
+func validFrequency(f string) bool {
+	if f == "" {
+		return true
+	}
+	switch f {
+	case string(habits.FrequencyDaily), string(habits.FrequencyWeekdays),
+		string(habits.FrequencyWeekends), string(habits.Frequency3xWeek):
+		return true
+	}
+	return weekdayListRe.MatchString(f)
 }
 
 func (s *Server) handleRenameHabit(w http.ResponseWriter, r *http.Request) {
 	name := urlParam(r, "name")
-	var body habitRenameBody
+	if strings.TrimSpace(name) == "" {
+		writeError(w, http.StatusBadRequest, "habit name required")
+		return
+	}
+	var body habitPatchBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	newName := strings.TrimSpace(body.NewName)
-	if newName == "" {
-		writeError(w, http.StatusBadRequest, "new_name required")
-		return
-	}
-	if strings.EqualFold(newName, strings.TrimSpace(name)) {
-		// No-op rename — same name (modulo case). Return 200 with 0
-		// touched so the client can render a benign "no change" toast
-		// instead of looking like a server error.
-		writeJSON(w, http.StatusOK, map[string]any{
-			"name":         name,
-			"newName":      newName,
-			"filesTouched": 0,
-		})
-		return
-	}
-	touched, err := s.rewriteHabitInDailies(name, func(_, line, _ string) (string, bool) {
-		// Preserve the leading indent + bullet + checkbox; only swap
-		// the visible text. habitCheckboxRe captures: m[0] = full match,
-		// m[1] = checkbox char, m[2] = trailing text. Re-derive from
-		// the full line so we keep any indent the user typed.
-		m := habitCheckboxRe.FindStringSubmatch(line)
-		if m == nil {
-			return "", false
+
+	// ---- validate every supplied field up-front so we never half-apply.
+	var reminder string
+	if body.ReminderTime != nil {
+		reminder = strings.TrimSpace(*body.ReminderTime)
+		if reminder != "" && !reminderTimeRe.MatchString(reminder) {
+			writeError(w, http.StatusBadRequest, "reminderTime must be HH:MM or empty")
+			return
 		}
-		// Find where the captured text starts in the original line so
-		// we can replace just that span without touching the markers
-		// (priority, due:, #tags etc.) the user added — rewriting only
-		// the FIRST occurrence of m[2] in the line works because the
-		// regex is anchored at the start with leading whitespace and
-		// the checkbox prefix.
-		idx := strings.Index(line, m[2])
-		if idx < 0 {
-			return "", false
+	}
+	var freq string
+	if body.Frequency != nil {
+		freq = strings.TrimSpace(*body.Frequency)
+		if !validFrequency(freq) {
+			writeError(w, http.StatusBadRequest, "frequency must be one of daily|weekdays|weekends|3x-week or a comma-separated weekday list")
+			return
 		}
-		// Strip only the bare-name portion of the existing text — the
-		// matched stripHabitMarkers result. The tail (markers) stays.
-		oldText := m[2]
-		stripped := stripHabitMarkers(oldText)
-		// Replace the stripped span inside oldText with the new name,
-		// preserving surrounding markers.
-		tail := oldText
-		if pos := strings.Index(strings.ToLower(oldText), strings.ToLower(stripped)); pos >= 0 && stripped != "" {
-			tail = oldText[:pos] + newName + oldText[pos+len(stripped):]
+	}
+	var cleanTags []string
+	if body.Tags != nil {
+		// Trim each, drop empties. We don't enforce uniqueness — the
+		// UI does, and a duplicate in storage is harmless.
+		for _, t := range *body.Tags {
+			t = strings.TrimSpace(t)
+			if t == "" {
+				continue
+			}
+			cleanTags = append(cleanTags, t)
+		}
+	}
+
+	// ---- rename first; sidecar updates key by the post-rename name.
+	effectiveName := name
+	newNameOut := ""
+	touched := 0
+	if body.NewName != nil {
+		nn := strings.TrimSpace(*body.NewName)
+		if nn == "" {
+			writeError(w, http.StatusBadRequest, "new_name must be non-empty when supplied")
+			return
+		}
+		newNameOut = nn
+		if !strings.EqualFold(nn, strings.TrimSpace(name)) {
+			n, err := s.rewriteHabitInDailies(name, func(_, line, _ string) (string, bool) {
+				m := habitCheckboxRe.FindStringSubmatch(line)
+				if m == nil {
+					return "", false
+				}
+				idx := strings.Index(line, m[2])
+				if idx < 0 {
+					return "", false
+				}
+				oldText := m[2]
+				stripped := stripHabitMarkers(oldText)
+				tail := oldText
+				if pos := strings.Index(strings.ToLower(oldText), strings.ToLower(stripped)); pos >= 0 && stripped != "" {
+					tail = oldText[:pos] + nn + oldText[pos+len(stripped):]
+				} else {
+					tail = nn
+				}
+				return line[:idx] + tail + line[idx+len(m[2]):], true
+			})
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			touched = n
+			effectiveName = nn
+		}
+	}
+
+	// ---- sidecar writes. Load once, mutate, save each that changed.
+	// Track which sidecars were touched so we can fire WS events
+	// without spamming every habit-* path on every patch.
+	d := habits.Load(s.cfg.Vault.Root)
+
+	// If we renamed, move existing sidecar keys to the new name so
+	// the per-habit metadata follows the rename. Only sidecars that
+	// actually had a value for the old name get marked dirty — no
+	// point rewriting an empty JSON file when there was nothing to
+	// move.
+	dirty := map[string]bool{}
+	if effectiveName != name {
+		if moveStringKey(d.Categories, name, effectiveName) {
+			dirty["categories"] = true
+		}
+		if moveStringKey(d.Times, name, effectiveName) {
+			dirty["times"] = true
+		}
+		if moveStringKey(d.Frequencies, name, effectiveName) {
+			dirty["frequencies"] = true
+		}
+		if moveStringKey(d.Stacks, name, effectiveName) {
+			dirty["stacks"] = true
+		}
+		if v, ok := d.Archived[name]; ok {
+			delete(d.Archived, name)
+			d.Archived[effectiveName] = v
+			dirty["archived"] = true
+		}
+		if v, ok := d.Tags[name]; ok {
+			delete(d.Tags, name)
+			d.Tags[effectiveName] = v
+			dirty["tags"] = true
+		}
+	}
+
+	if body.Category != nil {
+		c := strings.TrimSpace(*body.Category)
+		if c == "" {
+			delete(d.Categories, effectiveName)
 		} else {
-			tail = newName
+			d.Categories[effectiveName] = c
 		}
-		return line[:idx] + tail + line[idx+len(m[2]):], true
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		dirty["categories"] = true
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	if body.ReminderTime != nil {
+		if reminder == "" {
+			delete(d.Times, effectiveName)
+		} else {
+			d.Times[effectiveName] = reminder
+		}
+		dirty["times"] = true
+	}
+	if body.Frequency != nil {
+		if freq == "" {
+			delete(d.Frequencies, effectiveName)
+		} else {
+			d.Frequencies[effectiveName] = freq
+		}
+		dirty["frequencies"] = true
+	}
+	if body.Archived != nil {
+		if *body.Archived {
+			d.Archived[effectiveName] = true
+		} else {
+			delete(d.Archived, effectiveName)
+		}
+		dirty["archived"] = true
+	}
+	if body.Tags != nil {
+		if len(cleanTags) == 0 {
+			delete(d.Tags, effectiveName)
+		} else {
+			d.Tags[effectiveName] = cleanTags
+		}
+		dirty["tags"] = true
+	}
+	if dirty["categories"] {
+		if err := habits.SaveCategories(s.cfg.Vault.Root, d.Categories); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.hub.Broadcast(wshub.Event{Type: "state.changed", Path: ".granit/habits-categories.json"})
+	}
+	if dirty["times"] {
+		if err := habits.SaveTimes(s.cfg.Vault.Root, d.Times); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.hub.Broadcast(wshub.Event{Type: "state.changed", Path: ".granit/habits-times.json"})
+	}
+	if dirty["frequencies"] {
+		if err := habits.SaveFrequencies(s.cfg.Vault.Root, d.Frequencies); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.hub.Broadcast(wshub.Event{Type: "state.changed", Path: ".granit/habits-frequency.json"})
+	}
+	if dirty["archived"] {
+		if err := habits.SaveArchived(s.cfg.Vault.Root, d.Archived); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.hub.Broadcast(wshub.Event{Type: "state.changed", Path: ".granit/habits-archived.json"})
+	}
+	if dirty["tags"] {
+		if err := habits.SaveTags(s.cfg.Vault.Root, d.Tags); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.hub.Broadcast(wshub.Event{Type: "state.changed", Path: ".granit/habits-tags.json"})
+	}
+	if dirty["stacks"] {
+		if err := habits.SaveStacks(s.cfg.Vault.Root, d.Stacks); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.hub.Broadcast(wshub.Event{Type: "state.changed", Path: ".granit/habits-stacks.json"})
+	}
+
+	// Build the response. Keep the historical {name, newName,
+	// filesTouched} shape for the rename path so existing callers
+	// don't break; add the freshly-effective per-habit metadata
+	// alongside so the client can render without a follow-up GET.
+	resp := map[string]any{
 		"name":         name,
-		"newName":      newName,
+		"newName":      newNameOut,
 		"filesTouched": touched,
-	})
+		"habit": map[string]any{
+			"name":         effectiveName,
+			"category":     d.Categories[effectiveName],
+			"reminderTime": d.Times[effectiveName],
+			"frequency":    d.Frequencies[effectiveName],
+			"archived":     d.Archived[effectiveName],
+			"tags":         d.Tags[effectiveName],
+			"stackAfter":   d.Stacks[effectiveName],
+		},
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// moveStringKey moves m[from] to m[to] if present. Returns true when
+// a move actually happened — lets callers skip sidecar writes for
+// maps that didn't change.
+func moveStringKey(m map[string]string, from, to string) bool {
+	v, ok := m[from]
+	if !ok {
+		return false
+	}
+	delete(m, from)
+	m[to] = v
+	return true
 }
 
 // handleSetHabitStack writes the stack-anchor sidecar entry for one
