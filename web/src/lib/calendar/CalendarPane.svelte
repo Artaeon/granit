@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import { auth } from '$lib/stores/auth';
   import CalendarAgent from '$lib/calendar/CalendarAgent.svelte';
+  import Chip from '$lib/components/Chip.svelte';
   import { EVENT_TYPES } from '$lib/calendar/eventTypes';
   import { toast } from '$lib/components/toast';
   import { createCalendarViewState } from '$lib/calendar/calendarViewState.svelte';
@@ -283,12 +284,12 @@
       <div class="flex items-center gap-1 flex-wrap">
         {#each EVENT_TYPES as t (t.id)}
           {@const on = filterCtl.kindFilter.has(t.id)}
-          <button
-            type="button"
+          <Chip
+            tone="neutral"
+            size="sm"
+            active={on}
             onclick={() => filterCtl.toggleKindFilter(t.id)}
-            aria-pressed={on}
             title={t.description}
-            class="inline-flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium border transition-colors {on ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-text border-surface1 hover:border-primary'}"
           >
             <span
               class="inline-flex items-center justify-center w-3.5 h-3.5 text-[9px] font-bold font-mono leading-none"
@@ -296,15 +297,15 @@
               style:color={on ? undefined : `var(--color-${t.color})`}
             >{t.glyph}</span>
             <span>{t.label}</span>
-          </button>
+          </Chip>
         {/each}
-        <button
-          type="button"
+        <Chip
+          tone="neutral"
+          size="sm"
+          active={filterCtl.kindFilter.has('__untyped')}
           onclick={() => filterCtl.toggleKindFilter('__untyped')}
-          aria-pressed={filterCtl.kindFilter.has('__untyped')}
           title="Events with no type set"
-          class="inline-flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium border transition-colors {filterCtl.kindFilter.has('__untyped') ? 'bg-primary text-on-primary border-primary' : 'bg-surface0 text-dim border-surface1 hover:border-primary'}"
-        >Untyped</button>
+        >Untyped</Chip>
       </div>
     </div>
 

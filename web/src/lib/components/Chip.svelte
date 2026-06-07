@@ -27,9 +27,11 @@
   import type { Snippet } from 'svelte';
 
   type Tone = 'neutral' | 'warning' | 'error' | 'info' | 'success' | 'muted';
+  type Size = 'sm' | 'md';
 
   let {
     tone = 'neutral',
+    size = 'md',
     active = false,
     disabled = false,
     title = undefined,
@@ -39,6 +41,8 @@
     ...rest
   }: {
     tone?: Tone;
+    /** md = default filter-row pill; sm = compact (narrow sidebars). */
+    size?: Size;
     active?: boolean;
     disabled?: boolean;
     title?: string;
@@ -48,8 +52,12 @@
     [key: string]: unknown;
   } = $props();
 
+  const sizes: Record<Size, string> = {
+    sm: 'gap-1 px-2 py-0.5 text-[11px]',
+    md: 'gap-1.5 px-2.5 py-1 text-xs'
+  };
   const base =
-    'inline-flex items-center gap-1.5 px-2.5 py-1 border text-xs font-medium whitespace-nowrap transition-colors select-none ' +
+    'inline-flex items-center border font-medium whitespace-nowrap transition-colors select-none ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ' +
     'disabled:opacity-40 disabled:pointer-events-none';
 
@@ -71,7 +79,7 @@
     muted: 'bg-surface2 text-text border-surface2'
   };
 
-  let cls = $derived(`${base} ${active ? filled[tone] : idle[tone]} ${extra}`);
+  let cls = $derived(`${base} ${sizes[size]} ${active ? filled[tone] : idle[tone]} ${extra}`);
 </script>
 
 <button type="button" {title} {disabled} {onclick} aria-pressed={active} class={cls} {...rest}>
