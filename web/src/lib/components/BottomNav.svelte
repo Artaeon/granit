@@ -26,7 +26,7 @@
   // bottom StatusBar's workspace pills are the cross-pane switcher;
   // this top-level tab is the "open the workspace shell" affordance.
   let tabs = $derived<Tab[]>([
-    { href: '/', label: 'Today', icon: 'today' },
+    { href: '/dashboard', label: 'Today', icon: 'today' },
     { href: '/workspace', label: 'Workspace', icon: workspaceStore.active.icon ?? 'workspace' },
     { href: '/tasks', label: 'Tasks', icon: 'tasks' },
     { href: '/calendar', label: 'Calendar', icon: 'calendar' }

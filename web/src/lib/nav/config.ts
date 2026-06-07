@@ -21,9 +21,10 @@ export type NavSection = {
   items: NavItem[];
 };
 
-// Today sits above all groups (no header) because it's the always-on
-// home — sections start where organisation begins to help.
-export const today: NavItem = { href: '/', label: 'Today', icon: 'today' };
+// Today sits above all groups (no header) — the editable widget
+// dashboard. It lives at /dashboard now; the root `/` redirects to the
+// workspace canvas, which is Granit's default home surface.
+export const today: NavItem = { href: '/dashboard', label: 'Today', icon: 'today' };
 
 // Workspace sits next to Today as the second always-visible tier-0
 // item. It's the granit "VSCode-for-life" surface — a named, tiled

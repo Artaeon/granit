@@ -69,13 +69,13 @@
   {:else if loaded}
     <div class="h-full flex flex-col items-center justify-center text-center gap-2 text-dim">
       <p class="text-sm">No widgets enabled.</p>
-      <a href="/" class="text-xs text-primary hover:underline">Customize your dashboard →</a>
+      <a href="/dashboard" class="text-xs text-primary hover:underline">Customize your dashboard →</a>
     </div>
   {/if}
 
   {#if activeWidgets.length > 0}
     <div class="mt-4 flex justify-end">
-      <a href="/" class="text-[11px] text-dim hover:text-primary transition-colors">⚙ Customize dashboard</a>
+      <a href="/dashboard" class="text-[11px] text-dim hover:text-primary transition-colors">⚙ Customize dashboard</a>
     </div>
   {/if}
 </div>

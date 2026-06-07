@@ -70,7 +70,9 @@
     // surface everything opens into, Notion/VSCode-style. Today (the
     // home dashboard) and Workspaces itself are deliberately excluded.
     const kind =
-      item.href === '/' || item.href === '/workspace' ? null : routeToPaneKind(item.href);
+      item.href === '/dashboard' || item.href === '/workspace'
+        ? null
+        : routeToPaneKind(item.href);
     if (kind) {
       e.preventDefault();
       const store = workspaceStoreSingleton();
