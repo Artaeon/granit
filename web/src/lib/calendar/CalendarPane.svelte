@@ -435,9 +435,12 @@
   </div>
 {/snippet}
 
-<div class="flex h-full">
+<!-- @container so the sidebar + create-form layout respond to the PANE
+     width, not the viewport: a narrow calendar pane hides the mini-cal
+     sidebar (it would eat a 400px split) and stacks the create form. -->
+<div class="@container flex h-full">
   <!-- Desktop sidebar -->
-  <aside class="hidden md:block md:w-56 lg:w-64 border-r border-surface1 bg-mantle flex-shrink-0 overflow-y-auto">
+  <aside class="hidden @2xl:block @2xl:w-56 @4xl:w-64 border-r border-surface1 bg-mantle flex-shrink-0 overflow-y-auto">
     {@render sidebarContent()}
   </aside>
 
@@ -501,7 +504,7 @@
         disabled={quickEvtCtl.quickBusy}
       />
       {#if quickEvtCtl.quickInput.trim()}
-        <span class="hidden md:inline text-[11px] text-dim font-mono truncate max-w-md">
+        <span class="hidden @xl:inline text-[11px] text-dim font-mono truncate max-w-md">
           {#if quickEvtCtl.quickParse?.ok && quickEvtCtl.quickParse.event}
             <span class="text-success">✓</span>
             {quickEvtCtl.quickParse.event.title} · {quickEvtCtl.quickParse.event.date}{quickEvtCtl.quickParse.event.startTime ? ` · ${quickEvtCtl.quickParse.event.startTime}${quickEvtCtl.quickParse.event.endTime ? `–${quickEvtCtl.quickParse.event.endTime}` : ''}` : ' · all-day'}
@@ -576,8 +579,8 @@
              real surface, not a footnote. AI button + 4-5 cards visible
              before scroll. The grid keeps the rest of the viewport
              via flex-1. -->
-        <div class="h-full flex flex-col md:flex-row gap-2 md:gap-3 min-h-0">
-          <aside class="md:w-72 md:flex-shrink-0 md:h-auto flex-shrink-0 overflow-hidden md:overflow-visible" style="height: clamp(220px, 44dvh, 320px);">
+        <div class="h-full flex flex-col @xl:flex-row gap-2 @xl:gap-3 min-h-0">
+          <aside class="@xl:w-72 @xl:flex-shrink-0 @xl:h-auto flex-shrink-0 overflow-hidden @xl:overflow-visible" style="height: clamp(220px, 44dvh, 320px);">
             <TaskBacklog onRefresh={() => dataCtl.load()} />
           </aside>
           <div class="flex-1 min-w-0 min-h-0">
