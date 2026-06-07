@@ -11,7 +11,7 @@ import { get } from 'svelte/store';
 import type { Note } from '$lib/api';
 
 export interface NotePinAction {
-  readonly pinned: string[];
+  readonly pinned: Set<string>;
   readonly pinBusy: boolean;
   togglePin: () => Promise<void>;
 }
@@ -22,7 +22,7 @@ export interface NotePinActionOpts {
 
 export function createNotePinAction(opts: NotePinActionOpts): NotePinAction {
   let pinBusy = $state(false);
-  let pinned = $state<string[]>(get(pinnedNotes));
+  let pinned = $state<Set<string>>(get(pinnedNotes));
 
   // Subscribe to the shared store via a $effect so the controller
   // stays a reactive citizen — the page no longer needs `$pinnedNotes`

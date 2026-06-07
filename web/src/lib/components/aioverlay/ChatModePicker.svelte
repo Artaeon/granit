@@ -24,8 +24,8 @@
     onDismiss
   }: {
     modeId: string;
-    currentProjectName: string;
-    currentGoalId: string;
+    currentProjectName: string | null;
+    currentGoalId: string | null;
     onCalendarPage: boolean;
     onSelect: (id: string) => void;
     onDismiss: () => void;

@@ -176,14 +176,13 @@
   const statusOptions = ['active', 'paused', 'completed', 'archived'];
   const priorityLabels = ['none', 'low', 'medium', 'high', 'highest'];
 
-  const progressPct = $derived(statsCtl.progressPct);
-
   // View-time derives — openTasks/doneTasks split, weekSchedule strip,
   // tasksByGoal map, burnup chart — live in projectStats.
   const statsCtl = createProjectStats({
     getProject: () => project,
     getProjectTasks: () => projectTasks
   });
+  const progressPct = $derived(statsCtl.progressPct);
   const openTasks = $derived(statsCtl.openTasks);
   const doneTasks = $derived(statsCtl.doneTasks);
   const weekSchedule = $derived(statsCtl.weekSchedule);

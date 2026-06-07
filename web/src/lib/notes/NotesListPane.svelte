@@ -366,7 +366,7 @@
           title={isPinned ? 'Unpin' : 'Pin'}
         >★</button>
         <button
-          onclick={() => del(n)}
+          onclick={() => dataCtl.del(n)}
           aria-label="delete"
           class="w-7 h-7 flex items-center justify-center text-dim hover:text-error rounded"
           title="Delete"
@@ -428,7 +428,7 @@
           </svg>
         </button>
         <button
-          onclick={() => del(n)}
+          onclick={() => dataCtl.del(n)}
           aria-label="delete"
           class="w-8 h-8 flex items-center justify-center text-dim hover:text-error rounded"
           title="Delete"

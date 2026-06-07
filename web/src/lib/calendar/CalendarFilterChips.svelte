@@ -13,17 +13,11 @@
   //
   // Mobile: horizontal scroll, no wrap.
 
-  type EventFilterKey =
-    | 'daily'
-    | 'task_due'
-    | 'task_scheduled'
-    | 'event'
-    | 'ics_event'
-    | 'deadline'
-    | 'goal_target'
-    | 'meal_slot';
-
-  type ChipDef = { key: EventFilterKey; label: string; tone: string };
+  // Single source of truth — calendarFilterState owns EventFilterKey +
+  // ChipDef. Importing them (instead of re-declaring a copy that drifted
+  // out of sync, e.g. missing 'content_event') keeps the chip row's
+  // types aligned with the filter state that drives it.
+  import type { EventFilterKey, ChipDef } from './calendarFilterState.svelte';
 
   let {
     chips,

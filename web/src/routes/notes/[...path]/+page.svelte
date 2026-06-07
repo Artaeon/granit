@@ -270,7 +270,9 @@
   // of route state while we keep autosave in the page.
   const extractCtl = createExtractController({
     getNote: () => note,
-    save: (o) => save(o)
+    // save() resolves to a boolean (saved-ok); the controller only needs
+    // the completion signal, so adapt it to Promise<void>.
+    save: async (o) => { await save(o); }
   });
 
   // Snapshot-count fetcher lives in noteVersionCount — refreshes on
