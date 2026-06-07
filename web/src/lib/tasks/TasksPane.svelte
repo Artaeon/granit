@@ -121,7 +121,15 @@
   const groupAddCtl = createTasksGroupAdd({
     getGroupBy: () => viewCtl.groupBy,
     getProjects: () => dataCtl.projects,
-    onAdded: load
+    // Late-bind via a closure: `load` is declared further down
+    // (const load = loader.load), so referencing it directly here
+    // reads it inside its temporal dead zone — the Svelte 5 client
+    // compiler evaluates this object eagerly during component init,
+    // throwing "Cannot access 'load' before initialization" and
+    // crashing every mount of this pane (standalone /tasks AND the
+    // workspace shell, which renders a tasks pane by default). The
+    // wrapper defers the read to call-time, long after init.
+    onAdded: () => load()
   });
 
   // ── Ask Tasks ────────────────────────────────────────────────────
