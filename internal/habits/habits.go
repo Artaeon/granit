@@ -9,6 +9,7 @@
 //	<vault>/.granit/habits-notes.json       — per-day per-habit free-text note
 //	<vault>/.granit/habits-archived.json    — archived-name set
 //	<vault>/.granit/habits-stacks.json      — per-habit "after X" anchor
+//	<vault>/.granit/habits-tags.json        — per-habit tag list
 //
 // The web API previously parsed `## Habits` checkbox sections inside
 // daily notes — a separate data model that showed zero rows for users
@@ -74,6 +75,13 @@ type Data struct {
 	// reference just renders as "after <unknown>" which is the
 	// signal to either rename or clear it).
 	Stacks map[string]string // habit → name of the habit it follows
+	// Tags is a per-habit free-form tag list. Stored in
+	// .granit/habits-tags.json with the shape
+	// `{ "habit-name": ["tag1", "tag2"] }`. Empty/missing entries
+	// mean "no tags" — we don't reserve a sentinel value. The web
+	// UI uses tags for chip-based filtering; the package only owns
+	// load/save.
+	Tags map[string][]string // habit → tag list
 }
 
 // HabitsDir returns the path to <vault>/Habits/.
@@ -102,6 +110,7 @@ func Load(vaultRoot string) Data {
 		Notes:       map[string]string{},
 		Archived:    map[string]bool{},
 		Stacks:      map[string]string{},
+		Tags:        map[string][]string{},
 	}
 	d.Habits, d.Logs = loadHabitsMD(vaultRoot)
 	loadJSONInto(sidecarPath(vaultRoot, "habits-frequency.json"), &d.Frequencies)
@@ -110,6 +119,7 @@ func Load(vaultRoot string) Data {
 	loadJSONInto(sidecarPath(vaultRoot, "habits-notes.json"), &d.Notes)
 	loadJSONInto(sidecarPath(vaultRoot, "habits-archived.json"), &d.Archived)
 	loadJSONInto(sidecarPath(vaultRoot, "habits-stacks.json"), &d.Stacks)
+	loadJSONInto(sidecarPath(vaultRoot, "habits-tags.json"), &d.Tags)
 	return d
 }
 
@@ -245,6 +255,14 @@ func SaveStacks(vaultRoot string, m map[string]string) error {
 	return saveSidecar(vaultRoot, "habits-stacks.json", m)
 }
 
+// SaveTags persists the per-habit tag-list map. Empty slices are
+// written through — same rationale as SaveStacks: in JSON we can't
+// distinguish "explicitly empty" from "never set", and the consumer
+// reads both the same way.
+func SaveTags(vaultRoot string, m map[string][]string) error {
+	return saveSidecar(vaultRoot, "habits-tags.json", m)
+}
+
 // saveSidecar is a tiny helper that mkdir's .granit and atomic-writes
 // indented JSON, identical to the pattern the TUI was using inline.
 func saveSidecar(vaultRoot, name string, v interface{}) error {
@@ -275,6 +293,7 @@ func SidecarPaths() []string {
 		".granit/habits-notes.json",
 		".granit/habits-archived.json",
 		".granit/habits-stacks.json",
+		".granit/habits-tags.json",
 	}
 }
 

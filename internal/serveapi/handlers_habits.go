@@ -49,6 +49,15 @@ type habitInfo struct {
 	// package — same source the TUI uses, so cross-surface edits
 	// stay in sync.
 	StackAfter string `json:"stackAfter,omitempty"`
+	// Sidecar-stored metadata. All fields are read from the same
+	// .granit/habits-*.json files the TUI writes — the package owns
+	// load/save, this handler just surfaces them so the web UI can
+	// render and edit them without going through markdown.
+	Category     string   `json:"category,omitempty"`
+	ReminderTime string   `json:"reminderTime,omitempty"` // HH:MM 24h
+	Frequency    string   `json:"frequency,omitempty"`    // "daily" | "weekdays" | "weekends" | "3x-week" | "mon,wed,fri"
+	Archived     bool     `json:"archived,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
 }
 
 var (
@@ -182,17 +191,32 @@ func (s *Server) handleListHabits(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Stack anchors are sidecar data — the same source the TUI uses
-	// via .granit/habits-stacks.json. Reading here keeps every
-	// `## Habits` surface (web list + TUI heatmap + future widgets)
-	// agreeing on what's anchored to what.
-	stacks := habits.Load(s.cfg.Vault.Root).Stacks
+	// Sidecar data — the same source the TUI uses. Reading the whole
+	// habits.Data once here keeps every `## Habits` surface (web list
+	// + TUI heatmap + future widgets) agreeing on what's anchored,
+	// categorised, scheduled, etc. without N round-trips to disk.
+	hdata := habits.Load(s.cfg.Vault.Root)
 
 	out := make([]habitInfo, 0, len(names))
 	for name := range names {
 		info := habitInfo{Name: name}
-		if anchor, ok := stacks[name]; ok && anchor != "" {
+		if anchor, ok := hdata.Stacks[name]; ok && anchor != "" {
 			info.StackAfter = anchor
+		}
+		if cat, ok := hdata.Categories[name]; ok && cat != "" {
+			info.Category = cat
+		}
+		if t, ok := hdata.Times[name]; ok && t != "" {
+			info.ReminderTime = t
+		}
+		if f, ok := hdata.Frequencies[name]; ok && f != "" {
+			info.Frequency = f
+		}
+		if hdata.Archived[name] {
+			info.Archived = true
+		}
+		if tags, ok := hdata.Tags[name]; ok && len(tags) > 0 {
+			info.Tags = tags
 		}
 		// Build day list back to windowStart, oldest → newest
 		for d := windowStart; !d.After(now); d = d.AddDate(0, 0, 1) {
