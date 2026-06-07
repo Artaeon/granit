@@ -14,6 +14,7 @@
 //            into a horizontal split tree.
 // Both run on load so existing users never see a blank shell.
 
+import { api } from '$lib/api';
 import { loadStored, saveStored } from '$lib/util/storage';
 import type { PaneKind } from './paneRegistry';
 import {
@@ -122,6 +123,82 @@ function loadInitial(): PersistedV2 {
   return { workspaces: [seed], activeId: seed.id };
 }
 
+// ── Vault sync ────────────────────────────────────────────────────
+//
+// Phase 3.1: persist workspaces to <vault>/.granit/workspaces.json
+// so layouts follow the user across devices. localStorage stays as
+// the offline / unauthenticated fallback — the vault path is
+// additive, never the only writer. Conflict resolution is
+// last-write-wins with the vault as primary: on app load we prefer
+// vault state when non-empty and mirror it down to localStorage;
+// when the vault is empty we seed it from whatever localStorage
+// holds. Concurrent edits across tabs / devices are NOT merged in
+// this first cut.
+
+/** Wire shape of the sidecar. Same as PersistedV2 but kept distinct
+ *  in case the server side ever wants to wrap/version the body
+ *  without breaking the localStorage migration path. */
+type VaultPayload = { workspaces: unknown[]; activeId?: string };
+
+function isVaultPayload(x: unknown): x is VaultPayload {
+  if (!x || typeof x !== 'object') return false;
+  const o = x as Record<string, unknown>;
+  return Array.isArray(o.workspaces);
+}
+
+/** Normalise whatever the vault gives us through the same migrate
+ *  pipeline localStorage rides on. Returns null when the payload
+ *  has zero usable workspaces — caller treats that as "vault is
+ *  empty, seed it from local state". */
+function fromVaultPayload(raw: unknown): PersistedV2 | null {
+  if (!isVaultPayload(raw)) return null;
+  const migrated = raw.workspaces
+    .map(normalizeWorkspace)
+    .filter((w): w is Workspace => w !== null);
+  if (migrated.length === 0) return null;
+  const activeId =
+    typeof raw.activeId === 'string' && migrated.find((w) => w.id === raw.activeId)
+      ? raw.activeId
+      : migrated[0].id;
+  return { workspaces: migrated, activeId };
+}
+
+/** Small trailing-edge debounce. We don't want every keystroke-driven
+ *  ratio drag to round-trip to the vault, but we DO want the last
+ *  edit of a burst to land. Mirrors the shape `tasksLifecycle` and
+ *  others lean on without dragging in their broader machinery. */
+function debounce<A extends unknown[]>(
+  fn: (...args: A) => void,
+  ms: number
+): { call(...args: A): void; flush(): void; cancel(): void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastArgs: A | null = null;
+  return {
+    call(...args: A) {
+      lastArgs = args;
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        if (lastArgs) fn(...lastArgs);
+      }, ms);
+    },
+    flush() {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (lastArgs) fn(...lastArgs);
+    },
+    cancel() {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      lastArgs = null;
+    }
+  };
+}
+
 // ── Controller ────────────────────────────────────────────────────
 
 export interface WorkspaceStoreController {
@@ -207,7 +284,67 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     }
   });
 
-  $effect(() => saveStored(STORE_KEY, { workspaces, activeId }));
+  // Debounced vault push. ~500ms trailing-edge so a ratio-drag burst
+  // collapses to a single PUT, but the final state always lands. Only
+  // fires after the initial vault load has resolved — see
+  // vaultReady below — so we don't clobber a fresher remote payload
+  // with the localStorage seed during the few ms before fetch returns.
+  let vaultReady = $state<boolean>(false);
+  const pushToVault = debounce((payload: PersistedV2) => {
+    // Fire-and-forget: a failed PUT (offline / 401 / 5xx) is not
+    // fatal — localStorage already holds the same state and the next
+    // mutation will retry. Errors are swallowed deliberately;
+    // surfacing a toast on every transient blip would be noise.
+    void api.putWorkspaces(payload).catch(() => {});
+  }, 500);
+
+  $effect(() => {
+    // Always mirror to localStorage — the offline fallback that
+    // existing users have depended on since v0. Cheap, synchronous,
+    // and the source of truth when the vault round-trip can't run
+    // (no auth yet, SSR prerender, network down).
+    saveStored(STORE_KEY, { workspaces, activeId });
+    // Vault push is gated on the initial load completing so the very
+    // first effect-tick — which fires before fetchInitialVault has a
+    // chance to resolve — doesn't push the legacy localStorage seed
+    // over a fresher remote state.
+    if (vaultReady) {
+      pushToVault.call({ workspaces, activeId });
+    }
+  });
+
+  // Initial vault fetch. Runs once per controller. Two paths:
+  //   1. Vault has non-empty workspaces → adopt them (vault is
+  //      primary). Mirrors down to localStorage on the next effect
+  //      tick automatically.
+  //   2. Vault is empty / unreachable → keep the localStorage-seeded
+  //      state we already loaded, and seed the vault with it so the
+  //      next device that boots sees the same thing.
+  // Either way, vaultReady flips true at the end so subsequent
+  // mutations push to the vault.
+  void (async () => {
+    try {
+      const raw = await api.getWorkspaces();
+      const adopted = fromVaultPayload(raw);
+      if (adopted) {
+        workspaces = adopted.workspaces;
+        activeId = adopted.activeId;
+      } else {
+        // Empty vault — seed with whatever we already have so
+        // device #2 finds it on first boot. Direct PUT (not via the
+        // debounce) so the seed isn't held back by a 500ms wait
+        // that the user might race a refresh against.
+        void api.putWorkspaces({ workspaces, activeId }).catch(() => {});
+      }
+    } catch {
+      // Offline / unauthenticated / handler missing — keep the
+      // localStorage path working as if vault sync didn't exist.
+      // No retry: a later mutation will fire pushToVault and that
+      // becomes the next chance to converge.
+    } finally {
+      vaultReady = true;
+    }
+  })();
 
   let active = $derived<Workspace>(
     workspaces.find((w) => w.id === activeId) ?? workspaces[0]
