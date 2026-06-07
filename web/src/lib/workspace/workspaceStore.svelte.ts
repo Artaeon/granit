@@ -16,6 +16,7 @@
 
 import { loadStored, saveStored } from '$lib/util/storage';
 import type { PaneKind } from './paneRegistry';
+import { recentPanes } from './recentPanes.svelte';
 import {
   fromFlat,
   isTree,
@@ -243,6 +244,10 @@ export function createWorkspaceStore(): WorkspaceStoreController {
 
   function setPane(leafId: string, pane: PaneKind) {
     patchActiveLayout(updatePaneTree(active.layout, leafId, pane));
+    // Record into the MRU so palette "Recent:" entries reflect every
+    // pane swap regardless of where it was triggered (header picker,
+    // palette command, programmatic route → pane promotion).
+    recentPanes.push(pane);
   }
 
   function setRatio(splitId: string, ratio: number) {
