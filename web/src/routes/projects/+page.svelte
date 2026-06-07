@@ -28,6 +28,7 @@
   import ProjectCreate from '$lib/projects/ProjectCreate.svelte';
   import ProjectTimeline from '$lib/projects/ProjectTimeline.svelte';
   import ProjectHeatmap from '$lib/projects/ProjectHeatmap.svelte';
+  import Button from '$lib/components/Button.svelte';
   import ProjectKanban from '$lib/projects/ProjectKanban.svelte';
   import ProjectAgent from '$lib/projects/ProjectAgent.svelte';
   import ProjectDashboardPanel from '$lib/projects/ProjectDashboardPanel.svelte';
@@ -185,34 +186,10 @@
        can still scope the chart without bouncing back to list view. -->
   <div class="px-3 sm:px-4 pt-2 flex-shrink-0 flex items-center gap-1.5 flex-wrap {selectedName && viewMode === 'list' ? 'hidden md:flex' : 'flex'}">
     <div class="inline-flex rounded border border-surface1 bg-surface0 overflow-hidden text-xs" role="tablist" aria-label="view mode">
-      <button
-        role="tab"
-        aria-selected={viewMode === 'list'}
-        onclick={() => setViewMode('list')}
-        class="px-2.5 py-1.5 sm:py-1 min-h-[32px] {viewMode === 'list' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
-        title="List + detail (default)"
-      >☰ List</button>
-      <button
-        role="tab"
-        aria-selected={viewMode === 'kanban'}
-        onclick={() => setViewMode('kanban')}
-        class="px-2.5 py-1.5 sm:py-1 min-h-[32px] border-l border-surface1 {viewMode === 'kanban' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
-        title="Kanban — drag cards to change status"
-      >▤ Board</button>
-      <button
-        role="tab"
-        aria-selected={viewMode === 'timeline'}
-        onclick={() => setViewMode('timeline')}
-        class="px-2.5 py-1.5 sm:py-1 min-h-[32px] border-l border-surface1 {viewMode === 'timeline' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
-        title="Gantt-ish timeline across all projects"
-      >▭ Timeline</button>
-      <button
-        role="tab"
-        aria-selected={viewMode === 'heatmap'}
-        onclick={() => setViewMode('heatmap')}
-        class="px-2.5 py-1.5 sm:py-1 min-h-[32px] border-l border-surface1 {viewMode === 'heatmap' ? 'bg-surface1 text-text' : 'text-dim hover:text-text'}"
-        title="Per-project completion volume by week"
-      >▦ Heatmap</button>
+      <Button variant="ghost" active={viewMode === 'list'} role="tab" aria-selected={viewMode === 'list'} onclick={() => setViewMode('list')} title="List + detail (default)" class="min-h-[32px]">☰ List</Button>
+      <Button variant="ghost" active={viewMode === 'kanban'} role="tab" aria-selected={viewMode === 'kanban'} onclick={() => setViewMode('kanban')} title="Kanban — drag cards to change status" class="min-h-[32px]">▤ Board</Button>
+      <Button variant="ghost" active={viewMode === 'timeline'} role="tab" aria-selected={viewMode === 'timeline'} onclick={() => setViewMode('timeline')} title="Gantt-ish timeline across all projects" class="min-h-[32px]">▭ Timeline</Button>
+      <Button variant="ghost" active={viewMode === 'heatmap'} role="tab" aria-selected={viewMode === 'heatmap'} onclick={() => setViewMode('heatmap')} title="Per-project completion volume by week" class="min-h-[32px]">▦ Heatmap</Button>
     </div>
     {#if viewMode === 'timeline' || viewMode === 'heatmap' || viewMode === 'kanban'}
       <!-- The list view's sidebar carries the search box; the chart
@@ -251,10 +228,7 @@
       {/if}
       <!-- Project Agent button — removed; launches from the chat
            sidebar via ?agent=1 instead. -->
-      <button
-        onclick={() => (createOpen = true)}
-        class="ml-auto px-2.5 py-1.5 sm:py-1 min-h-[32px] text-xs bg-primary text-on-primary rounded hover:opacity-90"
-      >+ new</button>
+      <Button variant="primary" onclick={() => (createOpen = true)} class="ml-auto min-h-[32px]">+ New</Button>
     {/if}
   </div>
 
@@ -267,10 +241,7 @@
       <!-- Project Agent button removed; launches from the chat
            sidebar via ?agent=1. -->
 
-      <button
-        onclick={() => (createOpen = true)}
-        class="px-2.5 py-1 text-xs bg-primary text-on-primary rounded hover:opacity-90"
-      >+ new</button>
+      <Button variant="primary" onclick={() => (createOpen = true)}>+ New</Button>
     </header>
     <div class="px-3 py-2 space-y-2 flex-shrink-0">
       <input
