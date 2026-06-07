@@ -9,6 +9,7 @@
 // component reference). Adding a new pane type is one line.
 
 import type { Component } from 'svelte';
+import DashboardPane from '$lib/dashboard/DashboardPane.svelte';
 import TasksPane from '$lib/tasks/TasksPane.svelte';
 import CalendarPane from '$lib/calendar/CalendarPane.svelte';
 import GoalsPane from '$lib/goals/GoalsPane.svelte';
@@ -21,6 +22,7 @@ import DeadlinesPane from '$lib/deadlines/DeadlinesPane.svelte';
 import ProjectsPane from '$lib/projects/ProjectsPane.svelte';
 
 export type PaneKind =
+  | 'dashboard'
   | 'today'
   | 'tasks'
   | 'calendar'
@@ -45,9 +47,12 @@ export interface PaneEntry {
 }
 
 export const PANES: ReadonlyArray<PaneEntry> = [
-  // Daily-glance pane first — most workspaces will want it anchored
-  // somewhere visible. Built on the same data sources as the home
-  // route + right-pane Today widget, just rendered in pane chrome.
+  // Dashboard canvas first — the Today widget grid as a pane, so the
+  // workspace can be a "desktop" that shows your widgets. Most-default
+  // surface; a fresh workspace opens to just this.
+  { id: 'dashboard', label: 'Dashboard', icon: 'today', component: DashboardPane },
+  // Compact daily-glance pane. Built on the same data sources as the
+  // home route + right-pane Today widget, just rendered in pane chrome.
   { id: 'today', label: 'Today', icon: 'today', component: TodayPane },
   { id: 'tasks', label: 'Tasks', icon: 'tasks', component: TasksPane },
   { id: 'calendar', label: 'Calendar', icon: 'calendar', component: CalendarPane },

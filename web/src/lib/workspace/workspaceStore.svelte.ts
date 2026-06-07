@@ -47,7 +47,10 @@ export type Workspace = {
 };
 
 function defaultLayout(): TreeNode {
-  return fromFlat('tasks', 'calendar', 0.5);
+  // A fresh workspace opens as the dashboard canvas — the Today widgets
+  // — so the workspace reads as a "desktop" out of the box. Users split
+  // / swap in other panes (tasks, calendar, …) from there.
+  return makeLeaf('dashboard');
 }
 
 function newId(): string {
