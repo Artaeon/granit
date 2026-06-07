@@ -84,6 +84,48 @@ export function workspaceCommands(): WorkspaceCmd[] {
     run: () => goto('/workspace')
   });
 
+  // Lifecycle commands for the active workspace — duplicate / rename /
+  // delete. Each one wraps an existing store method; the palette path
+  // means a user can manage their workspaces without touching the
+  // mouse. Suffix "(copy)" matches the VSCode "Save As" feel.
+  out.push({
+    id: 'workspace:duplicate',
+    label: 'Duplicate active workspace',
+    detail: store.active?.name ?? '—',
+    icon: 'workspace',
+    run: () => {
+      store.createWithLayout(
+        store.active.name + ' (copy)',
+        cloneWithNewIds(store.active.layout)
+      );
+      void goto('/workspace');
+    }
+  });
+  out.push({
+    id: 'workspace:rename',
+    label: 'Rename active workspace',
+    detail: store.active?.name ?? '—',
+    icon: 'workspace',
+    run: () => {
+      if (typeof window === 'undefined') return;
+      const name = window.prompt('Rename workspace to:', store.active.name);
+      if (!name || !name.trim()) return;
+      store.rename(store.active.id, name.trim());
+    }
+  });
+  out.push({
+    id: 'workspace:delete',
+    label: 'Delete active workspace',
+    detail: store.active?.name ?? '—',
+    icon: 'workspace',
+    run: () => {
+      if (typeof window === 'undefined') return;
+      const name = store.active.name;
+      if (!window.confirm(`Delete workspace "${name}"? This can't be undone.`)) return;
+      store.remove(store.active.id);
+    }
+  });
+
   // Preset constructors — "New workspace: Daily" etc. Each one builds
   // a fresh tree via the preset and jumps to /workspace so the user
   // sees what they just made.
