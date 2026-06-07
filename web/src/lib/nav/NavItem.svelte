@@ -16,6 +16,9 @@
   import type { NavItem } from '$lib/nav/config';
   import { goto } from '$app/navigation';
   import { newTab } from '$lib/stores/tabs';
+  import { routeToPaneKind } from '$lib/workspace/paneRegistry';
+  import { workspaceStoreSingleton } from '$lib/workspace/workspaceStore.svelte';
+  import { leaves } from '$lib/workspace/splitTree';
 
   type Props = {
     item: NavItem;
@@ -58,6 +61,22 @@
       e.preventDefault();
       newTab(item.href, item.label);
       goto(item.href);
+      onNavigate?.();
+      return;
+    }
+    // Unified view: surfaces that exist as a workspace pane open INSIDE
+    // the active workspace (replacing the focused leaf) rather than
+    // routing to a standalone page — so the workspace is the single
+    // surface everything opens into, Notion/VSCode-style. Today (the
+    // home dashboard) and Workspaces itself are deliberately excluded.
+    const kind =
+      item.href === '/' || item.href === '/workspace' ? null : routeToPaneKind(item.href);
+    if (kind) {
+      e.preventDefault();
+      const store = workspaceStoreSingleton();
+      const targetId = store.focusedLeafId || leaves(store.active.layout)[0]?.id;
+      if (targetId) store.setPane(targetId, kind);
+      goto('/workspace');
       onNavigate?.();
       return;
     }
