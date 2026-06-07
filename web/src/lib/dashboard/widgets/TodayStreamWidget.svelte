@@ -83,8 +83,12 @@
     // healthy ones. allFailed gates the visible "couldn't load"
     // hint below the stream so the user can distinguish "nothing
     // scheduled" from "network gone".
-    if (c.status === 'fulfilled') events = c.value.events;
-    if (t.status === 'fulfilled') tasks = t.value.tasks;
+    // Guard the response shape — a fulfilled call can still return a
+    // body without the expected array (empty 200, 204, or an unexpected
+    // payload), and a bare `events`/`tasks` of undefined then crashes the
+    // `for…of` loops below with "X is not iterable".
+    if (c.status === 'fulfilled') events = c.value?.events ?? [];
+    if (t.status === 'fulfilled') tasks = t.value?.tasks ?? [];
     if (d.status === 'fulfilled') deadlines = d.value ?? [];
     allFailed = c.status === 'rejected' && t.status === 'rejected' && d.status === 'rejected';
     loaded = true;

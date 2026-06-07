@@ -38,7 +38,7 @@
     if (!config) return [];
     return config.widgets
       .filter((w) => w.enabled)
-      .filter((w) => !($sabbath && SABBATH_HIDE_WIDGET_TYPES.includes(w.type)))
+      .filter((w) => !($sabbath && SABBATH_HIDE_WIDGET_TYPES.has(w.type)))
       .map((w) => ({ widget: w, meta: widgetMeta(w.type) }))
       .filter((x): x is { widget: typeof x.widget; meta: NonNullable<typeof x.meta> } => !!x.meta);
   });

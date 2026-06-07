@@ -49,7 +49,10 @@
   // the empty-state CTA points the user at the right tab) — but
   // prefer one with actual text if both exist.
   let pinned = $derived.by<VisionDoc | null>(() => {
-    if (!store) return null;
+    // Guard store.docs, not just store — an empty/unexpected response
+    // ([] or {}) is truthy but has no .docs, which crashed .find with
+    // "Cannot read properties of undefined (reading 'find')".
+    if (!store?.docs) return null;
     const withContent = store.docs.find((d) => d.pinned && (d.content?.trim() ?? '') !== '');
     if (withContent) return withContent;
     return store.docs.find((d) => d.pinned) ?? null;
