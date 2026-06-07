@@ -99,7 +99,13 @@ export const modulesStore: Readable<State> & {
 };
 
 // Best-effort eager load when a page imports the store. The call is
-// idempotent — refresh() chains onto loadingPromise.
+// idempotent — refresh() chains onto loadingPromise. Deferred via
+// setTimeout so the call runs AFTER all top-level module init has
+// completed; in some production builds the synchronous variant can
+// fire before `api` finishes initialising and trip a TDZ ReferenceError
+// during the first Svelte effect flush.
 if (typeof window !== 'undefined') {
-  void ensureLoaded();
+  setTimeout(() => {
+    void ensureLoaded();
+  }, 0);
 }

@@ -375,10 +375,15 @@ function schedulesEqual(a: SabbathSchedule, b: SabbathSchedule): boolean {
 }
 
 if (typeof window !== 'undefined') {
-  // Initial fetch — fire-and-forget, runs as soon as the module loads.
-  // The auth token may not be hydrated yet on cold-start; the
-  // visibilitychange handler will retry shortly.
-  refetchSchedule();
+  // Initial fetch — fire-and-forget, runs once the current task ends so
+  // every other module's top-level init has finished. The auth token
+  // may not be hydrated yet on cold-start; the visibilitychange handler
+  // will retry shortly. The setTimeout(0) defer is what prevents a TDZ
+  // ReferenceError in production builds where a tight module-init
+  // ordering can call `api.getSabbath()` before `api` is bound.
+  setTimeout(() => {
+    refetchSchedule();
+  }, 0);
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
