@@ -15,11 +15,22 @@
 // its last context standing until something else publishes; the
 // chat surface treats both shapes the same.
 //
-// The bus is a module-level singleton (not a `createX()` factory)
+// The bus is a process-wide singleton (not a `createX()` factory)
 // because the workspace shell shares one bus across every leaf — a
 // factory would require plumbing the same instance through every
-// pane via context, which contradicts the KISS rule. Module scope
-// is the simplest cross-tree singleton in Svelte 5.
+// pane via context, which contradicts the KISS rule.
+//
+// IMPORTANT: the reactive `$state` lives in a class FIELD and the
+// instance is created lazily on first access — never at module-init.
+// A bare module-level `let current = $state(null)` hits a TDZ
+// ReferenceError ("Cannot access 'X' before initialization") in
+// concatenated/minified production bundles when this module's init
+// runs before the Svelte 5 runtime finishes binding — the same crash
+// that froze every view in commit dd71addc and that recentPanes /
+// $isMobile were rewritten to avoid. Constructing the bus on first
+// read (which always happens inside a component, well after every
+// module's top-level init) keeps the reactivity ChatPane needs while
+// closing that window.
 
 import type { PaneKind } from './paneRegistry';
 
@@ -40,21 +51,43 @@ export type WorkspaceContext = {
   excerpt?: string;
 };
 
-let current = $state<WorkspaceContext | null>(null);
+// Reactive state held in a class field so the `$state` rune is only
+// evaluated when the instance is constructed (lazily, below), not at
+// module-init time. See the TDZ note in the header.
+class ContextBus {
+  current = $state<WorkspaceContext | null>(null);
+
+  publish(ctx: WorkspaceContext) {
+    this.current = ctx;
+  }
+
+  clear() {
+    this.current = null;
+  }
+}
+
+// Lazy singleton — first access constructs the bus. Because every
+// caller reads through the accessors below (always from inside a
+// component), construction happens after all module-level init, so
+// there's no TDZ window and reactive reads still track `current`.
+let _bus: ContextBus | null = null;
+function bus(): ContextBus {
+  return (_bus ??= new ContextBus());
+}
 
 export const workspaceContext = {
   /** Current context, or null when nothing is published. */
   get current() {
-    return current;
+    return bus().current;
   },
   /** Publish a new context. Replaces any previous value. */
   publish(ctx: WorkspaceContext) {
-    current = ctx;
+    bus().publish(ctx);
   },
   /** Clear when the source pane no longer has a focused item.
    *  Panes don't have to call this — the next publish() replaces
    *  the value anyway. */
   clear() {
-    current = null;
+    bus().clear();
   }
 };
