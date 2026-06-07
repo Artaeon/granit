@@ -346,6 +346,35 @@ export function createWorkspaceStore(): WorkspaceStoreController {
     }
   })();
 
+  // Two browser-tab safety hooks. Both are no-ops on SSR / non-window
+  // environments (the typeof check guards against bundling).
+  if (typeof window !== 'undefined') {
+    // 1. Cross-tab sync. When Tab A renames workspace X and writes
+    //    localStorage, Tab B's storage event fires with the same
+    //    payload. Tab B adopts it so its NEXT mutation's PUT body
+    //    includes Tab A's rename — otherwise Tab B's stale state
+    //    would clobber the vault and lose Tab A's change.
+    window.addEventListener('storage', (ev) => {
+      if (ev.key !== STORE_KEY || !ev.newValue) return;
+      try {
+        const parsed = JSON.parse(ev.newValue) as unknown;
+        const adopted = fromVaultPayload(parsed);
+        if (!adopted) return;
+        workspaces = adopted.workspaces;
+        activeId = adopted.activeId;
+      } catch {
+        // Ignore malformed payloads — keep the in-memory state.
+      }
+    });
+    // 2. Page-unload flush. A mutation made <500ms before close
+    //    would otherwise sit in the debounce queue and never reach
+    //    the vault. Forcing the pending PUT out keeps cross-device
+    //    sync honest for users who close tabs fast after editing.
+    window.addEventListener('beforeunload', () => {
+      pushToVault.flush();
+    });
+  }
+
   let active = $derived<Workspace>(
     workspaces.find((w) => w.id === activeId) ?? workspaces[0]
   );
