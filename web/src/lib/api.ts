@@ -2527,6 +2527,13 @@ export const api = {
 
   // Habits (derived from `## Habits` sections in daily notes)
   listHabits: () => req<HabitsResponse>('/habits'),
+  // Distinct sidecar values — categories / tags across every habit,
+  // deduped + alphabetically sorted. Used by the chip pickers so the
+  // UI can offer existing values as suggestions without first
+  // round-tripping the full habit list.
+  listHabitCategories: () =>
+    req<{ categories: string[] }>('/habits/categories'),
+  listHabitTags: () => req<{ tags: string[] }>('/habits/tags'),
   // Mark a habit done/undone for ANY date — used by the heatmap to
   // let users retro-fix yesterday's missed log without opening the
   // daily note. Server creates the daily file if it doesn't exist

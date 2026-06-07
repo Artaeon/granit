@@ -870,6 +870,53 @@ func (s *Server) handleRenameHabit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// handleListHabitCategories returns the deduplicated, alphabetically
+// sorted list of every category in the habits-categories sidecar.
+// Cheap read — used by the category-chip picker so the UI doesn't
+// have to walk the full habit list to enumerate existing values.
+// Empty strings are filtered out so the picker doesn't have a "blank"
+// entry; missing sidecar yields {categories: []}.
+func (s *Server) handleListHabitCategories(w http.ResponseWriter, r *http.Request) {
+	d := habits.Load(s.cfg.Vault.Root)
+	seen := map[string]bool{}
+	for _, v := range d.Categories {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		seen[v] = true
+	}
+	out := make([]string, 0, len(seen))
+	for k := range seen {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	writeJSON(w, http.StatusOK, map[string]any{"categories": out})
+}
+
+// handleListHabitTags mirrors handleListHabitCategories for the tags
+// sidecar — flatten the per-habit lists, dedupe, sort. Used by the
+// tag-chip picker.
+func (s *Server) handleListHabitTags(w http.ResponseWriter, r *http.Request) {
+	d := habits.Load(s.cfg.Vault.Root)
+	seen := map[string]bool{}
+	for _, tags := range d.Tags {
+		for _, t := range tags {
+			t = strings.TrimSpace(t)
+			if t == "" {
+				continue
+			}
+			seen[t] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for k := range seen {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	writeJSON(w, http.StatusOK, map[string]any{"tags": out})
+}
+
 // moveStringKey moves m[from] to m[to] if present. Returns true when
 // a move actually happened — lets callers skip sidecar writes for
 // maps that didn't change.
