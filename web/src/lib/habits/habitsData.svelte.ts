@@ -114,9 +114,7 @@ export function createHabitsData(deps: HabitsDataDeps): HabitsDataController {
   // bulk action.
   async function tickAllToday() {
     if (!data || bulkBusy) return;
-    // Exclude archived habits — they're not in any visible view,
-    // so ticking them via the bulk button would be a phantom action.
-    const targets = data.habits.filter((h) => !h.doneToday && h.taskIdToday && !h.archived);
+    const targets = data.habits.filter((h) => !h.doneToday && h.taskIdToday);
     if (targets.length === 0) return;
     bulkBusy = true;
     const today = data.today;
@@ -171,15 +169,10 @@ export function createHabitsData(deps: HabitsDataDeps): HabitsDataController {
     return out;
   });
 
-  // All "today" stats exclude archived habits so the header chip,
-  // "Tick all" affordance, and visible habit list agree on the same
-  // denominator. Archived habits live in their own bottom section
-  // and don't count toward today's progress.
-  let activeHabits = $derived(data ? data.habits.filter((h) => !h.archived) : []);
-  let todayDone = $derived(activeHabits.filter((h) => h.doneToday).length);
-  let todayTotal = $derived(activeHabits.length);
+  let todayDone = $derived(data ? data.habits.filter((h) => h.doneToday).length : 0);
+  let todayTotal = $derived(data ? data.habits.length : 0);
   let undoneToday = $derived(
-    activeHabits.filter((h) => !h.doneToday && h.taskIdToday)
+    data ? data.habits.filter((h) => !h.doneToday && h.taskIdToday) : []
   );
 
   return {

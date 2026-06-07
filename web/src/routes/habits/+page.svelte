@@ -14,37 +14,6 @@
   import { createHabitsAdd } from '$lib/habits/habitsAdd.svelte';
   import { createHabitsTargetsEdit } from '$lib/habits/habitsTargetsEdit.svelte';
   import { bestDay, weekDays, shortDow, shortDate } from '$lib/habits/habitsDerives';
-  // Category + tag + grouping additions. Each controller owns one
-  // slice of the new chip/filter/group surface; the route just wires
-  // them together. Strictly additive — every existing controller +
-  // render branch stays as-is.
-  import { api, type HabitInfo } from '$lib/api';
-  import { createCategoryEditCtl } from '$lib/habits/habitsCategoryEdit.svelte';
-  import { createTagEditCtl } from '$lib/habits/habitsTagEdit.svelte';
-  import { createCategoryFilterCtl } from '$lib/habits/habitsCategoryFilter.svelte';
-  import { createTagFilterCtl } from '$lib/habits/habitsTagFilter.svelte';
-  import { createGroupingCtl } from '$lib/habits/habitsGrouping.svelte';
-  import HabitCategoryChip from '$lib/components/habits/HabitCategoryChip.svelte';
-  import HabitTagChips from '$lib/components/habits/HabitTagChips.svelte';
-  import HabitsCategoryFilterRow from '$lib/components/habits/HabitsCategoryFilterRow.svelte';
-  import HabitsTagFilterRow from '$lib/components/habits/HabitsTagFilterRow.svelte';
-  import HabitsGroupedView from '$lib/components/habits/HabitsGroupedView.svelte';
-  // Reminder + frequency editors. Two more inline-chip controllers
-  // mirroring category/tag — same patchHabit + reload pattern.
-  import { createReminderEditCtl } from '$lib/habits/habitsReminderEdit.svelte';
-  import { createFrequencyEditCtl } from '$lib/habits/habitsFrequencyEdit.svelte';
-  import HabitReminderBadge from '$lib/components/habits/HabitReminderBadge.svelte';
-  import HabitFrequencyPicker from '$lib/components/habits/HabitFrequencyPicker.svelte';
-  // Archive, templates, bulk-select. The archive controller toggles
-  // the "Show archived" section at the bottom; templates spins up
-  // pre-curated habit sets via createHabit; bulk-select gives
-  // multi-archive / set-category / add-tag fan-out.
-  import { createArchiveCtl } from '$lib/habits/habitsArchive.svelte';
-  import { createTemplatesDialogCtl } from '$lib/habits/habitsTemplatesDialog.svelte';
-  import { createBulkSelectCtl } from '$lib/habits/habitsBulkSelect.svelte';
-  import HabitsArchiveSection from '$lib/components/habits/HabitsArchiveSection.svelte';
-  import HabitsTemplatesDialog from '$lib/components/habits/HabitsTemplatesDialog.svelte';
-  import HabitsBulkActionBar from '$lib/components/habits/HabitsBulkActionBar.svelte';
 
   // /habits — three view modes (Today / Week / List / Heatmap) over
   // the same 90-day window. Sort + insight (best day of week) work
@@ -116,90 +85,6 @@
   });
   const editingName = $derived(renameCtl.editingName);
 
-  // ─── Category / tag / grouping wiring ─────────────────────────────
-  // The edit controllers patch via api.patchHabit and reload through
-  // the shared data controller so the optimistic-flip + reconcile
-  // story matches the existing toggle/rename flow. The filter +
-  // grouping controllers read straight from sortedHabits — the
-  // existing sort key drives intra-group ordering for free.
-  const categoryEditCtl = createCategoryEditCtl({
-    onPatch: async (name, category) => {
-      try {
-        await api.patchHabit(name, { category });
-        await dataCtl.load();
-      } catch (e) {
-        await toastError(`category update failed: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-  });
-  const tagEditCtl = createTagEditCtl({
-    onPatch: async (name, tags) => {
-      try {
-        await api.patchHabit(name, { tags });
-        await dataCtl.load();
-      } catch (e) {
-        await toastError(`tag update failed: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-  });
-  const categoryFilterCtl = createCategoryFilterCtl({
-    getHabits: () => dataCtl.data?.habits ?? []
-  });
-  const tagFilterCtl = createTagFilterCtl({
-    getHabits: () => dataCtl.data?.habits ?? []
-  });
-  // Archive, templates, and bulk-select controllers. Declared before
-  // visibleHabits so the archive filter can read showArchived. The
-  // archive section at the bottom of the page reads data.habits
-  // directly (it wants the archived subset, which visibleHabits
-  // excludes by default).
-  const archiveCtl = createArchiveCtl({ reload: () => dataCtl.load() });
-  const templatesDialogCtl = createTemplatesDialogCtl({ reload: () => dataCtl.load() });
-  const bulkSelectCtl = createBulkSelectCtl({
-    getHabits: () => dataCtl.data?.habits ?? [],
-    reload: () => dataCtl.load()
-  });
-
-  // visibleHabits is what every render branch iterates instead of
-  // sortedHabits directly. sortedHabits is preserved as the input to
-  // the filter pipeline so the existing sort comparator keeps owning
-  // ordering inside each (sub)bucket. Archived habits are excluded
-  // from the main views regardless of the Show-archived toggle —
-  // that toggle controls only the dedicated archive section below.
-  const visibleHabits = $derived(
-    sortedHabits.filter((h) =>
-      !h.archived &&
-      categoryFilterCtl.matches(h) &&
-      tagFilterCtl.matches(h)
-    )
-  );
-  const groupingCtl = createGroupingCtl({ getHabits: () => visibleHabits });
-
-  // Reminder + frequency: same patchHabit → reload pattern as
-  // category/tag above. Errors surface as toasts; no optimistic flip
-  // since the chip render reads directly from h.reminderTime /
-  // h.frequency, both of which refresh on dataCtl.load().
-  const reminderEditCtl = createReminderEditCtl({
-    onPatch: async (name, patch) => {
-      try {
-        await api.patchHabit(name, patch);
-        await dataCtl.load();
-      } catch (e) {
-        await toastError(`reminder update failed: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-  });
-  const frequencyEditCtl = createFrequencyEditCtl({
-    onPatch: async (name, patch) => {
-      try {
-        await api.patchHabit(name, patch);
-        await dataCtl.load();
-      } catch (e) {
-        await toastError(`frequency update failed: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-  });
-
   onMount(() => {
     dataCtl.load();
     return onWsEvent((ev) => {
@@ -232,27 +117,6 @@
             {bulkBusy ? '…' : `Tick all (${undoneToday.length})`}
           </button>
         {/if}
-        <!-- POWERUI controls: bulk-select, templates, archive toggle.
-             Kept text-only so the header doesn't grow icon clutter. -->
-        <label class="text-[11px] text-dim inline-flex items-center gap-1 px-2 py-1 rounded border border-surface1 hover:text-text cursor-pointer">
-          <input type="checkbox" bind:checked={archiveCtl.showArchived} class="accent-primary" />
-          archived
-        </label>
-        <button
-          type="button"
-          onclick={() => templatesDialogCtl.openDialog()}
-          class="px-2 py-1 text-[11px] rounded border border-surface1 text-subtext hover:text-text hover:bg-surface1"
-          title="apply a curated habit template"
-        >templates</button>
-        <button
-          type="button"
-          onclick={() => bulkSelectCtl.toggleActive()}
-          class="px-2 py-1 text-[11px] rounded border border-surface1 text-subtext hover:text-text hover:bg-surface1"
-          class:bg-primary={bulkSelectCtl.active}
-          class:text-on-primary={bulkSelectCtl.active}
-          class:border-primary={bulkSelectCtl.active}
-          title={bulkSelectCtl.active ? 'leave bulk-select mode' : 'enter bulk-select mode'}
-        >{bulkSelectCtl.active ? `selected · ${bulkSelectCtl.count}` : 'select'}</button>
         <button
           type="button"
           onclick={() => (addCtl.addOpen = !addCtl.addOpen)}
@@ -366,8 +230,7 @@
             { v: 'today', label: 'Today' },
             { v: 'week', label: 'Week' },
             { v: 'list', label: 'List' },
-            { v: 'heatmap', label: 'Heatmap' },
-            { v: 'category', label: 'By category' }
+            { v: 'heatmap', label: 'Heatmap' }
           ] as o}
             <button
               type="button"
@@ -415,21 +278,9 @@
             <option value="completion">by 30-day completion</option>
             <option value="behind">behind first</option>
             <option value="alpha">alphabetical</option>
-            <option value="reminder">by reminder time</option>
           </select>
         </label>
       </div>
-    {/if}
-
-    <!-- Category + tag filter rows. Both controllers derive their
-         chip lists from the loaded habit data, so they hide
-         themselves automatically while the vault has no categories
-         / no tags. Multi-select; "All" resets. The visibleHabits
-         derivation upstream applies the predicates before any view
-         iterates, so the same selection narrows every lens. -->
-    {#if data && data.habits.length > 0}
-      <HabitsCategoryFilterRow ctl={categoryFilterCtl} />
-      <HabitsTagFilterRow ctl={tagFilterCtl} />
     {/if}
 
     {#if loading && !data}
@@ -473,7 +324,7 @@
            is the one the user wants to hit fast in the morning or
            evening — every other element is supporting context. -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {#each visibleHabits as h (h.name)}
+        {#each sortedHabits as h (h.name)}
           {@const insight = bestDay(h)}
           {@const tgt = targetsCtl.targetState(h)}
           <div
@@ -482,15 +333,6 @@
                 ? 'border-success bg-surface0'
                 : 'border-surface1 hover:border-primary'}"
           >
-            {#if bulkSelectCtl.active}
-              <input
-                type="checkbox"
-                checked={bulkSelectCtl.isSelected(h.name)}
-                onchange={() => bulkSelectCtl.toggle(h.name)}
-                class="mt-3 accent-primary w-4 h-4 flex-shrink-0"
-                aria-label="select for bulk action"
-              />
-            {/if}
             <button
               type="button"
               onclick={() => dataCtl.toggleToday(h)}
@@ -569,8 +411,6 @@
                     title="set a weekly target"
                   >+ target</button>
                 {/if}
-                <HabitReminderBadge name={h.name} reminderTime={h.reminderTime} ctl={reminderEditCtl} />
-                <HabitFrequencyPicker name={h.name} frequency={h.frequency} ctl={frequencyEditCtl} />
               </div>
               {#if editingTarget === h.name}
                 <div class="mt-2 flex items-center gap-1.5 text-[11px]">
@@ -591,7 +431,7 @@
       <!-- 7-column grid: each row a habit, each column a day. Header
            row labels the day-of-week + date (M/D). Last column is
            today and gets a primary outline. Click any cell to toggle. -->
-      {@const days = visibleHabits.length > 0 ? weekDays(visibleHabits[0]) : []}
+      {@const days = sortedHabits.length > 0 ? weekDays(sortedHabits[0]) : []}
       <!-- Mobile: the table doesn't fit in 7 columns at touch-target
            size, so it's allowed to scroll horizontally. min-w on the
            table forces 44px-ish day cells; the inner aspect-square
@@ -613,7 +453,7 @@
             </tr>
           </thead>
           <tbody>
-            {#each visibleHabits as h (h.name)}
+            {#each sortedHabits as h (h.name)}
               <tr>
                 <td class="text-sm text-text break-words py-1 pr-2">
                   {h.name}
@@ -646,20 +486,11 @@
     {:else if data}
       <!-- ===== LIST VIEW ===== (was the only view before) -->
       <div class="space-y-4">
-        {#each visibleHabits as h (h.name)}
+        {#each sortedHabits as h (h.name)}
           {@const insight = bestDay(h)}
           {@const tgt = targetsCtl.targetState(h)}
           <article class="bg-surface0 border border-surface1 rounded-lg p-3">
             <div class="flex items-start gap-3 mb-3">
-              {#if bulkSelectCtl.active}
-                <input
-                  type="checkbox"
-                  checked={bulkSelectCtl.isSelected(h.name)}
-                  onchange={() => bulkSelectCtl.toggle(h.name)}
-                  class="mt-1.5 accent-primary w-4 h-4 flex-shrink-0"
-                  aria-label="select for bulk action"
-                />
-              {/if}
               <button
                 onclick={() => dataCtl.toggleToday(h)}
                 disabled={busy === h.name || !h.taskIdToday}
@@ -737,16 +568,6 @@
                       class="px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider border bg-surface1 text-dim border-surface2 hover:text-text"
                     >+ target</button>
                   {/if}
-                </div>
-                <!-- Category + tag chips. Stay glanceable when set,
-                     reveal inline editors on click. Each chip cluster
-                     is its own controller-driven component so the
-                     route doesn't grow more popover state. -->
-                <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <HabitCategoryChip habitName={h.name} category={h.category} ctl={categoryEditCtl} />
-                  <HabitTagChips habitName={h.name} tags={h.tags} ctl={tagEditCtl} />
-                  <HabitReminderBadge name={h.name} reminderTime={h.reminderTime} ctl={reminderEditCtl} />
-                  <HabitFrequencyPicker name={h.name} frequency={h.frequency} ctl={frequencyEditCtl} />
                 </div>
                 {#if editingTarget === h.name}
                   <div class="mt-1.5 flex items-center gap-1.5 text-[11px]">
@@ -848,7 +669,7 @@
            color scale at the brightest tone, which reads as a
            clean "completed" green. -->
       <div class="space-y-4">
-        {#each visibleHabits as h (h.name)}
+        {#each sortedHabits as h (h.name)}
           <article class="bg-surface0 border border-surface1 rounded-lg p-3">
             <header class="flex items-baseline gap-2 mb-3">
               <h3 class="text-sm font-medium text-text">{h.name}</h3>
@@ -867,68 +688,6 @@
           </article>
         {/each}
       </div>
-    {:else if data && viewCtl.view === 'category'}
-      <!-- ===== GROUP-BY-CATEGORY VIEW ===== -->
-      <!-- Sixth lens. Same habit data, grouped under category
-           headers. Intra-group ordering follows the active sortBy
-           (the grouping controller doesn't re-sort — it just
-           buckets). The card snippet renders a compact list-style
-           row with the today-toggle + name + headline metadata +
-           chips; the full list view stays available for users who
-           want the dot grid. -->
-      {#snippet groupedHabitCard(h: HabitInfo)}
-        {@const insight = bestDay(h)}
-        {@const tgt = targetsCtl.targetState(h)}
-        <article class="bg-surface0 border border-surface1 rounded-lg p-3 flex items-start gap-3">
-          <button
-            onclick={() => dataCtl.toggleToday(h)}
-            disabled={busy === h.name || !h.taskIdToday}
-            title={h.taskIdToday ? (h.doneToday ? 'mark not done today' : 'mark done today') : 'open daily note to add this habit'}
-            class="w-6 h-6 mt-0.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors disabled:opacity-50
-              {h.doneToday ? 'bg-success border-success' : 'border-surface2 hover:border-primary'}"
-            aria-label="toggle today"
-          >
-            {#if h.doneToday}
-              <svg viewBox="0 0 12 12" class="w-4 h-4 text-mantle"><path fill="currentColor" d="M4.5 8.5L2 6l-1 1 3.5 3.5L11 4l-1-1z"/></svg>
-            {/if}
-          </button>
-          <div class="flex-1 min-w-0">
-            <h3 class="text-base font-medium text-text break-words">{h.name}</h3>
-            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-dim mt-0.5">
-              <span>🔥 {h.currentStreak}d</span>
-              <span>7d: {h.last7Pct}%</span>
-              <span>30d: {h.last30Pct}%</span>
-              {#if insight}
-                <span class="text-secondary">best: {insight.label} ({insight.pct}%)</span>
-              {/if}
-              {#if tgt}
-                <span class="text-{tgt.done >= tgt.target ? 'success' : 'warning'}">🎯 {tgt.done}/{tgt.target}/wk</span>
-              {/if}
-            </div>
-            <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <HabitCategoryChip habitName={h.name} category={h.category} ctl={categoryEditCtl} />
-              <HabitTagChips habitName={h.name} tags={h.tags} ctl={tagEditCtl} />
-            </div>
-          </div>
-        </article>
-      {/snippet}
-      <HabitsGroupedView ctl={groupingCtl} card={groupedHabitCard} />
-    {/if}
-
-    <!-- Archive section. Renders below all view modes when the
-         "archived" toggle is on; the component self-filters down
-         to archived habits and stays hidden when the vault has
-         none. Muted styling so it doesn't fight the active list. -->
-    {#if archiveCtl.showArchived && data}
-      <HabitsArchiveSection habits={data.habits} archive={archiveCtl} />
     {/if}
   </div>
 </div>
-
-<!-- Top-level overlays. The templates dialog renders its own
-     modal scrim; the bulk action bar pins to the bottom edge when
-     active. Both read straight from their controllers. -->
-<HabitsTemplatesDialog ctl={templatesDialogCtl} />
-{#if bulkSelectCtl.active}
-  <HabitsBulkActionBar ctl={bulkSelectCtl} />
-{/if}

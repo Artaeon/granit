@@ -2527,13 +2527,6 @@ export const api = {
 
   // Habits (derived from `## Habits` sections in daily notes)
   listHabits: () => req<HabitsResponse>('/habits'),
-  // Distinct sidecar values — categories / tags across every habit,
-  // deduped + alphabetically sorted. Used by the chip pickers so the
-  // UI can offer existing values as suggestions without first
-  // round-tripping the full habit list.
-  listHabitCategories: () =>
-    req<{ categories: string[] }>('/habits/categories'),
-  listHabitTags: () => req<{ tags: string[] }>('/habits/tags'),
   // Mark a habit done/undone for ANY date — used by the heatmap to
   // let users retro-fix yesterday's missed log without opening the
   // daily note. Server creates the daily file if it doesn't exist
@@ -2559,54 +2552,6 @@ export const api = {
       `/habits/${encodeURIComponent(name)}`,
       { method: 'PATCH', body: JSON.stringify({ new_name: newName }) }
     ),
-  // Patch a habit's sidecar-stored metadata. Same endpoint as rename
-  // (PATCH /habits/{name}); supply only the fields you want to change.
-  // Setting a string field to "" clears the sidecar entry; tags=[]
-  // clears the entry too. Omitted fields are not touched.
-  patchHabit: (
-    name: string,
-    patch: HabitPatch
-  ) =>
-    req<{
-      name: string;
-      newName: string;
-      filesTouched: number;
-      habit: {
-        name: string;
-        category?: string;
-        reminderTime?: string;
-        frequency?: string;
-        archived?: boolean;
-        tags?: string[];
-        stackAfter?: string;
-      };
-    }>(`/habits/${encodeURIComponent(name)}`, {
-      method: 'PATCH',
-      body: JSON.stringify(patch)
-    }),
-  // Create a habit by name with optional metadata. Thin client-side
-  // shim: there's no POST /habits endpoint — habits materialize via
-  // toggleHabit (date entry creates the checkbox line). For metadata
-  // we follow up with patchHabit. Used by the Templates dialog so a
-  // bundled template can ship category + tags + frequency + reminder
-  // in one call. Idempotent enough: re-toggling a habit on the same
-  // day is a no-op on the server side.
-  createHabit: async (body: {
-    name: string;
-    category?: string;
-    tags?: string[];
-    frequency?: string;
-    reminderTime?: string;
-  }): Promise<void> => {
-    const today = new Date().toISOString().slice(0, 10);
-    await api.toggleHabit(body.name, today, false);
-    const patch: HabitPatch = {};
-    if (body.category !== undefined) patch.category = body.category;
-    if (body.tags !== undefined) patch.tags = body.tags;
-    if (body.frequency !== undefined) patch.frequency = body.frequency;
-    if (body.reminderTime !== undefined) patch.reminderTime = body.reminderTime;
-    if (Object.keys(patch).length > 0) await api.patchHabit(body.name, patch);
-  },
   // Habit stacking — anchor `name` to `after` ("after I do <after>,
   // I do <name>"). Empty `after` clears the anchor. Server rejects
   // self-references. Writes the .granit/habits-stacks.json sidecar.
@@ -3187,14 +3132,6 @@ export interface HabitInfo {
   // is anchored to. "After I do <stackAfter>, I do this." Behavioural-
   // science anchoring; the UI surfaces it as a chain.
   stackAfter?: string;
-  // Sidecar-stored metadata — same source the TUI reads. Optional
-  // because legacy habits stay valid without any of these set; the
-  // PATCH endpoint accepts each independently.
-  category?: string;
-  reminderTime?: string; // HH:MM 24h
-  frequency?: string; // "daily" | "weekdays" | "weekends" | "3x-week" | "mon,wed,fri"
-  archived?: boolean;
-  tags?: string[];
 }
 
 export interface HabitsResponse {
@@ -3202,19 +3139,6 @@ export interface HabitsResponse {
   total: number;
   today: string;
   days: number;
-}
-
-// HabitPatch is the body shape for PATCH /habits/{name}. Every field
-// is optional — supply only what you want to change. The server
-// distinguishes "omitted" from "explicitly cleared": clearing a
-// string is setting it to "", clearing tags is setting it to [].
-export interface HabitPatch {
-  new_name?: string;
-  category?: string;
-  reminderTime?: string;
-  frequency?: string;
-  archived?: boolean;
-  tags?: string[];
 }
 
 // Meals — one slot per planned meal in the day. Source of truth is the
