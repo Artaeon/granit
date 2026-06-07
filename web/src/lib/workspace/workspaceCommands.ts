@@ -14,6 +14,7 @@ import { workspaceStoreSingleton } from './workspaceStore.svelte';
 import { leaves } from './splitTree';
 import { WORKSPACE_PRESETS } from './workspacePresets';
 import { loadUserPresets, saveUserPreset, cloneWithNewIds } from './userPresets';
+import { recentPanes } from './recentPanes.svelte';
 import { toast } from '$lib/components/toast';
 
 export type WorkspaceCmd = {
@@ -48,15 +49,40 @@ export function workspaceCommands(): WorkspaceCmd[] {
   const focusedLabel = focusedPaneKind ? findPane(focusedPaneKind)?.label ?? focusedPaneKind : '';
   const canClose = activeLeaves.length > 1;
 
-  const out: WorkspaceCmd[] = [
-    {
-      id: 'workspace:open',
-      label: 'Open workspace',
-      detail: store.active?.name ?? '/workspace',
-      icon: 'workspace',
-      run: () => goto('/workspace')
+  const out: WorkspaceCmd[] = [];
+
+  // Recent panes — VSCode ⌘P-style MRU list at the very top so a
+  // single arrow-down from the palette cycles through the surfaces
+  // the user actually lives in. Skips entries whose kind isn't in
+  // the current pane catalog (older stored values from a removed
+  // pane type) and skips when there's no focused leaf to target.
+  if (focusedLeaf) {
+    for (const kind of recentPanes.list) {
+      const entry = findPane(kind);
+      if (!entry) continue;
+      // Don't re-offer the kind already showing in the focused leaf —
+      // setting it would be a no-op surprise.
+      if (kind === focusedPaneKind) continue;
+      out.push({
+        id: 'workspace:recent-pane:' + kind,
+        label: `Recent: ${entry.label}`,
+        detail: `${focusedLabel} → ${entry.label}`,
+        icon: entry.icon,
+        run: () => {
+          store.setPane(focusedLeaf.id, kind);
+          void goto('/workspace');
+        }
+      });
     }
-  ];
+  }
+
+  out.push({
+    id: 'workspace:open',
+    label: 'Open workspace',
+    detail: store.active?.name ?? '/workspace',
+    icon: 'workspace',
+    run: () => goto('/workspace')
+  });
 
   // Preset constructors — "New workspace: Daily" etc. Each one builds
   // a fresh tree via the preset and jumps to /workspace so the user
