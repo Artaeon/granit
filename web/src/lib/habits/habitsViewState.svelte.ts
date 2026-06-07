@@ -17,7 +17,10 @@
 import type { HabitInfo, HabitsResponse } from '$lib/api';
 import { loadStoredString, saveStoredString } from '$lib/util/storage';
 
-export type HabitsView = 'today' | 'week' | 'list' | 'heatmap';
+// 'category' is the grouped-by-category lens added alongside the
+// original four. It re-uses the list-view card via a passed snippet;
+// the controller doesn't render anything itself.
+export type HabitsView = 'today' | 'week' | 'list' | 'heatmap' | 'category';
 export type HabitsSort = 'streak' | 'completion' | 'alpha' | 'behind';
 
 const VIEW_KEY = 'granit.habits.view';
