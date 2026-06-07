@@ -637,14 +637,20 @@
 {#if !$auth}
   <AuthScreen />
 {:else}
-<div class="h-dvh flex flex-col md:flex-row overflow-hidden">
+<div class="h-dvh flex flex-col overflow-hidden">
   {#if $auth}
     <MobileTopBar onQuickJump={() => palette?.show()} />
+  {/if}
 
-    <!-- Desktop sidebar — expand/compact width is driven by the
-         compact toggle in the footer rail. Both states animate via
-         the transition class so the resize feels intentional. -->
-    <aside
+  <!-- Sidebar + main + right-pane share ONE horizontal row; the status
+       bar (NoteTray) sits BELOW this row as a full-width strip, so it
+       never overlays the sidebar footer (VSCode-style layout). -->
+  <div class="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
+    {#if $auth}
+      <!-- Desktop sidebar — expand/compact width is driven by the
+           compact toggle in the footer rail. Both states animate via
+           the transition class so the resize feels intentional. -->
+      <aside
       class="hidden md:flex bg-mantle border-r border-surface1 flex-shrink-0 transition-[width] duration-150 {$sidebarCompact ? 'md:w-12' : 'md:w-48 lg:w-52'}"
     >
       <NavSidebar
@@ -700,6 +706,13 @@
          since none of its content (events, notes, vision) is
          reachable pre-login. -->
     <RightPane />
+    {/if}
+  </div>
+
+  {#if $auth}
+    <!-- Full-width desktop status bar — a real flex row BELOW the
+         sidebar+main row, so it never overlaps the sidebar footer. -->
+    <NoteTray />
   {/if}
 
   {#if $auth}
@@ -746,14 +759,6 @@
        configured-LLM lookup would 401. -->
   <AIOverlay />
 
-  <!-- Persistent "open note" tray. Slim bottom bar (desktop) /
-       chip above the bottom nav (mobile) that surfaces the last
-       opened note + any tray-pinned notes so the user can jump
-       back from anywhere. The component self-gates on its own
-       settings toggle + visibility rules (hidden when on the
-       active note, hidden when nothing stored). Auth-gated since
-       a pre-login user has no vault to remember from. -->
-  <NoteTray />
 {/if}
 {/if}
 <!-- Auth-agnostic globals — these render on the login screen too:

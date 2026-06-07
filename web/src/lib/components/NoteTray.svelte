@@ -118,29 +118,17 @@
     if (!onWorkspacePage) void goto('/workspace');
   }
 
-  // Reserve the bar's height so the editor's bottom padding stacks it
-  // on top of any other reserves (BottomNav, iOS safe area). h-7 =
-  // 28px — kept in sync with the class on the root element below.
-  const TRAY_HEIGHT = '1.75rem';
-  $effect(() => {
-    if (typeof document === 'undefined') return;
-    if ($trayEnabled) {
-      document.documentElement.style.setProperty('--note-tray-h', TRAY_HEIGHT);
-      return () => {
-        document.documentElement.style.removeProperty('--note-tray-h');
-      };
-    }
-    document.documentElement.style.removeProperty('--note-tray-h');
-  });
+  // The bar is now a real flex row in the layout column (below the
+  // sidebar+main row), so it no longer reserves space via a CSS var —
+  // the row simply takes its own 28px of height.
 </script>
 
 {#if $trayEnabled}
   <div
     role="region"
     aria-label="Status bar"
-    class="note-tray note-tray-hide-on-kb fixed inset-x-0 z-20 bg-mantle border-t border-surface1
-           h-7 md:h-7 flex items-stretch overflow-hidden"
-    style="bottom: var(--note-tray-bottom, 0px);"
+    class="note-tray hidden md:flex w-full z-20 bg-mantle border-t border-surface1
+           h-7 flex-shrink-0 items-stretch overflow-hidden"
   >
     <!-- LEFT: Workspace switcher. WorkspacePills is the single
          switcher used across the app — full create/rename/delete
