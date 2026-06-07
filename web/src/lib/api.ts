@@ -2584,6 +2584,29 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(patch)
     }),
+  // Create a habit by name with optional metadata. Thin client-side
+  // shim: there's no POST /habits endpoint — habits materialize via
+  // toggleHabit (date entry creates the checkbox line). For metadata
+  // we follow up with patchHabit. Used by the Templates dialog so a
+  // bundled template can ship category + tags + frequency + reminder
+  // in one call. Idempotent enough: re-toggling a habit on the same
+  // day is a no-op on the server side.
+  createHabit: async (body: {
+    name: string;
+    category?: string;
+    tags?: string[];
+    frequency?: string;
+    reminderTime?: string;
+  }): Promise<void> => {
+    const today = new Date().toISOString().slice(0, 10);
+    await api.toggleHabit(body.name, today, false);
+    const patch: HabitPatch = {};
+    if (body.category !== undefined) patch.category = body.category;
+    if (body.tags !== undefined) patch.tags = body.tags;
+    if (body.frequency !== undefined) patch.frequency = body.frequency;
+    if (body.reminderTime !== undefined) patch.reminderTime = body.reminderTime;
+    if (Object.keys(patch).length > 0) await api.patchHabit(body.name, patch);
+  },
   // Habit stacking — anchor `name` to `after` ("after I do <after>,
   // I do <name>"). Empty `after` clears the anchor. Server rejects
   // self-references. Writes the .granit/habits-stacks.json sidecar.
