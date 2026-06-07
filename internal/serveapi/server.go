@@ -730,6 +730,15 @@ func (s *Server) Handler() http.Handler {
 
 		r.Get("/api/v1/dashboard", s.handleGetDashboard)
 		r.Put("/api/v1/dashboard", s.handlePutDashboard)
+
+		// Workspace layouts — the named split-tree layouts the web
+		// shell surfaces in its pills. Mirrors the frontend store
+		// (web/src/lib/workspace/workspaceStore.svelte.ts) to
+		// <vault>/.granit/workspaces.json so a layout tuned on one
+		// device follows the user to phone + laptop. Opaque blob —
+		// schema lives in the client.
+		r.Get("/api/v1/workspaces", s.handleGetWorkspaces)
+		r.Put("/api/v1/workspaces", s.handlePutWorkspaces)
 		// Saved layout presets — focus / morning / shutdown switcher.
 		// The layouts catalogue lives inside the same dashboard config
 		// file; switching activates a named layout's widgets.
