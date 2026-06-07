@@ -485,26 +485,6 @@ func (s *Server) buildRoutineSnapshot(date string) routineSnapshot {
 	return snap
 }
 
-// readDailyBody returns the raw markdown of the daily note for the
-// given date, or "" when no note exists yet. Uses the same
-// dailyConfigFor resolver the other handlers use so the daily folder
-// override stays consistent.
-func (s *Server) readDailyBody(date string) string {
-	dailyCfg := s.dailyConfigFor()
-	folder := strings.Trim(dailyCfg.Folder, "/")
-	rel := date + ".md"
-	if folder != "" {
-		rel = filepath.ToSlash(filepath.Join(folder, date+".md"))
-	}
-	if n := s.cfg.Vault.GetNote(rel); n != nil {
-		s.cfg.Vault.EnsureLoaded(rel)
-		if n2 := s.cfg.Vault.GetNote(rel); n2 != nil {
-			return n2.Content
-		}
-	}
-	return ""
-}
-
 // extractDailyPlanSection pulls the body of an existing "## Daily Plan"
 // section from a daily note. Returns "" when the section is absent.
 // Same parsing rules as upsertNamedSection: marker line followed by
