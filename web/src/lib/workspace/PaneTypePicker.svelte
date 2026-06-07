@@ -8,7 +8,8 @@
   glyph per pane type, app-wide).
 -->
 <script lang="ts">
-  import { PANES, findPane, type PaneKind } from './paneRegistry';
+  import { PANES, findPane, type PaneKind, type PaneEntry } from './paneRegistry';
+  import { recentPanes } from './recentPanes.svelte';
   import NavIcon from '$lib/components/NavIcon.svelte';
 
   type Props = {
@@ -19,6 +20,22 @@
 
   let entry = $derived(findPane(pane));
   let open = $state(false);
+
+  // Recent surfaces (MRU) for fast re-switching — the pane bar's "simple
+  // navigation". recentPanes is a plain (non-reactive) store, so snapshot
+  // it each time the menu opens rather than $derive-ing it. Current pane
+  // is excluded (you're already on it); capped so the list stays scannable.
+  let recentEntries = $state<PaneEntry[]>([]);
+  function toggle() {
+    if (!open) {
+      recentEntries = recentPanes.list
+        .filter((k) => k !== pane)
+        .map((k) => findPane(k))
+        .filter((e): e is PaneEntry => !!e)
+        .slice(0, 5);
+    }
+    open = !open;
+  }
 
   function pick(p: PaneKind) {
     open = false;
@@ -47,7 +64,7 @@
 <div bind:this={rootEl} class="relative">
   <button
     type="button"
-    onclick={() => (open = !open)}
+    onclick={toggle}
     aria-haspopup="menu"
     aria-expanded={open}
     title="Change pane type"
@@ -64,8 +81,24 @@
   {#if open}
     <div
       role="menu"
-      class="absolute left-0 top-full mt-1 w-44 bg-mantle border border-surface1 rounded-lg shadow-xl py-1 text-sm z-20"
+      class="absolute left-0 top-full mt-1 w-48 max-h-[70vh] overflow-y-auto bg-mantle border border-surface1 rounded-lg shadow-xl py-1 text-sm z-20"
     >
+      {#if recentEntries.length > 0}
+        <div class="px-3 pt-1 pb-0.5 text-[10px] text-dim font-semibold">Recent</div>
+        {#each recentEntries as e (e.id)}
+          <button
+            type="button"
+            role="menuitem"
+            onclick={() => pick(e.id)}
+            class="w-full inline-flex items-center gap-2 text-left px-3 py-1.5 hover:bg-surface0 transition-colors text-text"
+          >
+            <NavIcon name={e.icon} class="w-4 h-4 flex-shrink-0 text-dim" />
+            <span>{e.label}</span>
+          </button>
+        {/each}
+        <div class="my-1 border-t border-surface1"></div>
+        <div class="px-3 pt-0.5 pb-0.5 text-[10px] text-dim font-semibold">All surfaces</div>
+      {/if}
       {#each PANES as p (p.id)}
         <button
           type="button"
@@ -76,6 +109,11 @@
         >
           <NavIcon name={p.icon} class="w-4 h-4 flex-shrink-0 {pane === p.id ? 'text-primary' : 'text-dim'}" />
           <span>{p.label}</span>
+          {#if pane === p.id}
+            <svg viewBox="0 0 24 24" class="w-3.5 h-3.5 ml-auto text-primary" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          {/if}
         </button>
       {/each}
     </div>
