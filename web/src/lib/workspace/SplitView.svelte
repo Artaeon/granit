@@ -69,6 +69,27 @@
     dragging = false;
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   }
+
+  // Keyboard resize: arrow keys nudge the ratio along the split axis.
+  // Shift = 10% jumps (VSCode-style coarse step); Home = recenter at 50%.
+  // Off-axis arrows are ignored so a vertical gutter doesn't jump on Up/Down.
+  function onKeyDown(e: KeyboardEvent) {
+    if (node.kind !== 'split') return;
+    const step = e.shiftKey ? 0.1 : 0.02;
+    const isH = node.direction === 'h';
+    const decKey = isH ? 'ArrowLeft' : 'ArrowUp';
+    const incKey = isH ? 'ArrowRight' : 'ArrowDown';
+    if (e.key === decKey) {
+      e.preventDefault();
+      onSetRatio(node.id, Math.max(0.1, node.ratio - step));
+    } else if (e.key === incKey) {
+      e.preventDefault();
+      onSetRatio(node.id, Math.min(0.9, node.ratio + step));
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      onSetRatio(node.id, 0.5);
+    }
+  }
 </script>
 
 {#if node.kind === 'leaf'}
@@ -107,6 +128,12 @@
         {onFocus}
       />
     </div>
+    <!--
+      Outer = 6px hit-zone so the cursor catches even when slightly off
+      the visible line. Inner = the 1px line the user actually sees.
+      group-hover propagates the hover-colour from outer to inner so
+      the hit-zone hover behaviour matches the pre-polish version.
+    -->
     <div
       role="separator"
       aria-orientation={node.direction === 'h' ? 'vertical' : 'horizontal'}
@@ -116,12 +143,21 @@
       onpointerdown={onPointerDown}
       onpointermove={onPointerMove}
       onpointerup={onPointerUp}
-      class="flex-shrink-0 bg-surface1 hover:bg-primary transition-colors touch-none"
-      class:w-1={node.direction === 'h'}
-      class:h-1={node.direction === 'v'}
+      onkeydown={onKeyDown}
+      class="group flex-shrink-0 flex items-center justify-center touch-none"
+      class:w-1.5={node.direction === 'h'}
+      class:h-1.5={node.direction === 'v'}
       class:cursor-col-resize={node.direction === 'h'}
       class:cursor-row-resize={node.direction === 'v'}
-    ></div>
+    >
+      <div
+        class="bg-surface1 group-hover:bg-primary transition-colors"
+        class:w-px={node.direction === 'h'}
+        class:h-full={node.direction === 'h'}
+        class:h-px={node.direction === 'v'}
+        class:w-full={node.direction === 'v'}
+      ></div>
+    </div>
     <div class="flex-1 min-w-0 min-h-0 overflow-hidden">
       <svelte:self
         node={node.second}
