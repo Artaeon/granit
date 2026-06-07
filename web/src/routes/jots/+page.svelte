@@ -17,7 +17,7 @@
   import { createJotsFeedData } from '$lib/jots/jotsFeedData.svelte';
   import { createJotsFilters } from '$lib/jots/jotsFilters.svelte';
   import { createJotsAI } from '$lib/jots/jotsAI.svelte';
-  import { createJotsComposer } from '$lib/jots/jotsComposer.svelte';
+  import { createJotsComposer } from '$lib/jots/jotsComposerState.svelte';
   import { installJotsKeyboard } from '$lib/jots/useJotsKeyboard';
 
   // Amplenote-style infinite-scroll feed of every daily note. The page
