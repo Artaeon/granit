@@ -15,6 +15,7 @@
     error    red    (e.g. overdue, P1)
     info     blue   (e.g. no date)
     success  green  (e.g. done)
+    muted    grey   (e.g. archived / retired)
 
   Count badges, dots, and icons stay as children — the caller still owns
   those, and can read `active` to flip their own colours.
@@ -25,7 +26,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  type Tone = 'neutral' | 'warning' | 'error' | 'info' | 'success';
+  type Tone = 'neutral' | 'warning' | 'error' | 'info' | 'success' | 'muted';
 
   let {
     tone = 'neutral',
@@ -58,14 +59,16 @@
     warning: 'bg-surface0 text-warning border-surface1 hover:border-warning',
     error: 'bg-surface0 text-error border-surface1 hover:border-error',
     info: 'bg-surface0 text-info border-surface1 hover:border-info',
-    success: 'bg-surface0 text-success border-surface1 hover:border-success'
+    success: 'bg-surface0 text-success border-surface1 hover:border-success',
+    muted: 'bg-surface0 text-dim border-surface1 hover:border-surface2 hover:text-subtext'
   };
   const filled: Record<Tone, string> = {
     neutral: 'bg-primary text-on-primary border-primary',
     warning: 'bg-warning text-mantle border-warning',
     error: 'bg-error text-mantle border-error',
     info: 'bg-info text-mantle border-info',
-    success: 'bg-success text-mantle border-success'
+    success: 'bg-success text-mantle border-success',
+    muted: 'bg-surface2 text-text border-surface2'
   };
 
   let cls = $derived(`${base} ${active ? filled[tone] : idle[tone]} ${extra}`);
