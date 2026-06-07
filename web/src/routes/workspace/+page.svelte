@@ -119,6 +119,7 @@
         focused={true}
         onFocus={() => store.focus(maximizedLeaf.id)}
         onSwap={(sourceLeafId) => store.swap(sourceLeafId, maximizedLeaf.id)}
+        onToggleMaximize={() => store.toggleMaximize(maximizedLeaf.id)}
       />
     {:else}
       <SplitView
@@ -128,6 +129,7 @@
         onSplit={store.split}
         onClose={store.close}
         onSwap={store.swap}
+        onToggleMaximize={store.toggleMaximize}
         {canClose}
         focusedLeafId={store.focusedLeafId}
         onFocus={store.focus}

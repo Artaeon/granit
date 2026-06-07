@@ -23,6 +23,7 @@
     onSplit,
     onClose,
     onSwap,
+    onToggleMaximize,
     canClose,
     focusedLeafId,
     onFocus
@@ -35,6 +36,10 @@
     /** Swap two leaves' pane kinds. Wired by /workspace to store.swap.
      *  Drives the header drag-and-drop in PaneSlot. */
     onSwap: (leafIdA: string, leafIdB: string) => void;
+    /** Toggle maximize for a leaf. Wired by /workspace to
+     *  store.toggleMaximize. Drives PaneSlot's double-click-header
+     *  affordance. */
+    onToggleMaximize: (leafId: string) => void;
     /** True when the workspace has more than one leaf — drives
      *  PaneSlot's close-button visibility. The store guarantees at
      *  least one leaf survives at all times. */
@@ -108,6 +113,7 @@
     focused={focusedLeafId === node.id}
     onFocus={() => onFocus(node.id)}
     onSwap={(sourceLeafId) => onSwap(sourceLeafId, node.id)}
+    onToggleMaximize={() => onToggleMaximize(node.id)}
   />
 {:else}
   <div
@@ -130,6 +136,7 @@
         {onSplit}
         {onClose}
         {onSwap}
+        {onToggleMaximize}
         {canClose}
         {focusedLeafId}
         {onFocus}
@@ -173,6 +180,7 @@
         {onSplit}
         {onClose}
         {onSwap}
+        {onToggleMaximize}
         {canClose}
         {focusedLeafId}
         {onFocus}

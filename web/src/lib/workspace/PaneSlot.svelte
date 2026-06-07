@@ -25,7 +25,8 @@
     onClose,
     focused = false,
     onFocus,
-    onSwap
+    onSwap,
+    onToggleMaximize
   }: {
     pane: PaneKind;
     /** Id of the leaf this slot renders. Used to label drag payloads
@@ -52,6 +53,10 @@
      *  leaves. The argument is the SOURCE leaf id (this leaf's id is
      *  already known to the caller). */
     onSwap?: (sourceLeafId: string) => void;
+    /** Called when the header is double-clicked — the parent should
+     *  toggle the workspace's maximize state for this leaf. Optional;
+     *  when omitted, double-click does nothing (mobile view). */
+    onToggleMaximize?: () => void;
   } = $props();
 
   let entry = $derived(findPane(pane));
@@ -153,6 +158,14 @@
 >
   <header
     draggable={leafId ? 'true' : undefined}
+    ondblclick={(e) => {
+      // Only react when the double-click hit the header background
+      // — clicks on the picker / split / close buttons keep their own
+      // single-click semantics and shouldn't accidentally maximize.
+      if (e.target !== e.currentTarget) return;
+      onToggleMaximize?.();
+    }}
+    title={onToggleMaximize ? 'Double-click to maximize / restore' : undefined}
     class="flex items-center gap-1.5 px-2 py-1 border-b text-xs flex-shrink-0 transition-colors
       {focused ? 'border-primary bg-surface0' : 'border-surface1 bg-surface0'}
       {leafId ? 'cursor-grab active:cursor-grabbing' : ''}"
