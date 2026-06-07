@@ -16,6 +16,7 @@
 -->
 <script lang="ts">
   import { api } from '$lib/api';
+  import Button from '$lib/components/Button.svelte';
   import { parseTaskInput, smartDate } from '$lib/util/taskParse';
   import { toast } from '$lib/components/toast';
   import { errorMessage } from '$lib/util/errorMessage';
@@ -106,11 +107,12 @@
     disabled={quickAddBusy}
     class="flex-1 min-w-0 px-3 py-2 bg-surface0 border border-surface1 rounded text-sm text-text placeholder-dim focus:outline-none focus:border-primary disabled:opacity-60"
   />
-  <button
+  <Button
+    variant="primary"
     onclick={() => void submitQuickAdd()}
     disabled={!quickAdd.trim() || quickAddBusy}
-    class="px-3 py-2 bg-primary text-on-primary rounded text-sm disabled:opacity-50 flex-shrink-0"
-  >{quickAddBusy ? '…' : 'Add'}</button>
+    class="px-3 py-2 text-sm flex-shrink-0"
+  >{quickAddBusy ? '…' : 'Add'}</Button>
   <!-- Focus-hours input + Plan-my-day trigger. The hours value
        feeds the AI's budget so it doesn't propose 8h of work
        when the user has 2h available. Persisted in
@@ -128,26 +130,28 @@
     />
     <span>h</span>
   </label>
-  <button
+  <Button
+    variant="secondary"
     onclick={() => void focusPlan.run(dataCtl.tasks, aiFocusHours)}
     disabled={$focusPlan.busy || dataCtl.tasks.filter((t) => !t.done).length === 0}
     title="AI builds a sequenced day-plan budgeted to your focus hours"
-    class="hidden sm:inline-flex px-3 py-2 text-sm bg-surface1 border border-surface2 text-primary rounded hover:border-primary disabled:opacity-50 flex-shrink-0 items-center gap-1.5"
+    class="hidden sm:inline-flex px-3 py-2 text-sm flex-shrink-0"
   >
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/>
     </svg>
     <span>{$focusPlan.busy ? 'planning…' : 'Plan day'}</span>
-  </button>
+  </Button>
   <!-- Ask Tasks — opens a Q&A panel above the list. The model
        answers from the loaded task set as context. No mutations
        — pure read surface for "which P1 has no due date?" /
        "what's blocked?" / "summarize today's commitments" -->
-  <button
+  <Button
+    variant="secondary"
     onclick={onStartAsk}
     disabled={filteredCount === 0}
     title="Ask AI a question about your current task view"
-    class="inline-flex px-3 py-2 text-sm bg-surface1 border border-surface2 text-primary rounded hover:border-primary disabled:opacity-50 flex-shrink-0 items-center gap-1.5"
+    class="px-3 py-2 text-sm flex-shrink-0"
   >
     <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="9"/>
@@ -155,5 +159,5 @@
       <path d="M12 17h0"/>
     </svg>
     <span>Ask tasks</span>
-  </button>
+  </Button>
 </div>

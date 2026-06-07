@@ -62,10 +62,16 @@
     [key: string]: unknown;
   } = $props();
 
-  const base =
-    'inline-flex items-center justify-center gap-1.5 font-medium leading-none whitespace-nowrap transition-colors select-none ' +
+  // Layout + behaviour shared by every button. `inline-flex` is the
+  // default display, but it's omitted when the caller passes their own
+  // display utility (e.g. `hidden sm:inline-flex` for responsive
+  // visibility) so the override actually wins — Tailwind can't reliably
+  // arbitrate two same-specificity `display` rules otherwise.
+  const layout = 'items-center justify-center gap-1.5 font-medium leading-none whitespace-nowrap transition-colors select-none ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-0 ' +
     'disabled:opacity-40 disabled:pointer-events-none';
+  let hasDisplay = $derived(/(^|\s)(hidden|block|inline-block|inline|flex|inline-flex|grid|contents)(\s|$)/.test(extra));
+  let base = $derived(hasDisplay ? layout : `inline-flex ${layout}`);
 
   const sizes: Record<Size, string> = {
     sm: iconOnly ? 'text-xs p-1' : 'text-xs px-2 py-1',
