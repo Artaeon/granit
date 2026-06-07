@@ -29,6 +29,12 @@
   import HabitsCategoryFilterRow from '$lib/components/habits/HabitsCategoryFilterRow.svelte';
   import HabitsTagFilterRow from '$lib/components/habits/HabitsTagFilterRow.svelte';
   import HabitsGroupedView from '$lib/components/habits/HabitsGroupedView.svelte';
+  // Reminder + frequency editors. Two more inline-chip controllers
+  // mirroring category/tag — same patchHabit + reload pattern.
+  import { createReminderEditCtl } from '$lib/habits/habitsReminderEdit.svelte';
+  import { createFrequencyEditCtl } from '$lib/habits/habitsFrequencyEdit.svelte';
+  import HabitReminderBadge from '$lib/components/habits/HabitReminderBadge.svelte';
+  import HabitFrequencyPicker from '$lib/components/habits/HabitFrequencyPicker.svelte';
 
   // /habits — three view modes (Today / Week / List / Heatmap) over
   // the same 90-day window. Sort + insight (best day of week) work
@@ -140,6 +146,31 @@
     sortedHabits.filter((h) => categoryFilterCtl.matches(h) && tagFilterCtl.matches(h))
   );
   const groupingCtl = createGroupingCtl({ getHabits: () => visibleHabits });
+
+  // Reminder + frequency: same patchHabit → reload pattern as
+  // category/tag above. Errors surface as toasts; no optimistic flip
+  // since the chip render reads directly from h.reminderTime /
+  // h.frequency, both of which refresh on dataCtl.load().
+  const reminderEditCtl = createReminderEditCtl({
+    onPatch: async (name, patch) => {
+      try {
+        await api.patchHabit(name, patch);
+        await dataCtl.load();
+      } catch (e) {
+        await toastError(`reminder update failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  });
+  const frequencyEditCtl = createFrequencyEditCtl({
+    onPatch: async (name, patch) => {
+      try {
+        await api.patchHabit(name, patch);
+        await dataCtl.load();
+      } catch (e) {
+        await toastError(`frequency update failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  });
 
   onMount(() => {
     dataCtl.load();
@@ -335,6 +366,7 @@
             <option value="completion">by 30-day completion</option>
             <option value="behind">behind first</option>
             <option value="alpha">alphabetical</option>
+            <option value="reminder">by reminder time</option>
           </select>
         </label>
       </div>
@@ -479,6 +511,8 @@
                     title="set a weekly target"
                   >+ target</button>
                 {/if}
+                <HabitReminderBadge name={h.name} reminderTime={h.reminderTime} ctl={reminderEditCtl} />
+                <HabitFrequencyPicker name={h.name} frequency={h.frequency} ctl={frequencyEditCtl} />
               </div>
               {#if editingTarget === h.name}
                 <div class="mt-2 flex items-center gap-1.5 text-[11px]">
@@ -644,6 +678,8 @@
                 <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
                   <HabitCategoryChip habitName={h.name} category={h.category} ctl={categoryEditCtl} />
                   <HabitTagChips habitName={h.name} tags={h.tags} ctl={tagEditCtl} />
+                  <HabitReminderBadge name={h.name} reminderTime={h.reminderTime} ctl={reminderEditCtl} />
+                  <HabitFrequencyPicker name={h.name} frequency={h.frequency} ctl={frequencyEditCtl} />
                 </div>
                 {#if editingTarget === h.name}
                   <div class="mt-1.5 flex items-center gap-1.5 text-[11px]">
